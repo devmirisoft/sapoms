@@ -20,12 +20,15 @@ import {
   resolveEffectiveOrderDetailItems,
 } from "@/lib/orderDetailItems";
 import ProductDispatchPanel from "@/components/orders/ProductDispatchPanel";
+import DispatchTrackingCard from "@/components/orders/DispatchTrackingCard";
 import {
   buildBulkDispatchPlan,
   buildBulkDispatchLineKey,
   mergeOrderItemsWithDispatchRecords,
   canUserBulkDispatch,
   canUserEditDispatch,
+  canUserEditDispatchTracking,
+  readDispatchTrackingInfo,
   DISPATCH_MUTATION_STATUSES,
   DISPATCH_STATUS_LABELS,
   normalizeOrderAcceptance,
@@ -33,6 +36,7 @@ import {
   type DispatchUserSession,
   type OrderDispatchRecord,
   type DispatchStatus,
+  type DispatchTrackingInfo,
 } from "@/lib/orderDispatch";
 import { PenLine, Trash2 } from "lucide-react";
 import { fetchLegacyDealerProfile, fetchLegacyOrderDetail } from "@/lib/legacyOrderDetail";
@@ -378,7 +382,19 @@ const itemStatusMap: Record<string, { label: string; dot: string; text: string; 
   dispatched: { label: "Dispatched", dot: "bg-indigo-400", text: "text-indigo-700", bg: "bg-indigo-50" },
   not_in_stock: { label: "Not in Stock", dot: "bg-red-400", text: "text-red-700", bg: "bg-red-50" },
   successful: { label: "Successful", dot: "bg-emerald-400", text: "text-emerald-700", bg: "bg-emerald-50" },
+  partially_dispatched: { label: "Partially Dispatched", dot: "bg-orange-400", text: "text-orange-700", bg: "bg-orange-50" },
 };
+
+// A line item is "partially dispatched" when some but not all of the ordered
+// quantity has gone out — "Not in Stock" stays as-is since it isn't progress.
+function resolveItemStatusCode(o: OrderData, pricing: RowPricing): string {
+  const rawCode = String(o.dispatchStatus ?? o.orderdata_status ?? "0");
+  const isNotInStock = rawCode === "3" || rawCode === "not_in_stock";
+  if (!isNotInStock && pricing.ready > 0 && pricing.left > 0) {
+    return "partially_dispatched";
+  }
+  return rawCode;
+}
 
 function StatusPill({ code }: { code: string }) {
   const s = itemStatusMap[code] ?? { label: code || "—", dot: "bg-gray-300", text: "text-gray-600", bg: "bg-gray-50" };
@@ -652,7 +668,7 @@ function ItemCard({
           {o.fallbackProductNote && <p className="mt-2 text-[11px] leading-5 text-indigo-700">Product Note: {o.fallbackProductNote}</p>}
           {originalRemarksText && <p className="mt-2 text-[11px] leading-5 text-gray-600">{originalRemarksText}</p>}
         </div>
-        <StatusPill code={String(o.dispatchStatus ?? o.orderdata_status ?? "0")} />
+        <StatusPill code={resolveItemStatusCode(o, pricing)} />
       </div>
       <div>
         <div className="flex items-center justify-between mb-1.5">
@@ -902,6 +918,7 @@ export default function ViewOrderDealerPage() {
   const [dispatchAllIdempotencyKey, setDispatchAllIdempotencyKey] = useState("");
   const [dispatchAllSaving, setDispatchAllSaving] = useState(false);
   const [dispatchAllError, setDispatchAllError] = useState("");
+  const [dispatchTrackingOverride, setDispatchTrackingOverride] = useState<DispatchTrackingInfo | null>(null);
   const [selectedDispatchKeys, setSelectedDispatchKeys] = useState<Set<string>>(new Set());
   const [dispatchSelectedQuantities, setDispatchSelectedQuantities] = useState<Record<string, string>>({});
   const [dispatchSelectedStatus, setDispatchSelectedStatus] = useState<Exclude<DispatchStatus, "pending">>("dispatched");
@@ -1265,6 +1282,13 @@ export default function ViewOrderDealerPage() {
     () => ({ ...(activeOrderHeader ?? {}), ...(orderMeta ?? {}), ...resolvedSummary }) as OrderMeta,
     [activeOrderHeader, orderMeta, resolvedSummary]
   );
+  // Settlement is written by the Accountant onto the order's ledger bills; the
+  // API rolls it up into `settlement` on the order payload.
+  const settlementSummary = useMemo(
+    () => (displayOrderMeta as any)?.settlement ?? (firstOrder as any)?.settlement ?? null,
+    [displayOrderMeta, firstOrder]
+  );
+
   const assignedStaffId = firstNonEmptyString(
     orderAccessMeta?.assignedstaff,
     orderAccessMeta?.staffid,
@@ -1323,6 +1347,15 @@ export default function ViewOrderDealerPage() {
     acceptOrder,
     delStatus: orderDeleted,
   });
+  const canEditDispatchTracking = canUserEditDispatchTracking(currentUser, {
+    dealerId: dealerIdForDispatch,
+    assignedStaffId,
+    acceptOrder,
+    delStatus: orderDeleted,
+  }) && !overlayState?.isCancelled;
+  // Saved value wins until the order reloads with the stored tracking info.
+  const dispatchTracking = dispatchTrackingOverride
+    ?? readDispatchTrackingInfo(displayOrderMeta as unknown as Record<string, unknown>);
   const canUseDispatchAll = canUserBulkDispatch(currentUser, {
     dealerId: dealerIdForDispatch,
     assignedStaffId,
@@ -1444,6 +1477,7 @@ export default function ViewOrderDealerPage() {
     orderProductNotes: (displayOrderMeta as any)?.orderProductNotes,
     summaryOverrides: (displayOrderMeta as any)?.summaryOverrides,
     dispatchRecords: (displayOrderMeta as any)?.dispatchRecords,
+    settlement: settlementSummary,
     items: displayOrders.map((o, index) => {
       const pricing = rowPricings[index] ?? getRowPricing(o, packLookup, displayOrderMeta);
       return {
@@ -1895,6 +1929,17 @@ export default function ViewOrderDealerPage() {
             </div>
           )}
 
+          {/* Dispatch Details — staff/admin edit, dealer read-only */}
+          {!loading && (
+            <DispatchTrackingCard
+              orderId={id}
+              canEdit={canEditDispatchTracking}
+              editingSupported={isPostgresDetail}
+              value={dispatchTracking}
+              onSaved={setDispatchTrackingOverride}
+            />
+          )}
+
           {overlayState?.isCancelled && (
             <div className="bg-red-50 border border-red-200 rounded-2xl p-5">
               <p className="text-[11px] font-bold text-red-500 uppercase tracking-widest">Cancellation</p>
@@ -1987,6 +2032,41 @@ export default function ViewOrderDealerPage() {
                   </div>
                 ))}
               </div>
+
+              {/* Wallet settlement applied by the Accountant against this order. */}
+              {settlementSummary && Number(settlementSummary.paidAmount) > 0 && (
+                <div className="rounded-2xl border border-emerald-200 bg-emerald-50/60 px-5 py-4">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+                        {settlementSummary.status === "settled" ? "Settled from wallet advance" : "Partly settled from wallet advance"}
+                      </p>
+                      <p className="mt-1 font-mono text-[20px] font-bold text-emerald-800">
+                        &#8377;{Number(settlementSummary.paidAmount).toLocaleString("en-IN")}
+                        <span className="ml-2 text-[13px] font-semibold text-emerald-700">paid</span>
+                      </p>
+                    </div>
+                    {Number(settlementSummary.dueAmount) > 0 && (
+                      <div className="text-right">
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-amber-700">Balance due</p>
+                        <p className="mt-1 font-mono text-[20px] font-bold text-amber-800">
+                          &#8377;{Number(settlementSummary.dueAmount).toLocaleString("en-IN")}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  {settlementSummary.lastPaymentAt && (
+                    <p className="mt-2 text-[12px] text-emerald-800">
+                      Last settled {moment(settlementSummary.lastPaymentAt).format("DD MMM YYYY")}
+                    </p>
+                  )}
+                  {Array.isArray(settlementSummary.bills) && settlementSummary.bills.length > 0 && (
+                    <p className="mt-1 text-[12px] text-emerald-700">
+                      Against {settlementSummary.bills.map((bill: any) => bill.orderNumber).filter(Boolean).join(", ")}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -2122,7 +2202,7 @@ export default function ViewOrderDealerPage() {
                             )}
                           </td>
                           <td className="px-4 py-3.5 font-mono font-bold text-emerald-700">&#8377;{pricing.final.toLocaleString("en-IN")}</td>
-                          <td className="px-4 py-3.5"><StatusPill code={String(o.dispatchStatus ?? o.orderdata_status ?? "0")} /></td>
+                          <td className="px-4 py-3.5"><StatusPill code={resolveItemStatusCode(o, pricing)} /></td>
                           <td className="px-4 py-3.5 text-[11px] text-gray-500 font-mono whitespace-nowrap">{o.orderdata_datetime || "—"}</td>
                           <td className="px-4 py-3.5 w-px">
                             <div className="track-btn">
@@ -2213,7 +2293,6 @@ export default function ViewOrderDealerPage() {
                     return (
                     <div key={lineKey} className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_repeat(5,minmax(72px,auto))] md:items-end">
                       <div>
-                        <p className="text-[13px] font-semibold text-slate-900">{line.productName || line.sku || "Product line"}</p>
                         <p className="mt-1 font-mono text-[12px] text-amber-700">Catalogue Number: {line.sku || "-"}</p>
                       </div>
                       <div><p className="text-[10px] font-bold uppercase text-slate-400">Ordered</p><p className="font-mono text-[13px] font-bold">{line.orderedQuantity}</p></div>

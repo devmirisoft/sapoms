@@ -5,6 +5,10 @@ export type AdminDealerListInput = AdminListInput & {
   staffId?: string;
   status?: UserStatus;
   wallet?: "active" | "inactive";
+  city?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
 };
 
 export type AdminDealerStaffAssignment = {
@@ -16,7 +20,9 @@ export type AdminDealerStaffAssignment = {
     id: bigint;
     displayName: string;
     designation: string | null;
-    user: { email: string; status: string; deletedAt: Date | null };
+    staffRoleType: string | null;
+    salesRegion: SalesRegion | null;
+    user: { email: string; status: string; deletedAt: Date | null; role: string };
   };
 };
 
@@ -33,6 +39,12 @@ export type AdminDealerRecord = {
   discountPercent: unknown;
   creditDays: number | null;
   creditLimitPaise?: bigint | null;
+  annualTargetPaise?: bigint | null;
+  notes?: string | null;
+  priorityContact?: string | null;
+  secondaryContactName?: string | null;
+  secondaryContactPhone?: string | null;
+  secondaryContactEmail?: string | null;
   imageUrl?: string | null;
   deletedAt?: Date | null;
   user: { id: bigint; email: string; username?: string | null; status: string; deletedAt?: Date | null };
@@ -57,10 +69,17 @@ export type CreateAdminDealerInput = {
   discountPercent?: string;
   creditDays?: number;
   creditLimitPaise?: string;
+  annualTargetPaise?: string;
+  notes?: string;
+  priorityContact?: "primary" | "secondary";
+  secondaryContactName?: string;
+  secondaryContactPhone?: string;
+  secondaryContactEmail?: string;
   imageUrl?: string;
   status?: UserStatus;
   assignedStaffIds: string[];
   rsmUserId?: string;
+  walletActive?: boolean;
 };
 
 export type UpdateAdminDealerInput = Partial<Omit<CreateAdminDealerInput, "password" | "status">>;

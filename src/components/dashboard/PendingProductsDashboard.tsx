@@ -406,7 +406,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
 
   return (
     <>
-      <div className="mx-auto max-w-[1500px] px-6 py-6">
+      <div className="mx-auto max-w-[1840px] px-6 py-6">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-[28px] font-bold tracking-tight text-slate-900">Pending Products</h1>

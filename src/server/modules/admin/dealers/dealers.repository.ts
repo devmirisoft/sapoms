@@ -1,6 +1,8 @@
 import "server-only";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, WalletStatus } from "@prisma/client";
+import { setWalletStatus } from "@/lib/postgresWallet";
+import { assertNoOpenSettlement, openSettlementForWalletClosure } from "@/lib/walletSettlement";
 import { prisma } from "@/server/db/prisma";
 import { paginationToPrisma } from "@/server/admin/admin-pagination";
 import { AdminRouteError } from "@/server/admin/admin-errors";
@@ -44,6 +46,22 @@ function buildWhere(input: AdminDealerListInput): Prisma.DealerProfileWhereInput
     filters.push({ OR: [{ wallet: { is: null } }, { wallet: { is: { status: "INACTIVE" } } }] });
   }
 
+  if (input.city) {
+    filters.push({ city: { equals: input.city, mode: "insensitive" } });
+  }
+
+  if (input.name) {
+    filters.push({ businessName: { contains: input.name, mode: "insensitive" } });
+  }
+
+  if (input.email) {
+    filters.push({ user: { email: { contains: input.email, mode: "insensitive" } } });
+  }
+
+  if (input.phone) {
+    filters.push({ phone: { contains: input.phone, mode: "insensitive" } });
+  }
+
   if (search) {
     filters.push({ OR: [
       { businessName: { contains: search, mode: "insensitive" } },
@@ -59,7 +77,7 @@ function buildWhere(input: AdminDealerListInput): Prisma.DealerProfileWhereInput
 }
 
 const staffAssignmentInclude = {
-  staff: { select: { id: true, displayName: true, designation: true, user: { select: { email: true, status: true, deletedAt: true } } } },
+  staff: { select: { id: true, displayName: true, designation: true, staffRoleType: true, salesRegion: true, user: { select: { email: true, status: true, deletedAt: true, role: true } } } },
 } satisfies Prisma.DealerStaffAssignmentInclude;
 
 const include = {
@@ -166,6 +184,12 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
       discountPercent: decimalValue(input.discountPercent),
       creditDays: input.creditDays,
       creditLimitPaise: bigintValue(input.creditLimitPaise),
+      annualTargetPaise: bigintValue(input.annualTargetPaise),
+      notes: cleanOptional(input.notes),
+      priorityContact: input.priorityContact ?? "primary",
+      secondaryContactName: cleanOptional(input.secondaryContactName),
+      secondaryContactPhone: cleanOptional(input.secondaryContactPhone),
+      secondaryContactEmail: cleanOptional(input.secondaryContactEmail),
       imageUrl: cleanOptional(input.imageUrl),
       region: rsm?.region,
       rsmUserId: rsm?.rsmUserId,
@@ -173,7 +197,13 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
     } });
 
     if (staffIds.length) await tx.dealerStaffAssignment.createMany({ data: staffIds.map((staffId) => ({ dealerId: dealer.id, staffId, assignedByUserId: actor.userId })) });
-    await audit(tx, actor, "ADMIN_DEALER_CREATED", { dealerId: dealer.id.toString(), assignedStaffIds: staffIds.map(String), rsmUserId: rsm?.rsmUserId?.toString(), region: rsm?.region });
+    if (input.walletActive) {
+      await setWalletStatus(tx, dealer.id, WalletStatus.ACTIVE, {
+        actor: { userId: actor.userId, role: actor.role },
+        note: "Activated during dealer creation",
+      });
+    }
+    await audit(tx, actor, "ADMIN_DEALER_CREATED", { dealerId: dealer.id.toString(), assignedStaffIds: staffIds.map(String), rsmUserId: rsm?.rsmUserId?.toString(), region: rsm?.region, walletActive: Boolean(input.walletActive) });
     return tx.dealerProfile.findUniqueOrThrow({ where: { id: dealer.id }, include });
   }
 
@@ -197,6 +227,7 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
         const userData: Prisma.UserUpdateInput = {};
         const dealerData: Prisma.DealerProfileUpdateInput = {};
         const changedFields: string[] = [];
+        let settlementOpened: Awaited<ReturnType<typeof openSettlementForWalletClosure>> = null;
 
         if (input.email !== undefined) {
           const normalizedEmail = normalizeEmail(input.email);
@@ -216,6 +247,10 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
         for (const [inputKey, dbKey, value] of [
           ["businessName", "businessName", input.businessName], ["phone", "phone", input.phone], ["city", "city", input.city], ["state", "state", input.state],
           ["address", "address", input.address], ["pincode", "pincode", input.pincode], ["gstin", "gstin", input.gstin], ["imageUrl", "imageUrl", input.imageUrl], ["creditDays", "creditDays", input.creditDays],
+          ["notes", "notes", input.notes], ["priorityContact", "priorityContact", input.priorityContact],
+          ["secondaryContactName", "secondaryContactName", input.secondaryContactName],
+          ["secondaryContactPhone", "secondaryContactPhone", input.secondaryContactPhone],
+          ["secondaryContactEmail", "secondaryContactEmail", input.secondaryContactEmail],
         ] as Array<[keyof UpdateAdminDealerInput, keyof Prisma.DealerProfileUpdateInput, unknown]>) {
           if (value !== undefined) {
             (dealerData as Record<string, unknown>)[dbKey as string] = value;
@@ -229,6 +264,32 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
         if (input.creditLimitPaise !== undefined) {
           dealerData.creditLimitPaise = bigintValue(input.creditLimitPaise);
           changedFields.push("creditLimitPaise");
+        }
+        if (input.annualTargetPaise !== undefined) {
+          dealerData.annualTargetPaise = bigintValue(input.annualTargetPaise);
+          changedFields.push("annualTargetPaise");
+        }
+        if (input.walletActive !== undefined) {
+          const nextStatus = input.walletActive ? WalletStatus.ACTIVE : WalletStatus.INACTIVE;
+          const currentWallet = await tx.dealerWallet.findUnique({ where: { dealerId }, select: { status: true } });
+          if ((currentWallet?.status ?? WalletStatus.INACTIVE) !== nextStatus) {
+            /* Advance -> credit must leave the wallet at zero, but the residual
+               still belongs to the dealer: it moves into an open settlement for
+               the accountant to apply against this dealer's bills. Going the
+               other way is blocked while such a settlement is unresolved. */
+            if (!input.walletActive) {
+              settlementOpened = await openSettlementForWalletClosure(tx, dealerId, { userId: actor.userId, role: actor.role }, {
+                note: "Wallet closed on switch from advance to credit",
+              });
+            } else {
+              await assertNoOpenSettlement(tx, dealerId);
+            }
+            await setWalletStatus(tx, dealerId, nextStatus, {
+              actor: { userId: actor.userId, role: actor.role },
+              note: input.walletActive ? "Wallet activated from dealer edit" : "Wallet deactivated from dealer edit",
+            });
+            changedFields.push("walletActive");
+          }
         }
         if (input.rsmUserId !== undefined) {
           const rsm = await resolveRsm(tx, input.rsmUserId ? BigInt(input.rsmUserId) : undefined);
@@ -260,7 +321,13 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
         }
         if (Object.keys(userData).length) await tx.user.update({ where: { id: current.userId }, data: userData });
         if (Object.keys(dealerData).length) await tx.dealerProfile.update({ where: { id: dealerId }, data: dealerData });
-        await audit(tx, actor, "ADMIN_DEALER_UPDATED", { dealerId: dealerId.toString(), changedFields: Array.from(new Set(changedFields)) });
+        await audit(tx, actor, "ADMIN_DEALER_UPDATED", {
+          dealerId: dealerId.toString(),
+          changedFields: Array.from(new Set(changedFields)),
+          ...(settlementOpened
+            ? { walletSettlementId: settlementOpened.id.toString(), walletSettlementAmountPaise: settlementOpened.originalPaise.toString() }
+            : {}),
+        });
         if (input.assignedStaffIds !== undefined) invalidateStaffAssignmentCache();
         return tx.dealerProfile.findUniqueOrThrow({ where: { id: dealerId }, include });
       });

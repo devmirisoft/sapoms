@@ -2,6 +2,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { useRouter } from 'next/navigation'
 import axios from 'axios'
@@ -14,7 +15,7 @@ import {
   type CustomDiscountProgress,
 } from '@/lib/customDiscountProgress'
 
-type Role = 'admin' | 'dealer' | 'staff'
+type Role = 'admin' | 'dealer' | 'staff' | 'accountant'
 type UserSession = { role: Role; id: string; name: string; roletype?: string; viewRoute: string }
 type OrderData = {
   order_id: string; order_date: string; orderDate: string; order_dealer: string
@@ -136,6 +137,15 @@ const ROLE_CONFIG: Record<Role, {
     canAccept: (s, row) => s.roletype !== '2' && row.del_status === '0',
     requireReason: false,
   },
+  accountant: {
+    label: 'Accountant', pillCls: 'role-accountant', caption: 'All dealer orders across the system',
+    endpoint: (_id, page, search) =>
+      `/api/orders-data?page=${page}&limit=${ITEMS_PER_PAGE}&search=${encodeURIComponent(search)}`,
+    showDealerCol: true, showActions: false,
+    canDelete: () => false,
+    canAccept: () => false,
+    requireReason: false,
+  },
 }
 
 function resolveSession(): UserSession | null {
@@ -157,6 +167,8 @@ function resolveSession(): UserSession | null {
       const p = JSON.parse(userRaw)
       if (p?.Dealer_Id) return { role: 'dealer', id: p.Dealer_Id, name: p.Dealer_Name || '', viewRoute: '/orders' }
       if (p?.staff_id)  return { role: p.staff_roletype === '0' ? 'admin' : 'staff', id: p.staff_id, name: p.staff_name || '', roletype: p.staff_roletype, viewRoute: '/orders' }
+      if (p?.role === 'accountant' || p?.accountant_id)
+        return { role: 'accountant', id: p.accountant_id || p._id || '', name: p.name || p.email || 'Accountant', roletype: '4', viewRoute: '/orders' }
       if (localStorage.getItem('roletype') === '3' && p && Object.keys(p).length > 0)
         return { role: 'admin', id: p.id || p.admin_id || p.Admin_Id || '', name: p.name || p.email || 'Admin', roletype: '0', viewRoute: '/orders' }
     }
@@ -165,6 +177,12 @@ function resolveSession(): UserSession | null {
       const p = JSON.parse(adminRaw)
       if (p && Object.keys(p).length > 0)
         return { role: 'admin', id: p.id || p.admin_id || p.Admin_Id || '', name: p.name || 'Admin', roletype: '0', viewRoute: '/orders' }
+    }
+    const accountantRaw = localStorage.getItem('AccountantData')
+    if (accountantRaw) {
+      const p = JSON.parse(accountantRaw)
+      if (p && Object.keys(p).length > 0)
+        return { role: 'accountant', id: p.accountant_id || p._id || '', name: p.name || p.email || 'Accountant', roletype: '4', viewRoute: '/orders' }
     }
   } catch {}
   return null
@@ -175,6 +193,10 @@ function acceptBadge(a: string) {
   return a === '1'
     ? { cls: 'badge-accepted', label: 'Accepted', dot: '#1d4ed8' }
     : { cls: 'badge-awaiting', label: 'Awaiting',  dot: '#f59e0b' }
+}
+
+function rsmApprovalValue(order: OrderData) {
+  return String(order.rsmApprovalStatus || order.rsm_approval_status || '').toUpperCase()
 }
 
 function mtStatusValue(s: string) {
@@ -361,6 +383,7 @@ function ActionMenu({
   showDispatch,
   dispatchDisabled,
   acceptOrder,
+  rsmMode,
   onView,
   onDispatch,
   onAccept,
@@ -368,23 +391,56 @@ function ActionMenu({
   onDelete,
 }: {
   showDelete: boolean; showAccept: boolean; showDispatch?: boolean; dispatchDisabled?: boolean; acceptOrder: string
+  rsmMode?: boolean
   onView: () => void; onDispatch?: () => void; onAccept: () => void; onDecline: () => void; onDelete: () => void
 }) {
   const [open, setOpen] = useState(false)
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null)
   const ref = useRef<HTMLDivElement>(null)
+  const btnRef = useRef<HTMLButtonElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+
+  const MENU_WIDTH = 176
+
+  const place = useCallback(() => {
+    const btn = btnRef.current
+    if (!btn) return
+    const r = btn.getBoundingClientRect()
+    const menuH = menuRef.current?.offsetHeight ?? 220
+    const below = window.innerHeight - r.bottom
+    // flip above the button when there isn't room below
+    const top = below < menuH + 16 && r.top > menuH + 16 ? r.top - menuH - 8 : r.bottom + 8
+    const left = Math.max(8, Math.min(r.right - MENU_WIDTH, window.innerWidth - MENU_WIDTH - 8))
+    setPos({ top, left })
+  }, [])
 
   useEffect(() => {
-    if (!open) return
-    const h = (e: MouseEvent) => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    if (!open) { setPos(null); return }
+    place()
+    const h = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (ref.current?.contains(t) || menuRef.current?.contains(t)) return
+      setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
     document.addEventListener('mousedown', h)
-    return () => document.removeEventListener('mousedown', h)
-  }, [open])
+    document.addEventListener('keydown', onKey)
+    window.addEventListener('resize', place)
+    window.addEventListener('scroll', place, true)
+    return () => {
+      document.removeEventListener('mousedown', h)
+      document.removeEventListener('keydown', onKey)
+      window.removeEventListener('resize', place)
+      window.removeEventListener('scroll', place, true)
+    }
+  }, [open, place])
 
   const close = (fn: () => void) => () => { fn(); setOpen(false) }
 
   return (
-    <div style={{ position: 'relative', display: 'inline-block', zIndex: open ? 999 : 1 }} ref={ref}>
+    <div style={{ position: 'relative', display: 'inline-block' }} ref={ref}>
       <button
+        ref={btnRef}
         onClick={() => setOpen(v => !v)}
         aria-label="Actions"
         style={{
@@ -400,10 +456,14 @@ function ActionMenu({
         ))}
       </button>
 
-      {open && (
-        <div style={{
-          position: 'absolute', right: 0, top: 'calc(100% + 8px)', zIndex: 9999,
-          minWidth: 176,
+      {open && typeof document !== 'undefined' && createPortal(
+        <div ref={menuRef} style={{
+          position: 'fixed',
+          top: pos?.top ?? -9999,
+          left: pos?.left ?? -9999,
+          visibility: pos ? 'visible' : 'hidden',
+          zIndex: 10000,
+          minWidth: MENU_WIDTH,
           background: '#fff',
           border: '1px solid #e2e8f0',
           borderRadius: 12,
@@ -479,7 +539,68 @@ function ActionMenu({
             </button>
           )}
 
-          {showAccept && acceptOrder === '0' && (
+          {showAccept && rsmMode && (
+            <>
+              <button
+                onClick={close(onAccept)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  width: '100%', padding: '9px 12px',
+                  borderRadius: 8, border: 'none',
+                  background: 'transparent', cursor: 'pointer',
+                  fontSize: 12.5, fontWeight: 500, color: '#065f46',
+                  fontFamily: 'inherit', textAlign: 'left',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#f0fdf4')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{
+                  width: 28, height: 28, borderRadius: 7,
+                  background: '#dcfce7', border: '1px solid #bbf7d0',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#16a34a" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M20 6 9 17l-5-5" />
+                  </svg>
+                </span>
+                <span>
+                  <div style={{ lineHeight: 1.2 }}>Approve Order</div>
+                  <div style={{ fontSize: 10.5, color: '#86efac', marginTop: 2 }}>Release to staff for acceptance</div>
+                </span>
+              </button>
+              <button
+                onClick={close(onDecline)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  width: '100%', padding: '9px 12px',
+                  borderRadius: 8, border: 'none',
+                  background: 'transparent', cursor: 'pointer',
+                  fontSize: 12.5, fontWeight: 500, color: '#be123c',
+                  fontFamily: 'inherit', textAlign: 'left',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = '#fff1f2')}
+                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+              >
+                <span style={{
+                  width: 28, height: 28, borderRadius: 7,
+                  background: '#fff1f2', border: '1px solid #fecdd3',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#be123c" strokeWidth="2.5" strokeLinecap="round">
+                    <path d="M18 6 6 18M6 6l12 12" />
+                  </svg>
+                </span>
+                <span>
+                  <div style={{ lineHeight: 1.2 }}>Disapprove Order</div>
+                  <div style={{ fontSize: 10.5, color: '#fda4af', marginTop: 2 }}>Reject this order</div>
+                </span>
+              </button>
+            </>
+          )}
+
+          {showAccept && !rsmMode && acceptOrder === '0' && (
             <button
               onClick={close(onAccept)}
               style={{
@@ -510,7 +631,7 @@ function ActionMenu({
             </button>
           )}
 
-          {showAccept && acceptOrder === '1' && (
+          {showAccept && !rsmMode && acceptOrder === '1' && (
             <>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 10,
@@ -595,7 +716,8 @@ function ActionMenu({
               </button>
             </>
           )}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   )
@@ -808,6 +930,8 @@ export default function OrdersPage() {
   const queryClient = useQueryClient()
 
   const [session,      setSession     ] = useState<UserSession | null>(null)
+  const [isRsm,        setIsRsm       ] = useState(false)
+  const [rsmOnlyAwaiting, setRsmOnlyAwaiting] = useState(false)
   const [page,         setPage        ] = useState(1)
   const [toast,        setToast       ] = useState<{ msg: string; type: 'ok' | 'err' } | null>(null)
   const [orderIdInput, setOrderIdInput] = useState('')
@@ -838,8 +962,22 @@ export default function OrdersPage() {
     setSession(s)
   }, [router])
 
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/auth/me', { credentials: 'include', cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (cancelled) return
+        const rsm = String(json?.data?.role ?? '').toLowerCase() === 'rsm'
+        setIsRsm(rsm)
+        setRsmOnlyAwaiting(rsm)
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3000); return () => clearTimeout(t) }, [toast])
-  useEffect(() => { setPage(1) }, [orderIdInput, dealerInput, statusSearch, mtFilter, amountMin, amountMax, dateFrom, dateTo])
+  useEffect(() => { setPage(1) }, [orderIdInput, dealerInput, statusSearch, mtFilter, amountMin, amountMax, dateFrom, dateTo, rsmOnlyAwaiting])
 
   const cfg          = session ? ROLE_CONFIG[session.role] : null
   const serverSearch = dealerInput
@@ -936,6 +1074,7 @@ export default function OrdersPage() {
 
   const filteredAll = allData.filter(o => {
     const amounts = withDisplayOrderAmounts(o, summaryOverrides[o.order_id] ?? summaryOverrides[orderLookupKey(o.order_id)])
+    if (isRsm && rsmOnlyAwaiting && rsmApprovalValue(o) !== 'AWAITING') return false
     if (orderIdInput.trim() && !o.order_id.startsWith(orderIdInput.trim())) return false
     if (dealerInput.trim()  && !(o.Dealer_Name || '').toLowerCase().includes(dealerInput.trim().toLowerCase())) return false
     if (statusSearch !== '' && o.accept_order !== statusSearch) return false
@@ -947,7 +1086,7 @@ export default function OrdersPage() {
     return true
   })
 
-  const hasClientFilters = !!(orderIdInput || dealerInput || statusSearch || mtFilter || amountMin || amountMax || dateFrom || dateTo)
+  const hasClientFilters = !!(orderIdInput || dealerInput || statusSearch || mtFilter || amountMin || amountMax || dateFrom || dateTo || (isRsm && rsmOnlyAwaiting))
   const shouldSlice      = allData.length > ITEMS_PER_PAGE && !response?.last_page
 
   const data: OrderData[] = hasClientFilters
@@ -1078,10 +1217,13 @@ export default function OrdersPage() {
       if (!res.ok || json?.success === false) {
         throw new Error(json?.message || 'Acceptance update failed')
       }
-      setToast({ msg: 'Status updated.', type: 'ok' })
+      setToast({
+        msg: isRsm ? (status === 1 ? 'Order approved.' : 'Order disapproved.') : 'Status updated.',
+        type: 'ok',
+      })
       queryClient.invalidateQueries({ queryKey: ['orders'] })
     } catch (error) { setToast({ msg: error instanceof Error ? error.message : 'Action failed.', type: 'err' }) }
-  }, [data, queryClient, session])
+  }, [data, queryClient, session, isRsm])
 
   const loadDispatchProducts = useCallback(async (orderId: string, preferredProductId?: string) => {
     setDispatchProductsLoading(true)
@@ -1303,7 +1445,8 @@ export default function OrdersPage() {
         .role-admin  { background: #ede9fe; color: #7c3aed; }
         .role-dealer { background: #dbeafe; color: #1d4ed8; }
         .role-staff  { background: #d1fae5; color: #065f46; }
-        .orders-body { padding: 24px 28px; max-width: 1440px; margin: 0 auto; }
+        .role-accountant { background: #fef3c7; color: #92400e; }
+        .orders-body { padding: 24px 28px; width: 100%; max-width: 1840px; margin: 0 auto; }
         mark.hl { background: #fef08a; color: #713f12; border-radius: 2px; padding: 0 1px; }
         .stats-row { display: flex; gap: 10px; margin-bottom: 18px; flex-wrap: wrap; }
         .stat-pill { display: flex; align-items: center; gap: 7px; padding: 7px 14px; background: #fff; border: 1px solid #e8eaf0; border-radius: 10px; font-size: 12px; color: #374151; font-weight: 500; }
@@ -1407,6 +1550,9 @@ export default function OrdersPage() {
           .dispatch-layout { grid-template-columns: 1fr; overflow-y: auto; }
           .dispatch-drawer { width: 100%; }
         }
+        @media (max-width: 1024px) {
+          .orders-body { width: 100%; padding: 16px; }
+        }
       `}</style>
 
       <div className="orders-root">
@@ -1464,6 +1610,24 @@ export default function OrdersPage() {
                   Cancelled Orders
                 </button>
               </div>
+              {isRsm && section === 'active' && (
+                <div className="mt-3 ml-0 sm:ml-2 inline-flex rounded-lg border border-slate-200 bg-white p-1">
+                  <button
+                    type="button"
+                    onClick={() => setRsmOnlyAwaiting(true)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md ${rsmOnlyAwaiting ? 'bg-amber-500 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    Awaiting my approval
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRsmOnlyAwaiting(false)}
+                    className={`px-3 py-1.5 text-xs font-semibold rounded-md ${!rsmOnlyAwaiting ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-50'}`}
+                  >
+                    All team orders
+                  </button>
+                </div>
+              )}
             </div>
             <button
               onClick={exportCSV}
@@ -1667,8 +1831,13 @@ export default function OrdersPage() {
                   {!isLoading && data.map((order, i) => {
                     const ab         = acceptBadge(order.accept_order)
                     const mtb        = mtBadge(order.mtstatus)
+                    const rsmStatus  = rsmApprovalValue(order)
                     const showDelete = cfg.canDelete(session, order)
-                    const showAccept = cfg.canAccept(session, order)
+                    // An RSM reviews the order first; assigned staff can only accept
+                    // once that review has cleared, matching the server-side gate.
+                    const showAccept = isRsm
+                      ? rsmStatus === 'AWAITING' || rsmStatus === ''
+                      : cfg.canAccept(session, order) && (session.role !== 'staff' || rsmStatus === 'ACCEPTED')
                     const hlId       = orderIdInput ? highlight(order.order_id ?? '', orderIdInput) : (order.order_id ?? '')
                     const hlDealer   = dealerInput  ? highlight(order.Dealer_Name || '—', dealerInput) : (order.Dealer_Name || '—')
                     const amounts    = withDisplayOrderAmounts(order, summaryOverrides[order.order_id] ?? summaryOverrides[orderLookupKey(order.order_id)])
@@ -1722,9 +1891,19 @@ export default function OrdersPage() {
                             <span className="badge-dot" style={{ background: ab.dot }} />
                             {ab.label}
                           </span>
-                          {String(order.rsmApprovalStatus || order.rsm_approval_status || "").toUpperCase() === "ACCEPTED" && (
+                          {rsmStatus === 'ACCEPTED' && (
                             <div className="qty-info" style={{ color: '#047857', fontWeight: 600 }}>
                               RSM Approved{(order.rsmReviewedBy || order.rsm_reviewed_by) ? ` by ${order.rsmReviewedBy || order.rsm_reviewed_by}` : ''}
+                            </div>
+                          )}
+                          {rsmStatus === 'DECLINED' && (
+                            <div className="qty-info" style={{ color: '#be123c', fontWeight: 600 }}>
+                              RSM Disapproved{(order.rsmReviewedBy || order.rsm_reviewed_by) ? ` by ${order.rsmReviewedBy || order.rsm_reviewed_by}` : ''}
+                            </div>
+                          )}
+                          {rsmStatus === 'AWAITING' && (
+                            <div className="qty-info" style={{ color: '#b45309', fontWeight: 600 }}>
+                              Awaiting RSM approval
                             </div>
                           )}
                         </td>
@@ -1759,6 +1938,7 @@ export default function OrdersPage() {
                               showDispatch={false}
                               dispatchDisabled={true}
                               acceptOrder={order.accept_order}
+                              rsmMode={isRsm}
                               // ── unified route: same detail page as order history ──
                               onView={() => router.push(`/orders/${order.order_id}`)}
                               onDispatch={() => openDispatchDetails(order)}

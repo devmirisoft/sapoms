@@ -4,9 +4,9 @@ import { useState, useEffect } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import moment from "moment";
-import { exportOrdersToSupabase, downloadPDFDirectly } from "@/lib/Exporttopdf";
+import { exportOrdersToCloud, downloadPDFDirectly } from "@/lib/Exporttopdf";
 import { InvoiceModal } from "@/components/InvoiceModel";
-import { downloadOrderInvoice, uploadOrderInvoiceToSupabase, generateOrderInvoicePDF, listInvoices } from "@/lib/invoicegenerator";
+import { downloadOrderInvoice, uploadOrderInvoice, generateOrderInvoicePDF, listInvoices } from "@/lib/invoicegenerator";
 import { formatAdditionalDiscountBadge, withDisplayOrderAmounts } from "@/lib/orderAmounts";
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 import { useAuthSession } from "@/hooks/useAuthSession";
@@ -76,13 +76,36 @@ function extractOrderNote(order: Order, overlayNote?: string) {
   return remarks.match(/Order note:\s*([^|]+)/i)?.[1]?.trim() || "";
 }
 
-async function fetchOrders(page: number, pageSize: number, search: string, role: AppRole, actorId: string): Promise<ApiResponse> {
-  const url = `/api/orders-data?page=${page}&limit=${pageSize}&search=${encodeURIComponent(search)}`;
+type OrderFilters = {
+  orderId: string;
+  dateFrom: string;
+  dateTo: string;
+  amountMin: string;
+  amountMax: string;
+  orderStatus: string;
+};
+
+const EMPTY_FILTERS: OrderFilters = { orderId: "", dateFrom: "", dateTo: "", amountMin: "", amountMax: "", orderStatus: "" };
+
+function hasActiveFilters(f: OrderFilters) {
+  return Object.values(f).some(v => v !== "");
+}
+
+async function fetchOrders(page: number, pageSize: number, search: string, filters: OrderFilters, role: AppRole, actorId: string): Promise<ApiResponse> {
+  const params = new URLSearchParams({ page: String(page), limit: String(pageSize), search });
+  if (filters.orderId)     params.set("order_id",   filters.orderId);
+  if (filters.dateFrom)    params.set("date_from",  filters.dateFrom);
+  if (filters.dateTo)      params.set("date_to",    filters.dateTo);
+  if (filters.amountMin)   params.set("amount_min", filters.amountMin);
+  if (filters.amountMax)   params.set("amount_max", filters.amountMax);
+  if (filters.orderStatus) params.set("order_status", filters.orderStatus);
+
+  const url = `/api/orders-data?${params.toString()}`;
   const r = await fetch(url, { cache: "no-store" });
 
   if (!r.ok) {
     const errorBody = parseResponseText(await r.text());
-    console.error("[orders-data] request failed", { url, page, pageSize, search, role, actorId, errorBody });
+    console.error("[orders-data] request failed", { url, page, pageSize, search, filters, role, actorId, errorBody });
     throw new Error("Failed");
   }
 
@@ -98,6 +121,26 @@ const statusConf: Record<number, { label: string; dot: string; text: string; bg:
   4: { label: "Successful",   dot: "bg-emerald-400", text: "text-emerald-800", bg: "bg-emerald-50 border-emerald-200" },
 };
 
+/** Wallet settlement applied to this order by the Accountant, if any. */
+function SettlementBadge({ settlement }: { settlement?: { status?: string } | null }) {
+  const status = settlement?.status;
+  if (status !== "settled" && status !== "part_settled") return null;
+  const settled = status === "settled";
+  return (
+    <span
+      title={settled ? "Fully settled from wallet advance" : "Partly settled from wallet advance"}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${
+        settled
+          ? "bg-emerald-50 text-emerald-700 border-emerald-100"
+          : "bg-amber-50 text-amber-700 border-amber-100"
+      }`}
+    >
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${settled ? "bg-emerald-500" : "bg-amber-500"}`} />
+      {settled ? "Settled" : "Part settled"}
+    </span>
+  );
+}
+
 function OrderStatusBadge({ status }: { status: string | number }) {
   const num = Number(status);
   const s = statusConf[num] ?? { label: "Pending", dot: "bg-slate-400", text: "text-slate-700", bg: "bg-slate-50 border-slate-200" };
@@ -108,6 +151,25 @@ function OrderStatusBadge({ status }: { status: string | number }) {
     </span>
   );
 }
+
+/** Removable chip summarising one active filter. */
+function FilterTag({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 text-[11px] font-semibold">
+      {label}
+      <button type="button" onClick={onRemove} aria-label={`Remove filter ${label}`} className="opacity-70 hover:opacity-100">
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+          <path d="M18 6 6 18M6 6l12 12" />
+        </svg>
+      </button>
+    </span>
+  );
+}
+
+const filterInputCls = (active: boolean) =>
+  `mt-1.5 block px-2 py-1 text-[11px] font-medium normal-case tracking-normal rounded-md border outline-none transition-colors ${
+    active ? "border-indigo-400 bg-indigo-50 text-indigo-800" : "border-gray-200 bg-white text-gray-700"
+  } focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100`;
 
 function SkeletonRow() {
   return (
@@ -121,11 +183,44 @@ function SkeletonRow() {
   );
 }
 
-// ─── Per-row Invoice Button — always visible ──────────────────────────────────
-function InvoiceRowButton({ order, role, actorId }: { order: Order; role: AppRole | null; actorId: string }) {
+// ─── Per-row Actions Menu — View / Invoice / Delete behind one 3-dot button ────
+/**
+ * The menu is positioned `fixed` off the button rect rather than absolutely
+ * inside the cell, so the table's horizontal overflow cannot clip it.
+ */
+function menuPositionFor(button: HTMLElement) {
+  const rect = button.getBoundingClientRect();
+  const menuWidth = 224;
+  const gutter = 12;
+  return {
+    top: Math.min(rect.bottom + 6, window.innerHeight - gutter),
+    left: Math.max(gutter, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - gutter)),
+  };
+}
+
+function RowActionsMenu({ order, role, actorId, isDeleted, onView, onDelete }: {
+  order: Order;
+  role: AppRole | null;
+  actorId: string;
+  isDeleted: boolean;
+  onView: () => void;
+  onDelete: () => void;
+}) {
   const [loading,  setLoading ] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
+  const [menuPos,  setMenuPos ] = useState<{ top: number; left: number } | null>(null);
   const [toast,    setToast   ] = useState<{ type: "success" | "error"; text: string } | null>(null);
+
+  // A fixed menu would drift away from its button on scroll/resize, so close it.
+  useEffect(() => {
+    if (!menuPos) return;
+    const close = () => setMenuPos(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [menuPos]);
 
   const showToast = (type: "success" | "error", text: string) => {
     setToast({ type, text });
@@ -133,18 +228,18 @@ function InvoiceRowButton({ order, role, actorId }: { order: Order; role: AppRol
   };
 
   const handleDownload = async () => {
-    setLoading(true); setShowMenu(false);
+    setLoading(true); setMenuPos(null);
     const res = await downloadOrderInvoice(order, { normalizedRole: role, actorId });
     setLoading(false);
     showToast(res.success ? "success" : "error", res.success ? "PDF downloaded" : (res.error || "Download failed"));
   };
 
   const handleUpload = async () => {
-    setLoading(true); setShowMenu(false);
+    setLoading(true); setMenuPos(null);
     try {
       const options = { normalizedRole: role, actorId };
       const blob = await generateOrderInvoicePDF(order, options);
-      const res  = await uploadOrderInvoiceToSupabase(blob, order, options);
+      const res  = await uploadOrderInvoice(blob, order, options);
       showToast(res.success ? "success" : "error", res.success ? "Invoice saved to cloud" : (res.error || "Upload failed"));
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : "Failed";
@@ -157,32 +252,52 @@ function InvoiceRowButton({ order, role, actorId }: { order: Order; role: AppRol
   const accepted = (order as any).accept_order === "1" || Number(order.orderdata_status ?? 0) >= 4 || Number(order.mtstatus ?? 0) >= 2 || String(order.mtstatus ?? "").toLowerCase().includes("completed");
 
   return (
-    <div className="relative">
+    <>
       <button
-        onClick={() => setShowMenu(v => !v)}
+        onClick={e => { const pos = menuPositionFor(e.currentTarget); setMenuPos(prev => prev ? null : pos); }}
         disabled={loading}
-        title={accepted ? "Invoice PDF" : "Get a copy"}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 hover:border-blue-300 hover:bg-blue-50 text-gray-700 hover:text-blue-700 rounded-lg text-[11px] font-semibold transition-all shadow-sm disabled:opacity-50"
+        title="Order actions"
+        aria-label="Order actions"
+        aria-haspopup="menu"
+        aria-expanded={!!menuPos}
+        className="flex items-center justify-center w-8 h-8 bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg transition-all shadow-sm disabled:opacity-50"
       >
         {loading
           ? <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
-          : <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-              <polyline points="14 2 14 8 20 8"/>
-              <line x1="16" y1="13" x2="8" y2="13"/>
-              <line x1="16" y1="17" x2="8" y2="17"/>
+          : <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+              <circle cx="12" cy="5"  r="1.8" />
+              <circle cx="12" cy="12" r="1.8" />
+              <circle cx="12" cy="19" r="1.8" />
             </svg>
         }
-        {accepted ? "Invoice" : "Get a copy"}
       </button>
 
-      {showMenu && (
+      {menuPos && (
         <>
-          <div className="fixed inset-0 z-30" onClick={() => setShowMenu(false)} />
-          <div className="absolute right-0 mt-1.5 w-52 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden">
+          <div className="fixed inset-0 z-40" onClick={() => setMenuPos(null)} />
+          <div
+            role="menu"
+            style={{ top: menuPos.top, left: menuPos.left }}
+            className="fixed w-56 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden py-1"
+          >
             <button
+              role="menuitem"
+              onClick={() => { setMenuPos(null); onView(); }}
+              className="w-full text-left px-4 py-2.5 text-[12px] text-gray-700 hover:bg-indigo-50 flex items-center gap-3 transition-colors"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+              <span className="font-semibold">View order</span>
+            </button>
+
+            <div className="my-1 border-t border-gray-100" />
+
+            <button
+              role="menuitem"
               onClick={handleDownload}
-              className="w-full text-left px-4 py-3 text-[12px] text-gray-700 hover:bg-blue-50 flex items-center gap-3 border-b border-gray-100 transition-colors"
+              className="w-full text-left px-4 py-2.5 text-[12px] text-gray-700 hover:bg-blue-50 flex items-center gap-3 transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -195,8 +310,9 @@ function InvoiceRowButton({ order, role, actorId }: { order: Order; role: AppRol
               </div>
             </button>
             <button
+              role="menuitem"
               onClick={handleUpload}
-              className="w-full text-left px-4 py-3 text-[12px] text-gray-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
+              className="w-full text-left px-4 py-2.5 text-[12px] text-gray-700 hover:bg-emerald-50 flex items-center gap-3 transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -205,9 +321,26 @@ function InvoiceRowButton({ order, role, actorId }: { order: Order; role: AppRol
               </svg>
               <div>
                 <p className="font-semibold">{accepted ? "Save to Cloud" : "Save PO to Cloud"}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">Upload to Supabase</p>
+                <p className="text-[10px] text-gray-400 mt-0.5">Save to cloud</p>
               </div>
             </button>
+
+            {!isDeleted && (
+              <>
+                <div className="my-1 border-t border-gray-100" />
+                <button
+                  role="menuitem"
+                  onClick={() => { setMenuPos(null); onDelete(); }}
+                  className="w-full text-left px-4 py-2.5 text-[12px] text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors"
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                    <polyline points="3 6 5 6 21 6" />
+                    <path d="M19 6l-1 14H6L5 6m5 0V4h4v2" />
+                  </svg>
+                  <span className="font-semibold">Delete order</span>
+                </button>
+              </>
+            )}
           </div>
         </>
       )}
@@ -223,7 +356,7 @@ function InvoiceRowButton({ order, role, actorId }: { order: Order; role: AppRol
           {toast.text}
         </div>
       )}
-    </div>
+    </>
   );
 }
 
@@ -240,13 +373,13 @@ function ExportButton({ orders, dealerName, dealerId, isLoading = false }: Expor
   const [showNotification, setShowNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [showMenu, setShowMenu] = useState(false);
 
-  const handleExport = async (uploadToSupabase: boolean) => {
+  const handleExport = async (uploadToCloud: boolean) => {
     if (orders.length === 0) { setShowNotification({ type: "error", message: "No orders to export" }); setShowMenu(false); return; }
     setIsExporting(true); setShowMenu(false);
     try {
-      if (uploadToSupabase) {
-        const result = await exportOrdersToSupabase({ orders, dealerName, dealerId, title: `Order History - ${dealerName}`, fileName: `orders_${moment().format("YYYY-MM-DD")}` });
-        setShowNotification({ type: result.success ? "success" : "error", message: result.success ? "PDF exported to Supabase! 🎉" : (result.error || "Failed") });
+      if (uploadToCloud) {
+        const result = await exportOrdersToCloud({ orders, dealerName, dealerId, title: `Order History - ${dealerName}`, fileName: `orders_${moment().format("YYYY-MM-DD")}` });
+        setShowNotification({ type: result.success ? "success" : "error", message: result.success ? "PDF saved to cloud storage! 🎉" : (result.error || "Failed") });
       } else {
         const result = await downloadPDFDirectly({ orders, dealerName, title: `Order History - ${dealerName}`, fileName: `orders_${moment().format("YYYY-MM-DD")}.pdf` });
         setShowNotification({ type: result.success ? "success" : "error", message: result.success ? "PDF downloaded successfully! 📥" : (result.error || "Failed") });
@@ -281,7 +414,7 @@ function ExportButton({ orders, dealerName, dealerId, isLoading = false }: Expor
             </button>
             <button onClick={() => handleExport(true)} disabled={isExporting} className="w-full text-left px-4 py-3 text-[13px] text-gray-700 hover:bg-emerald-50 disabled:opacity-50 transition-colors flex items-center gap-3">
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m0 5.08l-4.24 4.24M19.78 4.22l-4.24 4.24m0 5.08l4.24 4.24M1 12a11 11 0 0 1 22 0 11 11 0 0 1-22 0"/></svg>
-              <div><p className="font-medium">Upload to Supabase</p><p className="text-[11px] text-gray-500 mt-0.5">Cloud storage with URL</p></div>
+              <div><p className="font-medium">Save to cloud</p><p className="text-[11px] text-gray-500 mt-0.5">Stored for later download</p></div>
             </button>
           </div>
         )}
@@ -366,6 +499,7 @@ export default function OrderHistoryPage() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
+  const [filters, setFilters] = useState<OrderFilters>(EMPTY_FILTERS);
   const [year] = useState(new Date().getFullYear());
   const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -389,8 +523,8 @@ export default function OrderHistoryPage() {
   const actorReady = actorRole === "admin" || actorRole === "accountant" || Boolean(actorId);
 
   const { data, isLoading, isError, isFetching, refetch } = useQuery({
-    queryKey: ["orders", actorRole, actorId, page, pageSize, query],
-    queryFn: () => fetchOrders(page, pageSize, query, actorRole as AppRole, actorId),
+    queryKey: ["orders", actorRole, actorId, page, pageSize, query, filters],
+    queryFn: () => fetchOrders(page, pageSize, query, filters, actorRole as AppRole, actorId),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
     enabled: !auth.loading && auth.session.status === "authenticated" && actorReady,
@@ -434,7 +568,7 @@ export default function OrderHistoryPage() {
     setBulkBilling(true);
     try {
       const existing = await listInvoices(selectedDealerIds[0] || dealerId || "", 500);
-      const existingNumbers = new Set(Array.isArray(existing.data) ? existing.data.map((invoice: any) => String(invoice.invoice_number ?? "")) : []);
+      const existingNumbers = new Set(Array.isArray(existing.data) ? existing.data.map((invoice: any) => String(invoice.invoiceNumber ?? "")) : []);
       const duplicates = selectedOrdersForBilling.filter((order) => existingNumbers.has(formatDisplayOrderNumber(order.order_id)));
       if (duplicates.length > 0) {
         showBulkBillingToast("error", `Already billed: ${duplicates.map((order) => order.order_id).join(", ")}`);
@@ -442,7 +576,7 @@ export default function OrderHistoryPage() {
       }
       for (const order of selectedOrdersForBilling) {
         const blob = await generateOrderInvoicePDF(order as any, { normalizedRole: actorRole, actorId });
-        const result = await uploadOrderInvoiceToSupabase(blob, order as any, { normalizedRole: actorRole, actorId });
+        const result = await uploadOrderInvoice(blob, order as any, { normalizedRole: actorRole, actorId });
         if (!result.success) throw new Error(result.error || result.message || `Failed to bill ${order.order_id}`);
       }
       setSelectedBillingOrderIds(new Set());
@@ -488,6 +622,13 @@ export default function OrderHistoryPage() {
       .catch(() => {});
   }, [dealerId, orderIdsKey]);
 
+  const setFilter = (key: keyof OrderFilters, value: string) => {
+    setFilters(prev => ({ ...prev, [key]: value }));
+    setPage(1);
+  };
+  const clearFilters = () => { setFilters(EMPTY_FILTERS); setPage(1); };
+  const filtersActive = hasActiveFilters(filters);
+
   const handleSearch = (e: React.FormEvent) => { e.preventDefault(); setQuery(search); setPage(1); };
 
   const handleDelete = async (reason: string) => {
@@ -532,7 +673,7 @@ export default function OrderHistoryPage() {
             </button>
             <h1 className="text-xl font-bold text-gray-900">Order History</h1>
             <p className="text-sm text-gray-600 mt-0.5">
-              {isLoading ? "Loading…" : `${totalCount} total orders`}
+              {isLoading ? "Loading…" : `${totalCount} ${filtersActive ? "matching" : "total"} orders`}
               {isFetching && !isLoading && (
                 <span className="ml-2 inline-flex items-center gap-1 text-indigo-600 text-[11px]">
                   <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping inline-block" />
@@ -579,7 +720,7 @@ export default function OrderHistoryPage() {
           </div>
         </div>
 
-        <div className="px-8 py-6 max-w-[1440px] mx-auto">
+        <div className="px-8 py-6 max-w-[1840px] mx-auto">
           {selectedOrdersForBilling.length > 0 && (
             <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
               <div className="text-[13px] font-semibold text-blue-900">
@@ -593,6 +734,33 @@ export default function OrderHistoryPage() {
                 className="rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
               >
                 {bulkBilling ? "Saving..." : `Save ${selectedOrdersForBilling.length} Invoice${selectedOrdersForBilling.length === 1 ? "" : "s"}`}
+              </button>
+            </div>
+          )}
+          {filtersActive && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Filters</span>
+              {filters.orderId && <FilterTag label={`Order: ${filters.orderId}…`} onRemove={() => setFilter("orderId", "")} />}
+              {(filters.dateFrom || filters.dateTo) && (
+                <FilterTag
+                  label={`${filters.dateFrom || "start"} → ${filters.dateTo || "now"}`}
+                  onRemove={() => { setFilters(prev => ({ ...prev, dateFrom: "", dateTo: "" })); setPage(1); }}
+                />
+              )}
+              {(filters.amountMin || filters.amountMax) && (
+                <FilterTag
+                  label={`₹${filters.amountMin || "0"}–₹${filters.amountMax || "∞"}`}
+                  onRemove={() => { setFilters(prev => ({ ...prev, amountMin: "", amountMax: "" })); setPage(1); }}
+                />
+              )}
+              {filters.orderStatus && (
+                <FilterTag
+                  label={statusConf[Number(filters.orderStatus)]?.label ?? filters.orderStatus}
+                  onRemove={() => setFilter("orderStatus", "")}
+                />
+              )}
+              <button type="button" onClick={clearFilters} className="text-[11px] text-gray-500 underline hover:text-gray-800">
+                Clear all
               </button>
             </div>
           )}
@@ -611,8 +779,81 @@ export default function OrderHistoryPage() {
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead>
-                    <tr className="bg-gray-50 border-b border-gray-200">
-                      {["Bill", "#", "Order No.", "Date", "Gross", "Discount", "Net Payable", "Units", "Status", "Outstanding", "Actions"].map(h => (
+                    <tr className="bg-gray-50 border-b border-gray-200 align-top">
+                      {["Bill", "#"].map(h => (
+                        <th key={h} className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">{h}</th>
+                      ))}
+                      <th className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">
+                        Order No.
+                        <input
+                          type="text"
+                          value={filters.orderId}
+                          onChange={e => setFilter("orderId", e.target.value)}
+                          placeholder="e.g. 45…"
+                          maxLength={12}
+                          autoComplete="off"
+                          aria-label="Filter by order number"
+                          className={`w-[96px] ${filterInputCls(!!filters.orderId)}`}
+                        />
+                      </th>
+                      <th className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">
+                        Date
+                        <div className="flex gap-1">
+                          <input
+                            type="date"
+                            value={filters.dateFrom}
+                            onChange={e => setFilter("dateFrom", e.target.value)}
+                            aria-label="Filter orders from date"
+                            className={`w-[124px] ${filterInputCls(!!filters.dateFrom)}`}
+                          />
+                          <input
+                            type="date"
+                            value={filters.dateTo}
+                            onChange={e => setFilter("dateTo", e.target.value)}
+                            aria-label="Filter orders up to date"
+                            className={`w-[124px] ${filterInputCls(!!filters.dateTo)}`}
+                          />
+                        </div>
+                      </th>
+                      <th className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">
+                        Gross
+                        <div className="flex gap-1">
+                          <input
+                            type="number"
+                            value={filters.amountMin}
+                            onChange={e => setFilter("amountMin", e.target.value)}
+                            placeholder="Min"
+                            aria-label="Filter by minimum gross amount"
+                            className={`w-[64px] ${filterInputCls(!!filters.amountMin)}`}
+                          />
+                          <input
+                            type="number"
+                            value={filters.amountMax}
+                            onChange={e => setFilter("amountMax", e.target.value)}
+                            placeholder="Max"
+                            aria-label="Filter by maximum gross amount"
+                            className={`w-[64px] ${filterInputCls(!!filters.amountMax)}`}
+                          />
+                        </div>
+                      </th>
+                      {["Discount", "Net Payable", "Units"].map(h => (
+                        <th key={h} className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">{h}</th>
+                      ))}
+                      <th className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">
+                        Status
+                        <select
+                          value={filters.orderStatus}
+                          onChange={e => setFilter("orderStatus", e.target.value)}
+                          aria-label="Filter by order status"
+                          className={`w-[124px] ${filterInputCls(!!filters.orderStatus)}`}
+                        >
+                          <option value="">Any</option>
+                          {Object.entries(statusConf).map(([value, conf]) => (
+                            <option key={value} value={value}>{conf.label}</option>
+                          ))}
+                        </select>
+                      </th>
+                      {["Outstanding", "Actions"].map(h => (
                         <th key={h} className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">{h}</th>
                       ))}
                     </tr>
@@ -628,7 +869,7 @@ export default function OrderHistoryPage() {
                                 <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
                                 <rect x="9" y="3" width="6" height="4" rx="1" />
                               </svg>
-                              <p className="text-sm text-gray-600">No orders found</p>
+                              <p className="text-sm text-gray-600">{filtersActive ? "No orders match the current filters" : "No orders found"}</p>
                             </div>
                           </td></tr>
                         )
@@ -693,43 +934,26 @@ export default function OrderHistoryPage() {
                                 </span>
                               </td>
                               <td className="px-4 py-3.5">
-                                <OrderStatusBadge status={order.orderdata_status} />
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <OrderStatusBadge status={order.orderdata_status} />
+                                  <SettlementBadge settlement={(order as any).settlement} />
+                                </div>
                               </td>
                               <td className="px-4 py-3.5 font-mono text-[12px] text-gray-700">
                                 {order.outstandingDate ? moment(order.outstandingDate).format("DD MMM YYYY") : "—"}
                               </td>
 
-                              {/* Actions — always visible, no hover gate */}
+                              {/* Actions — collapsed into a single 3-dot menu */}
                               <td className="px-4 py-3.5 w-px whitespace-nowrap">
-                                <div className="flex items-center gap-1.5">
-                                  <button
-                                    onClick={() => router.push(`/orders/${oid}`)}
-                                    title="View order detail"
-                                    className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 rounded-lg text-[11px] font-semibold transition-all shadow-sm"
-                                  >
-                                    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
-                                      <circle cx="12" cy="12" r="3" />
-                                    </svg>
-                                    View
-                                  </button>
-
-                                  {/* Invoice button — always present */}
-                                  <InvoiceRowButton order={displayOrder} role={actorRole} actorId={actorId} />
-
-                                  {!isDeleted && (
-                                    <button
-                                      onClick={() => setDeleteOrderId(oid)}
-                                      title="Delete order"
-                                      className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white border border-gray-200 hover:border-red-300 hover:bg-red-50 text-gray-700 hover:text-red-700 rounded-lg text-[11px] font-semibold transition-all shadow-sm"
-                                    >
-                                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                                        <polyline points="3 6 5 6 21 6" />
-                                        <path d="M19 6l-1 14H6L5 6m5 0V4h4v2" />
-                                      </svg>
-                                      Delete
-                                    </button>
-                                  )}
+                                <div className="flex items-center justify-end">
+                                  <RowActionsMenu
+                                    order={displayOrder}
+                                    role={actorRole}
+                                    actorId={actorId}
+                                    isDeleted={isDeleted}
+                                    onView={() => router.push(`/orders/${oid}`)}
+                                    onDelete={() => setDeleteOrderId(oid)}
+                                  />
                                 </div>
                               </td>
                             </tr>

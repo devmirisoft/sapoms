@@ -1,0 +1,10 @@
+﻿node.exe : '\\wsl.localhost\Ubuntu-26.04\home\jojo\projects\sapoms'
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ('\\wsl.localhos...rojects\sapoms':String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+CMD.EXE was started with the above path as the current directory.
+UNC paths are not supported.  Defaulting to Windows directory.
+error TS5057: Cannot find a tsconfig.json file at the specified directory: '.'.

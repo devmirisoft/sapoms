@@ -1,4 +1,5 @@
 import type { CatalogueProduct } from "@/lib/catalogue";
+import { addsNothingBeyond, stripHtml } from "@/lib/catalogue";
 
 let cachedProducts: CatalogueProduct[] | null = null;
 let cataloguePromise: Promise<CatalogueProduct[]> | null = null;
@@ -191,6 +192,45 @@ function normalizeCatalogueProductSpecs(product: CatalogueProduct): CataloguePro
   return variants ? { ...product, variants } : product;
 }
 
+/**
+ * A description that only echoes "<SKU> - <name>" carries no information beyond
+ * the title. The enriched export stores that echo for every row, so preferring
+ * it by truthiness alone discards the richer text held in the nested export.
+ */
+function descriptionIsInformative(
+  description: string | undefined,
+  product: CatalogueProduct
+): boolean {
+  const text = stripHtml(description);
+  if (!text) return false;
+  if (!product.name) return true;
+
+  // Drop the leading catalogue number so "254B - <name>" is judged on its words.
+  const withoutSku = text
+    .replace(new RegExp(`^\\s*${escapeRegExp(String(product.sku ?? "").trim())}\\s*[-–—:]?\\s*`, "i"), "")
+    .trim();
+
+  return !addsNothingBeyond(withoutSku || text, product.name);
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function pickBetterDescription(
+  enrichedProduct: CatalogueProduct,
+  completeProduct: CatalogueProduct
+): string | undefined {
+  if (descriptionIsInformative(enrichedProduct.descriptionHtml, enrichedProduct)) {
+    return enrichedProduct.descriptionHtml;
+  }
+  if (descriptionIsInformative(completeProduct.descriptionHtml, enrichedProduct)) {
+    return completeProduct.descriptionHtml;
+  }
+
+  return enrichedProduct.descriptionHtml || completeProduct.descriptionHtml;
+}
+
 function mergeCatalogueProduct(
   enrichedProduct: CatalogueProduct,
   completeProduct?: CatalogueProduct
@@ -227,7 +267,7 @@ function mergeCatalogueProduct(
     ...completeProduct,
     ...enrichedProduct,
     features: enrichedProduct.features?.length ? enrichedProduct.features : completeProduct.features,
-    descriptionHtml: enrichedProduct.descriptionHtml || completeProduct.descriptionHtml,
+    descriptionHtml: pickBetterDescription(enrichedProduct, completeProduct),
     images: enrichedProduct.images?.length ? enrichedProduct.images : completeProduct.images,
     variants: mergedVariants,
   };

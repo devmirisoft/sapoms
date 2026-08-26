@@ -96,7 +96,7 @@ export default function ApprovedDiscountsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50 px-6 py-6" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
-      <div className="mx-auto max-w-[1280px] space-y-5">
+      <div className="mx-auto max-w-[1840px] space-y-5">
         <div className="flex flex-col gap-4 border-b border-gray-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
           <div>
             <button
@@ -185,6 +185,11 @@ export default function ApprovedDiscountsPage() {
                         <span>{totalPieces} pieces</span>
                         {request.shipto && <span className="max-w-[420px] truncate">Ship To: {request.shipto}</span>}
                       </div>
+                      {request.rsmNote && (
+                        <p className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-700">
+                          RSM note: {request.rsmNote}
+                        </p>
+                      )}
                       {request.adminNote && (
                         <p className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-700">
                           Admin note: {request.adminNote}

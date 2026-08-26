@@ -10,6 +10,7 @@ import { mapPostgresOrderDispatchRecords } from "@/lib/postgresOrderDispatch";
 import {
   buildOrderEditRevision,
   ORDER_OVERLAY_VERSION,
+  OrderOverlayError,
   resolveEffectiveOrder,
   toSafeOverlay,
   type OrderChangeRequest,
@@ -22,6 +23,7 @@ import {
   PostgresOrderStatusError,
   updatePostgresOrderAcceptance,
   updatePostgresOrderFulfilment,
+  revivePostgresOrderAcceptance,
 } from "@/lib/postgresOrderStatus";
 
 export const runtime = "nodejs";
@@ -107,7 +109,7 @@ async function loadPostgresEffectiveContext(orderIdInput: string) {
 }
 
 function errorResponse(error: unknown) {
-  if (error instanceof PostgresOrderStatusError) {
+  if (error instanceof PostgresOrderStatusError || error instanceof OrderOverlayError) {
     return NextResponse.json({ success: false, code: error.code, message: error.message }, { status: error.status });
   }
   return NextResponse.json({ success: false, code: "unexpected", message: String((error as Error)?.message ?? "Unable to process order overlay.") }, { status: 500 });
@@ -156,8 +158,9 @@ async function createAcceptedOrderChangeRequest(input: {
 }
 
 async function loadRequestRow(requestId: unknown) {
-  const id = BigInt(safeText(requestId, 40));
-  return prisma.orderOverlay.findUnique({ where: { id } });
+  const raw = safeText(requestId, 40);
+  if (!/^\d+$/.test(raw)) return null;
+  return prisma.orderOverlay.findUnique({ where: { id: BigInt(raw) } });
 }
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -168,7 +171,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const action = safeText(body.action, 40);
 
     if (action === "mirror_acceptance") {
-      const updated = await updatePostgresOrderAcceptance(id, authActor, "ACCEPTED");
+      const updated = await updatePostgresOrderAcceptance(id, authActor, "ACCEPTED", body.note ?? body.acceptanceNote ?? body.rsmNote);
       if (!updated) return NextResponse.json({ success: false, message: "Historical PHP orders are read-only for PostgreSQL status updates." }, { status: 409 });
       invalidatePendingProductsCache();
       return NextResponse.json(serializePrismaValue({ success: true, data: updated }));
@@ -184,7 +187,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     if (action === "decline") {
-      const updated = await updatePostgresOrderAcceptance(id, authActor, "DECLINED");
+      const updated = await updatePostgresOrderAcceptance(id, authActor, "DECLINED", body.note ?? body.acceptanceNote ?? body.rsmNote);
+      if (!updated) return NextResponse.json({ success: false, message: "Historical PHP orders are read-only for PostgreSQL status updates." }, { status: 409 });
+      invalidatePendingProductsCache();
+      return NextResponse.json(serializePrismaValue({ success: true, data: updated }));
+    }
+
+    if (action === "revive") {
+      const updated = await revivePostgresOrderAcceptance(id, authActor, body.note);
       if (!updated) return NextResponse.json({ success: false, message: "Historical PHP orders are read-only for PostgreSQL status updates." }, { status: 409 });
       invalidatePendingProductsCache();
       return NextResponse.json(serializePrismaValue({ success: true, data: updated }));

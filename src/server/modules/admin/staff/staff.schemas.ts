@@ -1,8 +1,13 @@
 import { z } from "zod";
 import { AdminRouteError } from "@/server/admin/admin-errors";
 import { parseAdminPagination } from "@/server/admin/admin-pagination";
+import type { AdminStaffListInput } from "./staff.types";
 
-export const parseAdminStaffListInput = parseAdminPagination;
+export function parseAdminStaffListInput(searchParams: URLSearchParams): AdminStaffListInput {
+  const base = parseAdminPagination(searchParams);
+  const roleParam = String(searchParams.get("role") ?? "").trim().toUpperCase();
+  return { ...base, role: roleParam === "NSM" ? "NSM" : undefined };
+}
 
 const salesRegion = z.preprocess((value) => {
   if (value === undefined || value === null || String(value).trim() === "") return undefined;
@@ -30,6 +35,13 @@ const assignedStates = z.preprocess((value) => {
   const single = String(value).trim();
   return single ? [single] : [];
 }, z.array(z.string().min(1).max(100)).max(40).optional());
+
+const assignedCities = z.preprocess((value) => {
+  if (value === undefined || value === null) return undefined;
+  if (Array.isArray(value)) return value.map((entry) => String(entry).trim()).filter(Boolean);
+  const single = String(value).trim();
+  return single ? [single] : [];
+}, z.array(z.string().min(1).max(100)).max(200).optional());
 
 const dateValue = z.preprocess((value) => {
   if (value === undefined || value === null || String(value).trim() === "") return undefined;
@@ -62,6 +74,8 @@ function aliases(body: Record<string, unknown>) {
     parentRsmId: body.parentRsmId ?? body.parent_rsm_id ?? body.rsmId,
     parentAsmId: body.parentAsmId ?? body.parent_asm_id ?? body.asmId,
     assignedStates: body.assignedStates ?? body.assigned_states ?? body.states,
+    assignedCities: body.assignedCities ?? body.assigned_cities ?? body.cities,
+    reportingManagerId: body.reportingManagerId ?? body.reporting_manager_id ?? body.nsmId,
     status: body.status,
   };
 }
@@ -91,10 +105,12 @@ const baseStaffSchema = {
   parentRsmId: idText,
   parentAsmId: idText,
   assignedStates,
+  assignedCities,
+  reportingManagerId: idText,
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
 };
 
-function requireValidRoleRegion<T extends { role?: string; salesRegion?: string; staffRoleType?: string; parentRsmId?: string; parentAsmId?: string; assignedStates?: string[] }>(value: T) {
+function requireValidRoleRegion<T extends { role?: string; salesRegion?: string; staffRoleType?: string; parentRsmId?: string; parentAsmId?: string; assignedStates?: string[]; assignedCities?: string[]; reportingManagerId?: string }>(value: T) {
   if (value.role === "RSM" && !value.salesRegion) throw new AdminRouteError("INVALID_REQUEST", "RSM region is required", { code: "RSM_REGION_REQUIRED" });
   if (value.role && value.role !== "RSM") value.salesRegion = undefined;
   if (value.role === "STAFF" && value.staffRoleType !== "1" && value.staffRoleType !== "2") {
@@ -102,19 +118,52 @@ function requireValidRoleRegion<T extends { role?: string; salesRegion?: string;
   }
   if (value.role === "ASM" && !value.parentRsmId) throw new AdminRouteError("INVALID_REQUEST", "ASM must have a valid RSM parent", { code: "ASM_RSM_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "1" && !value.parentAsmId) throw new AdminRouteError("INVALID_REQUEST", "Executive must have a valid ASM parent", { code: "EXECUTIVE_ASM_REQUIRED" });
+  if (value.role === "ASM" && value.assignedStates && !value.assignedStates.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one state", { code: "ASM_STATES_REQUIRED" });
+  if (value.role === "ASM" && value.assignedCities && !value.assignedCities.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one city", { code: "ASM_CITIES_REQUIRED" });
+  if (value.role === "STAFF" && value.staffRoleType === "1" && value.assignedCities && !value.assignedCities.length) throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must cover at least one city", { code: "EXECUTIVE_CITIES_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "2" && !value.parentRsmId) throw new AdminRouteError("INVALID_REQUEST", "Staff must have a valid RSM parent", { code: "STAFF_RSM_REQUIRED" });
   if (value.role === "NSM") { value.staffRoleType = undefined; value.parentRsmId = undefined; value.parentAsmId = undefined; value.assignedStates = undefined; }
   if (value.role === "RSM") { value.staffRoleType = "RSM"; value.parentRsmId = undefined; value.parentAsmId = undefined; }
   if (value.role === "ASM") { value.staffRoleType = "ASM"; value.parentAsmId = undefined; }
-  if (value.role === "STAFF" && value.staffRoleType === "1") value.parentRsmId = undefined;
-  if (value.role === "STAFF" && value.staffRoleType === "2") { value.parentAsmId = undefined; value.assignedStates = undefined; }
+  // A Sales Manager's territory is a city list carved out of its ASM's cities; its
+  // states are derived from those cities on write, never picked in the form.
+  if (value.role === "STAFF" && value.staffRoleType === "1") { value.parentRsmId = undefined; value.assignedStates = undefined; }
+  if (value.role === "STAFF" && value.staffRoleType === "2") { value.parentAsmId = undefined; value.assignedStates = undefined; value.assignedCities = undefined; }
+  // Only RSM has an explicit reporting manager (NSM); ASM/STAFF derive theirs from parentRsm/parentAsm.
+  if (value.role && value.role !== "RSM") value.reportingManagerId = undefined;
+  // Cities are tracked for ASM (carved out of its RSM states) and for the Sales
+  // Manager under it; RSM/NSM/Staff hold no city list.
+  if (value.role && value.role !== "ASM" && !(value.role === "STAFF" && value.staffRoleType === "1")) value.assignedCities = undefined;
   return value;
 }
+
+const requireReportingManagerForCreate = <T extends { role?: string; reportingManagerId?: string }>(value: T) => {
+  if (value.role === "RSM" && !value.reportingManagerId) {
+    throw new AdminRouteError("INVALID_REQUEST", "RSM must have a valid NSM reporting manager", { code: "RSM_NSM_REQUIRED" });
+  }
+  return value;
+};
+
+/**
+ * Territory is mandatory at creation time. The shared transform only rejects a
+ * list that was sent explicitly empty, so that a partial update may leave the
+ * field alone; on create an omitted list is just as invalid as an empty one.
+ */
+const requireTerritoryForCreate = <T extends { role?: string; staffRoleType?: string; assignedStates?: string[]; assignedCities?: string[] }>(value: T) => {
+  if (value.role === "ASM") {
+    if (!value.assignedStates?.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one state", { code: "ASM_STATES_REQUIRED" });
+    if (!value.assignedCities?.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one city", { code: "ASM_CITIES_REQUIRED" });
+  }
+  if (value.role === "STAFF" && value.staffRoleType === "1" && !value.assignedCities?.length) {
+    throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must cover at least one city", { code: "EXECUTIVE_CITIES_REQUIRED" });
+  }
+  return value;
+};
 
 const createSchema = z.preprocess((value) => aliases((value && typeof value === "object" ? value : {}) as Record<string, unknown>), z.object({
   ...baseStaffSchema,
   password: z.string().min(10).max(200),
-}).transform(requireValidRoleRegion));
+}).transform(requireValidRoleRegion).transform(requireReportingManagerForCreate).transform(requireTerritoryForCreate));
 
 const updateSchema = z.preprocess((value) => aliases((value && typeof value === "object" ? value : {}) as Record<string, unknown>), z.object({
   name: text(200),
@@ -124,6 +173,11 @@ const updateSchema = z.preprocess((value) => aliases((value && typeof value === 
   location: text(100),
   staffRoleType: text(30),
   salesRegion,
+  parentRsmId: idText,
+  parentAsmId: idText,
+  assignedStates,
+  assignedCities,
+  reportingManagerId: idText,
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
 }).refine((value) => Object.values(value).some((entry) => entry !== undefined), "At least one field is required").transform(requireValidRoleRegion));
 

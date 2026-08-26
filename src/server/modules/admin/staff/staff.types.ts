@@ -1,7 +1,7 @@
 import type { AdminListInput } from "@/server/admin/admin.types";
 import type { SalesRegion, UserRole, UserStatus } from "@prisma/client";
 
-export type AdminStaffListInput = AdminListInput;
+export type AdminStaffListInput = AdminListInput & { role?: "NSM" };
 export type AdminStaffRole = Extract<UserRole, "STAFF" | "RSM" | "ASM" | "NSM">;
 export type AdminCreateUserRole = Extract<UserRole, "NSM" | "RSM" | "ASM" | "STAFF">;
 
@@ -26,8 +26,11 @@ export type AdminStaffRecord = {
   parentRsmId: bigint | null;
   parentAsmId: bigint | null;
   assignedStates: string[];
+  assignedCities: string[];
+  reportingManagerId: bigint | null;
   parentRsm?: { id: bigint; displayName: string; user: { id: bigint; email: string } } | null;
   parentAsm?: { id: bigint; displayName: string; user: { id: bigint; email: string } } | null;
+  reportingManager?: { id: bigint; displayName: string; user: { id: bigint; email: string } } | null;
   user: { id: bigint; email: string; username: string | null; status: string; role: UserRole };
 };
 export type CreateAdminStaffInput = {
@@ -53,6 +56,8 @@ export type CreateAdminStaffInput = {
   parentRsmId?: string;
   parentAsmId?: string;
   assignedStates?: string[];
+  assignedCities?: string[];
+  reportingManagerId?: string;
   status?: UserStatus;
 };
 
@@ -78,5 +83,7 @@ export type UpdateAdminStaffInput = {
   parentRsmId?: string;
   parentAsmId?: string;
   assignedStates?: string[];
+  assignedCities?: string[];
+  reportingManagerId?: string;
   status?: UserStatus;
 };

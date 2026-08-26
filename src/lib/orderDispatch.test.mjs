@@ -549,3 +549,108 @@ test("acceptance mirror writes PostgreSQL order overlay history", async () => {
   assert.match(statusSource, /type: "acceptance"/);
   assert.doesNotMatch(statusSource, /getOrderOverlayCollection|order_acceptance/);
 });
+
+test("Dispatch partner accepts only the controlled courier list", () => {
+  assert.deepEqual([...dispatch.DISPATCH_PARTNERS], ["BlueDart", "DTDC", "Delhivery"]);
+  assert.equal(dispatch.normalizeDispatchPartner("bluedart"), "BlueDart");
+  assert.equal(dispatch.normalizeDispatchPartner("  DTDC "), "DTDC");
+  assert.equal(dispatch.normalizeDispatchPartner(""), null);
+  assert.equal(dispatch.normalizeDispatchPartner("Some Other Courier"), null);
+  assert.equal(dispatch.isValidDispatchPartner("Delhivery"), true);
+  assert.equal(dispatch.isValidDispatchPartner(""), true);
+  assert.equal(dispatch.isValidDispatchPartner("Some Other Courier"), false);
+});
+
+test("Tracking link must be an http(s) URL or empty", () => {
+  assert.equal(dispatch.normalizeTrackingLink("https://track.example.com/AWB1"), "https://track.example.com/AWB1");
+  assert.equal(dispatch.normalizeTrackingLink(""), null);
+  assert.equal(dispatch.normalizeTrackingLink("not a url"), null);
+  assert.equal(dispatch.normalizeTrackingLink("javascript:alert(1)"), null);
+  assert.equal(dispatch.isValidTrackingLink("not a url"), false);
+  assert.equal(dispatch.isValidTrackingLink(null), true);
+});
+
+test("Tracking number and dock are trimmed strings with no format assumption", () => {
+  assert.equal(dispatch.normalizeTrackingNumber("  AWB-123 456/789  "), "AWB-123 456/789");
+  assert.equal(dispatch.normalizeTrackingNumber("   "), null);
+  assert.equal(dispatch.normalizeDock(" Dock 04 "), "Dock 04");
+  assert.equal(dispatch.normalizeDock(undefined), null);
+});
+
+test("Dispatch tracking input validates the four fields together", () => {
+  const valid = dispatch.normalizeDispatchTrackingInput({
+    dispatchPartner: "bluedart",
+    trackingNumber: " AWB123456789 ",
+    trackingLink: "https://track.example.com/AWB123456789",
+    dock: " Dock 04 ",
+  });
+  assert.equal(valid.ok, true);
+  assert.deepEqual(valid.value, {
+    dispatchPartner: "BlueDart",
+    trackingNumber: "AWB123456789",
+    trackingLink: "https://track.example.com/AWB123456789",
+    dock: "Dock 04",
+  });
+
+  const empty = dispatch.normalizeDispatchTrackingInput({});
+  assert.equal(empty.ok, true);
+  assert.deepEqual(empty.value, { dispatchPartner: null, trackingNumber: null, trackingLink: null, dock: null });
+
+  assert.equal(dispatch.normalizeDispatchTrackingInput({ dispatchPartner: "Unknown Courier" }).ok, false);
+  assert.equal(dispatch.normalizeDispatchTrackingInput({ trackingLink: "ftp://x" }).ok, false);
+});
+
+test("Legacy dispatch records without tracking information read as empty", () => {
+  assert.deepEqual(dispatch.readDispatchTrackingInfo(null), {
+    dispatchPartner: null,
+    trackingNumber: null,
+    trackingLink: null,
+    dock: null,
+  });
+  assert.deepEqual(dispatch.readDispatchTrackingInfo({ dispatch_partner: "", tracking_number: "", tracking_link: "", dock: "" }), {
+    dispatchPartner: null,
+    trackingNumber: null,
+    trackingLink: null,
+    dock: null,
+  });
+  assert.deepEqual(dispatch.readDispatchTrackingInfo({ dispatch_partner: "DTDC", tracking_number: "AWB9", tracking_link: "https://x.test/9", dock: "Dock 1" }), {
+    dispatchPartner: "DTDC",
+    trackingNumber: "AWB9",
+    trackingLink: "https://x.test/9",
+    dock: "Dock 1",
+  });
+});
+
+test("Only dispatching staff and admins may edit dispatch tracking information", () => {
+  const context = { dealerId: "225", assignedStaffId: "77", acceptOrder: "1", delStatus: "0" };
+  assert.equal(dispatch.canUserEditDispatchTracking({ role: "staff", id: "77" }, context), true);
+  assert.equal(dispatch.canUserEditDispatchTracking({ role: "admin", id: "1" }, context), true);
+  assert.equal(dispatch.canUserEditDispatchTracking({ role: "staff", id: "78" }, context), false);
+  assert.equal(dispatch.canUserEditDispatchTracking({ role: "dealer", id: "225" }, context), false);
+  assert.equal(dispatch.canUserEditDispatchTracking({ role: "staff", id: "77" }, { ...context, acceptOrder: "0" }), false);
+  assert.equal(dispatch.canUserEditDispatchTracking(null, context), false);
+});
+
+test("Dispatch tracking information is saved through the existing dispatch API", async () => {
+  const apiSource = await fs.readFile(dispatchApiPath, "utf8");
+  assert.match(apiSource, /update_dispatch_tracking/);
+  assert.match(apiSource, /applyPostgresOrderDispatchTracking\(body\.orderId, actor, body\)/);
+
+  const serviceSource = await fs.readFile(path.resolve("src/lib/postgresOrderDispatch.ts"), "utf8");
+  assert.match(serviceSource, /export async function applyPostgresOrderDispatchTracking/);
+  assert.match(serviceSource, /if \(!await canWrite\(actor, order\)\)/);
+  assert.match(serviceSource, /normalizeDispatchTrackingInput/);
+});
+
+test("Dealers see dispatch tracking information read-only on the order details page", async () => {
+  const source = await fs.readFile(orderDetailPath, "utf8");
+  assert.match(source, /<DispatchTrackingCard/);
+  assert.match(source, /canEdit=\{canEditDispatchTracking\}/);
+
+  const cardSource = await fs.readFile(path.resolve("src/components/orders/DispatchTrackingCard.tsx"), "utf8");
+  assert.match(cardSource, /const editable = canEdit && editingSupported;/);
+  assert.match(cardSource, /Save Dispatch Details/);
+  assert.match(cardSource, /Track Shipment/);
+  assert.match(cardSource, /target="_blank"/);
+  assert.match(cardSource, /rel="noopener noreferrer"/);
+});

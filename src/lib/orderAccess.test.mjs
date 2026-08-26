@@ -5,6 +5,7 @@ import path from "node:path";
 
 const files = {
   source: "src/lib/orderAccess.ts",
+  postgresOrders: "src/lib/postgresOrders.ts",
   route: "src/app/api/order-access/[id]/route.ts",
   detailPage: "src/app/orders/[id]/page.tsx",
   helper: "src/lib/legacyOrderDetail.ts",
@@ -41,4 +42,23 @@ test("order detail page uses native order access and native compatibility helper
   assert.match(source.helper, /\/api\/order-access\/\$\{encodeURIComponent\(orderId\)\}/);
   assert.match(source.helper, /\/api\/staff\/dealers\/\$\{id\}/);
   assert.doesNotMatch(source.helper, forbidden);
+});
+test("order access extends staff scope to the RSM region and child hierarchy", () => {
+  // A single-order lookup must not fall back to direct assignment only, or an
+  // RSM would be denied detail access to orders its own list view returns.
+  assert.match(source.source, /options\.actor\.isRsm/);
+  assert.match(source.source, /isOrderInRsmScope\(options\.actor, lookupId\)/);
+});
+
+test("RSM single-order scope reuses the same predicate as the list query", () => {
+  assert.match(source.postgresOrders, /export async function isOrderInRsmScope/);
+  // Reusing buildRsmOrderWhere is what keeps detail and list scope in sync.
+  assert.match(source.postgresOrders, /const scopeWhere = await buildRsmOrderWhere\(actor\)/);
+  assert.match(source.postgresOrders, /if \(!actor\.isRsm \|\| !actor\.userId\) return false/);
+});
+
+test("RSM hierarchy scope covers child staff and their dealers", () => {
+  assert.match(source.postgresOrders, /parentRsmId: rsm\.id/);
+  assert.match(source.postgresOrders, /assignedStaffId: \{ in: childStaffIds \}/);
+  assert.match(source.postgresOrders, /dealerId: \{ in: childDealerIds \}/);
 });

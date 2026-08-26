@@ -488,6 +488,8 @@ function AddOrderPageInner() {
   const [perProductDiscountInputs, setPerProductDiscountInputs] = useState<Record<string, number>>({});
   const [editingProductDiscountKey, setEditingProductDiscountKey] = useState<string | null>(null);
   const [perProductSubmitting, setPerProductSubmitting] = useState<string | null>(null);
+  const [openRowMenuKey, setOpenRowMenuKey] = useState<number | null>(null);
+  const [noteEditorRowKey, setNoteEditorRowKey] = useState<number | null>(null);
 
   const [arr1, setArr] = useState<ProductRow[]>([emptyRow()]);
 
@@ -626,10 +628,19 @@ function AddOrderPageInner() {
     };
 
     if (activeDraftId) {
-      await updateDraft(activeDraftId, user.Dealer_Id, payload);
-      setDraftName(nameToUse);
-      if (approvalState) setDraftApprovalState(approvalState);
-      return activeDraftId;
+      try {
+        await updateDraft(activeDraftId, user.Dealer_Id, payload);
+        setDraftName(nameToUse);
+        if (approvalState) setDraftApprovalState(approvalState);
+        return activeDraftId;
+      } catch (error) {
+        // The draft this form is pinned to can disappear underneath it (deleted
+        // in another tab, or converted to an order), and updateDraft then 404s.
+        // Falling back to a create keeps the dealer's edits instead of dropping
+        // them; anything else (403, network) is a real failure worth surfacing.
+        const missing = error instanceof Error && /not found/i.test(error.message);
+        if (!missing) throw error;
+      }
     }
 
     const created = await saveDraft(payload);
@@ -1107,6 +1118,9 @@ function AddOrderPageInner() {
       )
     );
   };
+  // Only a genuinely pending request may lock the form. Any other terminal
+  // state (rejected, cancelled, or an unrecognised one) must leave the draft
+  // editable, otherwise the dealer is stranded with a draft they cannot save.
   const isWaitingForApproval = !reorderRequest && activeApprovalRequest?.normalizedStatus === "pending";
   const orderLockedByPendingApproval = isWaitingForApproval;
   const isApprovedDraftRequest = !reorderRequest && activeApprovalRequest?.normalizedStatus === "approved";
@@ -1476,15 +1490,15 @@ function AddOrderPageInner() {
   const catalogueSelectStyles: StylesConfig<CatalogueNumberOption, false> = {
     control: (base, state) => ({
       ...base,
-      minHeight: 40,
-      borderRadius: 12,
+      minHeight: 36,
+      borderRadius: 10,
       borderColor: state.isFocused ? "#818cf8" : "#e5e7eb",
       boxShadow: state.isFocused ? "0 0 0 2px #e0e7ff" : "none",
       "&:hover": { borderColor: state.isFocused ? "#818cf8" : "#d1d5db" },
     }),
     valueContainer: (base) => ({
       ...base,
-      padding: "2px 12px",
+      padding: "1px 10px",
     }),
     input: (base) => ({
       ...base,
@@ -1682,8 +1696,12 @@ function AddOrderPageInner() {
       const previousDraftId = activeDraftId;
       await persistCurrentDraft(nameToUse, buildCurrentApprovalState());
       toast.success(previousDraftId ? "Draft updated ✓" : "Draft saved ✓");
-    } catch {
-      toast.error("Could not save draft.");
+    } catch (error) {
+      // A bare catch here hid the real reason a save failed (404 on a stale
+      // draft id, 403 on scope), so the edit looked silently discarded.
+      const message = error instanceof Error ? error.message : "";
+      toast.error(message ? `Could not save draft: ${message}` : "Could not save draft.");
+      console.error("[commitSaveDraft]", error);
     } finally {
       setDraftSaving(false);
     }
@@ -2247,6 +2265,60 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         </div>
       )}
 
+      {/* ── Product Note Popup ──────────────────────────────────────────────── */}
+      {noteEditorRowKey !== null && (() => {
+        const noteRowIdx = arr1.findIndex((r) => r.key === noteEditorRowKey);
+        const noteRow = noteRowIdx >= 0 ? arr1[noteRowIdx] : null;
+        if (!noteRow) return null;
+        const noteLabel = noteRow.displayName || noteRow.productname || "this product";
+
+        return (
+          <div
+            className="fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4"
+            onClick={() => setNoteEditorRowKey(null)}
+          >
+            <div
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-start justify-between gap-3 mb-1">
+                <div className="min-w-0">
+                  <h3 className="text-[15px] font-bold text-gray-900">Product Note</h3>
+                  <p className="text-[12px] text-gray-400 truncate mt-0.5">{noteLabel}</p>
+                </div>
+                <button
+                  onClick={() => setNoteEditorRowKey(null)}
+                  className="flex-shrink-0 text-gray-400 hover:text-gray-600 cursor-pointer bg-transparent border-none"
+                  title="Close"
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+              <textarea
+                autoFocus
+                value={noteRow.productNote ?? ""}
+                onChange={(e) => updateProductNote(noteRowIdx, e.target.value)}
+                disabled={orderLockedByPendingApproval}
+                maxLength={500}
+                placeholder="Add instructions for this product..."
+                className="mt-3 min-h-[120px] w-full resize-y rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100 disabled:text-gray-500"
+              />
+              <div className="flex items-center justify-between mt-2">
+                <span className="text-[11px] text-gray-400">{(noteRow.productNote ?? "").length}/500</span>
+                <button
+                  onClick={() => setNoteEditorRowKey(null)}
+                  className="px-4 py-2 bg-gray-900 hover:bg-gray-800 text-white rounded-xl text-[13px] font-semibold transition-colors cursor-pointer border-none"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       {/* ── Busy overlay ──────────────────────────────────────────────────── */}
       {(loading || draftSaving || reorderLoading) && (
         <div className="fixed inset-0 z-[999] bg-black/35 backdrop-blur-sm flex items-center justify-center">
@@ -2259,7 +2331,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         </div>
       )}
 
-      <div className="p-7 max-w-[1440px] mx-auto font-[family-name:var(--font-dm-sans)]">
+      <div className="p-7 max-w-[1840px] mx-auto font-[family-name:var(--font-dm-sans)]">
 
         {/* Draft loaded banner */}
         {draftBanner && (
@@ -2342,7 +2414,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         )}
 
         {/* Wallet balance stays visible before the order details and product form. */}
-        <div className={`mb-5 rounded-2xl border px-5 py-4 shadow-sm ${wallet?.status === "active" ? (wallet.availableBalance > 0 ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50") : "border-gray-200 bg-white"}`}>
+        {/* <div className={`mb-5 rounded-2xl border px-5 py-4 shadow-sm ${wallet?.status === "active" ? (wallet.availableBalance > 0 ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50") : "border-gray-200 bg-white"}`}>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="text-[10.5px] font-bold uppercase tracking-wider text-gray-500">Dealer Wallet Balance</p>
@@ -2355,7 +2427,26 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               {walletLoading ? "Loading" : wallet?.status === "active" ? (wallet.availableBalance > 0 ? "Active" : "Exhausted") : "Inactive"}
             </span>
           </div>
+        </div> */}
+
+        {
+          wallet?.status === "active" && wallet.availableBalance > 0 && (
+            <div className={`mb-5 rounded-2xl border px-5 py-4 shadow-sm ${wallet?.status === "active" ? (wallet.availableBalance > 0 ? "border-emerald-200 bg-emerald-50" : "border-red-200 bg-red-50") : "border-gray-200 bg-white"}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-[10.5px] font-bold uppercase tracking-wider text-gray-500">Wallet Balance</p>
+              <p className={`mt-1 font-mono text-2xl font-bold ${wallet?.status === "active" ? (wallet.availableBalance > 0 ? "text-emerald-700" : "text-red-700") : "text-gray-700"}`}>
+                {walletLoading ? "Loading…" : fmt(toPaise(wallet?.availableBalance ?? 0))}
+              </p>
+              <p className="mt-1 text-xs text-gray-500">Running balance—each successful order deducts its final Net Payable.</p>
+            </div>
+            <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${wallet?.status === "active" ? (wallet.availableBalance > 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700") : "bg-gray-100 text-gray-600"}`}>
+              {walletLoading ? "Loading" : wallet?.status === "active" ? (wallet.availableBalance > 0 ? "Active" : "Exhausted") : "Inactive"}
+            </span>
+          </div>
         </div>
+          )
+         }
 
         {/* Page heading */}
         <div className="mb-6 flex items-start justify-between">
@@ -2681,7 +2772,20 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 <div className="grid grid-cols-2 gap-2">
                   <div className="rounded-xl border border-gray-200 px-3 py-2">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Requested Savings</p>
-                    <p className="mt-1 font-mono text-[13px] font-bold text-indigo-700">-{fmt(toPaise(requestedCustomDiscountAmount))}</p>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={requestedCustomDiscountAmount ? Number(requestedCustomDiscountAmount.toFixed(2)) : ""}
+                      onChange={(e) => {
+                        const amount = Math.max(0, Number(e.target.value) || 0);
+                        if (!customDiscountBaseSubtotal) return;
+                        const percent = Math.min(100, (amount / customDiscountBaseSubtotal) * 100);
+                        setCustomDiscountInput(percent ? String(Number(percent.toFixed(4))) : "");
+                      }}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 font-mono text-[13px] font-bold text-indigo-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      placeholder="e.g. 100"
+                    />
                   </div>
                   <div className="rounded-xl border border-gray-900 bg-gray-900 px-3 py-2 text-white">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-white/60">Requested Payable</p>
@@ -2841,19 +2945,18 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-100">
-                    <th className="pl-6 pr-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-10">#</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 min-w-[360px]">Product / Priority</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-28">Cat. No / Variant</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-32">Quantity</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-28">Pack Size</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-24">Pieces</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-28">Unit Price</th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-28">List Price</th>
-                    <th className={`px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider w-44 ${hasAnyDiscount ? "text-emerald-600" : "text-gray-400"}`}>
+                    <th className="pl-6 pr-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-10">#</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 min-w-[320px]">Product / Priority</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-32">Quantity</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-28">Pack Size</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-24">Pieces</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-28">Unit Price</th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-28">Gross amount</th>
+                    <th className={`px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider w-44 ${hasAnyDiscount ? "text-emerald-600" : "text-gray-400"}`}>
                       Discount
                     </th>
-                    <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-28">Final Price</th>
-                    <th className="pl-3 pr-6 py-3 w-14"></th>
+                    <th className="px-3 py-2.5 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400 w-28">Final Price</th>
+                    <th className="pl-3 pr-6 py-2.5 w-16"></th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
@@ -2878,50 +2981,74 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     const pendingProductReq = getProductPendingRequest(row);
                     const isEditingThisRow = editingProductDiscountKey === productKey;
                     const currentProductInput = perProductDiscountInputs[productKey] ?? globalPercent;
+                    const rowDisplayName = row.displayName || selectedProduct?.name || meta?.productName || row.productname;
 
                     return (
                       <tr key={row.key} className={`hover:bg-gray-50/50 transition-colors${pendingProductReq ? " border-l-2 border-amber-400" : ""}`}>
-                        <td className="pl-6 pr-3 py-3">
+                        <td className="pl-6 pr-3 py-2.5">
                           <span className="text-[11px] text-gray-300 font-mono">{String(idx + 1).padStart(2, "0")}</span>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2.5">
                             {(row.displayName || selectedProduct || row.productname) && (
-                            <div className="flex items-center gap-2 mb-2">
+                            <div className="flex items-center gap-2 mb-1.5">
                               {meta?.image || selectedProduct?.images?.[0] ? (
                                 <Image
                                   src={meta?.image || selectedProduct?.images?.[0] || ""}
-                                  alt={row.displayName || selectedProduct?.name || row.productname}
-                                  width={32}
-                                  height={32}
+                                  alt={rowDisplayName}
+                                  width={28}
+                                  height={28}
                                   unoptimized
-                                  className="w-8 h-8 object-contain rounded border border-gray-100 bg-gray-50 flex-shrink-0"
+                                  className="w-7 h-7 object-contain rounded border border-gray-100 bg-gray-50 flex-shrink-0"
                                 />
                               ) : (
-                                <div className="w-8 h-8 rounded border border-gray-100 bg-gray-50 flex-shrink-0 flex items-center justify-center">
-                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5">
+                                <div className="w-7 h-7 rounded border border-gray-100 bg-gray-50 flex-shrink-0 flex items-center justify-center">
+                                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#cbd5e1" strokeWidth="1.5">
                                     <rect x="3" y="3" width="18" height="18" rx="2" /><circle cx="8.5" cy="8.5" r="1.5" /><path d="m21 15-5-5L5 21" />
                                   </svg>
                                 </div>
                               )}
                               <div className="min-w-0">
                                 <p className="text-[12px] font-semibold text-gray-800 truncate leading-tight">
-                                  {row.displayName || selectedProduct?.name || meta?.productName || row.productname}
+                                  {rowDisplayName}
+                                  {row.variantCode && (
+                                    <span className="ml-1.5 font-mono text-[10px] font-semibold text-amber-600">
+                                      {row.variantCode}
+                                    </span>
+                                  )}
                                 </p>
-                                {rowSelection.section && (
-                                  <p className="text-[10px] text-gray-400 truncate leading-tight mt-0.5">
-                                    {rowSelection.section}
-                                    {selectedProduct?.name ? ` · ${selectedProduct.name}` : ""}
-                                  </p>
+                                {selectedVariantSpecs.length > 0 && (
+                                  <div className="mt-1 flex flex-wrap gap-1">
+                                    {selectedVariantSpecs.map(([label, value]) => (
+                                      <span
+                                        key={`${label}-${value}`}
+                                        className="inline-flex max-w-[180px] items-center gap-0.5 truncate rounded-md border border-slate-200 bg-slate-50 px-1.5 py-0.5 text-[9px] font-medium text-slate-600"
+                                        title={`${label}: ${value}`}
+                                      >
+                                        <span className="font-semibold text-slate-400">{label}:</span>
+                                        <span className="truncate">{value}</span>
+                                      </span>
+                                    ))}
+                                  </div>
                                 )}
-                                {row.isPriority && (
-                                  <span className="inline-flex mt-1 px-2 py-0.5 bg-red-50 border border-red-200 text-red-700 rounded-full text-[10px] font-bold">
-                                    Priority delivery
-                                  </span>
-                                )}
+                                <div className="mt-1 flex flex-wrap items-center gap-1">
+                                  {row.isPriority && (
+                                    <span className="inline-flex px-2 py-0.5 bg-red-50 border border-red-200 text-red-700 rounded-full text-[10px] font-bold">
+                                      Priority delivery
+                                    </span>
+                                  )}
+                                  {!!(row.productNote ?? "").trim() && (
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-[10px] font-bold">
+                                      <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
+                                        <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                                      </svg>
+                                      Note added
+                                    </span>
+                                  )}
+                                </div>
                               </div>
                             </div>
                           )}
-                          <div className="flex flex-col gap-2">
+                          <div className="flex flex-col gap-1.5">
                             <Select<CatalogueNumberOption, false>
                               options={optionList}
                               value={selectedCatalogueOption}
@@ -2975,94 +3102,21 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                                 ),
                               }}
                             />
-
-                            {selectedVariantSpecs.length > 0 && (
-                              <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-3">
-                                {selectedVariantSpecs.map(([label, value]) => (
-                                  <div
-                                    key={`${label}-${value}`}
-                                    className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5"
-                                  >
-                                    <div className="truncate text-[9px] font-bold uppercase tracking-wide text-slate-400">
-                                      {label}
-                                    </div>
-                                    <div className="truncate text-[11px] font-semibold text-slate-700" title={value}>
-                                      {value}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            )}
-
-                            <button
-                              type="button"
-                              onClick={() => togglePriority(idx)}
-                              disabled={orderLockedByPendingApproval}
-                              title="Mark this product as priority"
-                              className={`inline-flex h-[38px] w-fit items-center gap-2 rounded-xl border px-3 text-[11px] font-bold transition-colors ${row.isPriority
-                                  ? "bg-red-600 border-red-600 text-white shadow-sm"
-                                  : "bg-white border-red-200 text-red-600 hover:bg-red-50"
-                                } disabled:cursor-not-allowed disabled:opacity-40`}
-                            >
-                              <span
-                                className={`relative inline-flex h-4 w-7 items-center rounded-full ${row.isPriority ? "bg-white/30" : "bg-red-100"
-                                  }`}
-                              >
-                                <span
-                                  className={`inline-block h-3 w-3 rounded-full transition-transform ${row.isPriority ? "translate-x-3.5 bg-white" : "translate-x-0.5 bg-red-500"
-                                    }`}
-                                />
-                              </span>
-                              {row.isPriority ? "Priority on" : "Priority"}
-                            </button>
-
-                            {row.productname && (
-                              <div className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
-                                <div className="flex items-center justify-between gap-2">
-                                  <label
-                                    htmlFor={`product-note-${row.key}`}
-                                    className="text-[10px] font-bold uppercase tracking-[0.12em] text-gray-500"
-                                  >
-                                    Product Note
-                                  </label>
-                                  <span className="text-[10px] text-gray-400">
-                                    {(row.productNote ?? "").length}/500
-                                  </span>
-                                </div>
-                                <textarea
-                                  id={`product-note-${row.key}`}
-                                  value={row.productNote ?? ""}
-                                  onChange={(e) => updateProductNote(idx, e.target.value)}
-                                  disabled={orderLockedByPendingApproval}
-                                  maxLength={500}
-                                  placeholder="Add instructions for this product..."
-                                  className="mt-2 min-h-[68px] w-full resize-y rounded-lg border border-gray-200 bg-white px-3 py-2 text-[12px] text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100 disabled:text-gray-500"
-                                />
-                              </div>
-                            )}
                           </div>
                         </td>
-                        <td className="px-3 py-3">
-                          {row.variantCode ? (
-                            <span className="inline-flex items-center px-2 py-1 bg-amber-50 border border-amber-200 text-amber-700 rounded-lg text-[11px] font-mono font-semibold whitespace-nowrap">
-                              {row.variantCode}
-                            </span>
-                          ) : (
-                            <span className="text-gray-300 text-[11px]">—</span>
-                          )}
-                        </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2.5">
                           <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden w-fit">
                             <button onClick={() => updateQuantity(idx, row.producQuanity - 1)} disabled={orderLockedByPendingApproval}
                               className="w-8 h-[34px] flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-600 text-base transition-colors border-none cursor-pointer">−</button>
                             <input type="number" value={row.producQuanity} onChange={(e) => updateQuantity(idx, parseInt(e.target.value) || 1)} min={1} disabled={orderLockedByPendingApproval}
-                              className="w-12 h-[34px] text-center text-[13px] font-semibold text-gray-900 font-mono border-x border-gray-200 outline-none bg-white" />
+                              className="w-12 h-[34px] text-center text-[13px] font-semibold text-gray-900 font-mono border-l border-gray-200 outline-none bg-white" />
+                            <span className="h-[34px] flex items-center pr-2 text-[11px] font-semibold text-gray-400 bg-white border-r border-gray-200 select-none">Packs</span>
                             <button onClick={() => updateQuantity(idx, row.producQuanity + 1)} disabled={orderLockedByPendingApproval}
                               className="w-8 h-[34px] flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-600 text-base transition-colors border-none cursor-pointer">+</button>
                           </div>
-                          <p className="text-[11px] text-gray-400 mt-1 font-mono">{row.producQuanity} pack of {row.producQuanity !== 1 ? "s" : ""}  {totalUnits} pc{totalUnits !== 1 ? "s" : ""} </p>
+                          <p className="text-[11px] text-gray-400 mt-1 font-mono">pack of {row.producQuanity !== 1 ? "" : ""}  {totalUnits} pc{totalUnits !== 1 ? "s" : ""} </p>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2.5">
                           {row.packSize > 1 ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-50 border border-amber-200 text-amber-700 rounded text-[11px] font-semibold font-mono">
                               {row.producQuanity} × {row.packSize}
@@ -3073,13 +3127,13 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                             </span>
                           )}
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2.5">
                           <span className="inline-flex items-center px-2.5 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-[12px] font-bold font-mono">
                             {totalUnits}
                           </span>
                           <p className="text-[10px] text-gray-400 mt-0.5">pc{totalUnits !== 1 ? "s" : ""}</p>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2.5">
                           <span className="font-mono text-[13px] font-semibold text-slate-700">
                             {row.price > 0 ? fmt(toPaise(row.price)) : "—"}
                           </span>
@@ -3087,7 +3141,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                             <p className="text-[10px] text-gray-400 mt-0.5">per pc.</p>
                           )}
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2.5">
                           <span className="font-mono text-[13px] text-gray-600 font-semibold">
                             {listPrice > 0 ? fmt(listPrice) : "—"}
                           </span>
@@ -3097,10 +3151,10 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                             </p>
                           )}
                         </td>
-                        <td className="px-3 py-3 min-w-[160px]">
+                        <td className="px-3 py-2.5 min-w-[160px]">
                           <div className="space-y-0.5">
                             <p className="text-[10px] text-gray-400 font-mono leading-tight">
-                              Global: {globalPercent}%
+                              Base Discount: {globalPercent}%
                             </p>
                             <div className="flex items-center gap-1">
                               <span className={`text-[10px] font-mono leading-tight ${productExtraPercent > 0 ? "text-indigo-600 font-semibold" : "text-gray-400"}`}>
@@ -3181,7 +3235,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-3">
+                        <td className="px-3 py-2.5">
                           {listPrice > 0 && discAmt > 0 && (
                             <span className="block font-mono text-[11px] text-gray-400 line-through">{fmt(listPrice)}</span>
                           )}
@@ -3189,20 +3243,82 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                             {rowTotal > 0 ? fmt(rowTotal) : "—"}
                           </span>
                         </td>
-                        <td className="pl-3 pr-6 py-3">
-                          <button onClick={() => removeRow(row.key)} title="Remove row" disabled={orderLockedByPendingApproval}
-                            className="w-[30px] h-[30px] flex items-center justify-center rounded-lg border border-red-100 text-red-400 hover:bg-red-50 hover:border-red-200 transition-colors cursor-pointer bg-transparent">
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                              <polyline points="3 6 5 6 21 6" />
-                              <path d="M19 6l-1 14H6L5 6m5 0V4h4v2" />
-                            </svg>
-                          </button>
+                        <td className="pl-3 pr-6 py-2.5 align-top">
+                          <div className="flex items-center justify-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => togglePriority(idx)}
+                              title={row.isPriority ? "Priority delivery on" : "Mark this product as priority"}
+                              disabled={orderLockedByPendingApproval}
+                              className={`w-[30px] h-[30px] flex items-center justify-center rounded-lg border transition-colors cursor-pointer ${row.isPriority
+                                  ? "bg-red-600 border-red-600 text-white shadow-sm"
+                                  : "bg-white border-red-200 text-red-500 hover:bg-red-50"
+                                } disabled:cursor-not-allowed disabled:opacity-40`}
+                            >
+                              <svg width="13" height="13" viewBox="0 0 24 24" fill={row.isPriority ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+                                <line x1="4" y1="22" x2="4" y2="15" />
+                              </svg>
+                            </button>
+
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={() => setOpenRowMenuKey((k) => (k === row.key ? null : row.key))}
+                                title="More options"
+                                disabled={orderLockedByPendingApproval}
+                                className="w-[30px] h-[30px] flex items-center justify-center rounded-lg border border-gray-200 text-gray-500 hover:bg-gray-50 hover:border-gray-300 transition-colors cursor-pointer bg-white disabled:cursor-not-allowed disabled:opacity-40"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                                  <circle cx="12" cy="5" r="1.75" />
+                                  <circle cx="12" cy="12" r="1.75" />
+                                  <circle cx="12" cy="19" r="1.75" />
+                                </svg>
+                              </button>
+
+                              {openRowMenuKey === row.key && (
+                                <>
+                                  <div className="fixed inset-0 z-40" onClick={() => setOpenRowMenuKey(null)} />
+                                  <div className="absolute right-0 top-[34px] z-50 w-40 rounded-xl border border-gray-200 bg-white shadow-lg py-1 overflow-hidden">
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setNoteEditorRowKey(row.key);
+                                        setOpenRowMenuKey(null);
+                                      }}
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-[12px] font-medium text-gray-700 hover:bg-gray-50 transition-colors cursor-pointer bg-transparent border-none text-left"
+                                    >
+                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                        <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
+                                      </svg>
+                                      Add Note
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setOpenRowMenuKey(null);
+                                        removeRow(row.key);
+                                      }}
+                                      disabled={orderLockedByPendingApproval}
+                                      className="flex w-full items-center gap-2 px-3 py-2 text-[12px] font-medium text-red-600 hover:bg-red-50 transition-colors cursor-pointer bg-transparent border-none text-left disabled:cursor-not-allowed disabled:opacity-40"
+                                    >
+                                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                                        <polyline points="3 6 5 6 21 6" />
+                                        <path d="M19 6l-1 14H6L5 6m5 0V4h4v2" />
+                                      </svg>
+                                      Delete
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </td>
                       </tr>
                     );
                   })}
                   <tr className="border-t border-dashed border-gray-100">
-                    <td colSpan={11} className="px-6 py-3">
+                    <td colSpan={10} className="px-6 py-3">
                       <button onClick={addRow} disabled={orderLockedByPendingApproval}
                         className="inline-flex items-center gap-2 text-[12px] text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer">
                         <span className="w-5 h-5 rounded-md border border-gray-200 flex items-center justify-center text-sm hover:border-indigo-300 hover:bg-indigo-50 transition-colors">+</span>
@@ -3295,7 +3411,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
             </div>
 
             {/* Action bar */}
-            <div className={`mx-6 mt-4 rounded-xl border px-4 py-3 ${wallet?.status === "active" && wallet.availableBalance < discountPayload.finalPayableAmount ? "border-red-200 bg-red-50" : wallet?.status === "active" ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-gray-50"}`}>
+            {/* <div className={`mx-6 mt-4 rounded-xl border px-4 py-3 ${wallet?.status === "active" && wallet.availableBalance < discountPayload.finalPayableAmount ? "border-red-200 bg-red-50" : wallet?.status === "active" ? "border-emerald-200 bg-emerald-50" : "border-gray-200 bg-gray-50"}`}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Dealer Wallet</p>
@@ -3312,7 +3428,8 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               {wallet?.status === "active" && wallet.availableBalance < discountPayload.finalPayableAmount && (
                 <p className="mt-2 text-xs text-red-700">Insufficient wallet balance. Available: {fmt(toPaise(wallet.availableBalance))}. Required: {fmt(finalPayablePaise)}. Contact Admin to add funds.</p>
               )}
-            </div>
+            </div> */}
+
             <div className="flex items-center gap-3 px-6 py-4 border-t border-gray-100 flex-wrap">
               {isWaitingForApproval ? (
                 <>

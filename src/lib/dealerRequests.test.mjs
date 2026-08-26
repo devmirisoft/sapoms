@@ -122,6 +122,26 @@ test("new dealer requests retain the full form snapshot and open-request identit
   assert.equal(doc.formSnapshot.password, "secret123");
   assert.equal(doc.openRequestKey, dealerRequests.buildDealerRequestIdentityKey(snapshot, "17"));
   assert.equal(doc.auditTrail[0].action, "submitted");
+
+  const secondaryContactDoc = dealerRequests.buildDealerRequestCreateDocument({
+    actor: {
+      role: "staff",
+      actorId: "17",
+      actorName: "Manpreet",
+      roletype: "1",
+    },
+    snapshot: {
+      ...snapshot,
+      contactPerson: "secondary",
+      secondaryContactName: "Operations Desk",
+      secondaryContactPhone: "9123456789",
+      secondaryContactEmail: "ops@example.com",
+    },
+    now: "2026-07-13T10:00:00.000Z",
+  });
+
+  assert.equal(secondaryContactDoc.contactEmail, "ops@example.com");
+  assert.equal(secondaryContactDoc.contactPhone, "9123456789");
 });
 
 test("request list rows hide the full form snapshot while detail rows retain it", () => {

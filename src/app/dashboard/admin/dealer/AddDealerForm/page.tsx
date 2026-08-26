@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import DealerFormCard from "@/components/dealers/DealerFormCard";
-import { type DealerFormSnapshot } from "@/lib/dealerForm";
+import { getSelectedDealerContact, type DealerFormSnapshot } from "@/lib/dealerForm";
 import { buildDealerRequestHeaders, type PublicDealerRequest } from "@/lib/dealerRequests";
 import { readDashboardActor, type DashboardActor } from "@/lib/dealerRequestClient";
 
@@ -15,11 +15,13 @@ const ADMIN_REQUESTS_ROUTE = "/dashboard/admin/dealer/requests";
 const DEALER_LIST_ROUTE = "/dashboard/admin/dealer/DealerList";
 
 function dealerPayloadFromSnapshot(snapshot: DealerFormSnapshot) {
+  const contact = getSelectedDealerContact(snapshot);
+
   return {
     businessName: snapshot.name,
     email: snapshot.email,
     password: snapshot.password,
-    phone: snapshot.whatsapp,
+    phone: contact.phone,
     dealerCode: snapshot.dealerCode,
     address: snapshot.address,
     city: snapshot.city,
@@ -28,9 +30,16 @@ function dealerPayloadFromSnapshot(snapshot: DealerFormSnapshot) {
     discountPercent: snapshot.discount,
     creditDays: snapshot.creditDays,
     creditLimitPaise: snapshot.currentLimit,
+    annualTargetPaise: snapshot.annualTarget,
+    notes: snapshot.notes,
+    priorityContact: snapshot.priorityPerson,
+    secondaryContactName: snapshot.secondaryContactName,
+    secondaryContactPhone: snapshot.secondaryContactPhone,
+    secondaryContactEmail: snapshot.secondaryContactEmail,
     status: "ACTIVE",
     assignedStaffIds: snapshot.assignedStaffIds,
     rsmUserId: snapshot.rsmUserId,
+    walletActive: snapshot.paymentType === "advance",
   };
 }
 function resolveMode(actor: DashboardActor | null, requestData: PublicDealerRequest | null): RequestMode | null {

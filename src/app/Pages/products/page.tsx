@@ -272,6 +272,14 @@ function ProductListContent() {
   const [searchInput,   setSearchInput]   = useState("")
   const [selectedCategory, setSelectedCategory] = useState(urlCategory)
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [columnFilters, setColumnFilters] = useState({
+    catalogueNo: "",
+    name: "",
+    description: "",
+    category: "",
+    unitPrice: "",
+    packSize: "",
+  })
   const [toastMsg,      setToastMsg]      = useState<{ text: string; ok: boolean } | null>(null)
   const [modalClosing,  setModalClosing]  = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
@@ -361,6 +369,25 @@ function ProductListContent() {
     () => data.filter((product) => productMatchesCategory(product, selectedCategory)),
     [data, selectedCategory]
   )
+  const visibleData = useMemo(() => {
+    const f = {
+      catalogueNo: columnFilters.catalogueNo.trim().toLowerCase(),
+      name: columnFilters.name.trim().toLowerCase(),
+      description: columnFilters.description.trim().toLowerCase(),
+      category: columnFilters.category.trim().toLowerCase(),
+      unitPrice: columnFilters.unitPrice.trim().toLowerCase(),
+      packSize: columnFilters.packSize.trim().toLowerCase(),
+    }
+    if (!f.catalogueNo && !f.name && !f.description && !f.category && !f.unitPrice && !f.packSize) return filteredData
+    return filteredData.filter((p) =>
+      (!f.catalogueNo || p.catalogue_number.toLowerCase().includes(f.catalogueNo)) &&
+      (!f.name || p.product_name.toLowerCase().includes(f.name)) &&
+      (!f.description || p.product_description.toLowerCase().includes(f.description)) &&
+      (!f.category || p.product_category.toLowerCase().includes(f.category)) &&
+      (!f.unitPrice || p.unit_price.toLowerCase().includes(f.unitPrice)) &&
+      (!f.packSize || p.pack_size.toLowerCase().includes(f.packSize))
+    )
+  }, [filteredData, columnFilters])
   const total      = response?.count ?? 0
   const totalPages = response?.last_page || Math.max(1, Math.ceil(total / ITEMS_PER_PAGE))
 
@@ -559,9 +586,31 @@ function ProductListContent() {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <button
+        
+          
+        </div>
+      </div>
+
+      <div className="px-8 py-7 max-w-[1840px] mx-auto">
+
+        {/* ── Search bar stands in for the page title ── */}
+        <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
+          <div className="relative w-full max-w-[440px]">
+            <Search size={16} className="absolute left-4 top-1/2 -translate-y-1/2 text-[#98989d] pointer-events-none" />
+            <input
+              ref={searchRef}
+              type="text"
+              placeholder="Search product code, catalogue no. or name…"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              className="pl-[42px] pr-[16px] py-[12px] border border-[#e5e5ea] rounded-full text-[16px] font-semibold bg-white text-[#1d1d1f] w-full outline-none transition-shadow duration-150 placeholder:text-[#98989d] placeholder:font-normal focus:border-[#0071e3] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
+              style={{ fontFamily: "inherit", letterSpacing: '-0.01em' }}
+            /> 
+          </div>
+           <div className="flex items-center gap-2">
+             <button
             onClick={() => router.push('/Pages/products/addproducts')}
-            className={`${PRESS} inline-flex items-center gap-1.5 px-4 py-2 rounded-full border-none bg-[#0071e3] text-[12.5px] font-semibold text-white cursor-pointer whitespace-nowrap hover:bg-[#0077ed]`}
+            className={`${PRESS} inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border-none bg-[#0071e3] text-[12.5px] font-semibold text-white cursor-pointer whitespace-nowrap hover:bg-[#0077ed]`}
           >
             <Plus size={14} />
             Add Product
@@ -569,33 +618,11 @@ function ProductListContent() {
           <button
             onClick={handleDownloadExcel}
             disabled={!filteredData.length}
-            className={`${PRESS} inline-flex items-center gap-1.5 px-4 py-2 rounded-full border border-[#e5e5ea] bg-white/70 text-[12.5px] font-medium text-[#1d1d1f] cursor-pointer whitespace-nowrap hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed disabled:active:scale-100`}
+            className={`${PRESS} inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-[#e5e5ea] bg-white/70 text-[12.5px] font-medium text-[#1d1d1f] cursor-pointer whitespace-nowrap hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed disabled:active:scale-100`}
           >
             <Download size={14} />
             Export CSV
           </button>
-        </div>
-      </div>
-
-      <div className="px-8 py-7 max-w-[1680px] mx-auto">
-
-        {/* ── Page header ── */}
-        <div className="flex items-end justify-between flex-wrap gap-4 mb-6">
-          <div>
-            <div className="text-[28px] font-bold text-[#1d1d1f]" style={{ letterSpacing: '-0.02em', lineHeight: 1.1 }}>Products</div>
-            <div className="text-[13px] text-[#6e6e73] mt-1.5">Browse and manage your product catalogue</div>
-          </div>
-          <div className="relative">
-            <Search size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#98989d] pointer-events-none" />
-            <input
-              ref={searchRef}
-              type="text"
-              placeholder="Search product code, catalogue no. or name…"
-              value={searchInput}
-              onChange={e => setSearchInput(e.target.value)}
-              className="pl-[38px] pr-[14px] py-[9px] border border-[#e5e5ea] rounded-full text-[13px] bg-white text-[#1d1d1f] w-[300px] outline-none transition-shadow duration-150 placeholder:text-[#98989d] focus:border-[#0071e3] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
-              style={{ fontFamily: "inherit" }}
-            />
           </div>
         </div>
 
@@ -604,7 +631,7 @@ function ProductListContent() {
           <div className="flex gap-2.5 mb-6 flex-wrap">
             {[
               { dot: "#0071e3", label: "Total Products", value: total.toLocaleString() },
-              { dot: "#34c759", label: "This Page",      value: filteredData.length },
+              { dot: "#34c759", label: "This Page",      value: visibleData.length },
               { dot: "#ff9f0a", label: "Page",           value: `${page} / ${totalPages}` },
             ].map(s => (
               <div key={s.label} className="flex items-center gap-2 px-4 py-[9px] bg-white border border-black/[0.05] rounded-full text-[12.5px] text-[#3a3a3c] font-medium" style={{ boxShadow: '0 1px 2px rgba(0,0,0,0.03)' }}>
@@ -630,27 +657,28 @@ function ProductListContent() {
             <table className="w-full border-collapse text-[13px]">
               <thead className="bg-[#fafafc] border-b border-black/[0.05]">
                 <tr>
+                  <th className="px-4 py-[13px] text-left text-[10.5px] font-semibold uppercase text-[#86868b] whitespace-nowrap pl-[22px]" style={{ letterSpacing: '0.06em' }}>#</th>
+                  <th className="px-4 py-[13px] text-left text-[10.5px] font-semibold uppercase text-[#86868b] whitespace-nowrap" style={{ letterSpacing: '0.06em' }}>Image</th>
                   {[
-                    '#',
-                    'Product',
-                    'Product Code',
-                    'Category',
-                    'Catalogue No.',
-                    'Pack Size',
-                    'Unit Price',
-                    'Pack Price',
-                    'Unit',
-                    'Availability',
-                    'Actions',
-                  ].map((h) => (
-                    <th
-                      key={h}
-                      className="px-4 py-[13px] text-left text-[10.5px] font-semibold uppercase text-[#86868b] whitespace-nowrap first:pl-[22px] last:pr-[22px]"
-                      style={{ letterSpacing: '0.06em' }}
-                    >
-                      {h}
+                    { key: 'catalogueNo', label: 'Catalogue No.' },
+                    { key: 'name', label: 'Name' },
+                    { key: 'description', label: 'Description' },
+                    { key: 'category', label: 'Category' },
+                    { key: 'unitPrice', label: 'Unit Price' },
+                    { key: 'packSize', label: 'Pack Size' },
+                  ].map((col) => (
+                    <th key={col.key} className="px-4 py-[9px] text-left whitespace-nowrap">
+                      <input
+                        type="text"
+                        placeholder={col.label}
+                        value={(columnFilters as Record<string, string>)[col.key]}
+                        onChange={(e) => setColumnFilters((f) => ({ ...f, [col.key]: e.target.value }))}
+                        className="w-full bg-white border border-[#e5e5ea] rounded-[8px] px-2.5 py-[6px] text-[11px] font-medium text-[#3a3a3c] outline-none transition-colors placeholder:text-[#98989d] placeholder:font-semibold placeholder:uppercase placeholder:text-[10.5px] focus:border-[#0071e3] focus:shadow-[0_0_0_3px_rgba(0,113,227,0.12)]"
+                        style={{ letterSpacing: '0.02em' }}
+                      />
                     </th>
                   ))}
+                  <th className="px-4 py-[13px] text-left text-[10.5px] font-semibold uppercase text-[#86868b] whitespace-nowrap pr-[22px]" style={{ letterSpacing: '0.06em' }}>Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -658,7 +686,7 @@ function ProductListContent() {
                 {/* Shimmer rows */}
                 {isLoading && Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
                   <tr key={i} className="border-b border-black/[0.04]">
-                    {[40, 260, 100, 120, 110, 70, 90, 90, 70, 100, 120].map((w, j) => (
+                    {[40, 44, 100, 160, 240, 100, 90, 70, 120].map((w, j) => (
                       <td key={j} className="px-4 py-[14px] first:pl-[22px] last:pr-[22px]">
                         <div
                           className="h-[14px] rounded-full"
@@ -675,9 +703,9 @@ function ProductListContent() {
                 ))}
 
                 {/* Empty state */}
-                {!isLoading && filteredData.length === 0 && (
+                {!isLoading && visibleData.length === 0 && (
                   <tr>
-                    <td colSpan={11} className="px-5 py-[60px] text-center">
+                    <td colSpan={9} className="px-5 py-[60px] text-center">
                       <Package size={36} className="mx-auto mb-3 text-[#c7c7cc]" />
                       <div className="text-[13.5px] text-[#98989d] font-medium">No products found</div>
                       <div className="text-[12px] text-[#c7c7cc] mt-1">
@@ -688,7 +716,7 @@ function ProductListContent() {
                 )}
 
                 {/* Data rows — one row per catalogue variant */}
-                {!isLoading && filteredData.map((product, i) => (
+                {!isLoading && visibleData.map((product, i) => (
                   <tr key={product.product_id} className="border-b border-black/[0.04] last:border-b-0 transition-colors duration-150 hover:bg-[#fafafc] align-top">
 
                     <td className="pl-[22px] pr-4 py-[14px]">
@@ -697,50 +725,14 @@ function ProductListContent() {
                       </span>
                     </td>
 
-                    <td className="px-4 py-[12px] min-w-[300px]">
-                      <div className="flex items-start gap-3">
-                        <div className="w-12 h-12 flex-shrink-0 rounded-[12px] border border-black/[0.06] bg-[#fafafc] overflow-hidden flex items-center justify-center">
-                          {product.product_image ? (
-                            <img src={product.product_image} alt={product.product_name} className="w-full h-full object-contain bg-white" />
-                          ) : (
-                            <Package size={18} className="text-[#c7c7cc]" />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-[13px] font-semibold text-[#1d1d1f] leading-snug">{product.product_name || '—'}</div>
-                          {product.product_description && (
-                            <div className="text-[11px] text-[#98989d] mt-1 line-clamp-2 max-w-[330px] leading-relaxed">
-                              {product.product_description}
-                            </div>
-                          )}
-                          {product.variant_specs && (
-                            <div className="text-[10.5px] text-[#0071e3] mt-1 line-clamp-2 max-w-[330px] leading-relaxed">
-                              {product.variant_specs}
-                            </div>
-                          )}
-                          {product.about_items.length > 0 && (
-                            <div
-                              className="text-[10.5px] text-[#6e6e73] mt-1 truncate max-w-[330px]"
-                              title={product.about_items.join(' • ')}
-                            >
-                              About: {product.about_items[0]}
-                              {product.about_items.length > 1 ? ` +${product.about_items.length - 1} more` : ''}
-                            </div>
-                          )}
-                        </div>
+                    <td className="px-4 py-[12px]">
+                      <div className="w-10 h-10 flex-shrink-0 rounded-[10px] border border-black/[0.06] bg-[#fafafc] overflow-hidden flex items-center justify-center">
+                        {product.product_image ? (
+                          <img src={product.product_image} alt={product.product_name} className="w-full h-full object-contain bg-white" />
+                        ) : (
+                          <Package size={16} className="text-[#c7c7cc]" />
+                        )}
                       </div>
-                    </td>
-
-                    <td className="px-4 py-[14px]">
-                      <span className="text-[11px] font-medium bg-[#fafafc] text-[#3a3a3c] px-[9px] py-[3px] rounded-full border border-black/[0.06] whitespace-nowrap" style={{ fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace" }}>
-                        {product.product_code || '—'}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-[14px]">
-                      <span className="text-[11px] font-semibold bg-[#fffbea] text-[#9a6b00] border border-[#f5e6a8] px-[9px] py-[3px] rounded-full whitespace-nowrap">
-                        {product.product_category || 'Uncategorized'}
-                      </span>
                     </td>
 
                     <td className="px-4 py-[14px]">
@@ -749,9 +741,19 @@ function ProductListContent() {
                       </span>
                     </td>
 
+                    <td className="px-4 py-[12px] min-w-[200px]">
+                      <div className="text-[13px] font-semibold text-[#1d1d1f] leading-snug">{product.product_name || '—'}</div>
+                    </td>
+
+                    <td className="px-4 py-[12px] min-w-[260px]">
+                      <div className="text-[11.5px] text-[#6e6e73] leading-relaxed line-clamp-2 max-w-[360px]">
+                        {product.product_description || '—'}
+                      </div>
+                    </td>
+
                     <td className="px-4 py-[14px]">
-                      <span className="text-[12px] font-semibold text-[#3a3a3c] whitespace-nowrap" style={{ fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace" }}>
-                        {product.pack_size ? `${product.pack_size} pcs` : '—'}
+                      <span className="text-[11px] font-semibold bg-[#fffbea] text-[#9a6b00] border border-[#f5e6a8] px-[9px] py-[3px] rounded-full whitespace-nowrap">
+                        {product.product_category || 'Uncategorized'}
                       </span>
                     </td>
 
@@ -762,26 +764,8 @@ function ProductListContent() {
                     </td>
 
                     <td className="px-4 py-[14px]">
-                      <span className="text-[12px] font-bold text-[#0d6b3f] bg-[#f0fdf6] border border-[#bdf0d3] px-[10px] py-1 rounded-full whitespace-nowrap" style={{ fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace" }}>
-                        {money(product.pack_price)}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-[14px]">
-                      <span className="text-[11px] font-semibold bg-[#eef6ff] text-[#0071e3] border border-[#cce4fb] px-[9px] py-[3px] rounded-full whitespace-nowrap">
-                        {product.product_unit || 'Pcs.'}
-                      </span>
-                    </td>
-
-                    <td className="px-4 py-[14px]">
-                      <span className={`inline-flex px-[9px] py-[4px] rounded-full text-[10.5px] font-bold whitespace-nowrap border ${
-                        product.availability === 'Out of Stock'
-                          ? 'bg-[#fff1f1] text-[#c02b3a] border-[#f9c9cd]'
-                          : product.availability === 'On Request'
-                            ? 'bg-[#fff8f0] text-[#b8600a] border-[#f8dcb2]'
-                            : 'bg-[#f0fdf6] text-[#0d6b3f] border-[#bdf0d3]'
-                      }`}>
-                        {product.availability}
+                      <span className="text-[12px] font-semibold text-[#3a3a3c] whitespace-nowrap" style={{ fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace" }}>
+                        {product.pack_size ? `${product.pack_size} pcs` : '—'}
                       </span>
                     </td>
 
@@ -818,7 +802,7 @@ function ProductListContent() {
           {/* ── Pagination ── */}
           <div className="flex items-center justify-between px-[22px] py-[14px] border-t border-black/[0.05] flex-wrap gap-3">
             <div className="text-[12px] text-[#98989d]">
-              {filteredData.length > 0 ? (
+              {visibleData.length > 0 ? (
                 <>Showing <strong className="text-[#3a3a3c] font-semibold">{startIndex}–{endIndex}</strong> of <strong className="text-[#3a3a3c] font-semibold">{total.toLocaleString()}</strong> products</>
               ) : "No results"}
             </div>

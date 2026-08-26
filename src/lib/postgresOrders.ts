@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { buildOrderRegionWhere } from "@/server/auth/sales-scope";
 import type { OrdersActor } from "@/lib/orderPagination";
+import { summarizeOrderSettlement } from "@/lib/orderSettlement";
 
 const orderInclude = {
   dealer: {
@@ -22,6 +23,9 @@ const orderInclude = {
   },
   assignedStaff: { select: { id: true, displayName: true } },
   items: { orderBy: { id: "asc" as const } },
+  // Bills carry paidAmountPaise, which is what wallet settlement moves. Without
+  // them an order settled from advance still reads as fully unpaid.
+  ledgerBills: { orderBy: { billDate: "desc" as const } },
 } satisfies Prisma.OrderInclude;
 
 const orderDetailInclude = {
@@ -139,8 +143,17 @@ export function mapPostgresOrderItemToLegacy(item: PostgresOrderLike["items"][nu
     rsm_reviewed_by: order.rsmReviewedByName || "",
     rsmReviewedAt: order.rsmReviewedAt?.toISOString?.() ?? null,
     rsm_reviewed_at: order.rsmReviewedAt?.toISOString?.() ?? null,
+    rsmNote: order.rsmNote || "",
+    rsm_note: order.rsmNote || "",
+    settlement: summarizeOrderSettlement((order as { ledgerBills?: any[] }).ledgerBills, order.finalPayableAmountPaise),
     acceptanceStatus: order.acceptanceStatus,
     acceptance_status: order.acceptanceStatus,
+    acceptanceNote: order.acceptanceNote || "",
+    acceptance_note: order.acceptanceNote || "",
+    acceptanceReviewedBy: order.acceptanceReviewedByName || "",
+    acceptance_reviewed_by: order.acceptanceReviewedByName || "",
+    acceptanceReviewedAt: order.acceptanceReviewedAt?.toISOString?.() ?? null,
+    acceptance_reviewed_at: order.acceptanceReviewedAt?.toISOString?.() ?? null,
     fulfilmentStatus: order.fulfilmentStatus,
     fulfilment_status: order.fulfilmentStatus,
     mtstatus: legacyFulfilment(order.fulfilmentStatus),
@@ -207,10 +220,26 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     rsm_reviewed_by: order.rsmReviewedByName || "",
     rsmReviewedAt: order.rsmReviewedAt?.toISOString?.() ?? null,
     rsm_reviewed_at: order.rsmReviewedAt?.toISOString?.() ?? null,
+    rsmNote: order.rsmNote || "",
+    rsm_note: order.rsmNote || "",
+    settlement: summarizeOrderSettlement((order as { ledgerBills?: any[] }).ledgerBills, order.finalPayableAmountPaise),
     acceptanceStatus: order.acceptanceStatus,
     acceptance_status: order.acceptanceStatus,
+    acceptanceNote: order.acceptanceNote || "",
+    acceptance_note: order.acceptanceNote || "",
+    acceptanceReviewedBy: order.acceptanceReviewedByName || "",
+    acceptance_reviewed_by: order.acceptanceReviewedByName || "",
+    acceptanceReviewedAt: order.acceptanceReviewedAt?.toISOString?.() ?? null,
+    acceptance_reviewed_at: order.acceptanceReviewedAt?.toISOString?.() ?? null,
     fulfilmentStatus: order.fulfilmentStatus,
     fulfilment_status: order.fulfilmentStatus,
+    dispatchPartner: order.dispatchPartner || "",
+    dispatch_partner: order.dispatchPartner || "",
+    trackingNumber: order.trackingNumber || "",
+    tracking_number: order.trackingNumber || "",
+    trackingLink: order.trackingLink || "",
+    tracking_link: order.trackingLink || "",
+    dock: order.dock || "",
     mtstatus: legacyFulfilment(order.fulfilmentStatus),
     del_status: legacyDeletion(order.status),
     productorder: (order.items ?? []).map((item) => mapPostgresOrderItemToLegacy(item, order)),
@@ -345,4 +374,25 @@ export async function findPostgresOrderByLookupId(orderId: unknown) {
     },
     include: orderDetailInclude,
   });
+}
+
+// Detail views resolve one order at a time, so they cannot reuse the list
+// query's where clause directly. Re-running that same clause against a single
+// order id keeps RSM scope for /api/order-access identical to the list scope.
+export async function isOrderInRsmScope(actor: OrdersActor, orderId: unknown) {
+  if (!actor.isRsm || !actor.userId) return false;
+  const id = text(orderId);
+  if (!id) return false;
+  const scopeWhere = await buildRsmOrderWhere(actor);
+  const numericId = /^\d+$/.test(id) ? BigInt(id) : null;
+  const match = await prisma.order.findFirst({
+    where: {
+      AND: [
+        scopeWhere,
+        { OR: [...(numericId ? [{ id: numericId }] : []), { orderNumber: id }, { legacyPhpId: id }] },
+      ],
+    },
+    select: { id: true },
+  });
+  return !!match;
 }

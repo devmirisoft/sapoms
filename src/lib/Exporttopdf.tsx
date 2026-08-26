@@ -1,14 +1,13 @@
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { createClient } from "@supabase/supabase-js";
 import moment from "moment";
 import { resolveOrderAmounts } from "@/lib/orderAmounts";
 
-// ─── Supabase Setup ────────────────────────────────────────────────────────
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
-export const supabase = createClient(supabaseUrl, supabaseKey);
+// PDFs are rendered here (jsPDF needs the DOM) and posted to the API, which
+// stores the file in Cloudinary and the metadata in Postgres. The upload used
+// to run straight from the browser against Supabase with a public anon key;
+// the Cloudinary secret cannot ship to the client, so it is server-side now.
 
 // ─── Types ────────────────────────────────────────────────────────────────
 export type Order = {
@@ -141,70 +140,56 @@ export async function generateOrdersPDF(options: ExportOptions): Promise<Blob> {
   return doc.output("blob");
 }
 
-// ─── Upload to Supabase Storage ────────────────────────────────────────────
-export async function uploadPDFToSupabase(
+// ─── Upload to cloud storage ───────────────────────────────────────────────
+// Posts the rendered PDF to /api/order-exports, which uploads it to Cloudinary
+// and records the metadata in Postgres in one round trip. The returned url is
+// the authenticated download route, not a public object URL.
+export async function uploadOrderExportPDF(
   pdfBlob: Blob,
   dealerId: string,
-  fileName?: string
+  fileName: string | undefined,
+  orderCount: number
 ): Promise<ExportResult> {
   try {
     const timestamp = moment().format("YYYY-MM-DD_HH-mm-ss");
-    const sanitizedFileName = fileName ? fileName.replace(/[^a-z0-9-._]/gi, "_") : `order-export_${timestamp}`;
-    const filePath = `order-exports/${dealerId}/${sanitizedFileName}_${timestamp}.pdf`;
+    const baseName = (fileName || `order-export_${timestamp}`).replace(/\.pdf$/i, "");
 
-    // Upload to Supabase
-    const { data, error } = await supabase.storage
-      .from("order-pdfs") // Make sure this bucket exists in Supabase
-      .upload(filePath, pdfBlob, {
-        contentType: "application/pdf",
-        upsert: false,
-      });
+    const form = new FormData();
+    form.append("file", pdfBlob, `${baseName}.pdf`);
+    form.append("dealerId", dealerId);
+    form.append("fileName", baseName);
+    form.append("orderCount", String(orderCount));
 
-    if (error) {
+    const response = await fetch("/api/order-exports", { method: "POST", body: form });
+    const payload = await response.json().catch(() => null);
+
+    if (!response.ok || !payload?.success) {
       return {
         success: false,
         message: "Failed to upload PDF",
-        error: error.message,
+        error: payload?.message || `Upload failed (${response.status})`,
       };
     }
-
-    // Get public URL
-    const { data: publicUrl } = supabase.storage.from("order-pdfs").getPublicUrl(filePath);
 
     return {
       success: true,
       message: "PDF exported and stored successfully",
-      url: publicUrl.publicUrl,
+      url: payload.export?.downloadUrl,
     };
   } catch (error) {
     return {
       success: false,
-      message: "Error uploading to Supabase",
+      message: "Error uploading the export",
       error: error instanceof Error ? error.message : "Unknown error",
     };
   }
 }
 
 // ─── All-in-one Export Function ────────────────────────────────────────────
-export async function exportOrdersToSupabase(options: ExportOptions & { dealerId: string }): Promise<ExportResult> {
+export async function exportOrdersToCloud(options: ExportOptions & { dealerId: string }): Promise<ExportResult> {
   try {
-    // Step 1: Generate PDF
     const pdfBlob = await generateOrdersPDF(options);
-
-    // Step 2: Upload to Supabase
-    const result = await uploadPDFToSupabase(pdfBlob, options.dealerId, options.fileName);
-
-    // Step 3: Optionally save export record to database
-    if (result.success) {
-      await saveExportRecord({
-        dealerId: options.dealerId,
-        fileName: options.fileName || "order-export",
-        fileUrl: result.url || "",
-        orderCount: options.orders.length,
-      });
-    }
-
-    return result;
+    return await uploadOrderExportPDF(pdfBlob, options.dealerId, options.fileName, options.orders.length);
   } catch (error) {
     return {
       success: false,
@@ -214,33 +199,7 @@ export async function exportOrdersToSupabase(options: ExportOptions & { dealerId
   }
 }
 
-// ─── Save Export Metadata to Database (Optional) ────────────────────────────
-async function saveExportRecord(data: {
-  dealerId: string;
-  fileName: string;
-  fileUrl: string;
-  orderCount: number;
-}) {
-  try {
-    const { error } = await supabase.from("order_exports").insert([
-      {
-        dealer_id: data.dealerId,
-        file_name: data.fileName,
-        file_url: data.fileUrl,
-        order_count: data.orderCount,
-        exported_at: new Date().toISOString(),
-      },
-    ]);
-
-    if (error) {
-      console.warn("Failed to save export record:", error);
-    }
-  } catch (error) {
-    console.warn("Error saving export record:", error);
-  }
-}
-
-// ─── Download PDF directly (without Supabase) ────────────────────────────────
+// ─── Download PDF directly (without uploading) ───────────────────────────────
 export async function downloadPDFDirectly(options: ExportOptions) {
   try {
     const pdfBlob = await generateOrdersPDF(options);

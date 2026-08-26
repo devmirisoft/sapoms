@@ -82,6 +82,118 @@ export const DISPATCH_STATUS_LABELS: Record<DispatchStatus, string> = {
 
 export const BULK_DISPATCH_STATUS: DispatchStatus = "dispatched";
 
+// ── Dispatch tracking information (order level) ──────────────────────────────
+// Controlled courier list. No courier enum existed before this, so the list
+// lives here next to the rest of the shared dispatch vocabulary.
+export const DISPATCH_PARTNERS = ["BlueDart", "DTDC", "Delhivery"] as const;
+
+export type DispatchPartner = (typeof DISPATCH_PARTNERS)[number];
+
+export const TRACKING_NUMBER_LIMIT = 120;
+export const TRACKING_LINK_LIMIT = 2048;
+export const DOCK_LIMIT = 120;
+
+export type DispatchTrackingInfo = {
+  dispatchPartner: string | null;
+  trackingNumber: string | null;
+  trackingLink: string | null;
+  dock: string | null;
+};
+
+export type DispatchTrackingValidation =
+  | { ok: true; value: DispatchTrackingInfo }
+  | { ok: false; message: string };
+
+function trackingText(value: unknown, max: number): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value).trim().slice(0, max);
+  return text || null;
+}
+
+// Tracking number formats differ per courier, so nothing beyond trim/length.
+export function normalizeTrackingNumber(value: unknown): string | null {
+  return trackingText(value, TRACKING_NUMBER_LIMIT);
+}
+
+export function normalizeDock(value: unknown): string | null {
+  return trackingText(value, DOCK_LIMIT);
+}
+
+// Matches a known partner case-insensitively and returns the canonical label.
+export function normalizeDispatchPartner(value: unknown): string | null {
+  const text = trackingText(value, 60);
+  if (!text) return null;
+  return DISPATCH_PARTNERS.find((partner) => partner.toLowerCase() === text.toLowerCase()) ?? null;
+}
+
+export function isValidDispatchPartner(value: unknown): boolean {
+  const text = trackingText(value, 60);
+  return !text || normalizeDispatchPartner(text) !== null;
+}
+
+export function normalizeTrackingLink(value: unknown): string | null {
+  const text = trackingText(value, TRACKING_LINK_LIMIT);
+  if (!text) return null;
+  try {
+    const parsed = new URL(text);
+    return parsed.protocol === "http:" || parsed.protocol === "https:" ? text : null;
+  } catch {
+    return null;
+  }
+}
+
+export function isValidTrackingLink(value: unknown): boolean {
+  const text = trackingText(value, TRACKING_LINK_LIMIT);
+  return !text || normalizeTrackingLink(text) !== null;
+}
+
+// Shared by the dispatch API and the dispatch details form so both reject the
+// same values. Absent keys are treated as "clear this field" by the caller.
+export function normalizeDispatchTrackingInput(input: {
+  dispatchPartner?: unknown;
+  trackingNumber?: unknown;
+  trackingLink?: unknown;
+  dock?: unknown;
+}): DispatchTrackingValidation {
+  if (!isValidDispatchPartner(input.dispatchPartner)) {
+    return { ok: false, message: `Dispatched By must be one of: ${DISPATCH_PARTNERS.join(", ")}.` };
+  }
+  if (!isValidTrackingLink(input.trackingLink)) {
+    return { ok: false, message: "Tracking Link must be a valid http(s) URL." };
+  }
+  return {
+    ok: true,
+    value: {
+      dispatchPartner: normalizeDispatchPartner(input.dispatchPartner),
+      trackingNumber: normalizeTrackingNumber(input.trackingNumber),
+      trackingLink: normalizeTrackingLink(input.trackingLink),
+      dock: normalizeDock(input.dock),
+    },
+  };
+}
+
+// Reads tracking info off any order-shaped record (PostgreSQL row, legacy
+// PHP row, or the merged order meta used by the order details page).
+export function readDispatchTrackingInfo(source: Record<string, unknown> | null | undefined): DispatchTrackingInfo {
+  const record = source ?? {};
+  return {
+    dispatchPartner: normalizeDispatchPartner(record.dispatchPartner ?? record.dispatch_partner),
+    trackingNumber: normalizeTrackingNumber(record.trackingNumber ?? record.tracking_number),
+    trackingLink: normalizeTrackingLink(record.trackingLink ?? record.tracking_link),
+    dock: normalizeDock(record.dock),
+  };
+}
+
+// Dealers read tracking information; only dispatch staff and admins write it.
+export function canUserEditDispatchTracking(user: DispatchUserSession | null, context: {
+  dealerId?: string | null;
+  assignedStaffId?: string | null;
+  acceptOrder?: string | number | null;
+  delStatus?: string | number | null;
+}): boolean {
+  return (user?.role === "staff" || user?.role === "admin") && canUserEditDispatch(user, context);
+}
+
 export type NormalizedAcceptance = "accepted" | "unaccepted" | "missing";
 
 export function normalizeOrderAcceptance(value: unknown): NormalizedAcceptance {

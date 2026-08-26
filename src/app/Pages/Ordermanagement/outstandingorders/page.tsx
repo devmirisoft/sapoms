@@ -258,7 +258,7 @@ export default function PendingOrdersPage() {
         .topbar-sub   { font-size: 12px; color: #94a3b8; margin-left: 4px; }
         .topbar-right { margin-left: auto; }
         .status-pill  { padding: 3px 11px; border-radius: 20px; font-size: 11px; font-weight: 600; background: #fef3c7; color: #b45309; }
-        .po-body { padding: 28px; max-width: 1440px; margin: 0 auto; }
+        .po-body { padding: 28px; max-width: 1840px; margin: 0 auto; }
         .page-header { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 16px; }
         .page-title   { font-size: 26px; font-weight: 700; letter-spacing: -0.03em; color: #0f172a; }
         .page-caption { font-size: 13px; color: #64748b; margin-top: 3px; }

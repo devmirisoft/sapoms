@@ -1,6 +1,7 @@
 'use client'
 
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useQuery } from '@tanstack/react-query'
 import axios from 'axios'
@@ -59,6 +60,13 @@ type DealerDetail = {
   bills: Bill[]
 }
 
+type BillPdf = {
+  name: string
+  url: string
+  downloadUrl?: string
+  bytes?: number
+}
+
 type Bill = {
   id: string
   dealerId: string
@@ -68,6 +76,7 @@ type Bill = {
   billDate: string
   pdfName: string
   pdfUrl?: string
+  pdfFiles?: BillPdf[]
   paidAmount: number
   lastPaymentDate?: string
 }
@@ -76,6 +85,15 @@ type Toast = {
   type: 'success' | 'error'
   text: string
 }
+
+type DealerTerms = 'credit' | 'advance'
+type TermsFilter = 'all' | DealerTerms
+
+const TERMS_FILTERS: { value: TermsFilter; label: string }[] = [
+  { value: 'all', label: 'All dealers' },
+  { value: 'credit', label: 'Credit' },
+  { value: 'advance', label: 'Advance' },
+]
 
 const ITEMS_PER_PAGE = 10
 const DEFAULT_CREDIT_DAYS = 60
@@ -92,6 +110,29 @@ const EMPTY_PAYMENT_FORM = {
   paymentDate: new Date().toISOString().slice(0, 10),
   reference: '',
   notes: '',
+}
+
+function formatFileSize(bytes?: number) {
+  if (!bytes || bytes <= 0) return ''
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+// Cloudinary stores the bill as an extension-less raw blob (PDF-format delivery
+// is blocked on the account), so downloads go through our own streaming route,
+// which sets the PDF content type and the original file name.
+function billPdfHref(bill: Bill, index: number, mode: 'attachment' | 'inline') {
+  const dealerId = encodeURIComponent(bill.dealerId)
+  const params = new URLSearchParams({ billId: bill.id, index: String(index), mode })
+  return `/api/ledger/${dealerId}/bill-pdf/download?${params.toString()}`
+}
+
+// Bills saved before multi-file uploads only carry pdfName / pdfUrl.
+function billPdfs(bill: Bill): BillPdf[] {
+  if (bill.pdfFiles && bill.pdfFiles.length > 0) return bill.pdfFiles
+  if (bill.pdfUrl) return [{ name: bill.pdfName || 'Bill PDF', url: bill.pdfUrl }]
+  return []
 }
 
 function formatAmount(value: number | string | undefined) {
@@ -156,6 +197,20 @@ function creditDaysForDealer(dealer?: Dealer) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_CREDIT_DAYS
 }
 
+// Dealers with configured credit days buy on credit; everyone else pays up front.
+// Unlike creditDaysForDealer, this reads the raw value so the 60-day display
+// default doesn't misclassify an advance dealer as a credit dealer.
+function dealerTerms(dealer: Dealer): DealerTerms {
+  const raw =
+    dealer.creditdays ??
+    dealer.creditDays ??
+    dealer.credit_period ??
+    dealer.Credit_Period
+  if (raw === null || raw === undefined || String(raw).trim() === '') return 'advance'
+  const parsed = Number(raw)
+  return Number.isFinite(parsed) && parsed > 0 ? 'credit' : 'advance'
+}
+
 function orderNumber(order: RawOrder) {
   return String(order.order_id || '').trim()
 }
@@ -193,6 +248,7 @@ export default function DealerLedgerShellPage() {
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [searchInput, setSearchInput] = useState('')
+  const [termsFilter, setTermsFilter] = useState<TermsFilter>('all')
   const [expandedDealerId, setExpandedDealerId] = useState<string | null>(null)
   const [dealerDetails, setDealerDetails] = useState<Record<string, DealerDetail>>({})
   const [loadingDealerId, setLoadingDealerId] = useState<string | null>(null)
@@ -203,7 +259,9 @@ export default function DealerLedgerShellPage() {
   const [orderDropdownOpen, setOrderDropdownOpen] = useState(false)
   const [paymentTarget, setPaymentTarget] = useState<{ dealer: Dealer; bill: Bill } | null>(null)
   const [paymentForm, setPaymentForm] = useState(EMPTY_PAYMENT_FORM)
+  const [pdfTarget, setPdfTarget] = useState<{ dealer: Dealer; bill: Bill } | null>(null)
   const [isSavingBill, setIsSavingBill] = useState(false)
+  const [isUploadingPdfs, setIsUploadingPdfs] = useState(false)
   const [isSavingPayment, setIsSavingPayment] = useState(false)
   const [toast, setToast] = useState<Toast | null>(null)
   const objectUrls = useRef<string[]>([])
@@ -251,11 +309,12 @@ export default function DealerLedgerShellPage() {
 
   const dealers = useMemo(() => {
     const rows = data?.data || []
-    if (!search) return rows
-
     const key = search.toLowerCase()
-    return rows.filter((dealer) =>
-      [
+
+    return rows.filter((dealer) => {
+      if (termsFilter !== 'all' && dealerTerms(dealer) !== termsFilter) return false
+      if (!key) return true
+      return [
         dealer.Dealer_Name,
         dealer.Dealer_Email,
         dealer.Dealer_Number,
@@ -264,8 +323,8 @@ export default function DealerLedgerShellPage() {
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(key))
-    )
-  }, [data?.data, search])
+    })
+  }, [data?.data, search, termsFilter])
 
   const totalPages = Math.max(1, Math.ceil(dealers.length / ITEMS_PER_PAGE))
   const pageRows = dealers.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
@@ -371,12 +430,38 @@ export default function DealerLedgerShellPage() {
     setIsSavingBill(true)
 
     try {
+      let uploadedPdfs: BillPdf[] = []
+
+      if (billFiles.length > 0) {
+        setIsUploadingPdfs(true)
+        try {
+          const form = new FormData()
+          billFiles.forEach((file) => form.append('files', file))
+          const upload = await axios.post(
+            `/api/ledger/${encodeURIComponent(billDealer.Dealer_Id)}/bill-pdf`,
+            form
+          )
+          uploadedPdfs = upload.data?.files || []
+          if (uploadedPdfs.length === 0) throw new Error('Upload returned no files')
+        } catch (uploadError) {
+          console.error('[ledger bill pdf upload]', uploadError)
+          const message = axios.isAxiosError(uploadError)
+            ? uploadError.response?.data?.message || 'Could not upload the bill PDFs'
+            : 'Could not upload the bill PDFs'
+          showToast({ type: 'error', text: message })
+          return
+        } finally {
+          setIsUploadingPdfs(false)
+        }
+      }
+
       const response = await axios.post(`/api/ledger/${encodeURIComponent(billDealer.Dealer_Id)}`, {
         orderNumbers: billForm.orderNumbers,
         billAmount: amount,
         gstPercent: gst,
         billDate: billForm.billDate,
         pdfNames: billFiles.map((file) => file.name),
+        pdfFiles: uploadedPdfs,
       })
 
       const savedBill: Bill | undefined = response.data?.bill
@@ -502,15 +587,38 @@ export default function DealerLedgerShellPage() {
             <p className="mt-1 text-sm text-gray-500">Manage dealer bills, due dates, and payments</p>
           </div>
 
-          <div className="relative w-full sm:w-80">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search dealers..."
-              value={searchInput}
-              onChange={(event) => setSearchInput(event.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
+          <div className="flex w-full flex-col gap-3 sm:flex-row sm:items-center sm:justify-end lg:w-auto">
+            <div className="inline-flex rounded-lg border border-gray-300 bg-white p-1">
+              {TERMS_FILTERS.map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => {
+                    setTermsFilter(option.value)
+                    setPage(1)
+                  }}
+                  aria-pressed={termsFilter === option.value}
+                  className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
+                    termsFilter === option.value
+                      ? 'bg-indigo-600 text-white'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+
+            <div className="relative w-full sm:w-80">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+              <input
+                type="text"
+                placeholder="Search dealers..."
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
           </div>
         </div>
 
@@ -559,7 +667,7 @@ export default function DealerLedgerShellPage() {
                 {!isLoading && pageRows.length === 0 && (
                   <tr>
                     <td colSpan={6} className="px-6 py-12 text-center text-sm text-gray-400">
-                      {search ? 'No dealers match your search' : 'No dealers found'}
+                      {search || termsFilter !== 'all' ? 'No dealers match your filters' : 'No dealers found'}
                     </td>
                   </tr>
                 )}
@@ -578,6 +686,7 @@ export default function DealerLedgerShellPage() {
                         isExpanded={isExpanded}
                         isLoadingDetails={loadingDealerId === dealer.Dealer_Id}
                         creditDays={creditDays}
+                        terms={dealerTerms(dealer)}
                         orderCount={orderCount}
                         bills={bills}
                         detail={dealerDetails[dealer.Dealer_Id]}
@@ -585,6 +694,7 @@ export default function DealerLedgerShellPage() {
                         canManageLedgerEntries={canManageLedgerEntries}
                         onAddBill={() => openBillModal(dealer)}
                         onPayment={(bill) => openPaymentModal(dealer, bill)}
+                        onViewPdfs={(bill) => setPdfTarget({ dealer, bill })}
                       />
                     )
                   })}
@@ -624,7 +734,7 @@ export default function DealerLedgerShellPage() {
       </div>
 
       {billDealer && (
-        <ModalShell title="Add Bill" onClose={closeBillModal}>
+        <ModalShell title="Add Invoice" onClose={closeBillModal}>
           <form onSubmit={submitBill} className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
@@ -676,7 +786,7 @@ export default function DealerLedgerShellPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
-                label="Bill Amount"
+                label="Invoice Amount"
                 type="number"
                 min="0"
                 step="0.01"
@@ -697,7 +807,7 @@ export default function DealerLedgerShellPage() {
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField
-                label="Bill Date"
+                label="Invoice Date"
                 type="date"
                 value={billForm.billDate}
                 onChange={(value) => setBillForm((prev) => ({ ...prev, billDate: value }))}
@@ -705,7 +815,7 @@ export default function DealerLedgerShellPage() {
               />
               <div>
                 <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                  Bill PDF
+                  Invoice PDF
                 </label>
                 <input
                   type="file"
@@ -734,10 +844,55 @@ export default function DealerLedgerShellPage() {
                 className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
               >
                 {isSavingBill && <Loader2 className="h-4 w-4 animate-spin" />}
-                Save Bill
+                {isUploadingPdfs ? 'Uploading PDFs…' : 'Save Invoice'}
               </button>
             </div>
           </form>
+        </ModalShell>
+      )}
+
+      {pdfTarget && (
+        <ModalShell
+          title={`Bill PDFs - ${pdfTarget.dealer.Dealer_Name}`}
+          onClose={() => setPdfTarget(null)}
+        >
+          <div className="space-y-3">
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+              Order {formatLedgerOrderId(pdfTarget.bill.orderNumber)} - {formatAmount(pdfTarget.bill.billAmount)} - {formatDate(pdfTarget.bill.billDate)}
+            </div>
+
+            {billPdfs(pdfTarget.bill).length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-400">No PDF uploaded for this bill.</p>
+            ) : (
+              <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
+                {billPdfs(pdfTarget.bill).map((file, index) => (
+                  <li key={`${file.url}-${index}`} className="flex items-center justify-between gap-3 px-3 py-2.5">
+                    <a
+                      href={billPdfHref(pdfTarget.bill, index, 'inline')}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex min-w-0 items-center gap-2 text-sm text-gray-700 hover:text-indigo-700"
+                      title="Open in a new tab"
+                    >
+                      <FileText className="h-4 w-4 shrink-0 text-red-500" />
+                      <span className="truncate font-medium">{file.name}</span>
+                      {file.bytes ? (
+                        <span className="shrink-0 text-xs text-gray-400">{formatFileSize(file.bytes)}</span>
+                      ) : null}
+                    </a>
+                    <a
+                      href={billPdfHref(pdfTarget.bill, index, 'attachment')}
+                      download={file.name}
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Download
+                    </a>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
         </ModalShell>
       )}
 
@@ -745,7 +900,7 @@ export default function DealerLedgerShellPage() {
         <ModalShell title="Record Payment" onClose={closePaymentModal}>
           <form onSubmit={submitPayment} className="space-y-4">
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-              {paymentTarget.dealer.Dealer_Name} - bill for order {paymentTarget.bill.orderNumber}
+              {paymentTarget.dealer.Dealer_Name} - Invoice for order {paymentTarget.bill.orderNumber}
             </div>
 
             <FormField
@@ -834,6 +989,7 @@ function FragmentRow({
   isExpanded,
   isLoadingDetails,
   creditDays,
+  terms,
   orderCount,
   bills,
   detail,
@@ -841,11 +997,13 @@ function FragmentRow({
   canManageLedgerEntries,
   onAddBill,
   onPayment,
+  onViewPdfs,
 }: {
   dealer: Dealer
   isExpanded: boolean
   isLoadingDetails: boolean
   creditDays: number
+  terms: DealerTerms
   orderCount: number
   bills: Bill[]
   detail?: DealerDetail
@@ -853,6 +1011,7 @@ function FragmentRow({
   canManageLedgerEntries: boolean
   onAddBill: () => void
   onPayment: (bill: Bill) => void
+  onViewPdfs: (bill: Bill) => void
 }) {
   return (
     <>
@@ -868,10 +1027,15 @@ function FragmentRow({
           </button>
         </td>
         <td className="px-4 py-4">
-          <button type="button" onClick={onExpand} className="text-left">
-            <div className="font-semibold text-gray-900">{dealer.Dealer_Name || '-'}</div>
+          <Link
+            href={`/dashboard/admin/dealer/${encodeURIComponent(dealer.Dealer_Id)}/ledger`}
+            className="group inline-block text-left"
+          >
+            <div className="font-semibold text-gray-900 transition-colors group-hover:text-indigo-600">
+              {dealer.Dealer_Name || '-'}
+            </div>
             <div className="mt-0.5 text-xs text-gray-500">{dealer.Dealer_Email || dealer.Dealer_Number || '-'}</div>
-          </button>
+          </Link>
         </td>
         <td className="px-4 py-4">
           <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-medium text-sky-700">
@@ -882,7 +1046,17 @@ function FragmentRow({
           <span className="font-medium text-gray-900">{orderCount}</span>
           <span className="ml-1 text-xs text-gray-400">orders</span>
         </td>
-        <td className="px-4 py-4 text-sm text-gray-600">{creditDays} days</td>
+        <td className="px-4 py-4 text-sm text-gray-600">
+          {terms === 'credit' ? (
+            <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+              Credit · {creditDays} days
+            </span>
+          ) : (
+            <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
+              Advance
+            </span>
+          )}
+        </td>
         <td className="px-4 py-4 text-right">
           {canManageLedgerEntries ? (
             <button
@@ -891,7 +1065,7 @@ function FragmentRow({
               className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
             >
               <Plus className="h-4 w-4" />
-              Add Bill
+              Add Invoice
             </button>
           ) : (
             <span className="text-xs font-medium text-gray-400">View only</span>
@@ -959,6 +1133,7 @@ function FragmentRow({
                       const daysRemaining = getDaysRemaining(bill.billDate, creditDays)
                       const isOverdue = daysRemaining < 0
                       const balance = Math.max(0, bill.billAmount - bill.paidAmount)
+                      const pdfCount = billPdfs(bill).length
 
                       return (
                         <tr key={bill.id} className="hover:bg-gray-50">
@@ -989,16 +1164,16 @@ function FragmentRow({
                             </span>
                           </td>
                           <td className="px-4 py-3">
-                            {bill.pdfUrl ? (
-                              <a
-                                href={bill.pdfUrl}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-800"
+                            {pdfCount > 0 ? (
+                              <button
+                                type="button"
+                                onClick={() => onViewPdfs(bill)}
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                                title="View and download bill PDFs"
                               >
-                                <Download className="h-3.5 w-3.5" />
-                                {bill.pdfName}
-                              </a>
+                                <FileText className="h-3.5 w-3.5" />
+                                {pdfCount} PDF{pdfCount === 1 ? '' : 's'}
+                              </button>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 text-xs text-gray-400">
                                 <FileText className="h-3.5 w-3.5" />

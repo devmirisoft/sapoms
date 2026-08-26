@@ -17,6 +17,11 @@ const walletFilter = z.preprocess(
   z.enum(["active", "inactive"]).optional(),
 );
 
+const listText = (max: number) => z.preprocess(
+  (value) => (value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim()),
+  z.string().max(max).optional(),
+);
+
 export function parseAdminDealerListInput(searchParams: URLSearchParams) {
   const base = parseAdminPagination(searchParams);
   return {
@@ -24,6 +29,10 @@ export function parseAdminDealerListInput(searchParams: URLSearchParams) {
     staffId: staffId.parse(searchParams.get("staffId")),
     status: listStatus.parse(searchParams.get("status")),
     wallet: walletFilter.parse(searchParams.get("wallet")),
+    city: listText(100).parse(searchParams.get("city")),
+    name: listText(200).parse(searchParams.get("name")),
+    email: listText(200).parse(searchParams.get("email")),
+    phone: listText(30).parse(searchParams.get("phone")),
   };
 }
 
@@ -50,8 +59,31 @@ const optionalDecimalPercent = z.preprocess((value) => {
 
 const optionalBigIntString = z.preprocess((value) => {
   if (value === undefined || value === null || String(value).trim() === "") return undefined;
-  return String(value).trim();
+  // Amounts arrive from the admin forms as free text, so tolerate grouping separators,
+  // a currency prefix, and a decimal tail rather than rejecting the whole save.
+  const cleaned = String(value).trim().replace(/[\s,₹]/g, "");
+  const whole = /^\d+(?:\.\d+)?$/.test(cleaned) ? cleaned.split(".")[0] : cleaned;
+  return whole === "" ? undefined : whole;
 }, z.string().regex(/^\d+$/).optional());
+
+const optionalPriorityContact = z.preprocess((value) => {
+  if (value === undefined || value === null || String(value).trim() === "") return undefined;
+  return String(value).trim().toLowerCase() === "secondary" ? "secondary" : "primary";
+}, z.enum(["primary", "secondary"]).optional());
+
+const optionalEmail = z.preprocess(
+  (value) => (value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim().toLowerCase()),
+  z.string().email().max(200).optional(),
+);
+
+const optionalBoolean = z.preprocess((value) => {
+  if (value === undefined || value === null || String(value).trim() === "") return undefined;
+  if (typeof value === "boolean") return value;
+  const normalized = String(value).trim().toLowerCase();
+  if (["true", "1", "advance"].includes(normalized)) return true;
+  if (["false", "0", "credit"].includes(normalized)) return false;
+  return undefined;
+}, z.boolean().optional());
 
 const staffIds = z.preprocess((value) => {
   if (Array.isArray(value)) return value.map(String);
@@ -83,10 +115,18 @@ function aliases(body: Record<string, unknown>) {
     discountPercent: body.discountPercent ?? body.discount,
     creditDays: body.creditDays ?? body.creditdays,
     creditLimitPaise: body.creditLimitPaise ?? body.currentLimit,
+    annualTargetPaise: body.annualTargetPaise ?? body.annualTarget ?? body.annualtarget,
+    notes: body.notes ?? body.Dealer_Notes,
+    // `contactPerson` is the legacy key kept for payloads built before the rename to `priorityPerson`.
+    priorityContact: body.priorityContact ?? body.priorityPerson ?? body.contactPerson ?? body.Dealer_Contact_Person,
+    secondaryContactName: body.secondaryContactName ?? body.Dealer_Secondary_Contact_Name,
+    secondaryContactPhone: body.secondaryContactPhone ?? body.Dealer_Secondary_Contact_Phone,
+    secondaryContactEmail: body.secondaryContactEmail ?? body.Dealer_Secondary_Contact_Email,
     imageUrl: body.imageUrl,
     status: body.status,
     assignedStaffIds: body.assignedStaffIds ?? body.assignedstaff,
     rsmUserId: body.rsmUserId ?? body.rsmId ?? body.regionalManagerId,
+    walletActive: body.walletActive ?? body.paymentType,
   };
 }
 
@@ -104,10 +144,17 @@ const createSchema = z.preprocess((value) => aliases((value && typeof value === 
   discountPercent: optionalDecimalPercent,
   creditDays: optionalInteger(3650),
   creditLimitPaise: optionalBigIntString,
+  annualTargetPaise: optionalBigIntString,
+  notes: text(2000),
+  priorityContact: optionalPriorityContact,
+  secondaryContactName: text(200),
+  secondaryContactPhone: text(30),
+  secondaryContactEmail: optionalEmail,
   imageUrl: text(1000),
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
   assignedStaffIds: staffIds.default([]),
   rsmUserId: optionalBigIntString,
+  walletActive: optionalBoolean,
 }));
 
 const updateSchema = z.preprocess((value) => aliases((value && typeof value === "object" ? value : {}) as Record<string, unknown>), z.object({
@@ -123,9 +170,16 @@ const updateSchema = z.preprocess((value) => aliases((value && typeof value === 
   discountPercent: optionalDecimalPercent,
   creditDays: optionalInteger(3650),
   creditLimitPaise: optionalBigIntString,
+  annualTargetPaise: optionalBigIntString,
+  notes: text(2000),
+  priorityContact: optionalPriorityContact,
+  secondaryContactName: text(200),
+  secondaryContactPhone: text(30),
+  secondaryContactEmail: optionalEmail,
   imageUrl: text(1000),
   assignedStaffIds: optionalStaffIds,
   rsmUserId: optionalBigIntString,
+  walletActive: optionalBoolean,
 }).refine((value) => Object.values(value).some((entry) => entry !== undefined), "At least one field is required"));
 
 const statusSchema = z.object({

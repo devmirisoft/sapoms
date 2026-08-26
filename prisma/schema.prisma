@@ -99,6 +99,11 @@ model User {
   createdDealers           DealerProfile[]         @relation("DealerCreatedBy")
   createdDealerAssignments DealerStaffAssignment[] @relation("DealerAssignmentCreatedBy")
   reviewedCustomDiscounts  CustomDiscountRequest[] @relation("CustomDiscountReviewedBy")
+  formSubmissions          FormSubmission[]        @relation("FormSubmissionSubmittedBy")
+  openedWalletSettlements  WalletSettlement[]      @relation("WalletSettlementOpenedBy")
+  appliedWalletSettlements WalletSettlementApplication[] @relation("WalletSettlementAppliedBy")
+  createdInvoices          Invoice[]               @relation("InvoiceCreatedBy")
+  createdOrderExports      OrderExport[]           @relation("OrderExportCreatedBy")
 
   @@index([role, status])
   @@map("users")
@@ -230,7 +235,8 @@ model AdminProfile {
   phone       String?
   imageUrl    String? @map("image_url")
 
-  user User @relation(fields: [userId], references: [id])
+  user           User           @relation(fields: [userId], references: [id])
+  managedRsms    StaffProfile[] @relation("StaffReportingManager")
 
   @@map("admin_profiles")
 }
@@ -268,10 +274,13 @@ model StaffProfile {
   staffRoleType  String? @map("staff_role_type")
   salesRegion    SalesRegion? @map("sales_region")
   assignedStates String[] @default([]) @map("assigned_states")
+  assignedCities String[] @default([]) @map("assigned_cities")
+  reportingManagerId BigInt? @map("reporting_manager_id")
 
   user                   User                    @relation(fields: [userId], references: [id])
   parentRsm              StaffProfile?           @relation("StaffParentRsm", fields: [parentRsmId], references: [id], onDelete: SetNull)
   parentAsm              StaffProfile?           @relation("StaffParentAsm", fields: [parentAsmId], references: [id], onDelete: SetNull)
+  reportingManager        AdminProfile?          @relation("StaffReportingManager", fields: [reportingManagerId], references: [id], onDelete: SetNull)
   asmChildren            StaffProfile[]          @relation("StaffParentRsm")
   executiveChildren      StaffProfile[]          @relation("StaffParentAsm")
   assignedOrders         Order[]
@@ -280,6 +289,7 @@ model StaffProfile {
 
   @@index([parentRsmId])
   @@index([parentAsmId])
+  @@index([reportingManagerId])
   @@map("staff_profiles")
 }
 
@@ -298,6 +308,12 @@ model DealerProfile {
   discountPercent  Decimal?  @map("discount_percent") @db.Decimal(9, 4)
   creditDays       Int?      @map("credit_days")
   creditLimitPaise BigInt?   @map("credit_limit_paise")
+  annualTargetPaise BigInt?  @map("annual_target_paise")
+  notes            String?
+  priorityContact  String    @default("primary") @map("priority_contact")
+  secondaryContactName  String? @map("secondary_contact_name")
+  secondaryContactPhone String? @map("secondary_contact_phone")
+  secondaryContactEmail String? @map("secondary_contact_email")
   termsAcceptedAt  DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
   imageUrl         String?   @map("image_url")
   region           SalesRegion?
@@ -319,6 +335,9 @@ model DealerProfile {
   customDiscountRequests CustomDiscountRequest[]
   diagnosticPasswords    DealerDiagnosticPassword[]
   staffAssignments       DealerStaffAssignment[]
+  walletSettlements      WalletSettlement[]
+  invoices               Invoice[]
+  orderExports           OrderExport[]
 
   @@index([deletedAt])
   @@index([region])
@@ -431,6 +450,12 @@ enum WalletTransactionType {
   ORDER_DEBIT
   REFUND
   ADJUSTMENT
+}
+
+enum WalletSettlementStatus {
+  OPEN
+  SETTLED
+  VOID
 }
 
 enum OrderDraftStatus {
@@ -546,7 +571,26 @@ model Order {
 
   rsmReviewedAt DateTime? @map("rsm_reviewed_at") @db.Timestamptz(6)
 
+  rsmNote String? @map("rsm_note") @db.Text
+
+  // Stage 2: the assigned staff's accept/decline, taken only after the RSM has
+  // approved. Kept separate from the rsm* columns so neither reviewer's reason
+  // overwrites the other's.
+  acceptanceNote String? @map("acceptance_note") @db.Text
+
+  acceptanceReviewedByUserId BigInt? @map("acceptance_reviewed_by_user_id")
+
+  acceptanceReviewedByName String? @map("acceptance_reviewed_by_name")
+
+  acceptanceReviewedAt DateTime? @map("acceptance_reviewed_at") @db.Timestamptz(6)
+
   fulfilmentStatus OrderFulfilmentStatus @default(PENDING) @map("fulfilment_status")
+
+  // Dispatch tracking information filled by dispatching staff, read by dealers.
+  dispatchPartner String? @map("dispatch_partner")
+  trackingNumber  String? @map("tracking_number")
+  trackingLink    String? @map("tracking_link") @db.Text
+  dock            String?
 
   acceptedAt   DateTime? @map("accepted_at") @db.Timestamptz(6)
   cancelledAt  DateTime? @map("cancelled_at") @db.Timestamptz(6)
@@ -572,7 +616,9 @@ model Order {
 
   walletTransactions WalletTransaction[]
   ledgerBills        LedgerBill[]
+  invoices           Invoice[]
   notes              OrderNote[]
+  settlementApplications WalletSettlementApplication[]
   summaryOverrides   OrderSummaryOverride[]
   overlays           OrderOverlay[]
 
@@ -602,6 +648,7 @@ model LedgerBill {
   billDate        DateTime  @map("bill_date") @db.Date
   pdfName         String?   @map("pdf_name")
   pdfUrl          String?   @map("pdf_url") @db.Text
+  pdfFiles        Json?     @map("pdf_files")
   paidAmountPaise BigInt    @default(0) @map("paid_amount_paise")
   lastPaymentDate DateTime? @map("last_payment_date") @db.Date
 
@@ -610,6 +657,8 @@ model LedgerBill {
 
   dealer DealerProfile @relation(fields: [dealerId], references: [id], onDelete: Restrict)
   order  Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  settlementApplications WalletSettlementApplication[]
 
   @@unique([dealerId, orderNumber])
   @@index([dealerId, billDate])
@@ -748,9 +797,72 @@ model WalletTransaction {
   wallet DealerWallet  @relation(fields: [walletId], references: [id], onDelete: Restrict)
   order  Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
+  settlementApplication WalletSettlementApplication?
+
   @@index([dealerId, createdAt])
   @@index([orderId])
   @@map("wallet_transactions")
+}
+
+model WalletSettlement {
+  id BigInt @id @default(autoincrement())
+
+  dealerId BigInt @map("dealer_id")
+
+  // Wallet balance captured at the moment the dealer was switched
+  // advance -> credit, and how much of it the accountant has yet to apply.
+  originalPaise  BigInt @map("original_paise")
+  remainingPaise BigInt @map("remaining_paise")
+
+  status WalletSettlementStatus @default(OPEN)
+
+  // The closing DEBIT that zeroed the wallet, kept for traceability.
+  closingTransactionId BigInt? @unique @map("closing_transaction_id")
+
+  openedByUserId BigInt?   @map("opened_by_user_id")
+  closedAt       DateTime? @map("closed_at") @db.Timestamptz(6)
+  note           String?   @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dealer       DealerProfile                 @relation(fields: [dealerId], references: [id], onDelete: Restrict)
+  openedBy     User?                         @relation("WalletSettlementOpenedBy", fields: [openedByUserId], references: [id], onDelete: SetNull)
+  applications WalletSettlementApplication[]
+
+  @@index([dealerId, status])
+  @@index([status, createdAt])
+  @@map("wallet_settlements")
+}
+
+model WalletSettlementApplication {
+  id BigInt @id @default(autoincrement())
+
+  settlementId BigInt  @map("settlement_id")
+  billId       BigInt? @map("bill_id")
+  orderId      BigInt? @map("order_id")
+
+  amountPaise BigInt @map("amount_paise")
+
+  // Mirrors the wallet CREDIT written through recordLedgerPayment so the
+  // settlement and the ledger never drift apart.
+  walletTransactionId BigInt? @unique @map("wallet_transaction_id")
+
+  idempotencyKey String? @unique @map("idempotency_key")
+  appliedByUserId BigInt? @map("applied_by_user_id")
+  note            String? @db.Text
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  settlement        WalletSettlement   @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  bill              LedgerBill?        @relation(fields: [billId], references: [id], onDelete: SetNull)
+  order             Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  walletTransaction WalletTransaction? @relation(fields: [walletTransactionId], references: [id], onDelete: SetNull)
+  appliedBy         User?              @relation("WalletSettlementAppliedBy", fields: [appliedByUserId], references: [id], onDelete: SetNull)
+
+  @@index([settlementId, createdAt])
+  @@index([billId])
+  @@map("wallet_settlement_applications")
 }
 
 model OrderNote {
@@ -890,6 +1002,8 @@ model CustomDiscountRequest {
 
   rsmReviewedAt DateTime? @map("rsm_reviewed_at") @db.Timestamptz(6)
 
+  rsmNote String? @map("rsm_note") @db.Text
+
   requestedDiscountPercent Decimal @default(0) @map("requested_discount_percent") @db.Decimal(7, 4)
 
   currentDiscountPercent Decimal @default(0) @map("current_discount_percent") @db.Decimal(7, 4)
@@ -972,4 +1086,102 @@ model EmailOtp {
   @@index([userId, expiresAt])
   @@index([usedAt])
   @@map("email_otps")
+}
+
+model FormSubmission {
+  id              BigInt   @id @default(autoincrement())
+  leadNo          String   @unique @map("lead_no")
+  products        String[] @default([])
+  customerDetails Json     @map("customer_details")
+  syringeFilter   Json?    @map("syringe_filter")
+  capsule         Json?
+  cartridgeFilter Json?    @map("cartridge_filter")
+  commercialInfo  Json     @map("commercial_info")
+
+  companyName String @map("company_name")
+
+  submittedByUserId BigInt    @map("submitted_by_user_id")
+  submittedByName   String    @map("submitted_by_name")
+  submittedByRole   UserRole  @map("submitted_by_role")
+
+  visitedDate DateTime @map("visited_date") @db.Timestamptz(6)
+  submittedAt DateTime @default(now()) @map("submitted_at") @db.Timestamptz(6)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  submittedBy User @relation("FormSubmissionSubmittedBy", fields: [submittedByUserId], references: [id])
+
+  @@index([submittedByUserId, visitedDate])
+  @@index([visitedDate])
+  @@map("form_submissions")
+}
+
+model FormLeadSequence {
+  id        String   @id
+  lastValue BigInt   @default(0) @map("last_value")
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("form_lead_sequences")
+}
+
+// Generated order invoices. The PDF itself lives in Cloudinary as an
+// extension-less raw blob (the account blocks PDF-format delivery), so
+// cloudinaryUrl is never handed to the browser directly — the download route
+// streams it with the right content type. Rows created before the Cloudinary
+// cutover carry their original Supabase URL and no publicId.
+model Invoice {
+  id BigInt @id @default(autoincrement())
+
+  dealerId BigInt  @map("dealer_id")
+  orderId  BigInt? @map("order_id")
+
+  invoiceNumber String @map("invoice_number")
+  orderNumber   String @map("order_number")
+  buyerName     String @map("buyer_name")
+
+  totalAmountPaise BigInt   @default(0) @map("total_amount_paise")
+  invoiceDate      DateTime @map("invoice_date") @db.Date
+
+  cloudinaryUrl      String  @map("cloudinary_url") @db.Text
+  cloudinaryPublicId String? @map("cloudinary_public_id")
+  fileName           String  @map("file_name")
+  fileBytes          Int?    @map("file_bytes")
+
+  createdByUserId BigInt?   @map("created_by_user_id")
+  deletedAt       DateTime? @map("deleted_at") @db.Timestamptz(6)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dealer    DealerProfile @relation(fields: [dealerId], references: [id], onDelete: Restrict)
+  order     Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  createdBy User?         @relation("InvoiceCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  // Stops the same order being billed twice — the check the orders page
+  // previously did by listing every invoice and comparing in the browser.
+  @@unique([dealerId, invoiceNumber])
+  @@index([dealerId, createdAt])
+  @@index([orderId])
+  @@map("invoices")
+}
+
+// Multi-order PDF exports (order history reports), stored the same way.
+model OrderExport {
+  id BigInt @id @default(autoincrement())
+
+  dealerId BigInt @map("dealer_id")
+
+  fileName           String  @map("file_name")
+  cloudinaryUrl      String  @map("cloudinary_url") @db.Text
+  cloudinaryPublicId String? @map("cloudinary_public_id")
+  fileBytes          Int?    @map("file_bytes")
+  orderCount         Int     @default(0) @map("order_count")
+
+  createdByUserId BigInt?  @map("created_by_user_id")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  dealer    DealerProfile @relation(fields: [dealerId], references: [id], onDelete: Restrict)
+  createdBy User?         @relation("OrderExportCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
+
+  @@index([dealerId, createdAt])
+  @@map("order_exports")
 }

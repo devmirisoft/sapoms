@@ -110,6 +110,17 @@ function InputField({
   )
 }
 
+function PriorityPill() {
+  return (
+    <span
+      title="Priority person — used for calls"
+      className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+    >
+      Priority
+    </span>
+  )
+}
+
 const STATUS_STYLES: Record<DealerStatus, string> = {
   active: "bg-emerald-50 text-emerald-700 border-emerald-200",
   inactive: "bg-gray-100 text-gray-500 border-gray-200",
@@ -152,6 +163,10 @@ export default function EditDealerPage() {
   const [annualtarget,   setAnnualtarget]   = useState("")
   const [currentlimit,   setCurrentlimit]   = useState("")
   const [notes,          setNotes]          = useState("")
+  const [priorityPerson, setPriorityPerson] = useState<"primary" | "secondary">("primary")
+  const [secondaryContactName,  setSecondaryContactName]  = useState("")
+  const [secondaryContactPhone, setSecondaryContactPhone] = useState("")
+  const [secondaryContactEmail, setSecondaryContactEmail] = useState("")
   const [dealerid,       setDealerid]       = useState("")
   const [status,         setStatus]         = useState<DealerStatus>("active")
   const [walletStatus,   setWalletStatus]   = useState<"active" | "inactive">("inactive")
@@ -199,6 +214,10 @@ export default function EditDealerPage() {
           setDealerid(d.Dealer_Id       || "")
           setAnnualtarget(d.annualtarget || "")
           setCurrentlimit(d.currentlimit || "")
+          setPriorityPerson(d.priorityContact === "secondary" ? "secondary" : "primary")
+          setSecondaryContactName(d.secondaryContactName || "")
+          setSecondaryContactPhone(d.secondaryContactPhone || "")
+          setSecondaryContactEmail(d.secondaryContactEmail || "")
           setExistingStaffNames(d.staffname || "")
           const initialStaffIds = splitCsv(d.assignedstaff)
           setAssignedStaffIds(initialStaffIds)
@@ -348,8 +367,12 @@ export default function EditDealerPage() {
       const payload = await response.json()
       if (!response.ok || !payload.success) throw new Error(payload.message ?? "Failed to update dealer status")
       setToastMsg({ text: `Dealer marked ${status === "active" ? "active" : "inactive"}`, type: 'success' })
-    } catch {
-      setToastMsg({ text: "Failed to update dealer status", type: 'error' })
+    } catch (error) {
+      console.error("Failed to update dealer status", error)
+      setToastMsg({
+        text: error instanceof Error && error.message ? error.message : "Failed to update dealer status",
+        type: 'error',
+      })
     } finally {
       setStatusSaving(false)
     }
@@ -373,7 +396,7 @@ export default function EditDealerPage() {
     }
     setIsSaving(true)
     try {
-      const updateBody: Record<string, string> = {
+      const updateBody: Record<string, string | boolean> = {
         businessName: name,
         email,
         phone: number,
@@ -383,6 +406,13 @@ export default function EditDealerPage() {
         dealerCode: dealercode,
         gstin: gst,
         discountPercent: discount,
+        annualTargetPaise: annualtarget,
+        notes,
+        priorityContact: priorityPerson,
+        secondaryContactName,
+        secondaryContactPhone,
+        secondaryContactEmail,
+        walletActive: isWalletActive,
       }
       if (!isWalletActive) {
         updateBody.creditDays = creditdays
@@ -398,6 +428,15 @@ export default function EditDealerPage() {
       const updatePayload = await updateResponse.json()
       if (!updateResponse.ok || !updatePayload.success) throw new Error(updatePayload.message ?? "Failed to update dealer")
 
+      // Re-sync the fields the server may normalize (wallet status, stored amounts).
+      const saved = updatePayload.data
+      if (saved) {
+        setWalletStatus(String(saved.walletStatus || "").toLowerCase() === "active" ? "active" : "inactive")
+        setAnnualtarget(saved.annualtarget || "")
+        setCurrentlimit(saved.currentlimit || "")
+        setCreditdays(saved.creditdays || "")
+      }
+
       if (staffChanged) {
         const staffResponse = await fetch(ADMIN_DEALERS_URL + "/" + encodeURIComponent(resolvedDealerId) + "/staff", {
           method: "PUT",
@@ -411,8 +450,12 @@ export default function EditDealerPage() {
         setInitialAssignedStaffIds(normalizedStaffIds)
       }
       setToastMsg({ text: "Dealer updated successfully", type: 'success' })
-    } catch {
-      setToastMsg({ text: "Failed to update dealer", type: 'error' })
+    } catch (error) {
+      console.error("Failed to update dealer", error)
+      setToastMsg({
+        text: error instanceof Error && error.message ? error.message : "Failed to update dealer",
+        type: 'error',
+      })
     } finally {
       setIsSaving(false)
     }
@@ -477,6 +520,51 @@ export default function EditDealerPage() {
                 <InputField label="City"             value={city}    onChange={setCity}    placeholder="City / Location" />
                 <InputField label="Address"          value={address} onChange={setAddress} placeholder="Street address" />
                 <InputField label="Pin Code"         value={pincode} onChange={setPincode} type="number" placeholder="6-digit pin code" />
+              </div>
+            </SectionCard>
+
+            {/* Point of Contact */}
+            <SectionCard title="Point of Contact" icon={<Users className="w-4 h-4" />}>
+              <div className="flex flex-col gap-6">
+                <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">Contact 1</span>
+                    {priorityPerson === "primary" && <PriorityPill />}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <InputField label="Person Name" value={name}   onChange={setName}   placeholder="Person name" />
+                    <InputField label="Phone No."   value={number}  onChange={setNumber} type="number" placeholder="10-digit number" />
+                    <InputField label="Email"       value={email}   onChange={setEmail}  type="email" placeholder="dealer@email.com" />
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                  <div className="mb-3 flex items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">Contact 2</span>
+                    {priorityPerson === "secondary" && <PriorityPill />}
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                    <InputField label="Second Person Name" value={secondaryContactName}  onChange={setSecondaryContactName}  required={false} placeholder="Second contact name" />
+                    <InputField label="Second Phone No."   value={secondaryContactPhone} onChange={setSecondaryContactPhone} required={false} type="number" placeholder="Second phone number" />
+                    <InputField label="Second Email"       value={secondaryContactEmail} onChange={setSecondaryContactEmail} required={false} type="email" placeholder="Second email" />
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5 md:max-w-xs">
+                  <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                    Priority Person
+                    <span className="text-orange-500 ml-0.5">*</span>
+                  </label>
+                  <select
+                    value={priorityPerson}
+                    onChange={e => setPriorityPerson(e.target.value === "secondary" ? "secondary" : "primary")}
+                    className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                  >
+                    <option value="primary">Contact 1</option>
+                    <option value="secondary">Contact 2</option>
+                  </select>
+                  <p className="text-[11px] text-gray-400">Contact used for calls</p>
+                </div>
               </div>
             </SectionCard>
 
@@ -548,6 +636,24 @@ export default function EditDealerPage() {
 
             {/* Financial */}
             <SectionCard title={isWalletActive ? "Wallet / Advance Settings" : "Financial Settings"} icon={<Wallet className="w-4 h-4" />}>
+              <div className="mb-5 flex flex-col gap-1.5 md:max-w-xs">
+                <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                  Payment Type
+                  <span className="text-orange-500 ml-0.5">*</span>
+                </label>
+                <select
+                  value={isWalletActive ? "advance" : "credit"}
+                  onChange={e => setWalletStatus(e.target.value === "advance" ? "active" : "inactive")}
+                  className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                >
+                  <option value="credit">Credit</option>
+                  <option value="advance">Advance (Wallet)</option>
+                </select>
+                <p className="text-[11px] text-gray-400">
+                  Choosing Advance activates the dealer wallet; Credit deactivates it. Applied when you save.
+                </p>
+              </div>
+
               {isWalletActive && (
                 <div className="mb-5 rounded-lg border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
                   Wallet is active for this dealer. Credit days and current limit are managed by the wallet balance flow.
@@ -555,7 +661,7 @@ export default function EditDealerPage() {
               )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                 <InputField label="Discount %"     value={discount}     onChange={setDiscount}     type="number" placeholder="e.g. 10" />
-                <InputField label="Annual Target"  value={annualtarget} onChange={setAnnualtarget} type="number" placeholder="Amount in Rs" />
+                <InputField label="Annual Target"  value={annualtarget} onChange={setAnnualtarget} type="number" placeholder="Amount in Rs" required={false} />
                 {!isWalletActive && (
                   <>
                     <InputField label="Credit Days"    value={creditdays}   onChange={setCreditdays}   type="number" placeholder="e.g. 30" />

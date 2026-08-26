@@ -4,12 +4,15 @@ import { prisma } from "@/server/db/prisma";
 import type {
   AdminDashboardResult,
   AdminDashboardTopDealer,
+  SalesGranularity,
   SalesRegionKey,
 } from "./admin-dashboard.types";
 
 const TOP_DEALER_LIMIT = 10;
 const TOP_REGION_DEALER_LIMIT = 5;
 const SALES_REGIONS: SalesRegionKey[] = ["NORTH_1", "NORTH_2", "SOUTH_1", "SOUTH_2", "WEST_1", "WEST_2", "EAST", "ROM", "CENTRAL"];
+const SALES_GRANULARITIES: SalesGranularity[] = ["day", "month", "quarter", "half", "year"];
+const DEFAULT_GRANULARITY: SalesGranularity = "month";
 
 type RankedDealer = AdminDashboardTopDealer & {
   region: SalesRegionKey | null;
@@ -19,6 +22,36 @@ function monthKey(date: Date) {
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
+}
+
+export function normalizeGranularity(value: unknown): SalesGranularity {
+  const candidate = String(value ?? "").trim().toLowerCase();
+  return SALES_GRANULARITIES.includes(candidate as SalesGranularity)
+    ? (candidate as SalesGranularity)
+    : DEFAULT_GRANULARITY;
+}
+
+/**
+ * Bucket key for a date at the requested granularity. Keys are chosen so that
+ * a plain lexicographic sort is also chronological.
+ */
+export function periodKey(date: Date, granularity: SalesGranularity) {
+  const year = date.getUTCFullYear();
+  const month = date.getUTCMonth() + 1;
+
+  switch (granularity) {
+    case "day":
+      return `${year}-${String(month).padStart(2, "0")}-${String(date.getUTCDate()).padStart(2, "0")}`;
+    case "quarter":
+      return `${year}-Q${Math.floor((month - 1) / 3) + 1}`;
+    case "half":
+      return `${year}-H${month <= 6 ? 1 : 2}`;
+    case "year":
+      return `${year}`;
+    case "month":
+    default:
+      return monthKey(date);
+  }
 }
 
 function paiseToRupeeString(value: bigint | number | null | undefined) {
@@ -45,7 +78,10 @@ function stripRegion(dealer: RankedDealer): AdminDashboardTopDealer {
   };
 }
 
-export async function getPostgresAdminDashboard(): Promise<AdminDashboardResult> {
+export async function getPostgresAdminDashboard(
+  options: { regionalGranularity?: SalesGranularity | string } = {},
+): Promise<AdminDashboardResult> {
+  const regionalGranularity = normalizeGranularity(options.regionalGranularity);
   const [dealerCount, orderCount, ordersForRegionalTotals, dealerSalesGroups] = await prisma.$transaction([
     prisma.dealerProfile.count(),
     prisma.order.count(),
@@ -83,10 +119,11 @@ export async function getPostgresAdminDashboard(): Promise<AdminDashboardResult>
     const key = monthKey(order.orderDate);
     monthlyTotals.set(key, (monthlyTotals.get(key) ?? BigInt(0)) + order.finalPayableAmountPaise);
 
-    const bucket = regionalMonthlyTotals.get(key) ?? createEmptyRegionalTotals();
+    const regionalKey = periodKey(order.orderDate, regionalGranularity);
+    const bucket = regionalMonthlyTotals.get(regionalKey) ?? createEmptyRegionalTotals();
     const region = order.dealer?.region;
     if (isSalesRegion(region)) bucket[region] += order.finalPayableAmountPaise;
-    regionalMonthlyTotals.set(key, bucket);
+    regionalMonthlyTotals.set(regionalKey, bucket);
   }
 
   const dealerIds = dealerSalesGroups.map((group) => group.dealerId);
@@ -135,13 +172,16 @@ export async function getPostgresAdminDashboard(): Promise<AdminDashboardResult>
       month,
       total: paiseToRupeeString(total),
     })),
-    regionalPerformance: Array.from(regionalMonthlyTotals.entries()).map(([month, totals]) => {
-      const point = SALES_REGIONS.reduce((acc, region) => {
-        acc[region] = paiseToRupeeString(totals[region]);
-        return acc;
-      }, { month } as AdminDashboardResult["regionalPerformance"][number]);
-      return point;
-    }),
+    regionalGranularity,
+    regionalPerformance: Array.from(regionalMonthlyTotals.entries())
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([period, totals]) => {
+        const point = SALES_REGIONS.reduce((acc, region) => {
+          acc[region] = paiseToRupeeString(totals[region]);
+          return acc;
+        }, { month: period, period } as AdminDashboardResult["regionalPerformance"][number]);
+        return point;
+      }),
     topDealers,
     topDistributorsByRegion,
     warnings: [],

@@ -7,7 +7,9 @@ import { useInvoiceManager, Invoice } from "@/hooks/useInvoicemanager";
 interface InvoiceModalProps {
   isOpen:   boolean;
   onClose:  () => void;
-  dealerId: string; 
+  // Route params reach callers as string | string[] | undefined, so this is
+  // widened rather than casting the lie away at each call site.
+  dealerId?: string | number | null;
 }
 
 export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
@@ -21,20 +23,26 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
   const [toastMsg,        setToastMsg       ] = useState<{ type: "success"|"error"; text: string } | null>(null);
 
+  // Collapsed to one stable string so the effect's dependency list keeps a
+  // constant size even while the caller's dealer id is still resolving.
+  const scopedDealerId = dealerId == null ? "" : String(dealerId).trim();
+
   useEffect(() => {
     if (isOpen) {
-      fetchInvoicesList();
+      // Scope the list to the dealer whose ledger opened this modal; without it
+      // an admin viewing one dealer sees every dealer's invoices.
+      fetchInvoicesList(scopedDealerId);
       setSearchQuery("");
       setSelectedInvoice(null);
     }
-  }, [isOpen, fetchInvoicesList]);
+  }, [isOpen, scopedDealerId, fetchInvoicesList]);
 
   if (!isOpen) return null;
 
   const filtered = invoices.filter(inv =>
     searchQuery === "" ||
-    inv.invoice_number.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    inv.buyer_name.toLowerCase().includes(searchQuery.toLowerCase())
+    inv.invoiceNumber.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    inv.buyerName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const showToast = (type: "success"|"error", text: string) => {
@@ -49,9 +57,9 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
   };
 
   const handleDelete = async () => {
-    const inv = invoices.find(i => i.invoice_id === deleteConfirmId);
+    const inv = invoices.find(i => i.id === deleteConfirmId);
     if (!inv) return;
-    const res = await removeInvoice(inv.invoice_id, inv.file_path);
+    const res = await removeInvoice(inv.id);
     if (res.success) { showToast("success", "Invoice deleted"); setDeleteConfirmId(null); }
     else showToast("error", res.error || "Delete failed");
   };
@@ -133,18 +141,18 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filtered.map(inv => (
-                    <tr key={inv.invoice_id} className="hover:bg-gray-50/60 transition-colors group">
+                    <tr key={inv.id} className="hover:bg-gray-50/60 transition-colors group">
                       <td className="px-6 py-4">
-                        <p className="font-mono text-[13px] font-bold text-indigo-700">{inv.invoice_number}</p>
-                        <p className="text-[11px] text-gray-400 mt-0.5 font-mono">{inv.invoice_id.slice(-12)}</p>
+                        <p className="font-mono text-[13px] font-bold text-indigo-700">{inv.invoiceNumber}</p>
+                        <p className="text-[11px] text-gray-400 mt-0.5 font-mono">{inv.orderNumber}</p>
                       </td>
-                      <td className="px-6 py-4 text-[13px] text-gray-800 font-medium">{inv.buyer_name || "—"}</td>
+                      <td className="px-6 py-4 text-[13px] text-gray-800 font-medium">{inv.buyerName || "—"}</td>
                       <td className="px-6 py-4 text-[13px] text-gray-600">
-                        {moment(inv.invoice_date).format("DD MMM YYYY")}
-                        <p className="text-[11px] text-gray-400 mt-0.5">{moment(inv.created_at).fromNow()}</p>
+                        {moment(inv.invoiceDate).format("DD MMM YYYY")}
+                        <p className="text-[11px] text-gray-400 mt-0.5">{moment(inv.createdAt).fromNow()}</p>
                       </td>
                       <td className="px-6 py-4 text-right font-mono text-[13px] font-semibold text-gray-900">
-                        ₹{Number(inv.total_amount).toLocaleString("en-IN")}
+                        ₹{Number(inv.totalAmount).toLocaleString("en-IN")}
                       </td>
                       <td className="px-6 py-4">
                         <div className="flex items-center justify-end gap-1.5">
@@ -163,7 +171,7 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
                             Download
                           </button>
                           <button
-                            onClick={() => setDeleteConfirmId(inv.invoice_id)}
+                            onClick={() => setDeleteConfirmId(inv.id)}
                             className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-200 hover:border-red-300 hover:bg-red-50 text-gray-600 hover:text-red-700 rounded-lg text-[11px] font-semibold transition-all"
                           >
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6m5 0V4h4v2"/></svg>
@@ -196,8 +204,8 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
               <div>
-                <h3 className="text-[15px] font-bold text-gray-900">{selectedInvoice.invoice_number}</h3>
-                <p className="text-[12px] text-gray-500 mt-0.5">{selectedInvoice.buyer_name}</p>
+                <h3 className="text-[15px] font-bold text-gray-900">{selectedInvoice.invoiceNumber}</h3>
+                <p className="text-[12px] text-gray-500 mt-0.5">{selectedInvoice.buyerName}</p>
               </div>
               <button onClick={() => setSelectedInvoice(null)} className="w-8 h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 transition-colors">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -206,11 +214,11 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
 
             <div className="px-6 py-5 grid grid-cols-2 gap-4">
               {[
-                { label: "Invoice No.",  value: selectedInvoice.invoice_number  },
-                { label: "Dealer",       value: selectedInvoice.buyer_name      },
-                { label: "Invoice Date", value: moment(selectedInvoice.invoice_date).format("DD MMM YYYY") },
-                { label: "Net Amount",   value: `₹${Number(selectedInvoice.total_amount).toLocaleString("en-IN")}` },
-                { label: "Created",      value: moment(selectedInvoice.created_at).format("DD MMM YYYY  HH:mm") },
+                { label: "Invoice No.",  value: selectedInvoice.invoiceNumber  },
+                { label: "Dealer",       value: selectedInvoice.buyerName      },
+                { label: "Invoice Date", value: moment(selectedInvoice.invoiceDate).format("DD MMM YYYY") },
+                { label: "Net Amount",   value: `₹${Number(selectedInvoice.totalAmount).toLocaleString("en-IN")}` },
+                { label: "Created",      value: moment(selectedInvoice.createdAt).format("DD MMM YYYY  HH:mm") },
               ].map(f => (
                 <div key={f.label}>
                   <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{f.label}</p>
@@ -228,7 +236,7 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
                 Download PDF
               </button>
               <a
-                href={selectedInvoice.file_url}
+                href={`${selectedInvoice.downloadUrl}&mode=inline`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 rounded-xl text-[13px] font-semibold transition-colors"

@@ -1,7 +1,7 @@
 import { useState, useCallback } from "react";
 import {
   generateOrderInvoicePDF,
-  uploadOrderInvoiceToSupabase,
+  uploadOrderInvoice,
   listInvoices,
   deleteInvoice,
   downloadOrderInvoice,
@@ -9,17 +9,19 @@ import {
   InvoiceResult,
 } from "@/lib/invoicegenerator";
 
-// Matches your Supabase `invoices` table exactly
+// Matches the StoredInvoice shape returned by /api/invoices. The PDF is not
+// reachable by URL: downloadUrl points at the authenticated download route.
 export interface Invoice {
-  invoice_id:     string;
-  invoice_number: string;
-  dealer_id:      string;
-  buyer_name:     string;
-  file_url:       string;
-  file_path:      string;
-  invoice_date:   string;
-  total_amount:   number;
-  created_at:     string;
+  id:            string;
+  invoiceNumber: string;
+  orderNumber:   string;
+  dealerId:      string;
+  buyerName:     string;
+  invoiceDate:   string;
+  totalAmount:   number;
+  fileName:      string;
+  downloadUrl:   string;
+  createdAt:     string;
 }
 
 export function useInvoiceManager() {
@@ -27,13 +29,13 @@ export function useInvoiceManager() {
   const [error,     setError    ] = useState<string | null>(null);
   const [invoices,  setInvoices ] = useState<Invoice[]>([]);
 
-  /** Generate PDF from order data and upload to Supabase */
+  /** Generate PDF from order data and upload it to cloud storage */
   const generateAndUpload = useCallback(async (order: OrderInvoiceData): Promise<InvoiceResult> => {
     setIsLoading(true);
     setError(null);
     try {
       const blob   = await generateOrderInvoicePDF(order);
-      const result = await uploadOrderInvoiceToSupabase(blob, order);
+      const result = await uploadOrderInvoice(blob, order);
       if (!result.success) setError(result.error || "Upload failed");
       return result;
     } catch (err) {
@@ -50,7 +52,7 @@ export function useInvoiceManager() {
     return downloadOrderInvoice(order);
   }, []);
 
-  /** Fetch all invoices list from Supabase */
+  /** Fetch the invoice list the current actor is allowed to see */
   const fetchInvoicesList = useCallback(async (_dealerId?: string) => {
     setIsLoading(true);
     setError(null);
@@ -71,16 +73,16 @@ export function useInvoiceManager() {
     }
   }, []);
 
-  /** Download an already-stored invoice via its file_url */
+  /** Download an already-stored invoice through the authenticated route */
   const downloadStoredInvoice = useCallback(async (invoice: Invoice): Promise<InvoiceResult> => {
     try {
-      const response = await fetch(invoice.file_url);
+      const response = await fetch(invoice.downloadUrl, { credentials: "include", cache: "no-store" });
       if (!response.ok) throw new Error("Failed to fetch file");
       const blob = await response.blob();
       const url  = URL.createObjectURL(blob);
       const link = document.createElement("a");
       link.href     = url;
-      link.download = `${invoice.invoice_number.replace(/\//g, "-")}.pdf`;
+      link.download = invoice.fileName || `${invoice.invoiceNumber.replace(/\//g, "-")}.pdf`;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -93,14 +95,14 @@ export function useInvoiceManager() {
     }
   }, []);
 
-  /** Delete an invoice from Supabase storage + DB */
-  const removeInvoice = useCallback(async (invoiceId: string, filePath: string): Promise<InvoiceResult> => {
+  /** Delete an invoice (soft-deletes the record, releases the stored PDF) */
+  const removeInvoice = useCallback(async (invoiceId: string): Promise<InvoiceResult> => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await deleteInvoice(invoiceId, filePath);
+      const result = await deleteInvoice(invoiceId);
       if (result.success) {
-        setInvoices(prev => prev.filter(inv => inv.invoice_id !== invoiceId));
+        setInvoices(prev => prev.filter(inv => inv.id !== invoiceId));
       } else {
         setError(result.error || "Delete failed");
       }

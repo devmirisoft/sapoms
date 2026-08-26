@@ -1,0 +1,9 @@
+/categories/test-slug
+/dashboard/admin/dealer/1
+/dashboard/admin/dealer/1/ledger
+/dashboard/admin/dealer/1/view
+/dashboard/admin/staff/1
+/dashboard/staff/dealer/1
+/orders/1
+/Pages/ledger/1
+/Products/TESTSKU

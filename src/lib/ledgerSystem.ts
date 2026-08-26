@@ -1,6 +1,6 @@
 import "server-only";
 
-import { OrderAcceptanceStatus, OrderFulfilmentStatus, OrderStatus, WalletTransactionType, type Prisma } from "@prisma/client";
+import { OrderAcceptanceStatus, OrderFulfilmentStatus, OrderStatus, Prisma, WalletTransactionType } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
 import { isStaffLike } from "@/server/auth/sales-scope";
@@ -38,6 +38,9 @@ const orderInclude = {
   },
   assignedStaff: { select: { id: true, displayName: true } },
   items: { orderBy: { id: "asc" as const } },
+  // Required by mapPostgresOrderToLegacy, which derives the order's settled
+  // position from its bills.
+  ledgerBills: { orderBy: { billDate: "desc" as const } },
 } satisfies Prisma.OrderInclude;
 
 type LedgerClient = Pick<Prisma.TransactionClient, "dealerProfile" | "dealerStaffAssignment" | "order" | "dealerWallet" | "walletTransaction" | "$executeRaw">;
@@ -52,6 +55,7 @@ type LedgerBillRecord = {
   billDate: Date | string
   pdfName?: string | null
   pdfUrl?: string | null
+  pdfFiles?: Prisma.JsonValue
   paidAmountPaise: bigint | number | null
   lastPaymentDate?: Date | string | null
   createdAt: Date
@@ -98,6 +102,43 @@ function normalizeDealer(dealer: DealerRecord | LedgerOrder["dealer"], wallet?: 
   };
 }
 
+export type LedgerBillPdf = {
+  name: string
+  url: string
+  downloadUrl?: string
+  publicId?: string
+  bytes?: number
+}
+
+// Cloudinary serves raw files inline; fl_attachment flips it to a download.
+function attachmentUrl(url: string) {
+  return url.includes("/upload/") ? url.replace("/upload/", "/upload/fl_attachment/") : url;
+}
+
+export function parseLedgerBillPdfs(value: unknown): LedgerBillPdf[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    if (!entry || typeof entry !== "object") return [];
+    const record = entry as Record<string, unknown>;
+    const url = String(record.url ?? "").trim();
+    if (!url) return [];
+    const name = String(record.name ?? "").trim() || "Bill PDF";
+    const downloadUrl = String(record.downloadUrl ?? "").trim() || attachmentUrl(url);
+    const publicId = String(record.publicId ?? "").trim();
+    const bytes = Number(record.bytes ?? 0);
+    return [{ name, url, downloadUrl, ...(publicId ? { publicId } : {}), ...(Number.isFinite(bytes) && bytes > 0 ? { bytes } : {}) }];
+  });
+}
+
+// Bills saved before multi-file uploads only carry pdfName / pdfUrl.
+function ledgerBillPdfs(bill: LedgerBillRecord): LedgerBillPdf[] {
+  const stored = parseLedgerBillPdfs(bill.pdfFiles);
+  if (stored.length > 0) return stored;
+  if (!bill.pdfUrl) return [];
+  const url = bill.pdfUrl;
+  return [{ name: bill.pdfName || "Bill PDF", url, downloadUrl: attachmentUrl(url) }];
+}
+
 function normalizeLedgerBill(bill: LedgerBillRecord) {
   return {
     id: bill.id.toString(),
@@ -109,6 +150,7 @@ function normalizeLedgerBill(bill: LedgerBillRecord) {
     billDate: normalizeDateOnly(bill.billDate) || "",
     pdfName: bill.pdfName || "Bill PDF pending",
     pdfUrl: bill.pdfUrl || undefined,
+    pdfFiles: ledgerBillPdfs(bill),
     paidAmount: money(bill.paidAmountPaise),
     lastPaymentDate: normalizeDateOnly(bill.lastPaymentDate),
     createdAt: bill.createdAt.toISOString(),
@@ -130,6 +172,16 @@ function orderMode(order: LedgerOrder) {
   if (state === "SupposedToGo") return "Supposed to Go";
   if (state === "Awaiting") return "Awaiting Confirm";
   return "Cancelled";
+}
+
+/* The advance->credit closing debit and the settlement credits that draw it
+   down are internal movements of money the dealer had already paid. Counting
+   either one would swing the dealer's outstanding by the residual, so they are
+   excluded from the ledger totals entirely. */
+export function isSettlementTransaction(metadata: Prisma.JsonValue | null | undefined) {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) return false;
+  const meta = metadata as Record<string, unknown>;
+  return Boolean(meta.walletSettlementClosing) || Boolean(meta.walletSettlementApplication);
 }
 
 export function ledgerTransactionDirection(type: WalletTransactionType, metadata: Prisma.JsonValue | null | undefined, orderId?: bigint | null) {
@@ -200,6 +252,7 @@ function summarizeOrders(orders: LedgerOrder[]): AccountBookSummary {
 
 export function summarizeWalletForLedger(transactions: Array<{ type: WalletTransactionType; amountPaise: bigint; metadata: Prisma.JsonValue | null; orderId?: bigint | null }>) {
   return transactions.reduce((totals, tx) => {
+    if (isSettlementTransaction(tx.metadata)) return totals;
     const amount = toPaise(money(tx.amountPaise));
     if (ledgerTransactionDirection(tx.type, tx.metadata, tx.orderId) === "credit") totals.creditPaise += amount;
     else totals.debitPaise += amount;
@@ -328,6 +381,19 @@ export async function getDealerLedgerTransactions(actor: AuthActor, rawDealerId:
   return { data: allTransactions.slice(start, start + pageSize), count, page, pageSize, totalPages, hasNextPage: page < totalPages, hasPreviousPage: page > 1 };
 }
 
+export async function getLedgerBillPdf(actor: AuthActor, rawDealerId: string, rawBillId: string, index: number) {
+  const dealerId = parseBigIntId(rawDealerId, "dealer id");
+  if (!(await canAccessDealer(prisma, actor, dealerId))) throw Object.assign(new Error("Ledger access denied."), { status: 403 });
+
+  const billId = parseBigIntId(rawBillId, "bill id");
+  const bill = await prisma.ledgerBill.findFirst({ where: { id: billId, dealerId } });
+  if (!bill) throw Object.assign(new Error("Ledger bill not found."), { status: 404 });
+
+  const file = ledgerBillPdfs(bill)[index];
+  if (!file) throw Object.assign(new Error("Bill PDF not found."), { status: 404 });
+  return file;
+}
+
 export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, body: Record<string, unknown>) {
   const dealerId = parseBigIntId(rawDealerId, "dealer id");
   if (actor.role !== "ACCOUNTANT") throw Object.assign(new Error("Only Accountant can save ledger bills."), { status: 403 });
@@ -346,11 +412,16 @@ export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, bo
 
   const billDate = parseDateOnly(body.billDate, "bill date");
   const billAmountPaise = toPaise(billAmount);
-  const pdfNames = Array.isArray(body.pdfNames)
-    ? body.pdfNames.map((value) => String(value || "").trim()).filter(Boolean)
-    : [String(body.pdfName || "").trim()].filter(Boolean);
+  const uploadedPdfs = parseLedgerBillPdfs(body.pdfFiles);
+  const pdfNames = uploadedPdfs.length > 0
+    ? uploadedPdfs.map((file) => file.name)
+    : Array.isArray(body.pdfNames)
+      ? body.pdfNames.map((value) => String(value || "").trim()).filter(Boolean)
+      : [String(body.pdfName || "").trim()].filter(Boolean);
   const pdfName = pdfNames.join(", ").slice(0, 255) || null;
-  const pdfUrl = String(body.pdfUrl || "").trim().slice(0, 4000) || null;
+  const pdfUrl = (uploadedPdfs[0]?.url || String(body.pdfUrl || "").trim()).slice(0, 4000) || null;
+  // Leave the stored PDFs untouched when an edit does not re-send them.
+  const hasPdfInput = uploadedPdfs.length > 0 || pdfNames.length > 0;
 
   return prisma.$transaction(async (tx) => {
     const dealer = await tx.dealerProfile.findFirst({ where: { id: dealerId, deletedAt: null, user: { status: "ACTIVE" } }, select: { id: true } });
@@ -372,8 +443,9 @@ export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, bo
             billAmountPaise,
             gstPercent,
             billDate,
-            pdfName,
-            pdfUrl,
+            ...(hasPdfInput
+              ? { pdfName, pdfUrl, pdfFiles: uploadedPdfs.length > 0 ? (uploadedPdfs as Prisma.InputJsonValue) : Prisma.DbNull }
+              : {}),
             paidAmountPaise,
           },
         })
@@ -387,6 +459,7 @@ export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, bo
             billDate,
             pdfName,
             pdfUrl,
+            ...(uploadedPdfs.length > 0 ? { pdfFiles: uploadedPdfs as Prisma.InputJsonValue } : {}),
           },
         });
 

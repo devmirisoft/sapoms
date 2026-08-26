@@ -12,6 +12,53 @@ function splitCsv(value: unknown) {
   return String(value || "").split(",").map(s => s.trim()).filter(Boolean)
 }
 
+function formatAmount(value: unknown) {
+  const raw = String(value ?? "").trim()
+  if (!raw) return '-'
+  const numeric = Number(raw)
+  return Number.isFinite(numeric) ? `₹${numeric.toLocaleString('en-IN')}` : raw
+}
+
+function ContactCard({
+  heading, isPriority, name, phone, email,
+}: {
+  heading: string
+  isPriority: boolean
+  name?: string
+  phone?: string
+  email?: string
+}) {
+  return (
+    <div className={`rounded-lg border p-4 ${isPriority ? 'border-indigo-300 bg-indigo-50/50' : 'border-gray-200 bg-gray-50/60'}`}>
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide mr-10">{heading}</span>
+        {isPriority && (
+          <span
+            title="Priority person — used for calls"
+            className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+          >
+           Priority
+          </span>
+        )}
+      </div>
+      <dl className="grid grid-cols-1 gap-2">
+        <div>
+          <dt className="text-xs text-gray-500">Name</dt>
+          <dd className="text-sm text-gray-800">{name || '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-gray-500">Phone</dt>
+          <dd className="text-sm text-gray-800">{phone || '—'}</dd>
+        </div>
+        <div>
+          <dt className="text-xs text-gray-500">Email</dt>
+          <dd className="text-sm text-gray-800">{email || '—'}</dd>
+        </div>
+      </dl>
+    </div>
+  )
+}
+
 export default function DealerViewPage() {
   const params = useParams()
   const dealerId = String(params.dealerId || "")
@@ -50,6 +97,8 @@ export default function DealerViewPage() {
   )
 
   const assigned = splitCsv(dealer.assignedstaff)
+  const priorityPerson = dealer.priorityContact === "secondary" ? "secondary" : "primary"
+  const isWalletActive = String(dealer.walletStatus || "").toLowerCase() === "active"
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
@@ -92,6 +141,29 @@ export default function DealerViewPage() {
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
+            <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Point of Contact</h2>
+            <p className="text-xs text-gray-500 -mt-3 mb-4">
+              Calls go to <span className="font-semibold text-gray-700">{priorityPerson === "secondary" ? "Contact 2" : "Contact 1"}</span>
+            </p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <ContactCard
+                heading="Contact 1"
+                isPriority={priorityPerson === "primary"}
+                name={dealer.Dealer_Name}
+                phone={dealer.Dealer_Number}
+                email={dealer.Dealer_Email}
+              />
+              <ContactCard
+                heading="Contact 2"
+                isPriority={priorityPerson === "secondary"}
+                name={dealer.secondaryContactName}
+                phone={dealer.secondaryContactPhone}
+                email={dealer.secondaryContactEmail}
+              />
+            </div>
+          </div>
+
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Account & Credentials</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
@@ -117,21 +189,36 @@ export default function DealerViewPage() {
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Financial</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
+                <div className="text-xs text-gray-500">Payment Type</div>
+                <div className="text-sm text-gray-800 flex items-center gap-2">
+                  {isWalletActive ? 'Advance (Wallet)' : 'Credit'}
+                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                    isWalletActive ? 'bg-emerald-100 text-emerald-700' : 'bg-gray-100 text-gray-600'
+                  }`}>
+                    Wallet {isWalletActive ? 'active' : 'inactive'}
+                  </span>
+                </div>
+              </div>
+              <div>
                 <div className="text-xs text-gray-500">Discount %</div>
                 <div className="text-sm text-gray-800">{dealer.discount || '-'}</div>
               </div>
               <div>
-                <div className="text-xs text-gray-500">Credit Days</div>
-                <div className="text-sm text-gray-800">{dealer.creditdays || '-'}</div>
-              </div>
-              <div>
                 <div className="text-xs text-gray-500">Annual Target</div>
-                <div className="text-sm text-gray-800">{dealer.annualtarget || '-'}</div>
+                <div className="text-sm text-gray-800">{formatAmount(dealer.annualtarget)}</div>
               </div>
-              <div>
-                <div className="text-xs text-gray-500">Current Limit</div>
-                <div className="text-sm text-gray-800">{dealer.currentlimit || '-'}</div>
-              </div>
+              {!isWalletActive && (
+                <>
+                  <div>
+                    <div className="text-xs text-gray-500">Credit Days</div>
+                    <div className="text-sm text-gray-800">{dealer.creditdays || '-'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-500">Current Limit</div>
+                    <div className="text-sm text-gray-800">{formatAmount(dealer.currentlimit)}</div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 

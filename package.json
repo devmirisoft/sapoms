@@ -8,9 +8,11 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "postinstall": "prisma generate",
     "start": "next start",
     "lint": "eslint",
     "test:crash": "node scripts/smoke-client-crash.mjs",
+    "test:invoice-storage": "node -r dotenv/config scripts/verify-invoice-storage.mjs",
     "auth:create-user": "node scripts/create-auth-user.mjs"
   },
   "dependencies": {

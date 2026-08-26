@@ -2,14 +2,14 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import places from '@/../public/data/places.json'
+import { STATE_OPTIONS, CITIES_BY_STATE, citiesForStates, statesForCities } from '@/lib/places'
 import { SALES_REGION_OPTIONS } from '@/lib/salesRegions'
 
 const ADMIN_STAFF_URL = '/api/admin/staff'
 const STAFF_LIST_ROUTE = '/dashboard/admin/staff/stafflist'
 
 const roleOptions = [
-  { value: 'EXECUTIVE', label: 'Executive', authRole: 'STAFF', staffRoleType: '1' },
+  { value: 'EXECUTIVE', label: 'Sales Manager', authRole: 'STAFF', staffRoleType: '1' },
   { value: 'FIELD_EXECUTIVE', label: 'Staff', authRole: 'STAFF', staffRoleType: '2' },
   { value: 'RSM', label: 'RSM', authRole: 'RSM', staffRoleType: 'RSM' },
   { value: 'ASM', label: 'ASM', authRole: 'ASM', staffRoleType: 'ASM' },
@@ -29,9 +29,9 @@ type StaffOption = {
   staffRoleType: string
   parentRsmId?: string
   assignedStates: string[]
+  assignedCities: string[]
   parentRsm?: { id: string; name: string } | null
 }
-type PlacesData = { states?: string[]; union_territories?: string[] }
 
 function getRoleOption(value: StaffFormRole) {
   return roleOptions.find((option) => option.value === value)
@@ -65,6 +65,11 @@ function mapStaffOption(value: unknown): StaffOption {
       ? row.assignedStates.map(String)
       : Array.isArray(row.assigned_states)
         ? row.assigned_states.map(String)
+        : [],
+    assignedCities: Array.isArray(row.assignedCities)
+      ? row.assignedCities.map(String)
+      : Array.isArray(row.assigned_cities)
+        ? row.assigned_cities.map(String)
         : [],
     parentRsm: row.parentRsm as StaffOption['parentRsm'],
   }
@@ -227,12 +232,11 @@ export default function EditStaffPage() {
   const [parentRsmId, setParentRsmId] = useState('')
   const [parentAsmId, setParentAsmId] = useState('')
   const [assignedStates, setAssignedStates] = useState<string[]>([])
+  const [assignedCities, setAssignedCities] = useState<string[]>([])
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
 
-  const placeOptions = useMemo(() => {
-    const data = places as PlacesData
-    return [...(data.states ?? []), ...(data.union_territories ?? [])].sort((a, b) => a.localeCompare(b))
-  }, [])
+  const placeOptions = STATE_OPTIONS
+  const citiesByState = CITIES_BY_STATE
 
   const rsmOptions = useMemo(
     () => staffOptions.filter((staff) => staff.role === 'RSM'),
@@ -250,6 +254,17 @@ export default function EditStaffPage() {
     [selectedRsm],
   )
   const stateOptions = role === 'RSM' ? placeOptions : asmStateOptions
+  // Cities a Sales Manager may cover: those already assigned to its ASM, grouped by state.
+  const selectedAsmCities = useMemo(
+    () => (selectedAsm?.assignedCities?.length ? [...selectedAsm.assignedCities].sort((a, b) => a.localeCompare(b)) : []),
+    [selectedAsm],
+  )
+  const smCitiesByState = useMemo(() => {
+    const scope = selectedAsm?.assignedStates?.length ? selectedAsm.assignedStates : statesForCities(selectedAsmCities)
+    return scope
+      .map((state) => ({ state, cities: (citiesByState[state] ?? []).filter((city) => selectedAsmCities.includes(city)) }))
+      .filter((group) => group.cities.length)
+  }, [selectedAsm, selectedAsmCities, citiesByState])
 
   useEffect(() => {
     if (!toastMsg) return
@@ -275,6 +290,16 @@ export default function EditStaffPage() {
     const validStates = new Set(asmStateOptions)
     setAssignedStates((current) => current.filter((state) => validStates.has(state)))
   }, [role, parentRsmId, asmStateOptions])
+
+  // Drop any ASM city whose state is no longer selected.
+  useEffect(() => {
+    if (role !== 'ASM') return
+    const validCities = new Set(citiesForStates(assignedStates))
+    setAssignedCities((current) => {
+      const next = current.filter((city) => validCities.has(city))
+      return next.length === current.length ? current : next
+    })
+  }, [role, assignedStates])
 
   useEffect(() => {
     if (!id) return
@@ -322,6 +347,13 @@ export default function EditStaffPage() {
               ? data.assigned_states.map(String)
               : [],
         )
+        setAssignedCities(
+          Array.isArray(data.assignedCities)
+            ? data.assignedCities.map(String)
+            : Array.isArray(data.assigned_cities)
+              ? data.assigned_cities.map(String)
+              : [],
+        )
         setStaffid(String(data.staff_id || data.id || ''))
       } catch (error) {
         setToastMsg({
@@ -340,6 +372,18 @@ export default function EditStaffPage() {
     setParentRsmId('')
     setParentAsmId('')
     setAssignedStates([])
+    setAssignedCities([])
+  }
+
+  const handleParentAsmChange = (nextParentAsmId: string) => {
+    setParentAsmId(nextParentAsmId)
+    if (role !== 'EXECUTIVE') return
+    // Scoped to the newly selected ASM — drop cities it does not cover.
+    const validCities = new Set(asmOptions.find((staff) => staff.id === nextParentAsmId)?.assignedCities || [])
+    setAssignedCities((current) => {
+      const next = current.filter((city) => validCities.has(city))
+      return next.length === current.length ? current : next
+    })
   }
 
   const handleParentRsmChange = (nextParentRsmId: string) => {
@@ -357,6 +401,14 @@ export default function EditStaffPage() {
       current.includes(state)
         ? current.filter((entry) => entry !== state)
         : [...current, state].sort((a, b) => a.localeCompare(b)),
+    )
+  }
+
+  const toggleCity = (city: string) => {
+    setAssignedCities((current) =>
+      current.includes(city)
+        ? current.filter((entry) => entry !== city)
+        : [...current, city].sort((a, b) => a.localeCompare(b)),
     )
   }
 
@@ -400,6 +452,7 @@ export default function EditStaffPage() {
           parentRsmId: role === 'ASM' || role === 'FIELD_EXECUTIVE' ? parentRsmId : undefined,
           parentAsmId: role === 'EXECUTIVE' ? parentAsmId : undefined,
           assignedStates: role === 'ASM' || role === 'RSM' ? assignedStates : undefined,
+          assignedCities: role === 'ASM' || role === 'EXECUTIVE' ? assignedCities : undefined,
         }),
       })
 
@@ -653,7 +706,7 @@ export default function EditStaffPage() {
                       <select
                         required
                         value={parentAsmId}
-                        onChange={(event) => setParentAsmId(event.target.value)}
+                        onChange={(event) => handleParentAsmChange(event.target.value)}
                         className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
                       >
                         <option value="" disabled>Select ASM</option>
@@ -699,6 +752,75 @@ export default function EditStaffPage() {
                         </p>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {role === 'ASM' && (
+                  <div className="md:col-span-2 flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">Cities</label>
+                    <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                      {assignedStates.length ? (
+                        assignedStates.map((state) => (
+                          <div key={state} className="mb-2 last:mb-0">
+                            <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{state}</p>
+                            {citiesByState[state]?.length ? (
+                              citiesByState[state].map((city) => (
+                                <label
+                                  key={city}
+                                  className="flex cursor-pointer items-center gap-3 rounded px-2 py-1.5 text-sm hover:bg-gray-50"
+                                >
+                                  <input
+                                    type="checkbox"
+                                    checked={assignedCities.includes(city)}
+                                    onChange={() => toggleCity(city)}
+                                    className="h-4 w-4 accent-indigo-600"
+                                  />
+                                  <span>{city}</span>
+                                </label>
+                              ))
+                            ) : (
+                              <p className="px-2 py-1 text-xs text-gray-400">No cities listed for this state.</p>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="px-2 py-2 text-sm text-gray-500">Select states above to choose cities.</p>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {role === 'EXECUTIVE' && (
+                  <div className="md:col-span-2 flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">Cities</label>
+                    <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                      {smCitiesByState.length ? (
+                        smCitiesByState.map(({ state, cities }) => (
+                          <div key={state} className="mb-2 last:mb-0">
+                            <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{state}</p>
+                            {cities.map((city) => (
+                              <label
+                                key={city}
+                                className="flex cursor-pointer items-center gap-3 rounded px-2 py-1.5 text-sm hover:bg-gray-50"
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={assignedCities.includes(city)}
+                                  onChange={() => toggleCity(city)}
+                                  className="h-4 w-4 accent-indigo-600"
+                                />
+                                <span>{city}</span>
+                              </label>
+                            ))}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="px-2 py-2 text-sm text-gray-500">
+                          {parentAsmId ? 'Selected ASM has no cities assigned.' : 'Select an ASM to choose cities.'}
+                        </p>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-gray-500">Limited to the cities assigned to the selected ASM.</span>
                   </div>
                 )}
               </div>

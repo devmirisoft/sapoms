@@ -8,12 +8,15 @@ import { isStaffLike } from "@/server/auth/sales-scope";
 import { normalizeSku } from "@/lib/orderProductNotes.mjs";
 import { PostgresOrderStatusError, findPostgresStatusOrder } from "@/lib/postgresOrderStatus";
 import { mapPostgresOrderItemToLegacy, mapPostgresOrderToLegacy, type PostgresOrderRecord } from "@/lib/postgresOrders";
-import { normalizeDispatchOrderItemId, normalizeDispatchRemark, normalizeDispatchStatus, safeDispatchInteger, type DispatchStatus, type OrderDispatchRecord } from "@/lib/orderDispatch";
+import { normalizeDispatchOrderItemId, normalizeDispatchRemark, normalizeDispatchStatus, normalizeDispatchTrackingInput, safeDispatchInteger, type DispatchStatus, type DispatchTrackingInfo, type OrderDispatchRecord } from "@/lib/orderDispatch";
 
 const postgresDispatchOrderInclude = {
   dealer: { select: { id: true, businessName: true, dealerCode: true, phone: true, city: true, address: true, pincode: true, gstin: true, discountPercent: true } },
   assignedStaff: { select: { id: true, displayName: true } },
   items: { orderBy: { id: "asc" as const }, include: { dispatches: { orderBy: { createdAt: "asc" as const } } } },
+  // The dispatch response re-maps the order through mapPostgresOrderToLegacy,
+  // which reads bills to report the settled position.
+  ledgerBills: { orderBy: { billDate: "desc" as const } },
 } satisfies Prisma.OrderInclude;
 
 type PostgresDispatchOrder = Prisma.OrderGetPayload<{ include: typeof postgresDispatchOrderInclude }>;
@@ -99,7 +102,46 @@ export async function findPostgresOrderDispatchPayload(orderId: unknown, actor: 
   const order = await loadPostgresDispatchOrder(orderId);
   if (!order) return null;
   if (!await canRead(actor, order)) throw new PostgresOrderStatusError(403, "forbidden", "Unauthorized dispatch access");
-  return { order, records: mapPostgresOrderDispatchRecords(order) };
+  return { order, records: mapPostgresOrderDispatchRecords(order), tracking: mapPostgresDispatchTracking(order) };
+}
+
+export function mapPostgresDispatchTracking(order: Pick<PostgresDispatchOrder, "dispatchPartner" | "trackingNumber" | "trackingLink" | "dock">): DispatchTrackingInfo {
+  return {
+    dispatchPartner: order.dispatchPartner || null,
+    trackingNumber: order.trackingNumber || null,
+    trackingLink: order.trackingLink || null,
+    dock: order.dock || null,
+  };
+}
+
+// Order-level dispatch tracking information. Writers are the same roles that
+// may record a dispatch update; dealers are read-only via canWrite().
+export async function applyPostgresOrderDispatchTracking(orderId: unknown, actor: AuthActor, input: {
+  dispatchPartner?: unknown;
+  trackingNumber?: unknown;
+  trackingLink?: unknown;
+  dock?: unknown;
+}) {
+  const order = await loadPostgresDispatchOrder(orderId);
+  if (!order) return null;
+  if (!await canWrite(actor, order)) throw new PostgresOrderStatusError(403, "forbidden", "Unauthorized or unassigned dispatch update");
+  if (order.acceptanceStatus !== "ACCEPTED") throw new PostgresOrderStatusError(409, "not_accepted", "Order must be accepted before dispatch.");
+  if (order.status === "CANCELLED" || order.status === "DECLINED") throw new PostgresOrderStatusError(409, "terminal_order", "Terminal orders cannot be dispatched.");
+
+  const validated = normalizeDispatchTrackingInput(input);
+  if (!validated.ok) throw new PostgresOrderStatusError(400, "invalid_tracking", validated.message);
+
+  const updated = await prisma.order.update({
+    where: { id: order.id },
+    data: validated.value,
+    include: postgresDispatchOrderInclude,
+  });
+
+  return {
+    order: mapPostgresOrderToLegacy(updated as unknown as PostgresOrderRecord),
+    tracking: mapPostgresDispatchTracking(updated),
+    records: mapPostgresOrderDispatchRecords(updated).map(mapPostgresDispatchRecordForResponse),
+  };
 }
 
 export async function getPostgresPendingProductParts(orders: Array<Record<string, unknown>>) {
@@ -183,7 +225,7 @@ function resolveRequestedItem(order: PostgresDispatchOrder, input: DispatchLineI
   return null;
 }
 
-export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthActor, input: { items?: unknown[]; dispatchQuantity?: unknown; status?: unknown; remark?: unknown; orderItemId?: unknown; sku?: unknown; occurrence?: unknown; }) {
+export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthActor, input: { items?: unknown[]; dispatchQuantity?: unknown; status?: unknown; remark?: unknown; orderItemId?: unknown; sku?: unknown; occurrence?: unknown; dispatchPartner?: unknown; trackingNumber?: unknown; trackingLink?: unknown; dock?: unknown; }) {
   const order = await loadPostgresDispatchOrder(orderId);
   if (!order) return null;
   if (!await canWrite(actor, order)) throw new PostgresOrderStatusError(403, "forbidden", "Unauthorized or unassigned dispatch update");
@@ -192,6 +234,15 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
 
   const remark = normalizeDispatchRemark(input.remark, 500);
   if (!remark) throw new PostgresOrderStatusError(400, "blank_remark", "Operational remark is required");
+
+  // Tracking information is optional here; when the dispatching staff member
+  // supplies it with the update it is saved on the same order record.
+  const trackingKeys = ["dispatchPartner", "trackingNumber", "trackingLink", "dock"] as const;
+  const hasTrackingInput = trackingKeys.some((key) => input[key] !== undefined);
+  const validatedTracking = hasTrackingInput ? normalizeDispatchTrackingInput(input) : null;
+  if (validatedTracking && !validatedTracking.ok) {
+    throw new PostgresOrderStatusError(400, "invalid_tracking", validatedTracking.message);
+  }
 
   const rawLines = Array.isArray(input.items) && input.items.length > 0 ? input.items : [input];
   const lines = rawLines.map((line) => line && typeof line === "object" ? line as DispatchLineInput : null);
@@ -231,6 +282,7 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
         fulfilmentStatus: nextFulfilment,
         status: orderStatusForFulfilment(nextFulfilment),
         dispatchedAt: nextFulfilment === "DISPATCHED" ? now : order.dispatchedAt,
+        ...(validatedTracking?.ok ? validatedTracking.value : {}),
       },
       include: postgresDispatchOrderInclude,
     });
@@ -238,6 +290,7 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
 
   return {
     order: mapPostgresOrderToLegacy(updated as unknown as PostgresOrderRecord),
+    tracking: mapPostgresDispatchTracking(updated),
     records: mapPostgresOrderDispatchRecords(updated).map(mapPostgresDispatchRecordForResponse),
   };
 }

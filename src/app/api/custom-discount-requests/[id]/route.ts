@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
-import { buildDealerRegionWhere } from "@/server/auth/sales-scope";
+import { buildDealerRegionWhere, resolveRsmTeamStaffIds } from "@/server/auth/sales-scope";
 import {
   assertDealerScope,
   assertDraftBelongsToDealer,
@@ -12,6 +12,7 @@ import {
   mapCustomDiscount,
   text,
 } from "@/lib/postgresDiscountDrafts";
+import { placeOrderForApprovedDiscount } from "@/lib/discountApprovalOrder";
 
 export const runtime = "nodejs";
 
@@ -33,8 +34,18 @@ async function loadRequest(id: string) {
   return prisma.customDiscountRequest.findUnique({ where: { id: BigInt(id) }, include: customDiscountInclude });
 }
 
-async function assertRsmDiscountScope(actor: AuthActor, dealerId: bigint) {
-  const dealerWhere = await buildDealerRegionWhere(actor, undefined, prisma);
+// Mirrors buildRsmDiscountRequestWhere for a single request: in scope if the
+// dealer sits in the RSM's region, or if the request was raised by a staff
+// member reporting into them.
+async function assertRsmDiscountScope(actor: AuthActor, dealerId: bigint, requestStaffId: bigint | null) {
+  if (requestStaffId) {
+    const teamStaffIds = await resolveRsmTeamStaffIds(actor, prisma);
+    if (teamStaffIds.some((staffId) => staffId === requestStaffId)) return;
+  }
+  // A team request can hold a dealer whose region is unset or set elsewhere, so
+  // an unconfigured region must not fail the whole check on its own.
+  const dealerWhere = await buildDealerRegionWhere(actor, undefined, prisma).catch(() => ({} as Record<string, never>));
+  if (Object.keys(dealerWhere).length === 0) throw Object.assign(new Error("This request is outside your RSM scope"), { status: 403 });
   const scoped = await prisma.dealerProfile.findFirst({ where: { id: dealerId, ...dealerWhere }, select: { id: true } });
   if (!scoped) throw Object.assign(new Error("This request is outside your RSM scope"), { status: 403 });
 }
@@ -65,7 +76,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       const ownerId = row.dealerId.toString();
       if (!actorId || actorId !== ownerId) return NextResponse.json({ success: false, message: "Request not found" }, { status: 404 });
     }
-    if (actor.role === "RSM") await assertRsmDiscountScope(actor, row.dealerId);
+    if (actor.role === "RSM") await assertRsmDiscountScope(actor, row.dealerId, row.staffId);
     else assertDealerScope(actor, row.dealerId);
     return NextResponse.json({ success: true, data: mapCustomDiscount(row) });
   } catch (error) {
@@ -86,7 +97,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const ownerId = existing.dealerId.toString();
       if (!actorId || actorId !== ownerId) return NextResponse.json({ success: false, message: "Request not found" }, { status: 404 });
     }
-    if (actor.role === "RSM") await assertRsmDiscountScope(actor, existing.dealerId);
+    if (actor.role === "RSM") await assertRsmDiscountScope(actor, existing.dealerId, existing.staffId);
     else assertDealerScope(actor, existing.dealerId);
 
     const rawStatus = text(body.status, 40);
@@ -116,6 +127,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data.rsmReviewedByUserId = actor.userId;
       data.rsmReviewedByName = actor.displayName || actor.email;
       data.rsmReviewedAt = new Date();
+      // The RSM review UI posts its note as adminNote; keep it in its own column
+      // so an RSM reason is never confused with, or overwritten by, an Admin one.
+      data.rsmNote = text(body.rsmNote ?? body.rsm_note ?? body.adminNote ?? body.admin_note, 1500) || null;
       if (nextRsmStatus === "REJECTED") {
         data.status = "REJECTED";
         data.allowReorder = false;
@@ -144,12 +158,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         orderDraftId: body.orderDraftId ?? body.order_draft_id ?? existing.orderDraftId?.toString(),
       }, existing.dealerId, existing.staffId);
       await assertDraftBelongsToDealer(rebuilt.orderDraftId, existing.dealerId);
-      Object.assign(data, rebuilt, { status: "PENDING", rsmApprovalStatus: "PENDING", rsmReviewedByUserId: null, rsmReviewedByName: null, rsmReviewedAt: null, adminNote: null, reviewedByUserId: null, reviewedAt: null, allowReorder: false });
+      Object.assign(data, rebuilt, { status: "PENDING", rsmApprovalStatus: "PENDING", rsmReviewedByUserId: null, rsmReviewedByName: null, rsmReviewedAt: null, rsmNote: null, adminNote: null, reviewedByUserId: null, reviewedAt: null, allowReorder: false });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
       let rejectionDraftId: bigint | null = null;
-      if (reviewUpdate && nextStatus === "REJECTED") {
+      // A rejection can come from either stage, so the draft carries whichever
+      // note was written. Both are surfaced structurally in rejection_notes and
+      // flattened into order_note for anything that only reads the text.
+      if ((reviewUpdate && nextStatus === "REJECTED") || (rsmReviewUpdate && nextRsmStatus === "REJECTED")) {
+        const rejectedByRsm = rsmReviewUpdate && nextRsmStatus === "REJECTED";
+        const adminNoteText = rejectedByRsm ? "" : text(data.adminNote, 1500);
+        const rsmNoteText = rejectedByRsm ? text(data.rsmNote, 1500) : text(existing.rsmNote, 1500);
+        const reasonText = (rejectedByRsm ? rsmNoteText : adminNoteText) || DEFAULT_REJECTION_NOTE;
+        const rejectionNotes = {
+          rejected_by: rejectedByRsm ? "RSM" : "ADMIN",
+          rejected_at: new Date().toISOString(),
+          admin_note: adminNoteText || null,
+          rsm_note: rsmNoteText || null,
+          reason: reasonText,
+        };
         const draft = await tx.orderDraft.create({
           data: {
             dealerId: existing.dealerId,
@@ -158,7 +186,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
               rows: rejectionRows(existing),
               shipto: (existing.orderSnapshot as any)?.shipto ?? null,
               refno: (existing.orderSnapshot as any)?.refno ?? null,
-              order_note: [text((existing.orderSnapshot as any)?.orderNote), "--- ADMIN REJECTION NOTE ---", data.adminNote || DEFAULT_REJECTION_NOTE, "Please update your cart and resubmit."].filter(Boolean).join("\n\n"),
+              order_note: [
+                text((existing.orderSnapshot as any)?.orderNote),
+                `--- ${rejectionNotes.rejected_by} REJECTION NOTE ---`,
+                reasonText,
+                // An RSM rejection never reached Admin, so there is no second note.
+                !rejectedByRsm && rsmNoteText ? `--- RSM NOTE ---\n${rsmNoteText}` : "",
+                "Please update your cart and resubmit.",
+              ].filter(Boolean).join("\n\n"),
+              rejection_notes: rejectionNotes,
               source: "custom_discount_rejection",
               source_request_id: existing.id.toString(),
             }),
@@ -167,18 +203,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         });
         rejectionDraftId = draft.id;
       }
-      const row = await tx.customDiscountRequest.update({ where: { id: existing.id }, data, include: customDiscountInclude });
-      if (row.orderDraftId) {
+      let row = await tx.customDiscountRequest.update({ where: { id: existing.id }, data, include: customDiscountInclude });
+
+      // Admin approval places the order straight from the approved snapshot and
+      // retires the draft, so the dealer never has to resubmit what was signed off.
+      let placedOrder: { id: bigint; orderNumber: string } | null = null;
+      if (reviewUpdate && nextStatus === "APPROVED") {
+        const created = await placeOrderForApprovedDiscount(tx, row, { userId: actor.userId });
+        if (created) {
+          placedOrder = { id: created.id, orderNumber: created.orderNumber };
+          row = await tx.customDiscountRequest.update({
+            where: { id: row.id },
+            data: { orderId: created.id },
+            include: customDiscountInclude,
+          });
+        }
+      }
+
+      // A converted draft keeps the status set above; only refresh approval
+      // state when the draft is still the dealer's to edit.
+      if (row.orderDraftId && !placedOrder) {
         await tx.orderDraft.updateMany({
           where: { id: row.orderDraftId, dealerId: row.dealerId },
           data: { approvalState: jsonValue({ approvalRequestId: row.id.toString(), status: String(row.status).toLowerCase(), updatedAt: new Date().toISOString() }) },
         });
       }
-      return { row, rejectionDraftId };
+      return { row, rejectionDraftId, placedOrder };
     });
 
     const dto = mapCustomDiscount(updated.row) as any;
     if (updated.rejectionDraftId) dto.rejectionDraftId = updated.rejectionDraftId.toString();
+    if (updated.placedOrder) {
+      dto.placedOrderId = updated.placedOrder.id.toString();
+      dto.placedOrderNumber = updated.placedOrder.orderNumber;
+    }
     return NextResponse.json({ success: true, data: dto });
   } catch (error) {
     console.error("[PATCH /api/custom-discount-requests/[id]]", error);

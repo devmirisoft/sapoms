@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
 import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
+import { errorStatus } from "@/server/http/auth-error";
 
 import { ensurePostgresDealerRequestIndexes, getPostgresDealerRequestCollection, isPostgresDealerRequestDependencyError } from "@/lib/postgresDealerRequests";
 import { findDealerCodeReservationConflict } from "@/server/modules/dealers/dealer-code.service";
@@ -101,6 +102,10 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error("[GET /api/dealer-requests]", error);
+    const authStatus = errorStatus(error, 0);
+    if (authStatus === 401 || authStatus === 403) {
+      return buildResponseError((error as Error).message, authStatus);
+    }
     const status = isPostgresDealerRequestDependencyError(error) ? 503 : 500;
     return buildResponseError(
       status === 503
@@ -167,6 +172,10 @@ export async function POST(request: NextRequest) {
       return buildResponseError("A pending dealer request already exists for these details", 409);
     }
     console.error("[POST /api/dealer-requests]", error);
+    const authStatus = errorStatus(error, 0);
+    if (authStatus === 401 || authStatus === 403) {
+      return buildResponseError((error as Error).message, authStatus);
+    }
     const status = isPostgresDealerRequestDependencyError(error) ? 503 : 500;
     return buildResponseError(
       status === 503

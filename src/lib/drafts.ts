@@ -26,6 +26,15 @@ export type DraftProductRow = {
   productNote?: string;
 };
 
+/** Written by the discount review when either reviewer rejects a request. */
+export type DraftRejectionNotes = {
+  rejected_by?: "ADMIN" | "RSM" | null;
+  rejected_at?: string | null;
+  admin_note?: string | null;
+  rsm_note?: string | null;
+  reason?: string | null;
+};
+
 export type OrderDraft = {
   id: string;
   dealer_id: string;
@@ -38,6 +47,7 @@ export type OrderDraft = {
   approval_state?: DraftApprovalState | null;
   source?: string;
   source_request_id?: string;
+  rejection_notes?: DraftRejectionNotes | null;
   rows: DraftProductRow[];
   created_at: string;
   updated_at: string;

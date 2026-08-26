@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Save, Upload } from "lucide-react";
+import { Mail, Phone, Save, Upload, Users } from "lucide-react";
+import { staffRoleBadge } from "@/lib/staffRoleLabel";
 
 type DealerSession = {
   Dealer_Id?: string;
@@ -17,6 +18,18 @@ type DealerSession = {
   image?: string;
   name?: string;
   email?: string;
+};
+
+type DealerContact = {
+  id: string;
+  name: string;
+  email: string;
+  phone: string;
+  designation: string;
+  role: string;
+  roleKey: string;
+  roleLabel: string;
+  salesRegion: string;
 };
 
 function readDealerSession(): DealerSession | null {
@@ -72,6 +85,7 @@ export default function DealerProfilePage() {
   const [pincode, setPincode] = useState("");
   const [password, setPassword] = useState("");
   const [image, setImage] = useState<File | null>(null);
+  const [contacts, setContacts] = useState<DealerContact[]>([]);
 
   useEffect(() => {
     const session = readDealerSession();
@@ -95,6 +109,15 @@ export default function DealerProfilePage() {
         setAddress(data.Dealer_Address || "");
         setPincode(data.Dealer_Pincode || "");
         setPassword(data.Dealer_Password || "");
+        // Assigned staff first, then the ASM and RSM they roll up to; the API
+        // already excludes anyone listed twice across those three fields.
+        const team: DealerContact[] = [
+          ...(Array.isArray(data.assignedStaff) ? data.assignedStaff : []),
+          ...(data.asm ? [data.asm] : []),
+          ...(data.rsm ? [data.rsm] : []),
+        ];
+        const seen = new Set<string>();
+        setContacts(team.filter((entry) => entry?.id && !seen.has(entry.id) && seen.add(entry.id)));
       } catch {
         setToast({ text: "Failed to load dealer profile", type: "error" });
       } finally {
@@ -172,7 +195,7 @@ export default function DealerProfilePage() {
         </div>
       )}
 
-      <div className="mx-auto max-w-4xl">
+      <div className="mx-auto max-w-[1840px]">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Dealer Profile</h1>
           <p className="mt-1 text-sm text-gray-500">Update your dealer account and contact details</p>
@@ -192,6 +215,51 @@ export default function DealerProfilePage() {
               <Field label="Pin Code" value={pincode} onChange={setPincode} type="number" />
               <Field label="Password" value={password} onChange={setPassword} type="password" />
             </div>
+          </section>
+
+          <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+            <h2 className="mb-5 flex items-center gap-2 border-b border-gray-100 pb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">
+              <Users className="h-4 w-4 text-gray-400" />
+              Your Sales Team
+            </h2>
+            {contacts.length === 0 ? (
+              <p className="text-sm text-gray-500">No staff has been assigned to your account yet.</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {contacts.map((contact) => {
+                  const badge = staffRoleBadge(contact);
+                  return (
+                    <div key={contact.id} className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-gray-900">{contact.name || "-"}</p>
+                          {contact.designation && (
+                            <p className="mt-0.5 truncate text-xs text-gray-500">{contact.designation}</p>
+                          )}
+                        </div>
+                        <span className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium ${badge.bg} ${badge.text}`}>
+                          {badge.label}
+                        </span>
+                      </div>
+                      <div className="mt-3 space-y-1.5 text-xs text-gray-600">
+                        {contact.email && (
+                          <a href={`mailto:${contact.email}`} className="flex items-center gap-2 hover:text-indigo-600">
+                            <Mail className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                            <span className="truncate">{contact.email}</span>
+                          </a>
+                        )}
+                        {contact.phone && (
+                          <a href={`tel:${contact.phone}`} className="flex items-center gap-2 hover:text-indigo-600">
+                            <Phone className="h-3.5 w-3.5 shrink-0 text-gray-400" />
+                            <span className="truncate">{contact.phone}</span>
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </section>
 
           <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">

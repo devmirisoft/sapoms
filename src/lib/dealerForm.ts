@@ -23,6 +23,10 @@ export type DealerFormValues = {
   name: string;
   email: string;
   whatsapp: string;
+  priorityPerson: "primary" | "secondary";
+  secondaryContactName: string;
+  secondaryContactPhone: string;
+  secondaryContactEmail: string;
   city: string;
   address: string;
   pincode: string;
@@ -35,6 +39,7 @@ export type DealerFormValues = {
   annualTarget: string;
   currentLimit: string;
   notes: string;
+  paymentType: "advance" | "credit";
 };
 
 export type DealerFormSnapshot = DealerFormValues & {
@@ -47,6 +52,10 @@ export const emptyDealerForm: DealerFormValues = {
   name: "",
   email: "",
   whatsapp: "",
+  priorityPerson: "primary",
+  secondaryContactName: "",
+  secondaryContactPhone: "",
+  secondaryContactEmail: "",
   city: "",
   address: "",
   pincode: "",
@@ -59,6 +68,7 @@ export const emptyDealerForm: DealerFormValues = {
   annualTarget: "",
   currentLimit: "",
   notes: "",
+  paymentType: "credit",
 };
 
 function cleanText(value: unknown) {
@@ -96,6 +106,11 @@ export function normalizeDealerFormSnapshot(value: unknown): DealerFormSnapshot 
     name: cleanText(source.name),
     email: cleanText(source.email),
     whatsapp: cleanText(source.whatsapp),
+    // `contactPerson` is the legacy key kept for snapshots stored before the rename to `priorityPerson`.
+    priorityPerson: cleanText(source.priorityPerson ?? source.contactPerson) === "secondary" ? "secondary" : "primary",
+    secondaryContactName: cleanText(source.secondaryContactName),
+    secondaryContactPhone: cleanText(source.secondaryContactPhone),
+    secondaryContactEmail: cleanText(source.secondaryContactEmail),
     city: cleanText(source.city),
     address: cleanText(source.address),
     pincode: cleanText(source.pincode),
@@ -108,6 +123,7 @@ export function normalizeDealerFormSnapshot(value: unknown): DealerFormSnapshot 
     annualTarget: cleanText(source.annualTarget),
     currentLimit: cleanText(source.currentLimit),
     notes: cleanText(source.notes),
+    paymentType: source.paymentType === "advance" ? "advance" : "credit",
     assignedStaffIds: normalizeStaffIds(source.assignedStaffIds),
     staffNames: cleanText(source.staffNames),
     rsmUserId: cleanText(source.rsmUserId),
@@ -127,7 +143,6 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
     { key: "password", label: "Password" },
     { key: "gstNo", label: "GST number" },
     { key: "discount", label: "Discount %" },
-    { key: "creditDays", label: "Credit days" },
     { key: "annualTarget", label: "Annual target" },
     { key: "currentLimit", label: "Current limit" },
   ];
@@ -136,6 +151,11 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
     if (!cleanText(snapshot[field.key])) {
       return `${field.label} is required`;
     }
+  }
+
+  // Advance dealers pay upfront, so credit days do not apply to them.
+  if (snapshot.paymentType !== "advance" && !cleanText(snapshot.creditDays)) {
+    return "Credit days is required";
   }
 
   if (!snapshot.assignedStaffIds.length) {
@@ -150,7 +170,42 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
     return "Enter a valid email address";
   }
 
+  const hasSecondaryContact = Boolean(cleanText(snapshot.secondaryContactName) || cleanText(snapshot.secondaryContactPhone) || cleanText(snapshot.secondaryContactEmail));
+  if (snapshot.priorityPerson === "secondary" || hasSecondaryContact) {
+    if (!cleanText(snapshot.secondaryContactName)) return "Second contact name is required";
+    if (!cleanText(snapshot.secondaryContactPhone)) return "Second contact phone is required";
+    if (!cleanText(snapshot.secondaryContactEmail)) return "Second contact email is required";
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(snapshot.secondaryContactEmail)) {
+      return "Enter a valid second contact email address";
+    }
+  }
+
   return null;
+}
+
+export function getSelectedDealerContact(snapshot: DealerFormSnapshot) {
+  if (snapshot.priorityPerson === "secondary") {
+    return {
+      name: snapshot.secondaryContactName,
+      email: snapshot.secondaryContactEmail,
+      phone: snapshot.secondaryContactPhone,
+    };
+  }
+
+  return {
+    name: snapshot.name,
+    email: snapshot.email,
+    phone: snapshot.whatsapp,
+  };
+}
+
+export const PRIORITY_PERSON_LABELS = {
+  primary: "Contact 1",
+  secondary: "Contact 2",
+} as const;
+
+export function getPriorityPersonLabel(priorityPerson: "primary" | "secondary") {
+  return PRIORITY_PERSON_LABELS[priorityPerson] ?? PRIORITY_PERSON_LABELS.primary;
 }
 
 export function buildDealerPhpFormData(snapshot: DealerFormSnapshot): FormData {
@@ -159,6 +214,10 @@ export function buildDealerPhpFormData(snapshot: DealerFormSnapshot): FormData {
   formData.append("Dealer_Name", snapshot.name);
   formData.append("Dealer_Email", snapshot.email);
   formData.append("Dealer_Number", snapshot.whatsapp);
+  formData.append("Dealer_Contact_Person", snapshot.priorityPerson);
+  formData.append("Dealer_Secondary_Contact_Name", snapshot.secondaryContactName);
+  formData.append("Dealer_Secondary_Contact_Phone", snapshot.secondaryContactPhone);
+  formData.append("Dealer_Secondary_Contact_Email", snapshot.secondaryContactEmail);
   formData.append("Dealer_City", snapshot.city);
   formData.append("Dealer_Address", snapshot.address);
   formData.append("Dealer_Pincode", snapshot.pincode);

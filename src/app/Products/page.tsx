@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
 import { SIDEBAR_CATEGORIES, compactCategoryList } from '@/lib/categories';
 import {
+  addsNothingBeyond,
   getCatalogueProductDescriptor,
   groupProductsBySection,
   matchesCatalogueQuery,
@@ -149,7 +150,9 @@ function ProductCard({ product }: { product: Product }) {
   const variantCount = product.variants?.length ?? 0;
   const leafCat = product.category ?? "";
   const bullet = parseBullets(product.features)[0] ?? "";
-  const descriptor = getCatalogueProductDescriptor(product);
+  const rawDescriptor = getCatalogueProductDescriptor(product);
+  // The descriptor falls back to feature text, which can repeat the bullet line below it.
+  const descriptor = addsNothingBeyond(rawDescriptor, bullet) ? "" : rawDescriptor;
   const multiVariant = variantCount > 1;
   const inStock = product.variants?.some(v => v.inStock) ?? false;
 
@@ -225,8 +228,8 @@ function ProductCard({ product }: { product: Product }) {
           )}
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ fontSize: 10.5, color: "#94a3b8" }}>SKU: {product.sku}</span>
-            {multiVariant && <span style={{ fontSize: 10.5, color: "#64748b" }}>{variantCount} variants</span>}
+            <span style={{ fontSize: 13.5, color: "#414244" }} >SKU: {product.sku}</span>
+            {multiVariant && <span style={{ fontSize: 13.5, color: "#414244" }}>{variantCount} variants</span>}
           </div>
 
           {/* Price block */}
@@ -234,15 +237,15 @@ function ProductCard({ product }: { product: Product }) {
             {displayPrice !== null ? (
               <div style={{ marginBottom: 8 }}>
                 {/* Pack price */}
-                <div style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
+                {/* <div style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
                   <span style={{ fontSize: 15, fontWeight: 800, color: "#1e3a5f" }}>{fmt(displayPrice)}</span>
                   {sale !== null && regular !== null && (
                     <span style={{ fontSize: 11, color: "#94a3b8", textDecoration: "line-through" }}>{fmt(regular)}</span>
                   )}
                   {multiVariant && <span style={{ fontSize: 10, color: "#64748b" }}>onwards</span>}
-                </div>
+                </div> */}
                 {/* Pack size + per unit */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+                {/* <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
                   {packSize > 1 && (
                     <span style={{ fontSize: 10.5, color: "#64748b", background: "#f1f5f9", padding: "1px 6px", borderRadius: 4 }}>
                       Pack of {packSize}
@@ -253,7 +256,7 @@ function ProductCard({ product }: { product: Product }) {
                       {fmt(perUnitPrice)}/unit
                     </span>
                   )}
-                </div>
+                </div> */}
               </div>
             ) : (
               <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 8px" }}>Price on request</p>

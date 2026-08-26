@@ -5,10 +5,11 @@ import { adminErrorResponse } from "@/server/admin/admin-errors";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     await requireAdmin();
-    const data = await getPostgresAdminDashboard();
+    const granularity = new URL(request.url).searchParams.get("granularity");
+    const data = await getPostgresAdminDashboard({ regionalGranularity: granularity ?? undefined });
 
     return NextResponse.json(
       {

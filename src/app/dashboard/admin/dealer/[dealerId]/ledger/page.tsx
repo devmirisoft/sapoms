@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import { ChevronLeft, AlertCircle } from 'lucide-react'
@@ -103,8 +103,12 @@ function isStaffLedgerSession() {
 export default function DealerLedgerPage() {
   const params = useParams()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const queryClient = useQueryClient()
-  const dealerId = params.dealerId as string
+  // params values are string | string[] | undefined and are absent on the
+  // first render, so normalise instead of casting the possibility away.
+  const rawDealerId = params.dealerId
+  const dealerId = Array.isArray(rawDealerId) ? (rawDealerId[0] ?? '') : (rawDealerId ?? '')
 
   const [redirectingStaff, setRedirectingStaff] = useState(() => isStaffLedgerSession())
   const [viewerRole, setViewerRole] = useState<string | null>(null)
@@ -198,6 +202,14 @@ export default function DealerLedgerPage() {
       staleTime: 5 * 60 * 1000,
     })
   }, [dealerId, queryClient, redirectingStaff, transactionsData?.hasNextPage, transactionsPage])
+
+  // Auto-open the Add Funds modal when arriving from the Dealer List "Payment" action
+  useEffect(() => {
+    if (searchParams.get('wallet') === 'addfund') {
+      setWalletAdjustType('topup')
+      setWalletAdjustOpen(true)
+    }
+  }, [searchParams])
 
   // Toast auto-dismiss
   useEffect(() => {
@@ -375,25 +387,6 @@ export default function DealerLedgerPage() {
                 Status: <strong className={walletData?.status === 'active' ? 'text-emerald-700' : 'text-gray-600'}>{walletData?.status === 'active' ? 'Active' : 'Inactive'}</strong> · Available: ₹{Number(walletData?.availableBalance ?? walletData?.balance ?? 0).toLocaleString('en-IN')}
                 <p className="mt-1 text-xs text-gray-500">This is a running balance. Every successful order deducts its Net Payable until the balance is exhausted.</p>
               </div>
-              <div className="grid grid-cols-3 gap-2">
-                {(['activate', 'topup', 'disable'] as const).map((mode) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => setWalletAdjustType(mode)}
-                    className={`rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition ${
-                      walletAdjustType === mode
-                        ? mode !== 'disable'
-                          ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
-                          : 'border-rose-300 bg-rose-50 text-rose-700'
-                        : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
-                    }`}
-                  >
-                    {mode === 'topup' ? 'Add Funds' : mode}
-                  </button>
-                ))}
-              </div>
-
               {walletAdjustType !== 'disable' && <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">Amount</span>
                 <input

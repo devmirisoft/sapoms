@@ -19,8 +19,16 @@ import {
   type PendingProductsRole,
 } from "@/lib/pendingProducts";
 import { mapPostgresOrderDispatchRecords } from "@/lib/postgresOrderDispatch";
+import type { OrderDispatchRecord } from "@/lib/orderDispatch";
+import {
+  alignDispatchRecordsToOverlayItems,
+  resolvePendingOverlayStates,
+  type PendingOverlayState,
+} from "@/lib/pendingProductOverlays";
 
 export const runtime = "nodejs";
+
+const ORDER_SCAN_LIMIT = 5000;
 
 type PendingProductsActor = { role: PendingProductsRole; actorId: string };
 
@@ -62,8 +70,25 @@ async function loadOrders(actor: PendingProductsActor) {
       items: { orderBy: { id: "asc" }, include: { dispatches: { orderBy: { createdAt: "asc" } } } },
     },
     orderBy: { orderDate: "asc" },
-    take: 5000,
+    take: ORDER_SCAN_LIMIT,
   });
+}
+
+type LoadedOrder = Awaited<ReturnType<typeof loadOrders>>[number];
+
+async function loadOrderOverlayStates(orders: LoadedOrder[]) {
+  if (orders.length === 0) return new Map<string, PendingOverlayState>();
+
+  const rows = await prisma.orderOverlay.findMany({
+    where: { orderId: { in: orders.map((order) => order.id) } },
+    orderBy: { createdAt: "asc" },
+    select: { orderId: true, type: true, status: true, metadata: true },
+  });
+
+  return resolvePendingOverlayStates(
+    rows,
+    new Map(orders.map((order) => [order.id.toString(), order.legacyPhpId || order.id.toString()]))
+  );
 }
 
 function orderAlias(order: Awaited<ReturnType<typeof loadOrders>>[number]): PendingProductsOrderRow {
@@ -130,16 +155,34 @@ export async function GET(req: NextRequest) {
     const page = safeInteger(req.nextUrl.searchParams.get("page"), 1);
     const pageSize = safeInteger(req.nextUrl.searchParams.get("pageSize"), 20);
 
-    const orders = await loadOrders(actor);
+    const scannedOrders = await loadOrders(actor);
+    const overlayStates = await loadOrderOverlayStates(scannedOrders);
+
+    const warnings: string[] = [];
+    if (scannedOrders.length >= ORDER_SCAN_LIMIT) {
+      warnings.push(
+        `Only the ${ORDER_SCAN_LIMIT.toLocaleString()} oldest open orders were scanned. Narrow the dealer or staff filter for complete totals.`
+      );
+    }
+
+    const orders = scannedOrders.filter(
+      (order) => !overlayStates.get(order.legacyPhpId || order.id.toString())?.cancelled
+    );
+
     const orderRows = orders.map(orderAlias);
     const orderItemsByOrderId: Record<string, PendingProductsItemRow[]> = {};
-    const dispatchRecordsByOrderId: Record<string, ReturnType<typeof mapPostgresOrderDispatchRecords>> = {};
+    const dispatchRecordsByOrderId: Record<string, OrderDispatchRecord[]> = {};
     const dealerDirectoryById: Record<string, PendingDealerDirectoryRow> = {};
 
     for (const order of orders) {
       const orderId = order.legacyPhpId || order.id.toString();
-      orderItemsByOrderId[orderId] = itemAliases(order);
-      dispatchRecordsByOrderId[orderId] = mapPostgresOrderDispatchRecords(order as any);
+      const effectiveItems = overlayStates.get(orderId)?.effectiveItems ?? null;
+      const dispatchRecords = mapPostgresOrderDispatchRecords(order as any);
+
+      orderItemsByOrderId[orderId] = effectiveItems ?? itemAliases(order);
+      dispatchRecordsByOrderId[orderId] = effectiveItems
+        ? alignDispatchRecordsToOverlayItems(dispatchRecords, effectiveItems)
+        : dispatchRecords;
       dealerDirectoryById[order.dealerId.toString()] = {
         Dealer_Id: order.dealerId.toString(),
         Dealer_Name: order.dealer.businessName,
@@ -165,13 +208,16 @@ export async function GET(req: NextRequest) {
         return NextResponse.json({ success: false, message: "Pending product not found in your permitted scope." }, { status: 404 });
       }
       const paginatedOrders = paginatePendingProducts(detail.orders, page, pageSize);
-      return NextResponse.json({ success: true, data: { product: detail.aggregate, orders: paginatedOrders.items, summary, filters, page: paginatedOrders.page, pageSize: paginatedOrders.pageSize, total: paginatedOrders.total, totalPages: paginatedOrders.totalPages, warnings: [] } }, { headers: { "Cache-Control": "no-store" } });
+      return NextResponse.json({ success: true, data: { product: detail.aggregate, orders: paginatedOrders.items, summary, filters, page: paginatedOrders.page, pageSize: paginatedOrders.pageSize, total: paginatedOrders.total, totalPages: paginatedOrders.totalPages, warnings } }, { headers: { "Cache-Control": "no-store" } });
     }
 
     const aggregates = sortPendingProducts(filterPendingProducts(aggregatePendingProducts(scopedLines), { search, category }), sort);
     const paginatedProducts = paginatePendingProducts(aggregates, page, pageSize);
-    return NextResponse.json({ success: true, data: { items: paginatedProducts.items, summary, filters, page: paginatedProducts.page, pageSize: paginatedProducts.pageSize, total: paginatedProducts.total, totalPages: paginatedProducts.totalPages, warnings: [] } }, { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json({ success: true, data: { items: paginatedProducts.items, summary, filters, page: paginatedProducts.page, pageSize: paginatedProducts.pageSize, total: paginatedProducts.total, totalPages: paginatedProducts.totalPages, warnings } }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
+    if ((error as Error)?.message === "Unauthenticated") {
+      return NextResponse.json({ success: false, message: "Your session has expired. Sign in again." }, { status: 401 });
+    }
     console.error("[GET /api/pending-products]", error);
     return NextResponse.json({ success: false, message: "Failed to load pending products." }, { status: 500 });
   }

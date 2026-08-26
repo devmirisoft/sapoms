@@ -63,6 +63,12 @@ export async function assertOrderAccess(order: PgOrder, actor: AuthActor) {
     if (order.assignedStaffId === actor.staffId) return;
     const assignment = await prisma.dealerStaffAssignment.findFirst({ where: { dealerId: order.dealerId, staffId: actor.staffId, active: true }, select: { id: true } });
     if (assignment) return;
+    // An RSM's scope is its region plus its ASM/executive subtree, so keep note
+    // access aligned with the orders the RSM can already see in the list view.
+    if (actor.role === "RSM" && actor.userId) {
+      const { isOrderInRsmScope } = await import("@/lib/postgresOrders");
+      if (await isOrderInRsmScope({ role: "staff", actorId: actor.staffId.toString(), isRsm: true, userId: actor.userId.toString() }, order.id.toString())) return;
+    }
   }
   throw new PostgresOrderAnnotationError(403, "forbidden", "This order is outside your assigned order scope.");
 }

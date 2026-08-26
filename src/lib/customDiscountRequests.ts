@@ -1,5 +1,5 @@
 export type CustomDiscountScope = "order" | "product";
-export type CustomDiscountStatus = "pending" | "approved" | "rejected";
+export type CustomDiscountStatus = "pending" | "approved" | "rejected" | "cancelled";
 
 export type DraftApprovalState = {
   approvalRequestId?: string | null;
@@ -75,6 +75,7 @@ export type CustomDiscountRequestRecord = Record<string, unknown> & {
   allowReorder?: boolean | null;
   createdAt?: string | null;
   reviewedAt?: string | null;
+  rsmNote?: string | null;
   adminNote?: string | null;
   refno?: string | null;
   shipto?: string | null;
@@ -111,6 +112,7 @@ export type NormalizedCustomDiscountRequest = {
   allowReorder: boolean;
   createdAt: string;
   reviewedAt: string | null;
+  rsmNote: string;
   adminNote: string;
   refno: string;
   shipto: string;
@@ -164,6 +166,10 @@ export function normalizeCustomDiscountStatus(value: unknown): CustomDiscountSta
   if (status === "approved") return "approved";
   if (status === "rejected" || status === "disapproved") return "rejected";
   if (status === "pending" || status === "under review" || status === "under_review") return "pending";
+  // CANCELLED is a closed request, so it must normalize onto a status the order
+  // form actually branches on. Leaving it as "cancelled" matched none of the
+  // pending/approved/rejected branches, which left the draft permanently locked.
+  if (status === "cancelled" || status === "canceled") return "cancelled";
   return status;
 }
 
@@ -497,6 +503,7 @@ export function normalizeCustomDiscountRequestRecord(
     allowReorder: !!record.allowReorder,
     createdAt: cleanText(record.createdAt),
     reviewedAt: cleanText(record.reviewedAt) || null,
+    rsmNote: cleanText(record.rsmNote),
     adminNote: cleanText(record.adminNote),
     refno: cleanText(record.refno),
     shipto: cleanText(record.shipto),

@@ -2,6 +2,7 @@ import { Prisma, type DealerRequest } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/server/auth/session";
 import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
+import { errorStatus } from "@/server/http/auth-error";
 
 import { AdminRouteError } from "@/server/admin/admin-errors";
 import { prisma } from "@/server/db/prisma";
@@ -9,7 +10,7 @@ import { parseCreateAdminDealerInput } from "@/server/modules/admin/dealers/deal
 import { generatePostgresDealerCode } from "@/server/modules/dealers/dealer-code.service";
 import { createAdminDealer } from "@/server/modules/admin/dealers/dealers.service";
 import type { AuthActor } from "@/server/modules/admin/dealers/dealers.types";
-import { normalizeDealerFormSnapshot, validateDealerFormSnapshot } from "@/lib/dealerForm";
+import { getSelectedDealerContact, normalizeDealerFormSnapshot, validateDealerFormSnapshot } from "@/lib/dealerForm";
 import { ensurePostgresDealerRequestIndexes, getPostgresDealerRequestCollection, isPostgresDealerRequestDependencyError } from "@/lib/postgresDealerRequests";
 import { findDealerCodeReservationConflict } from "@/server/modules/dealers/dealer-code.service";
 import { invalidateStaffAssignmentCache } from "@/lib/orderScopeServer";
@@ -56,22 +57,26 @@ function buildResponseError(message: string, status: number) {
 }
 
 function buildSnapshotSummary(snapshot: ReturnType<typeof normalizeDealerFormSnapshot>) {
+  const contact = getSelectedDealerContact(snapshot);
+
   return {
     dealerName: snapshot.name,
     dealerCode: snapshot.dealerCode,
     city: snapshot.city,
-    contactEmail: snapshot.email,
-    contactPhone: snapshot.whatsapp,
+    contactEmail: contact.email,
+    contactPhone: contact.phone,
     assignedStaffIds: snapshot.assignedStaffIds,
     assignedStaffNames: snapshot.staffNames,
   };
 }
 function buildDealerInputFromSnapshot(snapshot: ReturnType<typeof normalizeDealerFormSnapshot>) {
+  const contact = getSelectedDealerContact(snapshot);
+
   return parseCreateAdminDealerInput({
     businessName: snapshot.name,
     email: snapshot.email,
     password: snapshot.password,
-    phone: snapshot.whatsapp,
+    phone: contact.phone,
     dealerCode: snapshot.dealerCode,
     address: snapshot.address,
     city: snapshot.city,
@@ -80,8 +85,15 @@ function buildDealerInputFromSnapshot(snapshot: ReturnType<typeof normalizeDeale
     discountPercent: snapshot.discount,
     creditDays: snapshot.creditDays,
     creditLimitPaise: snapshot.currentLimit,
+    annualTargetPaise: snapshot.annualTarget,
+    notes: snapshot.notes,
+    priorityContact: snapshot.priorityPerson,
+    secondaryContactName: snapshot.secondaryContactName,
+    secondaryContactPhone: snapshot.secondaryContactPhone,
+    secondaryContactEmail: snapshot.secondaryContactEmail,
     status: "ACTIVE",
     assignedStaffIds: snapshot.assignedStaffIds,
+    walletActive: snapshot.paymentType === "advance",
   });
 }
 
@@ -150,6 +162,10 @@ export async function GET(
     return NextResponse.json({ success: true, data: toDealerRequestDetail(doc) });
   } catch (error) {
     console.error("[GET /api/dealer-requests/[id]]", error);
+    const authStatus = errorStatus(error, 0);
+    if (authStatus === 401 || authStatus === 403) {
+      return buildResponseError((error as Error).message, authStatus);
+    }
     const status = isPostgresDealerRequestDependencyError(error) ? 503 : 500;
     return buildResponseError(
       status === 503
@@ -416,6 +432,10 @@ export async function PATCH(
     }
   } catch (error) {
     console.error("[PATCH /api/dealer-requests/[id]]", error);
+    const authStatus = errorStatus(error, 0);
+    if (authStatus === 401 || authStatus === 403) {
+      return buildResponseError((error as Error).message, authStatus);
+    }
     const status = isPostgresDealerRequestDependencyError(error) ? 503 : 500;
     return buildResponseError(
       status === 503

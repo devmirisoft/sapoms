@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { Search, BookOpen, ChevronRight, ShieldAlert } from 'lucide-react'
+import { Search, BookOpen, ChevronRight, ShieldAlert, IndianRupee, X, Wallet } from 'lucide-react'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Dealer = {
@@ -20,6 +20,17 @@ type DealerResponse = {
   data: Dealer[]
   total: number
   last_page: number
+}
+
+// Collective ledger rows carry the per-dealer balance figures
+type LedgerDealer = Dealer & {
+  totalDebit?: number
+  totalCredit?: number
+  netBalance?: number
+}
+
+type LedgerDuesResponse = {
+  data: LedgerDealer[]
 }
 
 type StaffDealerResponse = {
@@ -71,11 +82,197 @@ function statusBadge(s: string) {
     : { bg: 'bg-red-50',     text: 'text-red-600',     label: 'Inactive' }
 }
 
+function fmtINR(n: number) {
+  return `₹${Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+}
+
 function normalizeDealer(dealer: Dealer): Dealer {
   return {
     ...dealer,
     status: dealer.status === 'ACTIVE' ? '1' : dealer.status,
   }
+}
+
+// ─── Pending Dues modal ───────────────────────────────────────────────────────
+function PendingDuesModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter()
+  const [q, setQ] = useState('')
+
+  const { data, isLoading, isError } = useQuery<LedgerDuesResponse>({
+    queryKey: ['ledger-pending-dues'],
+    queryFn: async () => {
+      const res = await fetch('/api/ledger')
+      if (!res.ok) throw new Error('Failed to load pending dues')
+      return res.json()
+    },
+    staleTime: 2 * 60 * 1000,
+  })
+
+  // Close on Escape
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // Dealers carrying an outstanding balance, biggest first
+  const dues = useMemo(() => {
+    const rows = (data?.data || []).filter(d => Number(d.netBalance || 0) > 0)
+    rows.sort((a, b) => Number(b.netBalance || 0) - Number(a.netBalance || 0))
+    if (!q.trim()) return rows
+    const needle = q.trim().toLowerCase()
+    return rows.filter(d =>
+      d.Dealer_Name?.toLowerCase().includes(needle) ||
+      d.Dealer_City?.toLowerCase().includes(needle) ||
+      d.Dealer_Number?.includes(needle)
+    )
+  }, [data, q])
+
+  const totalDue = useMemo(() => dues.reduce((sum, d) => sum + Number(d.netBalance || 0), 0), [dues])
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 backdrop-blur-[2px] p-4 sm:p-8 overflow-y-auto"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white w-full max-w-4xl rounded-2xl shadow-xl border border-gray-200 overflow-hidden my-auto"
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between px-6 py-5 border-b border-gray-100">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-red-50 border border-red-100 flex items-center justify-center">
+                <IndianRupee size={16} className="text-red-600" />
+              </div>
+              <h2 className="text-xl font-bold text-gray-900">Pending Dues</h2>
+            </div>
+            <p className="text-sm text-gray-500 mt-1 ml-12">
+              Outstanding balance for every dealer with money owed
+            </p>
+          </div>
+          <button
+            onClick={onClose}
+            className="p-2 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+            title="Close"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Summary + search */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-3 px-6 py-4 bg-gray-50 border-b border-gray-100">
+          <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-gray-200">
+            <Wallet size={14} className="text-red-500" />
+            <span className="text-xs text-gray-500">Total pending</span>
+            <span className="text-sm font-bold text-red-600">{fmtINR(totalDue)}</span>
+          </div>
+          <div className="flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-gray-200">
+            <span className="text-xs text-gray-500">Dealers</span>
+            <span className="text-sm font-bold text-gray-800">{dues.length}</span>
+          </div>
+          <div className="relative sm:ml-auto sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Search dealers…"
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition w-full"
+            />
+          </div>
+        </div>
+
+        {/* Body */}
+        <div className="max-h-[60vh] overflow-y-auto">
+          {isError && (
+            <div className="px-6 py-8 text-center text-sm text-red-600">
+              Failed to load pending dues. Please try again.
+            </div>
+          )}
+
+          {!isError && (
+            <table className="w-full text-sm">
+              <thead className="sticky top-0 bg-white">
+                <tr className="border-b border-gray-200">
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">S.No.</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">Dealer</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide">City</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Billed</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Paid</th>
+                  <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">Pending Due</th>
+                  <th className="px-4 py-3 w-10" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {isLoading && Array.from({ length: 6 }).map((_, i) => (
+                  <tr key={i}>
+                    {Array.from({ length: 7 }).map((_, j) => (
+                      <td key={j} className="px-4 py-4"><div className={`${SHIMMER} h-4 w-full`} /></td>
+                    ))}
+                  </tr>
+                ))}
+
+                {!isLoading && dues.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-12 text-center text-gray-400 text-sm">
+                      {q ? 'No dealers found matching your search' : 'No pending dues — all dealers are settled'}
+                    </td>
+                  </tr>
+                )}
+
+                {!isLoading && dues.map((dealer, i) => (
+                  <tr
+                    key={dealer.Dealer_Id}
+                    onClick={() => { onClose(); router.push(`/Pages/ledger/${dealer.Dealer_Id}`) }}
+                    className="hover:bg-red-50/40 transition-colors cursor-pointer group"
+                  >
+                    <td className="px-4 py-3 text-gray-400 text-xs">{i + 1}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-red-100 text-red-600 flex items-center justify-center text-xs font-semibold shrink-0">
+                          {initials(dealer.Dealer_Name)}
+                        </div>
+                        <div>
+                          <div className="font-medium text-gray-800 group-hover:text-red-700 transition-colors">
+                            {dealer.Dealer_Name || '—'}
+                          </div>
+                          <div className="text-[11px] text-gray-400">{dealer.Dealer_Number || '—'}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className="bg-blue-50 text-blue-600 text-xs font-medium px-2.5 py-1 rounded-full">
+                        {dealer.Dealer_City || '—'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-gray-600 text-xs">{fmtINR(Number(dealer.totalDebit || 0))}</td>
+                    <td className="px-4 py-3 text-right text-emerald-600 text-xs">{fmtINR(Number(dealer.totalCredit || 0))}</td>
+                    <td className="px-4 py-3 text-right font-bold text-red-600">{fmtINR(Number(dealer.netBalance || 0))}</td>
+                    <td className="px-4 py-3 text-gray-300 group-hover:text-red-500 transition-colors">
+                      <ChevronRight className="w-4 h-4" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              {!isLoading && dues.length > 0 && (
+                <tfoot>
+                  <tr className="bg-gray-50 border-t border-gray-200">
+                    <td colSpan={5} className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wide">
+                      Total
+                    </td>
+                    <td className="px-4 py-3 text-right font-bold text-red-600">{fmtINR(totalDue)}</td>
+                    <td />
+                  </tr>
+                </tfoot>
+              )}
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── Main component ──────────────────────────────────────────────────────────
@@ -89,6 +286,7 @@ export default function LedgerDealerListPage() {
   const [page,        setPage]        = useState(1)
   const [search,      setSearch]      = useState('')
   const [searchInput, setSearchInput] = useState('')
+  const [duesOpen,    setDuesOpen]    = useState(false)
 
   // ── Resolve role & redirect dealers ──
   useEffect(() => {
@@ -237,7 +435,7 @@ export default function LedgerDealerListPage() {
   // ── Admin / Accountant / Staff list view ──
   return (
     <div className="min-h-screen bg-gray-100">
-      <div className="p-6 max-w-7xl mx-auto">
+      <div className="p-6 max-w-[1840px] mx-auto">
 
         {/* Header */}
         <div className="mb-8">
@@ -255,11 +453,21 @@ export default function LedgerDealerListPage() {
                   : 'Select a dealer to view their full ledger account'}
               </p>
             </div>
-            {isStaffRole && (
-              <span className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-semibold rounded-full border border-indigo-200">
-                Assigned Dealers Only
-              </span>
-            )}
+            <div className="flex items-center gap-3">
+              {isStaffRole && (
+                <span className="px-3 py-1.5 bg-indigo-50 text-indigo-600 text-xs font-semibold rounded-full border border-indigo-200">
+                  Assigned Dealers Only
+                </span>
+              )}
+              <button
+                onClick={() => setDuesOpen(true)}
+                className="flex items-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors"
+                title="View pending dues of all dealers"
+              >
+                <IndianRupee className="w-4 h-4" />
+                Pending Dues
+              </button>
+            </div>
           </div>
 
           <div className="relative w-72">
@@ -423,6 +631,8 @@ export default function LedgerDealerListPage() {
         </div>
 
       </div>
+
+      {duesOpen && <PendingDuesModal onClose={() => setDuesOpen(false)} />}
     </div>
   )
 }

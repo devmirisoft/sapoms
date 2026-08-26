@@ -17,7 +17,7 @@ test("admin staff mapper does not expose password fields", () => {
 test("Add and Edit Staff show only business staff role choices", () => {
   for (const source of [addStaffPage, editStaffPage]) {
     assert.match(source, /label: 'Staff'/);
-    assert.match(source, /label: 'Executive'/);
+    assert.match(source, /label: 'Sales Manager'/);
     assert.match(source, /label: 'ASM'/);
     assert.match(source, /label: 'RSM'/);
     assert.match(source, /label: 'NSM'/);
@@ -85,4 +85,46 @@ test("staff directory route allows staff-like reads for dealer assignment withou
   assert.match(staffRoute, /isAdminLike\(actor\) \|\| isStaffLike\(actor\)/);
   assert.match(staffRoute, /eventType: "STAFF_DIRECTORY_VIEWED"/);
   assert.match(staffRoute, /const actor = await requireAdmin\(\)/);
+});
+
+test("ASM territory is a city subset of its own states, itself inside the parent RSM states", () => {
+  assert.match(staffRepo, /assertSubset\(assignedStates, rsm\.assignedStates, "ASM_STATES_OUTSIDE_RSM_SCOPE"\)/);
+  assert.match(staffRepo, /assertSubset\(assignedCities, citiesForStates\(assignedStates\), "ASM_CITIES_OUTSIDE_STATE_SCOPE", "cities"\)/);
+  assert.match(staffSchemas, /ASM_STATES_REQUIRED/);
+  assert.match(staffSchemas, /ASM_CITIES_REQUIRED/);
+});
+
+test("Sales Manager holds its own cities, carved out of its ASM and never wider", () => {
+  // Create and update both re-check against the ASM: it may have changed, or shrunk.
+  assert.equal(staffRepo.match(/assertSubset\(assignedCities, asm\.assignedCities, "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities"\)/g)?.length, 2);
+  assert.match(staffRepo, /select: \{ id: true, parentRsmId: true, assignedStates: true, assignedCities: true \}/);
+  assert.match(staffSchemas, /EXECUTIVE_CITIES_REQUIRED/);
+});
+
+test("Sales Manager states are derived from its cities, not picked in the form", () => {
+  assert.match(staffRepo, /assignedStates = statesForCities\(assignedCities, asm\.assignedStates\)/);
+  assert.match(staffRepo, /staffData\.assignedStates = statesForCities\(assignedCities, asm\.assignedStates\)/);
+  assert.match(staffSchemas, /value\.staffRoleType === "1"\) \{ value\.parentRsmId = undefined; value\.assignedStates = undefined; \}/);
+});
+
+test("staff subtype 2 keeps no territory of its own", () => {
+  assert.match(staffSchemas, /value\.staffRoleType === "2"\) \{ value\.parentAsmId = undefined; value\.assignedStates = undefined; value\.assignedCities = undefined; \}/);
+});
+
+test("staff update accepts hierarchy and territory changes", () => {
+  // The update schema used to drop these silently, so edits never persisted.
+  const updateBlock = staffSchemas.slice(staffSchemas.indexOf("const updateSchema"));
+  for (const field of ["parentRsmId", "parentAsmId", "assignedStates", "assignedCities", "reportingManagerId"]) {
+    assert.match(updateBlock, new RegExp(`${field}[,:]`));
+  }
+});
+
+test("Add and Edit Staff both offer ASM and Sales Manager city pickers from one places source", () => {
+  for (const source of [addStaffPage, editStaffPage]) {
+    assert.match(source, /from '@\/lib\/places'/);
+    assert.doesNotMatch(source, /^import places from/m);
+    assert.match(source, /smCitiesByState/);
+    assert.match(source, /assignedCities: role === 'ASM' \|\| role === 'EXECUTIVE' \? assignedCities : undefined/);
+    assert.match(source, /Limited to the cities assigned to the selected ASM\./);
+  }
 });

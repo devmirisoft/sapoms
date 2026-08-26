@@ -80,6 +80,7 @@ export function mapDraft(row: any) {
     approval_state: row.approvalState ?? null,
     source: snap.source ?? undefined,
     source_request_id: snap.source_request_id ?? undefined,
+    rejection_notes: snap.rejection_notes ?? null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     created_at: row.createdAt.toISOString(),
@@ -97,6 +98,9 @@ export function draftSnapshot(input: Record<string, unknown>) {
     coupon_pct: input.coupon_pct ?? null,
     source: input.source ?? null,
     source_request_id: input.source_request_id ?? null,
+    // Carried through dealer edits so the reviewer's reason survives until the
+    // draft is resubmitted, rather than being dropped on the first save.
+    rejection_notes: input.rejection_notes ?? null,
   };
 }
 
@@ -117,6 +121,9 @@ export function mapCustomDiscount(row: any) {
     dealer_id: row.dealerId.toString(),
     staffId: row.staffId?.toString?.() ?? "",
     assignedStaffId: row.staffId?.toString?.() ?? "",
+    staffName: row.staff?.displayName ?? "",
+    staff_name: row.staff?.displayName ?? "",
+    staffRoleType: row.staff?.staffRoleType ?? "",
     dealerName: row.dealer?.businessName ?? "",
     dealerCode: row.dealer?.dealerCode ?? "",
     orderId,
@@ -132,6 +139,8 @@ export function mapCustomDiscount(row: any) {
     rsm_reviewed_by: row.rsmReviewedByName ?? "",
     rsmReviewedAt: row.rsmReviewedAt?.toISOString?.() ?? null,
     rsm_reviewed_at: row.rsmReviewedAt?.toISOString?.() ?? null,
+    rsmNote: row.rsmNote ?? "",
+    rsm_note: row.rsmNote ?? "",
     requestedDiscountPercent,
     currentDiscountPercent,
     requestedOrderDiscountPercent: row.requestedOrderDiscountPercent === null ? null : Number(row.requestedOrderDiscountPercent),
@@ -167,6 +176,8 @@ export function mapCustomDiscount(row: any) {
 
 export const customDiscountInclude = {
   dealer: { select: { id: true, businessName: true, dealerCode: true } },
+  // Lets an RSM see which of their team raised the request.
+  staff: { select: { id: true, displayName: true, staffRoleType: true } },
   order: { select: { id: true, orderNumber: true } },
   reorderLogs: { orderBy: { createdAt: "desc" as const }, take: 1 },
 };

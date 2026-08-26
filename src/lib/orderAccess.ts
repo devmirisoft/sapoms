@@ -7,6 +7,9 @@ type OrderAccessReason = "available" | "not_found" | "forbidden";
 type OrderActor = {
   role: "admin" | "accountant" | "staff" | "dealer";
   actorId: string;
+  isRsm?: boolean;
+  isAsm?: boolean;
+  userId?: string;
 };
 
 type OrderAccessOptions = {
@@ -67,13 +70,20 @@ async function findPostgresAccessOrder(id: string): Promise<Record<string, unkno
   return order ? postgresOrders.mapPostgresOrderToLegacy(order) : null;
 }
 
-function canStaffAccessOrder(order: Record<string, unknown>, options: OrderAccessOptions) {
+async function canStaffAccessOrder(order: Record<string, unknown>, options: OrderAccessOptions, lookupId: string) {
   if (splitScopeIds([order.assignedstaff, order.staffid]).includes(safeText(options.actor.actorId))) return true;
   const dealerId = resolveOrderDealerId(order);
-  return !!dealerId && new Set(splitScopeIds(options.assignedDealerIds)).has(dealerId);
+  if (!!dealerId && new Set(splitScopeIds(options.assignedDealerIds)).has(dealerId)) return true;
+  // An RSM also owns every order under its region and its ASM/executive
+  // subtree, which direct assignment alone does not cover.
+  if (options.actor.isRsm) {
+    const { isOrderInRsmScope } = await import("@/lib/postgresOrders");
+    return isOrderInRsmScope(options.actor, lookupId);
+  }
+  return false;
 }
 
-function applyActorAccess(order: Record<string, unknown> | null, options: OrderAccessOptions | null): OrderAccess {
+async function applyActorAccess(order: Record<string, unknown> | null, options: OrderAccessOptions | null, lookupId: string): Promise<OrderAccess> {
   if (!order) return result(null);
   if (!options) return forbiddenResult();
 
@@ -85,7 +95,7 @@ function applyActorAccess(order: Record<string, unknown> | null, options: OrderA
   }
 
   if (options.actor.role === "staff") {
-    return canStaffAccessOrder(order, options) ? result(order) : forbiddenResult();
+    return await canStaffAccessOrder(order, options, lookupId) ? result(order) : forbiddenResult();
   }
 
   return forbiddenResult();
@@ -96,7 +106,7 @@ export async function resolveOrderAccess(orderId: unknown, accessOptions?: unkno
   if (!id) return result(null);
   const options = isAccessOptions(accessOptions) ? accessOptions : await defaultAccessOptions();
   const postgresOrder = await findPostgresAccessOrder(id);
-  return applyActorAccess(postgresOrder, options);
+  return applyActorAccess(postgresOrder, options, id);
 }
 
 export async function filterExistingOrderIds(orderIds: unknown[], accessOptions?: unknown): Promise<Set<string>> {

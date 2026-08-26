@@ -15,6 +15,7 @@ import {
 } from "@/lib/dealerForm";
 
 const ADMIN_STAFF_URL = "/api/admin/staff";
+const DEALER_CODE_PREFIX = "OM-";
 
 type DealerFormMode = "admin-create" | "staff-submit" | "admin-review" | "staff-resubmit";
 type DealerDetailsTab = "company" | "alternate" | "remarks";
@@ -101,6 +102,10 @@ function toFormValues(snapshot?: DealerFormSnapshot | null): DealerFormValues {
     name: snapshot.name,
     email: snapshot.email,
     whatsapp: snapshot.whatsapp,
+    priorityPerson: snapshot.priorityPerson,
+    secondaryContactName: snapshot.secondaryContactName,
+    secondaryContactPhone: snapshot.secondaryContactPhone,
+    secondaryContactEmail: snapshot.secondaryContactEmail,
     city: snapshot.city,
     address: snapshot.address,
     pincode: snapshot.pincode,
@@ -113,6 +118,7 @@ function toFormValues(snapshot?: DealerFormSnapshot | null): DealerFormValues {
     annualTarget: snapshot.annualTarget,
     currentLimit: snapshot.currentLimit,
     notes: snapshot.notes,
+    paymentType: snapshot.paymentType,
   };
 }
 
@@ -236,7 +242,7 @@ export default function DealerFormCard({
   const copy = useMemo(() => getModeCopy(mode), [mode]);
 
   const handleInputChange = (
-    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+    event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
     const { name, value } = event.target;
     setInlineError("");
@@ -247,6 +253,8 @@ export default function DealerFormCard({
   const assignedStaffIds = useMemo(() => uniqueStaffIds(Object.values(roleAssignments)), [roleAssignments]);
   const selectedRsmUserId = useMemo(() => getStaffUserId(roleAssignments.rsm, staffList), [roleAssignments.rsm, staffList]);
 
+  const isAdvanceDealer = formData.paymentType === "advance";
+
   const dealerCodeLocked = mode === "staff-submit" || mode === "staff-resubmit";
   const dealerCodeHint = dealerCodeError
     ? dealerCodeError
@@ -254,7 +262,14 @@ export default function DealerFormCard({
       ? "Generating a unique 4-digit dealer code..."
       : dealerCodeLocked
         ? "Generated automatically for staff requests and locked for editing."
-        : "Admin can edit this code.";
+        : "Admin can edit this code. The OM- prefix is added automatically.";
+
+  // The stored dealer code stays a bare 4-digit number; "OM-" is a fixed display prefix.
+  const handleDealerCodeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const typed = event.target.value.replace(/^(?:OM-?)+/i, "");
+    setInlineError("");
+    setFormData((prev) => ({ ...prev, dealerCode: typed }));
+  };
 
   const handleAssignmentChange = (roleKey: AssignmentRoleKey, staffId: string) => {
     setInlineError("");
@@ -264,6 +279,17 @@ export default function DealerFormCard({
   const handlePaymentTermsChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     setInlineError("");
     setFormData((prev) => ({ ...prev, creditDays: event.target.value }));
+  };
+
+  // Advance dealers pay upfront, so credit days are not applicable to them.
+  const handlePaymentTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const paymentType = event.target.value === "advance" ? "advance" : "credit";
+    setInlineError("");
+    setFormData((prev) => ({
+      ...prev,
+      paymentType,
+      creditDays: paymentType === "advance" ? "" : prev.creditDays,
+    }));
   };
 
   const resetForm = () => {
@@ -310,7 +336,7 @@ export default function DealerFormCard({
 
   return (
     <div className="min-h-screen bg-[#f4f6fa] px-4 py-7 text-[#344155]">
-      <div className="mx-auto w-full max-w-[80vw] min-w-0 max-md:max-w-full">
+      <div className="mx-auto w-full max-w-[1840px] min-w-0">
         <form onSubmit={handleSubmit} className="border border-[#dfe3ec] bg-white shadow-sm">
           <div className="flex items-end border-b-2 border-[#5d7df0] px-5 pt-4">
             {/* <button
@@ -350,7 +376,10 @@ export default function DealerFormCard({
               <div className="pt-1 text-[16px] font-semibold text-[#405064]">Point of Contact</div>
               <div className="border-t border-[#e5e7eb] pt-7">
                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-[34px_1fr_1.2fr_1.8fr_1.8fr] xl:items-end">
-                  <div className="hidden pb-3 text-sm font-semibold text-[#405064] xl:block">1.</div>
+                  <div className="hidden pb-3 text-sm font-semibold text-[#405064] xl:block">
+                    1.
+                    {formData.priorityPerson === "primary" ? <PriorityBadge /> : null}
+                  </div>
                   <Field label="Username" required>
                     <input name="username" type="text" value={formData.username} onChange={handleInputChange} placeholder="Login username" required />
                   </Field>
@@ -365,6 +394,31 @@ export default function DealerFormCard({
                   </Field>
                   <Field label="Email" required>
                     <input name="email" type="email" value={formData.email} onChange={handleInputChange} placeholder="Email" required />
+                  </Field>
+                </div>
+
+                <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[34px_1.2fr_1.8fr_1.8fr_1.2fr] xl:items-end">
+                  <div className="hidden pb-3 text-sm font-semibold text-[#405064] xl:block">
+                    2.
+                    {formData.priorityPerson === "secondary" ? <PriorityBadge /> : null}
+                  </div>
+                  <Field label="Second Person Name">
+                    <input name="secondaryContactName" type="text" value={formData.secondaryContactName} onChange={handleInputChange} placeholder="Second contact name" />
+                  </Field>
+                  <Field label="Second Phone No.">
+                    <div className="flex gap-3">
+                      <input className="!w-16 text-center" value="+91" readOnly aria-label="Country code" />
+                      <input name="secondaryContactPhone" type="number" value={formData.secondaryContactPhone} onChange={handleInputChange} placeholder="Second phone number" />
+                    </div>
+                  </Field>
+                  <Field label="Second Email">
+                    <input name="secondaryContactEmail" type="email" value={formData.secondaryContactEmail} onChange={handleInputChange} placeholder="Second email" />
+                  </Field>
+                  <Field label="Priority Person" required hint="Contact used for calls">
+                    <select name="priorityPerson" value={formData.priorityPerson} onChange={handleInputChange} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff]">
+                      <option value="primary">Contact 1</option>
+                      <option value="secondary">Contact 2</option>
+                    </select>
                   </Field>
                 </div>
               </div>
@@ -385,16 +439,21 @@ export default function DealerFormCard({
                         <input name="name" type="text" value={formData.name} onChange={handleInputChange} required />
                       </Field>
                       <Field label="Customer Code" required hint={dealerCodeHint}>
-                        <input
-                          name="dealerCode"
-                          type="text"
-                          value={formData.dealerCode}
-                          onChange={handleInputChange}
-                          placeholder={dealerCodeLoading ? "Generating unique code..." : "Customer code"}
-                          required
-                          readOnly={dealerCodeLocked}
-                          className={dealerCodeLocked ? "cursor-not-allowed bg-gray-100 text-gray-500" : ""}
-                        />
+                        <div className="relative">
+                          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm font-medium text-[#59677a]">
+                            {DEALER_CODE_PREFIX}
+                          </span>
+                          <input
+                            name="dealerCode"
+                            type="text"
+                            value={formData.dealerCode}
+                            onChange={handleDealerCodeChange}
+                            placeholder={dealerCodeLoading ? "Generating unique code..." : "0000"}
+                            required
+                            readOnly={dealerCodeLocked}
+                            className={`!pl-11 ${dealerCodeLocked ? "cursor-not-allowed bg-gray-100 text-gray-500" : ""}`}
+                          />
+                        </div>
                       </Field>
                       <Field label="Phone" required>
                         <input name="whatsapp" type="number" value={formData.whatsapp} onChange={handleInputChange} required />
@@ -451,9 +510,9 @@ export default function DealerFormCard({
                     <Field label="Discount %" required>
                       <input name="discount" type="number" value={formData.discount} onChange={handleInputChange} min={0} max={100} required />
                     </Field>
-                    <Field label="Credit Days" required>
-                      <select name="creditDays" value={formData.creditDays} onChange={handlePaymentTermsChange} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff]">
-                        <option value="">Select credit days</option>
+                    <Field label="Credit Days" required={!isAdvanceDealer} hint={isAdvanceDealer ? "Not applicable for advance dealers." : undefined}>
+                      <select name="creditDays" value={formData.creditDays} onChange={handlePaymentTermsChange} disabled={isAdvanceDealer} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff] disabled:cursor-not-allowed disabled:bg-[#f1f3f7] disabled:text-[#9aa5b5]">
+                        <option value="">{isAdvanceDealer ? "Not applicable" : "Select credit days"}</option>
                         <option value="30">Net 30</option>
                         <option value="45">Net 45</option>
                         <option value="60">Net 60</option>
@@ -464,6 +523,12 @@ export default function DealerFormCard({
                     </Field>
                     <Field label="Current Limit" required>
                       <input name="currentLimit" type="number" value={formData.currentLimit} onChange={handleInputChange} placeholder="Credit limit in Rs" required />
+                    </Field>
+                    <Field label="Payment Type" required hint={formData.paymentType === "advance" ? "Dealer wallet will be activated on creation." : "Dealer wallet stays inactive until activated later."}>
+                      <select name="paymentType" value={formData.paymentType} onChange={handlePaymentTypeChange} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff]">
+                        <option value="credit">Credit dealer (wallet inactive)</option>
+                        <option value="advance">Advance dealer (activate wallet)</option>
+                      </select>
                     </Field>
                   </div>
                 ) : null}
@@ -511,6 +576,17 @@ export default function DealerFormCard({
         </form>
       </div>
     </div>
+  );
+}
+
+function PriorityBadge() {
+  return (
+    <span
+      title="Priority person — used for calls"
+      className="mt-1 block w-fit rounded-full bg-[#5d7df0] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+    >
+      Priority
+    </span>
   );
 }
 

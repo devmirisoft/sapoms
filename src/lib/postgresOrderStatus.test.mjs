@@ -57,7 +57,7 @@ test("RSM order headers include child staff hierarchy scope", () => {
 });
 
 test("PostgreSQL order mutations bypass PHP and Mongo status writes", () => {
-  assert.match(overlayRoute, /updatePostgresOrderAcceptance\(id, authActor, "ACCEPTED"\)/);
+  assert.match(overlayRoute, /updatePostgresOrderAcceptance\(id, authActor, "ACCEPTED", body\.note/);
   assert.match(overlayRoute, /updatePostgresOrderFulfilment\(id, authActor, fulfilmentStatus\)/);
   assert.match(overlayRoute, /cancelPostgresOrder\(id, authActor, body\.reason\)/);
   assert.match(dispatchRoute, /applyPostgresOrderDispatch\(body\.orderId, actor, body\)/);
@@ -68,4 +68,30 @@ test("PostgreSQL order mutations bypass PHP and Mongo status writes", () => {
   assert.match(overlayRoute, /Historical PHP orders are read-only for PostgreSQL status updates/);
   assert.match(overlayRoute, /Historical PHP orders are read-only for PostgreSQL cancellation/);
   assert.match(dispatchRoute, /Historical PHP orders are read-only for dispatch updates/);
+});
+test("stage-2 staff decline requires a note and records its reviewer", () => {
+  // A decline reaches the Dealer with no other context, so the note is enforced
+  // in the lib rather than the route: every caller inherits the rule.
+  assert.match(source, /if \(next === "DECLINED" && !reviewNote\)/);
+  assert.match(source, /note_required/);
+  assert.match(source, /acceptanceNote: reviewNote \|\| null/);
+  assert.match(source, /acceptanceReviewedByUserId: actor\.userId/);
+  assert.match(source, /acceptanceReviewedAt: now/);
+  // Stage 1 keeps its own column so neither reviewer overwrites the other.
+  assert.match(source, /rsmNote: reviewNote \|\| null/);
+});
+
+test("only Admin and NSM can revive a declined order, resetting both stages", () => {
+  assert.match(source, /export async function revivePostgresOrderAcceptance/);
+  assert.match(source, /actor\.role !== "ADMIN" && actor\.role !== "NSM"/);
+  assert.match(source, /not_declined/);
+  // Revive must rewind stage 1 as well, or the order resumes mid-flow.
+  assert.match(source, /acceptanceStatus: "AWAITING",\s*\n\s*rsmApprovalStatus: "AWAITING"/);
+  assert.match(overlayRoute, /revivePostgresOrderAcceptance\(id, authActor, body\.note\)/);
+});
+
+test("staff order lists stay gated behind RSM approval", () => {
+  assert.match(postgresOrders, /rsmApprovalStatus: "ACCEPTED", \.\.\.staffScope/);
+  assert.match(postgresOrders, /acceptanceNote: order\.acceptanceNote \|\| ""/);
+  assert.match(postgresOrders, /rsmNote: order\.rsmNote \|\| ""/);
 });

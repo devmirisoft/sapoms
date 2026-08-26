@@ -149,12 +149,27 @@ export function assertDealerCancellationAllowed(order: Pick<StatusOrder, "status
   }
 }
 
-export async function updatePostgresOrderAcceptance(orderId: unknown, actor: AuthActor, next: OrderAcceptanceStatus) {
+export function normalizeReviewNote(value: unknown) {
+  return String(value ?? "").trim().slice(0, 1500);
+}
+
+export async function updatePostgresOrderAcceptance(
+  orderId: unknown,
+  actor: AuthActor,
+  next: OrderAcceptanceStatus,
+  note?: unknown,
+) {
   const order = await findPostgresStatusOrder(orderId);
   if (!order) return null;
   await assertCanAct(actor, order, "acceptance");
   if (order.status === "CANCELLED") throw new PostgresOrderStatusError(409, "order_already_cancelled", "Cancelled orders cannot be accepted or declined.");
   const now = new Date();
+  // A decline is the one outcome the Dealer sees without further context, so it
+  // must carry a reason. Acceptance notes stay optional.
+  const reviewNote = normalizeReviewNote(note);
+  if (next === "DECLINED" && !reviewNote) {
+    throw new PostgresOrderStatusError(400, "note_required", "A note is required when declining an order.");
+  }
 
   if (actor.role === "RSM") {
     if (order.rsmApprovalStatus !== "AWAITING" || (next !== "ACCEPTED" && next !== "DECLINED")) {
@@ -168,10 +183,11 @@ export async function updatePostgresOrderAcceptance(orderId: unknown, actor: Aut
           rsmReviewedByUserId: actor.userId,
           rsmReviewedByName: actor.displayName || actor.email,
           rsmReviewedAt: now,
+          rsmNote: reviewNote || null,
           status: next === "DECLINED" ? "DECLINED" : order.status,
         },
       });
-      await tx.orderOverlay.create({ data: { orderId: order.id, type: "rsm_acceptance", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, metadata: { source: "postgres_status", stage: "rsm" } } });
+      await tx.orderOverlay.create({ data: { orderId: order.id, type: "rsm_acceptance", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, reason: reviewNote || null, metadata: { source: "postgres_status", stage: "rsm" } } });
       return row;
     });
     return { ...updated, accept_order: legacyAcceptOrderAlias(updated.acceptanceStatus), del_status: legacyDelStatusAlias(updated.status) };
@@ -188,12 +204,77 @@ export async function updatePostgresOrderAcceptance(orderId: unknown, actor: Aut
         acceptanceStatus: next,
         status: next === "ACCEPTED" ? "ACCEPTED" : "DECLINED",
         acceptedAt: next === "ACCEPTED" ? now : order.acceptedAt,
+        acceptanceNote: reviewNote || null,
+        acceptanceReviewedByUserId: actor.userId,
+        acceptanceReviewedByName: actor.displayName || actor.email,
+        acceptanceReviewedAt: now,
       },
     });
-    await tx.orderOverlay.create({ data: { orderId: order.id, type: "acceptance", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, metadata: { source: "postgres_status" } } });
+    await tx.orderOverlay.create({ data: { orderId: order.id, type: "acceptance", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, reason: reviewNote || null, metadata: { source: "postgres_status", stage: "staff" } } });
     return row;
   });
   return { ...updated, accept_order: legacyAcceptOrderAlias(updated.acceptanceStatus), del_status: legacyDelStatusAlias(updated.status) };
+}
+
+/**
+ * Put a declined order back in front of the reviewers.
+ *
+ * A staff decline is final for the staff tier — `assertAcceptanceTransition`
+ * only moves AWAITING onwards, so nobody in the two-stage flow can reopen it.
+ * Admin/NSM sit outside that flow and can revive the order, which resets both
+ * stages so it runs the full RSM-then-staff path again rather than landing
+ * back in an already-reviewed state. Prior notes are cleared with the statuses
+ * they belong to; the overlay trail keeps the history.
+ */
+export async function revivePostgresOrderAcceptance(orderId: unknown, actor: AuthActor, note?: unknown) {
+  if (actor.role !== "ADMIN" && actor.role !== "NSM") {
+    throw new PostgresOrderStatusError(403, "forbidden", "Only Admin and NSM can revive a declined order.");
+  }
+  const order = await findPostgresStatusOrder(orderId);
+  if (!order) return null;
+  if (order.status === "CANCELLED") throw new PostgresOrderStatusError(409, "order_already_cancelled", "Cancelled orders cannot be revived.");
+  if (order.acceptanceStatus !== "DECLINED" && order.rsmApprovalStatus !== "DECLINED") {
+    throw new PostgresOrderStatusError(409, "not_declined", "Only a declined order can be revived.");
+  }
+
+  const reviewNote = normalizeReviewNote(note);
+  return prisma.$transaction(async (tx) => {
+    const row = await tx.order.update({
+      where: { id: order.id },
+      data: {
+        acceptanceStatus: "AWAITING",
+        rsmApprovalStatus: "AWAITING",
+        status: "AWAITING_ACCEPTANCE",
+        acceptedAt: null,
+        rsmNote: null,
+        rsmReviewedByUserId: null,
+        rsmReviewedByName: null,
+        rsmReviewedAt: null,
+        acceptanceNote: null,
+        acceptanceReviewedByUserId: null,
+        acceptanceReviewedByName: null,
+        acceptanceReviewedAt: null,
+      },
+    });
+    await tx.orderOverlay.create({
+      data: {
+        orderId: order.id,
+        type: "acceptance_revived",
+        status: "awaiting",
+        value: "AWAITING",
+        actorUserId: actor.userId,
+        actorRole: actor.role,
+        reason: reviewNote || null,
+        metadata: {
+          source: "postgres_status",
+          stage: "revive",
+          previousAcceptanceStatus: order.acceptanceStatus,
+          previousRsmApprovalStatus: order.rsmApprovalStatus,
+        },
+      },
+    });
+    return { ...row, accept_order: legacyAcceptOrderAlias(row.acceptanceStatus), del_status: legacyDelStatusAlias(row.status) };
+  });
 }
 
 export async function updatePostgresOrderFulfilment(orderId: unknown, actor: AuthActor, next: OrderFulfilmentStatus) {

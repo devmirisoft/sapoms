@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import axios from 'axios'
-import { Pencil, Trash2, Download, Search, Users, Eye, EyeOff, MoreVertical, ChevronDown, X } from 'lucide-react'
+import { Pencil, Trash2, Download, Search, Users, UserPlus, Eye, EyeOff, MoreVertical, ChevronDown, X } from 'lucide-react'
 
 type StaffData = {
   staff_id: string
@@ -102,6 +102,7 @@ export default function StaffListPage() {
   const [search,        setSearch]        = useState("")
   const [searchInput,   setSearchInput]   = useState("")
   const [roleFilter,    setRoleFilter]    = useState("")
+  const [emailFilter,   setEmailFilter]   = useState("")
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [toastMsg,      setToastMsg]      = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(() => new Set())
@@ -180,30 +181,45 @@ export default function StaffListPage() {
 
   const data: StaffData[] = response?.data || []
 
-  // Distinct role labels present in the current dataset, driving the Role filter dropdown.
-  const roleOptions = useMemo(() => {
-    const labels = new Set<string>()
-    data.forEach(s => labels.add(roleBadge(s).label))
-    return Array.from(labels).sort()
+  // Headcount per role label in the current dataset — drives both the Role
+  // dropdown options and the summary chips above the table.
+  const roleCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    data.forEach(s => {
+      const label = roleBadge(s).label
+      counts.set(label, (counts.get(label) ?? 0) + 1)
+    })
+    return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
   }, [data])
 
-  // Apply the role filter client-side on top of whatever the server returned.
-  const roleFilteredData = useMemo(
-    () => roleFilter ? data.filter(s => roleBadge(s).label === roleFilter) : data,
-    [data, roleFilter]
+  const roleOptions = useMemo(
+    () => roleCounts.map(([label]) => label).sort(),
+    [roleCounts]
   )
 
+  // Apply role + email filters client-side on top of whatever the server returned.
+  const roleFilteredData = useMemo(() => {
+    const email = emailFilter.trim().toLowerCase()
+    return data.filter(s => {
+      if (roleFilter && roleBadge(s).label !== roleFilter) return false
+      if (email && !String(s.staff_email ?? "").toLowerCase().includes(email)) return false
+      return true
+    })
+  }, [data, roleFilter, emailFilter])
+
+  const clientFiltered = !!(roleFilter || emailFilter.trim())
+
   const totalFromServer = response?.count ?? 0
-  const total = roleFilter ? roleFilteredData.length : (totalFromServer || data.length)
+  const total = clientFiltered ? roleFilteredData.length : (totalFromServer || data.length)
   const serverLastPage = response?.last_page ?? 0
-  const totalPages = !roleFilter && serverLastPage > 1 ? serverLastPage : Math.max(1, Math.ceil(total / ITEMS_PER_PAGE))
+  const totalPages = !clientFiltered && serverLastPage > 1 ? serverLastPage : Math.max(1, Math.ceil(total / ITEMS_PER_PAGE))
 
   // If server returns a full dataset (no server-side pagination), paginate on the client
-  const serverPaging = !roleFilter && serverLastPage > 1
+  const serverPaging = !clientFiltered && serverLastPage > 1
   const displayedData: StaffData[] = serverPaging ? roleFilteredData : roleFilteredData.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
 
-  // Reset to page 1 whenever the role filter changes so pagination stays in sync.
-  useEffect(() => { setPage(1) }, [roleFilter])
+  // Reset to page 1 whenever a client-side filter changes so pagination stays in sync.
+  useEffect(() => { setPage(1) }, [roleFilter, emailFilter])
 
   // Prefetch next page (only when searching / using server pagination)
   useEffect(() => {
@@ -336,7 +352,7 @@ export default function StaffListPage() {
 
       <div className="p-6 admin-page-shell">
 
-        {/* Header — just the page title + export; search & role filter now live inline in the table header below */}
+        {/* Header — page title + export/add actions; search & role filter now live inline in the table header below */}
         <div className="mb-6">
           <div className="flex items-center justify-between">
             <div>
@@ -354,9 +370,54 @@ export default function StaffListPage() {
                 <Download className="w-4 h-4" />
                 Export CSV
               </button>
+              <Link
+                href="/dashboard/admin/staff/addstaff"
+                className={`inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 ${pressable}`}
+              >
+                <UserPlus className="w-4 h-4" />
+                Add staff
+              </Link>
             </div>
           </div>
         </div>
+
+        {/* Headcount per role — click a chip to filter the table by that role */}
+        {!isLoading && roleCounts.length > 0 && (
+          <div className="mb-5 flex flex-wrap items-center gap-2">
+            {roleCounts.map(([label, count]) => {
+              const active = roleFilter === label
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  onClick={() => setRoleFilter(active ? "" : label)}
+                  aria-pressed={active}
+                  className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${pressable} ${
+                    active
+                      ? "border-indigo-600 bg-indigo-600 text-white"
+                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+                  }`}
+                >
+                  {label}
+                  <span className={`rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums ${
+                    active ? "bg-white/20 text-white" : "bg-gray-100 text-gray-600"
+                  }`}>
+                    {count}
+                  </span>
+                </button>
+              )
+            })}
+            {roleFilter && (
+              <button
+                type="button"
+                onClick={() => setRoleFilter("")}
+                className="text-xs text-gray-500 underline hover:text-gray-800"
+              >
+                Clear role filter
+              </button>
+            )}
+          </div>
+        )}
 
         {isError && (
           <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600">
@@ -397,7 +458,25 @@ export default function StaffListPage() {
                   </th>
 
                   <th className="p-1.5 text-left">
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Email</div>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        value={emailFilter}
+                        onChange={(e) => setEmailFilter(e.target.value)}
+                        placeholder="Email"
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                      />
+                      {emailFilter && (
+                        <button
+                          type="button"
+                          onClick={() => setEmailFilter("")}
+                          className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600 ${pressable}`}
+                          aria-label="Clear email filter"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      )}
+                    </div>
                   </th>
 
                   <th className="p-1.5 text-left">

@@ -43,7 +43,11 @@ type Dealer = {
 
 type SalesRegionKey = "NORTH_1" | "NORTH_2" | "SOUTH_1" | "SOUTH_2" | "WEST_1" | "WEST_2" | "EAST" | "ROM" | "CENTRAL";
 
-type RegionalSalesPoint = { month: string } & Record<SalesRegionKey, number>;
+type SalesGranularity = "day" | "month" | "quarter" | "half" | "year";
+
+type RegionalSalesPoint = { period: string } & Record<SalesRegionKey, number>;
+
+type RegionalPerformanceEntry = { month: string; period?: string } & Record<SalesRegionKey, string>;
 
 type RegionalDistributor = {
   dealerId?: string;
@@ -67,7 +71,8 @@ type AdminDashboardApiResponse = {
       dealerName: string;
       total: string;
     }>;
-    regionalPerformance?: Array<{ month: string } & Record<SalesRegionKey, string>>;
+    regionalGranularity?: SalesGranularity;
+    regionalPerformance?: RegionalPerformanceEntry[];
     topDistributorsByRegion?: Partial<Record<SalesRegionKey, Array<{
       dealerId?: string;
       dealerName: string;
@@ -155,10 +160,48 @@ function formatRegionLabel(region: SalesRegionKey) {
   return REGION_META[region].label;
 }
 
+const DEFAULT_GRANULARITY: SalesGranularity = "month";
+
+const GRANULARITY_OPTIONS: Array<{ value: SalesGranularity; label: string; sub: string }> = [
+  { value: "day", label: "Day", sub: "Daily net sales by regional sales manager zone" },
+  { value: "month", label: "Month", sub: "Monthly net sales by regional sales manager zone" },
+  { value: "quarter", label: "Quarter", sub: "Quarterly net sales by regional sales manager zone" },
+  { value: "half", label: "Half Year", sub: "Half-yearly net sales by regional sales manager zone" },
+  { value: "year", label: "Year", sub: "Yearly net sales by regional sales manager zone" },
+];
+
 function formatMonthLabel(month: string) {
   const date = new Date(`${month}-01T00:00:00Z`);
   if (Number.isNaN(date.getTime())) return month;
   return date.toLocaleString("en-IN", { month: "short", year: "2-digit", timeZone: "UTC" });
+}
+
+/** Renders a period key produced by the dashboard API for the given granularity. */
+function formatPeriodLabel(period: string, granularity: SalesGranularity) {
+  switch (granularity) {
+    case "day": {
+      const date = new Date(`${period}T00:00:00Z`);
+      if (Number.isNaN(date.getTime())) return period;
+      return date.toLocaleString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
+    }
+    case "quarter":
+    case "half": {
+      const [year, part] = period.split("-");
+      return part ? `${part} ${year.slice(2)}` : period;
+    }
+    case "year":
+      return period;
+    case "month":
+    default:
+      return formatMonthLabel(period);
+  }
+}
+
+function mapRegionalPerformance(entries: RegionalPerformanceEntry[] | undefined): RegionalSalesPoint[] {
+  return (entries ?? []).map((entry) => ({
+    period: entry.period ?? entry.month,
+    ...Object.fromEntries(SALES_REGIONS.map((region) => [region, Number((entry as Record<string, unknown>)[region] ?? 0)])),
+  }) as RegionalSalesPoint);
 }
 
 function createEmptyRegionalDistributorMap(): Record<SalesRegionKey, RegionalDistributor[]> {
@@ -310,6 +353,8 @@ function AdminDashboardInner() {
   const [regionalSalesData, setRegionalSalesData] = useState<RegionalSalesPoint[]>([]);
   const [regionalTopDistributors, setRegionalTopDistributors] = useState<Record<SalesRegionKey, RegionalDistributor[]>>(createEmptyRegionalDistributorMap);
   const [selectedRegion, setSelectedRegion] = useState<SalesRegionKey>("NORTH_1");
+  const [regionalGranularity, setRegionalGranularity] = useState<SalesGranularity>(DEFAULT_GRANULARITY);
+  const [regionalSalesLoading, setRegionalSalesLoading] = useState(false);
   const [adminData, setAdminData] = useState<AdminStats>({
     dealerCount: 0,
     staffCount: 0,
@@ -342,7 +387,7 @@ function AdminDashboardInner() {
         const [activeOrdersRes, activePendingRes, dashboardRes] = await Promise.all([
           fetch(`/api/admin/orders?page=1&limit=100&search=`, { credentials: "include" }),
           fetch(`/api/admin/orders?page=1&limit=1&status=AWAITING_ACCEPTANCE`, { credentials: "include" }),
-          fetch(`/api/admin/dashboard`, { credentials: "include" }),
+          fetch(`/api/admin/dashboard?granularity=${DEFAULT_GRANULARITY}`, { credentials: "include" }),
         ]);
 
         if (dashboardRes.status === 401) {
@@ -369,10 +414,7 @@ function AdminDashboardInner() {
           Dealer_Name: dealer.dealerName,
           total: dealer.total,
         }) as Dealer));
-        setRegionalSalesData((dashboardJson.data?.regionalPerformance ?? []).map((entry) => ({
-          month: entry.month,
-          ...Object.fromEntries(SALES_REGIONS.map((region) => [region, Number((entry as Record<string, unknown>)[region] ?? 0)])),
-        }) as RegionalSalesPoint));
+        setRegionalSalesData(mapRegionalPerformance(dashboardJson.data?.regionalPerformance));
         const distributorsByRegion = createEmptyRegionalDistributorMap();
         for (const region of SALES_REGIONS) {
           distributorsByRegion[region] = (dashboardJson.data?.topDistributorsByRegion?.[region] ?? []).map((dealer) => ({
@@ -398,6 +440,37 @@ function AdminDashboardInner() {
 
     fetchData();
   }, [router]);
+
+  // Re-fetch only the regional series when the granularity filter changes.
+  // Skipped on first render because the initial load already covers the default granularity.
+  const initialGranularityLoad = useRef(true);
+  useEffect(() => {
+    if (initialGranularityLoad.current) {
+      initialGranularityLoad.current = false;
+      return;
+    }
+
+    const controller = new AbortController();
+    setRegionalSalesLoading(true);
+
+    (async () => {
+      try {
+        const res = await fetch(`/api/admin/dashboard?granularity=${regionalGranularity}`, {
+          credentials: "include",
+          signal: controller.signal,
+        });
+        const json = await parseJsonResponse<AdminDashboardApiResponse>(res);
+        setRegionalSalesData(mapRegionalPerformance(json.data?.regionalPerformance));
+      } catch (error) {
+        if ((error as Error)?.name === "AbortError") return;
+        console.error("Error fetching regional sales:", error);
+      } finally {
+        if (!controller.signal.aborted) setRegionalSalesLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [regionalGranularity]);
 
   const [
     outstandingOrdersQ,
@@ -501,8 +574,10 @@ function AdminDashboardInner() {
   const distributorEndIndex = distributorRows.length > 0 ? (distributorPage - 1) * 10 + distributorRows.length : 0;
   const regionalLineData = useMemo(() => regionalSalesData.map((point) => ({
     ...point,
-    label: formatMonthLabel(point.month),
-  })), [regionalSalesData]);
+    label: formatPeriodLabel(point.period, regionalGranularity),
+  })), [regionalSalesData, regionalGranularity]);
+  const regionalGranularitySub = GRANULARITY_OPTIONS.find((option) => option.value === regionalGranularity)?.sub
+    ?? GRANULARITY_OPTIONS[1].sub;
   const selectedRegionalDistributors = regionalTopDistributors[selectedRegion] ?? [];
   const hasRegionalSales = regionalSalesData.some((point) => SALES_REGIONS.some((region) => point[region] > 0));
 
@@ -585,7 +660,7 @@ function AdminDashboardInner() {
         }
 
         .dashboard-shell {
-          width: min(100%, 1480px);
+          width: min(100%, 1840px);
           margin: 0 auto;
           padding: 38px 34px 48px;
         }
@@ -938,6 +1013,11 @@ function AdminDashboardInner() {
           box-shadow: 0 1px 4px rgba(0,0,0,.10);
         }
 
+        .region-tab:disabled {
+          cursor: default;
+          opacity: .55;
+        }
+
         .ranking-list { display: flex; flex-direction: column; }
 
         .ranking-row {
@@ -1095,7 +1175,7 @@ function AdminDashboardInner() {
               <div className="metric-label">Staff</div>
               <div className="metric-value">{summaryLoading ? "—" : (adminData.staffCount || staffQ.data?.count || staffRows.length)}</div>
               <div className="metric-meta">
-                <span className="status-inline"><span className="status-dot purple" />{roleCounts["1"] ?? 0} executive</span>
+                <span className="status-inline"><span className="status-dot purple" />{roleCounts["1"] ?? 0} sales manager</span>
                 <span className="status-inline"><span className="status-dot blue" />{roleCounts["2"] ?? 0} field</span>
                 <Link href="/dashboard/admin/staff/stafflist" className="metric-link">View →</Link>
               </div>
@@ -1143,7 +1223,7 @@ function AdminDashboardInner() {
               <div className="panel-header">
                 <div>
                   <div className="panel-title">RSM Net Sales</div>
-                  <div className="panel-sub">Monthly net sales by regional sales manager zone</div>
+                  <div className="panel-sub">{regionalGranularitySub}</div>
                 </div>
                 <div className="legend">
                   {SALES_REGIONS.map((region) => (
@@ -1155,8 +1235,25 @@ function AdminDashboardInner() {
                 </div>
               </div>
 
+              <div className="region-tabs-wrap">
+                <div className="region-tabs" role="group" aria-label="Net sales period">
+                  {GRANULARITY_OPTIONS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`region-tab${regionalGranularity === option.value ? " active" : ""}`}
+                      aria-pressed={regionalGranularity === option.value}
+                      disabled={regionalSalesLoading}
+                      onClick={() => setRegionalGranularity(option.value)}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               <div className="chart-canvas">
-                {loading ? (
+                {loading || regionalSalesLoading ? (
                   <div className="empty-state">Loading regional sales…</div>
                 ) : hasRegionalSales ? (
                   <ResponsiveContainer width="100%" height="100%">

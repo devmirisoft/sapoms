@@ -167,7 +167,7 @@ export default function DealerRequestManagement({ scope }: DealerRequestManageme
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
-      <div className="mx-auto max-w-7xl">
+      <div className="mx-auto max-w-[1840px]">
         <div className="mb-8">
           <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
             <div>

@@ -507,7 +507,7 @@ export default function Page() {
       {/* ══════════════════════════════════════════════════════════════════
           SECTION 1 — Shop by Category
       ══════════════════════════════════════════════════════════════════ */}
-      <section id="categories" className="max-w-[1400px] mx-auto px-4 py-12">
+      <section id="categories" className="max-w-[1840px] mx-auto px-4 py-12">
         <SectionHeading
           title="Shop by Category"
           subtitle="Browse our full range of laboratory equipment"
@@ -541,7 +541,7 @@ export default function Page() {
       {/* ══════════════════════════════════════════════════════════════════
           SECTION 2 — Recent Orders
       ══════════════════════════════════════════════════════════════════ */}
-      <section id="order-history" className="max-w-[1400px] mx-auto px-4 py-12 border-t border-gray-200">
+      <section id="order-history" className="max-w-[1840px] mx-auto px-4 py-12 border-t border-gray-200">
         <SectionHeading
           title="Recent Orders"
           subtitle={ordersData ? `${ordersData.count} total orders · showing last 4` : "Your latest purchases"}
@@ -626,7 +626,7 @@ export default function Page() {
       {/* ══════════════════════════════════════════════════════════════════
           SECTION 3 — Related Products
       ══════════════════════════════════════════════════════════════════ */}
-      <section id="related-products" className="max-w-[1400px] mx-auto px-4 py-12 border-t border-gray-200">
+      <section id="related-products" className="max-w-[1840px] mx-auto px-4 py-12 border-t border-gray-200">
         <SectionHeading
           title="Related Products"
           subtitle="Recommended based on your purchases and browsing"
@@ -653,7 +653,7 @@ export default function Page() {
           SECTION 4 — Recently Viewed (from localStorage)
       ══════════════════════════════════════════════════════════════════ */}
       {recentlyViewed.length > 0 && (
-        <section id="recently-viewed" className="max-w-[1400px] mx-auto px-4 py-12 border-t border-gray-200">
+        <section id="recently-viewed" className="max-w-[1840px] mx-auto px-4 py-12 border-t border-gray-200">
           <SectionHeading
             title="Recently Viewed"
             subtitle="Pick up where you left off"
@@ -696,7 +696,7 @@ export default function Page() {
       {/* ══════════════════════════════════════════════════════════════════
           SECTION 5 — Hot Right Now
       ══════════════════════════════════════════════════════════════════ */}
-      <section id="hot-right-now" className="max-w-[1400px] mx-auto px-4 py-12 border-t border-gray-200">
+      <section id="hot-right-now" className="max-w-[1840px] mx-auto px-4 py-12 border-t border-gray-200">
         <SectionHeading
           title="Hot Right Now"
           subtitle="Top picks flying off the shelves"

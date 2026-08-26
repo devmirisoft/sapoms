@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { WalletStatus, WalletTransactionType } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth } from "@/server/auth/session";
+import { errorStatus } from "@/server/http/auth-error";
 import { applyWalletAdjustment, applyWalletChange, getWalletSnapshot, setWalletStatus } from "@/lib/postgresWallet";
 
 export const runtime = "nodejs";
@@ -61,7 +62,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dea
     return NextResponse.json({ success: true, ...result });
   } catch (error: any) {
     console.error("[POST /api/wallet/[dealerId]/adjust]", error);
-    const status = Number(error?.status) || (error?.message === "Invalid dealer id." ? 400 : 500);
+    const status = Number(error?.status) || (error?.message === "Invalid dealer id." ? 400 : errorStatus(error));
     return NextResponse.json({ success: false, code: error?.code || "wallet_error", message: status >= 500 ? "Unable to update wallet." : error?.message }, { status });
   }
 }

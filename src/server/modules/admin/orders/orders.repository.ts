@@ -44,11 +44,14 @@ function buildWhere(input: AdminOrderListInput): Prisma.OrderWhereInput {
 const listInclude = {
   dealer: { select: { id: true, businessName: true, dealerCode: true } },
   assignedStaff: { select: { id: true, displayName: true } },
+  ledgerBills: { orderBy: { billDate: "desc" as const } },
 } satisfies Prisma.OrderInclude;
 
 const detailInclude = {
   ...listInclude,
   items: { orderBy: { id: "asc" as const } },
+  // Carries the settled-from-wallet position onto the admin order view.
+  ledgerBills: { orderBy: { billDate: "desc" as const } },
 } satisfies Prisma.OrderInclude;
 
 export class PostgresAdminOrderRepository {

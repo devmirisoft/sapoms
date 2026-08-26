@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/server/auth/session";
 import { listPostgresCancelledOverlays, PostgresOrderAnnotationError } from "@/lib/postgresOrderAnnotations";
+import { errorStatus } from "@/server/http/auth-error";
 
 export const runtime = "nodejs";
 
@@ -32,7 +33,10 @@ export async function GET(req: NextRequest) {
     }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[GET /api/order-overlays/cancelled]", error);
-    const status = error instanceof PostgresOrderAnnotationError ? error.status : 500;
-    return NextResponse.json({ success: false, message: String((error as Error)?.message ?? "Unable to load cancelled orders.") }, { status });
+    const status = error instanceof PostgresOrderAnnotationError ? error.status : errorStatus(error);
+    return NextResponse.json(
+      { success: false, message: status >= 500 ? "Unable to load cancelled orders." : String((error as Error)?.message ?? "Unable to load cancelled orders.") },
+      { status },
+    );
   }
 }

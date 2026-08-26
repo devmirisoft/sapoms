@@ -133,7 +133,10 @@ function DispatchPanelDialog({
   const isAccepted = isAcceptedOrderForDispatch(acceptOrder);
   const isDeleted = isDeletedOrderForDispatch(delStatus);
 
-  const statusSummary = statusSelectLabel(selectedItem.dispatchStatus);
+  const isPartiallyDispatched = selectedItem.dispatchStatus !== "not_in_stock"
+    && selectedItem.dispatchedQuantity > 0
+    && selectedItem.remainingQuantity > 0;
+  const statusSummary = isPartiallyDispatched ? "Partially Dispatched" : statusSelectLabel(selectedItem.dispatchStatus);
   const noteText = String(selectedItem.fallbackProductNote ?? "").trim();
   const remarksText = originalRemarks(selectedItem);
   const submitDisabled = !canEdit || submitting;

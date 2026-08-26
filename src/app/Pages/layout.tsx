@@ -69,22 +69,19 @@ export default function PagesLayout({ children }: { children: React.ReactNode })
       <div style={{ minHeight: "100vh", background: "#f0f2f5", fontFamily: "'DM Sans', sans-serif" }}>
         <Sidebar open={open} onClose={() => setOpen(false)} />
 
-        <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+        <div className={`dl-shell${open ? " sb-expanded" : ""}`} style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
           <header className="dl-topbar">
             <button
               className="dl-hamburger"
               onClick={() => setOpen((value) => !value)}
               aria-label="Toggle sidebar"
+              aria-expanded={open}
             >
-              {open ? (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              )}
+              <span className="dl-burger" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
             </button>
 
             <img src="https://omsonsapp.vercel.app/headicon.png" alt="Omsons" style={{ height: 44, flexShrink: 0 }} />

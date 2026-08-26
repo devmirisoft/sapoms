@@ -3,40 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import places from "@/../public/data/places.json";
 import { SALES_REGION_OPTIONS, type SalesRegionOptionValue } from "@/lib/salesRegions";
+import { emptyRegionAssignments, loadRegionAssignments, saveRegionAssignments, type RegionAssignments } from "@/lib/regionAssignments";
 
 type PlacesData = {
-  states?: string[];
-  union_territories?: string[];
+  states?: { name: string; cities: string[] }[];
+  union_territories?: { name: string; cities: string[] }[];
 };
 
-type RegionAssignments = Record<SalesRegionOptionValue, string[]>;
-
-const STORAGE_KEY = "sapoms-region-state-assignments";
-
-function emptyAssignments(): RegionAssignments {
-  return SALES_REGION_OPTIONS.reduce((acc, region) => {
-    acc[region.value] = [];
-    return acc;
-  }, {} as RegionAssignments);
-}
-
-function loadAssignments(): RegionAssignments {
-  if (typeof window === "undefined") return emptyAssignments();
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) || "{}");
-    const next = emptyAssignments();
-    for (const region of SALES_REGION_OPTIONS) {
-      if (Array.isArray(parsed?.[region.value])) next[region.value] = parsed[region.value].filter((entry: unknown) => typeof entry === "string");
-    }
-    return next;
-  } catch {
-    return emptyAssignments();
-  }
-}
-
 export default function ManageRegionsPage() {
-  const [assignments, setAssignments] = useState<RegionAssignments>(() => loadAssignments());
-  const [savedAssignments, setSavedAssignments] = useState<RegionAssignments>(() => loadAssignments());
+  const [assignments, setAssignments] = useState<RegionAssignments>(() => loadRegionAssignments());
+  const [savedAssignments, setSavedAssignments] = useState<RegionAssignments>(() => loadRegionAssignments());
   const [openRegion, setOpenRegion] = useState<SalesRegionOptionValue | null>(null);
   const [placeSearch, setPlaceSearch] = useState("");
   const [saveMessage, setSaveMessage] = useState("");
@@ -44,7 +20,7 @@ export default function ManageRegionsPage() {
 
   const placeOptions = useMemo(() => {
     const data = places as PlacesData;
-    return [...(data.states ?? []), ...(data.union_territories ?? [])].sort((a, b) => a.localeCompare(b));
+    return [...(data.states ?? []), ...(data.union_territories ?? [])].map((entry) => entry.name).sort((a, b) => a.localeCompare(b));
   }, []);
 
   const filteredPlaceOptions = useMemo(() => {
@@ -77,12 +53,12 @@ export default function ManageRegionsPage() {
   };
 
   const clearRegion = (region: SalesRegionOptionValue) => {
-    setAssignments((current) => ({ ...current, [region]: [] }));
+    setAssignments((current) => ({ ...current, [region]: emptyRegionAssignments()[region] }));
     setSaveMessage("");
   };
 
   const handleSave = () => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(assignments));
+    saveRegionAssignments(assignments);
     setSavedAssignments(assignments);
     setSaveMessage("Region assignments saved.");
     window.setTimeout(() => setSaveMessage(""), 2500);

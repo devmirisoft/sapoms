@@ -45,7 +45,7 @@ test("staff creation keeps staff-management choices separate from admin and acco
   assert.match(staffSchemas, /value\.role === "STAFF" && value\.staffRoleType !== "1" && value\.staffRoleType !== "2"/);
   assert.match(staffRepo, /if \(input\.role === "NSM"\)/);
   assert.match(staffRepo, /input\.role === "RSM" \? input\.salesRegion : null/);
-  assert.match(staffUi, /value: 'EXECUTIVE', label: 'Executive', authRole: 'STAFF', staffRoleType: '1'/);
+  assert.match(staffUi, /value: 'EXECUTIVE', label: 'Sales Manager', authRole: 'STAFF', staffRoleType: '1'/);
   assert.match(staffUi, /value: 'FIELD_EXECUTIVE', label: 'Staff', authRole: 'STAFF', staffRoleType: '2'/);
   assert.match(staffUi, /value: 'RSM', label: 'RSM', authRole: 'RSM'/);
   assert.match(staffUi, /value: 'NSM', label: 'NSM', authRole: 'NSM'/);
@@ -74,4 +74,32 @@ test("sales scope rejects cross-region RSM requests and supports NSM regional fi
   assert.match(salesScope, /isAdminLike\(actor\) \|\| actor\.role === "ACCOUNTANT"/);
   assert.match(salesScope, /buildDealerRegionWhere/);
   assert.match(salesScope, /buildOrderRegionWhere/);
+});
+
+test("RSM discount request scope covers their reporting team, not just their region", () => {
+  const listRoute = readFileSync("src/app/api/custom-discount-requests/route.ts", "utf8");
+  const idRoute = readFileSync("src/app/api/custom-discount-requests/[id]/route.ts", "utf8");
+  const drafts = readFileSync("src/lib/postgresDiscountDrafts.ts", "utf8");
+
+  // parentRsmId is denormalized on write, so one flat query returns the subtree.
+  assert.match(salesScope, /function resolveRsmTeamStaffIds[\s\S]*parentRsmId: actor\.staffId/);
+  assert.match(salesScope, /\[actor\.staffId, \.\.\.team\.map\(\(member\) => member\.id\)\]/);
+
+  // Region OR team, and an unscoped region must never widen an RSM to everything.
+  assert.match(salesScope, /function buildRsmDiscountRequestWhere/);
+  assert.match(salesScope, /clauses\.push\(\{ dealer: dealerWhere \}\)/);
+  assert.match(salesScope, /clauses\.push\(\{ staffId: \{ in: teamStaffIds \} \}\)/);
+  assert.match(salesScope, /if \(clauses\.length === 0\) return \{ id: BigInt\(-1\) \}/);
+
+  // Listing and single-request authorization stay in agreement.
+  assert.match(listRoute, /buildRsmDiscountRequestWhere\(actor, prisma\)/);
+  assert.doesNotMatch(listRoute, /where\.dealer = await buildDealerRegionWhere/);
+  assert.match(idRoute, /assertRsmDiscountScope\(actor: AuthActor, dealerId: bigint, requestStaffId: bigint \| null\)/);
+  assert.match(idRoute, /teamStaffIds\.some\(\(staffId\) => staffId === requestStaffId\)/);
+  assert.match(idRoute, /assertRsmDiscountScope\(actor, row\.dealerId, row\.staffId\)/);
+  assert.match(idRoute, /assertRsmDiscountScope\(actor, existing\.dealerId, existing\.staffId\)/);
+
+  // The RSM needs to see which of their team raised each request.
+  assert.match(drafts, /staff: \{ select: \{ id: true, displayName: true, staffRoleType: true \} \}/);
+  assert.match(drafts, /staffName: row\.staff\?\.displayName/);
 });

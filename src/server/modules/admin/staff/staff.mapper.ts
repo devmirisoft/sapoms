@@ -23,6 +23,8 @@ export function mapAdminStaff(record: AdminStaffRecord, detail = false) {
   const salesRegion = record.salesRegion || "";
   const parentRsmId = record.parentRsmId?.toString() || "";
   const parentAsmId = record.parentAsmId?.toString() || "";
+  const assignedCities = record.assignedCities ?? [];
+  const reportingManagerId = record.reportingManagerId?.toString() || "";
 
   return {
     id,
@@ -47,6 +49,8 @@ export function mapAdminStaff(record: AdminStaffRecord, detail = false) {
     parentRsmId,
     parentAsmId,
     assignedStates: record.assignedStates ?? [],
+    assignedCities,
+    reportingManagerId,
     parentRsm: record.parentRsm ? {
       id: record.parentRsm.id.toString(),
       name: record.parentRsm.displayName,
@@ -58,6 +62,12 @@ export function mapAdminStaff(record: AdminStaffRecord, detail = false) {
       name: record.parentAsm.displayName,
       email: record.parentAsm.user.email,
       userId: record.parentAsm.user.id.toString(),
+    } : null,
+    reportingManager: record.reportingManager ? {
+      id: record.reportingManager.id.toString(),
+      name: record.reportingManager.displayName,
+      email: record.reportingManager.user.email,
+      userId: record.reportingManager.user.id.toString(),
     } : null,
     role,
     status: record.user.status,
@@ -80,5 +90,7 @@ export function mapAdminStaff(record: AdminStaffRecord, detail = false) {
     parent_rsm_id: parentRsmId,
     parent_asm_id: parentAsmId,
     assigned_states: record.assignedStates ?? [],
+    assigned_cities: assignedCities,
+    reporting_manager_id: reportingManagerId,
   };
 }

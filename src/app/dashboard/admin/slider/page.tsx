@@ -103,7 +103,7 @@ export default function SliderManager({
   };
 
   return (
-    <div className="space-y-5 p-8 mx-20" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
+    <div className="space-y-5 p-8 mx-auto w-full max-w-[1840px]" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
 
       {/* Toast */}
       {toast && (

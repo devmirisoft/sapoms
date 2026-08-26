@@ -2,7 +2,6 @@ import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment */
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
-import { supabase } from "@/lib/Exporttopdf";
 import moment from "moment";
 import { hasPriorityTag } from "@/lib/orderPriority";
 import {
@@ -1006,7 +1005,29 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
     doc.text(wrappedWords[0], ML + 36, y + FRH * 0.63);
     y += FRH;
 
-    // â”€â”€ PAYMENT TERMS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    // SETTLEMENT: shown only when the Accountant has settled against this order,
+    // so an unsettled invoice renders exactly as before.
+    const settlementInfo = (displayOrder as any)?.settlement;
+    const settledPaid = Number(settlementInfo?.paidAmount ?? 0);
+    if (settlementInfo && settledPaid > 0) {
+        const settledDue = Number(settlementInfo.dueAmount ?? Math.max(0, net - settledPaid));
+        doc.rect(ML, y, CW, FRH);
+        doc.setFont("Helvetica", "bold"); doc.setFontSize(7.5);
+        doc.text("Amount Paid:", ML + PAD, y + FRH * 0.63);
+        doc.setFont("Helvetica", "normal");
+        doc.text(fmt(settledPaid), ML + 32, y + FRH * 0.63);
+        doc.setFont("Helvetica", "bold");
+        doc.text(settledDue > 0 ? "Balance Due:" : "Status:", ML + CW / 2, y + FRH * 0.63);
+        doc.setFont("Helvetica", "normal");
+        doc.text(
+            settledDue > 0 ? fmt(settledDue) : "Fully settled",
+            ML + CW / 2 + 26,
+            y + FRH * 0.63,
+        );
+        y += FRH;
+    }
+
+    // ââ PAYMENT TERMS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
     doc.rect(ML, y, CW, FRH);
     doc.setFont("Helvetica", "bold"); doc.setFontSize(7.5);
     doc.text("Payment Terms:", ML + PAD, y + FRH * 0.63);
@@ -1053,8 +1074,11 @@ function tcLines(): string[] {
     ];
 }
 
-// â”€â”€â”€ Upload to Supabase â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-export async function uploadOrderInvoiceToSupabase(
+// --- Upload to cloud storage --------------------------------------------------
+// Posts the rendered PDF to /api/invoices, which stores the file in Cloudinary
+// and the metadata in Postgres. The dealer id, duplicate check, and access
+// control are all resolved server-side; the browser no longer writes either.
+export async function uploadOrderInvoice(
     pdfBlob: Blob,
     order: OrderInvoiceData,
     options?: InvoiceDownloadOptions
@@ -1067,34 +1091,33 @@ export async function uploadOrderInvoiceToSupabase(
         const summaryOverride = inlineSummaryOverride ?? ((order as any).__source === "postgres" ? null : await fetchOrderSummaryOverride(order));
         const displayOrder = summaryOverride ? { ...(order as any), ...summaryOverride } : order;
         const invNo = invoiceNumber(order.order_id);
-        const timestamp = moment().format("YYYY-MM-DD_HH-mm-ss");
-        const safeInv = invNo.replace(/[^a-z0-9-._]/gi, "_");
-        const filePath = `invoices/${safeInv}_${timestamp}.pdf`;
-        const invoiceId = `${safeInv}_${timestamp}`;
         const net = resolveOrderAmounts(displayOrder).netPayable;
 
-        const { error: upErr } = await supabase.storage
-            .from("invoices")
-            .upload(filePath, pdfBlob, { contentType: "application/pdf", upsert: false });
-        if (upErr) return { success: false, message: "Upload failed", error: upErr.message };
-
-        const { data: urlData } = supabase.storage.from("invoices").getPublicUrl(filePath);
-
         const dp = getDealerProfile();
-        const { error: dbErr } = await supabase.from("invoices").insert([{
-            invoice_id: invoiceId,
-            invoice_number: invNo,
-            dealer_id: dp?.Dealer_Id || order.order_id,
-            buyer_name: dp?.Dealer_Name || displayOrder.Dealer_Name,
-            file_url: urlData.publicUrl,
-            file_path: filePath,
-            invoice_date: displayOrder.order_date,
-            total_amount: net,
-            created_at: new Date().toISOString(),
-        }]);
-        if (dbErr) console.warn("Metadata save failed (PDF uploaded):", dbErr.message);
+        const dealerId = resolveOrderDealerId(order as unknown as Record<string, unknown>) || dp?.Dealer_Id || "";
+        if (!dealerId) return { success: false, message: "Upload failed", error: "Could not determine the dealer for this order" };
 
-        return { success: true, message: "Invoice uploaded", url: urlData.publicUrl, invoiceId };
+        const form = new FormData();
+        form.append("file", pdfBlob, `${invNo.replace(/\//g, "-")}.pdf`);
+        form.append("dealerId", String(dealerId));
+        form.append("invoiceNumber", invNo);
+        form.append("orderNumber", String(order.order_id ?? ""));
+        form.append("buyerName", String(dp?.Dealer_Name || displayOrder.Dealer_Name || ""));
+        form.append("invoiceDate", String(displayOrder.order_date ?? ""));
+        form.append("totalAmount", String(net));
+
+        const response = await fetch("/api/invoices", { method: "POST", body: form });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.success) {
+            return { success: false, message: "Upload failed", error: payload?.message || `Upload failed (${response.status})` };
+        }
+
+        return {
+            success: true,
+            message: "Invoice uploaded",
+            url: payload.invoice?.downloadUrl,
+            invoiceId: payload.invoice?.id,
+        };
     } catch (err) {
         return { success: false, message: "Error", error: err instanceof Error ? err.message : "Unknown" };
     }
@@ -1122,32 +1145,30 @@ export async function downloadOrderInvoice(order: OrderInvoiceData, options?: In
 // â”€â”€â”€ List invoices â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export async function listInvoices(dealerId: string, limit = 100) {
     try {
-        let query = supabase
-            .from("invoices").select("*")
-            .order("created_at", { ascending: false }).limit(limit);
-        if (dealerId) query = query.eq("dealer_id", dealerId);
-        const { data, error } = await query;
-        if (error) return { success: false, message: "Failed", error: error.message, data: [] };
-        return { success: true, message: "OK", data: data || [] };
+        const params = new URLSearchParams({ limit: String(limit) });
+        if (dealerId) params.set("dealerId", dealerId);
+
+        const response = await fetch(`/api/invoices?${params.toString()}`, { cache: "no-store" });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.success) {
+            return { success: false, message: "Failed", error: payload?.message || `Failed (${response.status})`, data: [] };
+        }
+        return { success: true, message: "OK", data: payload.invoices || [] };
     } catch (err) {
         return { success: false, message: "Error", error: err instanceof Error ? err.message : "Unknown", data: [] };
     }
 }
 
 // â”€â”€â”€ Delete invoice â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-export async function deleteInvoice(invoiceId: string, filePath: string) {
+// The stored file is resolved from the invoice row server-side, so callers no
+// longer pass a storage path.
+export async function deleteInvoice(invoiceId: string) {
     try {
-        const { data: invoice } = await supabase
-            .from("invoices")
-            .select("invoice_date")
-            .eq("invoice_id", invoiceId)
-            .maybeSingle();
-        if (!invoice) {
-            return { success: false, message: "Invoice not found" };
+        const response = await fetch(`/api/invoices/${encodeURIComponent(invoiceId)}`, { method: "DELETE" });
+        const payload = await response.json().catch(() => null);
+        if (!response.ok || !payload?.success) {
+            return { success: false, message: "Delete failed", error: payload?.message || `Delete failed (${response.status})` };
         }
-        await supabase.storage.from("invoices").remove([filePath]);
-        const { error } = await supabase.from("invoices").delete().eq("invoice_id", invoiceId);
-        if (error) return { success: false, message: "Delete failed", error: error.message };
         return { success: true, message: "Deleted" };
     } catch (err) {
         return { success: false, message: "Error", error: err instanceof Error ? err.message : "Unknown" };

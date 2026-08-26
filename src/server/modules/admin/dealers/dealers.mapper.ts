@@ -1,3 +1,4 @@
+import { staffRoleLabel, resolveStaffRoleKey } from "@/lib/staffRoleLabel";
 import type { AdminDealerRecord, AdminDealerStaffAssignment } from "./dealers.types";
 
 function decimalToString(value: unknown) {
@@ -9,6 +10,11 @@ function moneyToString(value: bigint | null | undefined) {
 }
 
 export function mapAdminDealerStaffAssignment(record: AdminDealerStaffAssignment) {
+  const roleSource = {
+    role: record.staff.user.role,
+    staffRoleType: record.staff.staffRoleType,
+    salesRegion: record.staff.salesRegion,
+  };
   return {
     assignmentId: record.id.toString(),
     staffId: record.staffId.toString(),
@@ -16,6 +22,11 @@ export function mapAdminDealerStaffAssignment(record: AdminDealerStaffAssignment
     name: record.staff.displayName || "",
     email: record.staff.user.email || "",
     designation: record.staff.designation || "",
+    role: record.staff.user.role || "",
+    staffRoleType: record.staff.staffRoleType || "",
+    salesRegion: record.staff.salesRegion || "",
+    roleKey: resolveStaffRoleKey(roleSource),
+    roleLabel: staffRoleLabel(roleSource),
     active: record.active,
     assignedAt: record.assignedAt.toISOString(),
   };
@@ -35,6 +46,12 @@ export function mapAdminDealer(record: AdminDealerRecord) {
   const creditDays = record.creditDays ?? 0;
   const creditLimitPaise = moneyToString(record.creditLimitPaise);
   const gstin = record.gstin || "";
+  const annualTarget = moneyToString(record.annualTargetPaise);
+  const notes = record.notes || "";
+  const priorityContact = record.priorityContact === "secondary" ? "secondary" : "primary";
+  const secondaryContactName = record.secondaryContactName || "";
+  const secondaryContactPhone = record.secondaryContactPhone || "";
+  const secondaryContactEmail = record.secondaryContactEmail || "";
   const assignedStaff = (record.staffAssignments ?? [])
     .filter((assignment) => assignment.active && !assignment.staff.user.deletedAt && assignment.staff.user.status === "ACTIVE")
     .map(mapAdminDealerStaffAssignment);
@@ -49,7 +66,12 @@ export function mapAdminDealer(record: AdminDealerRecord) {
     role: "RSM",
     region: record.regionalManager.staffProfile.salesRegion || region,
   } : null;
-  const staffname = assignedStaff.map((staff) => staff.name).filter(Boolean).join(", ");
+  // Legacy flat string kept for older consumers; the admin table renders the
+  // richer `assignedStaff` rows (which carry roleLabel) instead.
+  const staffname = assignedStaff
+    .map((staff) => (staff.name && staff.roleLabel ? `${staff.name} (${staff.roleLabel})` : staff.name))
+    .filter(Boolean)
+    .join(", ");
 
   return {
     id,
@@ -65,6 +87,13 @@ export function mapAdminDealer(record: AdminDealerRecord) {
     discountPercent: discount,
     creditDays,
     creditLimitPaise,
+    annualTargetPaise: annualTarget,
+    notes,
+    priorityContact,
+    priorityPerson: priorityContact,
+    secondaryContactName,
+    secondaryContactPhone,
+    secondaryContactEmail,
     status: record.user.status,
     walletStatus,
     assignedStaff,
@@ -84,12 +113,16 @@ export function mapAdminDealer(record: AdminDealerRecord) {
     Dealer_Dealercode: dealerCode,
     Dealer_Username: record.user.username || email,
     Dealer_Image: record.imageUrl || "",
-    Dealer_Notes: "",
+    Dealer_Notes: notes,
+    Dealer_Contact_Person: priorityContact,
+    Dealer_Secondary_Contact_Name: secondaryContactName,
+    Dealer_Secondary_Contact_Phone: secondaryContactPhone,
+    Dealer_Secondary_Contact_Email: secondaryContactEmail,
     discount,
     gst: gstin,
     creditdays: String(creditDays),
     currentlimit: creditLimitPaise,
-    annualtarget: "",
+    annualtarget: annualTarget,
     assignedstaff,
     staffname,
   };

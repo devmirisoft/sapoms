@@ -175,7 +175,7 @@ export default function StaffProfilePage() {
         </div>
       )}
 
-      <div className="mx-auto max-w-3xl">
+      <div className="mx-auto max-w-[1840px]">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Staff Profile</h1>
           <p className="mt-1 text-sm text-gray-500">Update your staff account details</p>

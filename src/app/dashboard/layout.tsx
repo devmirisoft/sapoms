@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 
 import RouteGuard from "@/components/auth/RouteGuard";
 import DashboardSmartSearch from "@/components/dashboard/DashboardSmartSearch";
+import DealerHelpButton from "@/components/dashboard/DealerHelpButton";
 import SmartSearchBar from "@/components/SartSearchBar";
 import Sidebar from "@/components/layout/sidebar";
 import { clearAuthStorage, type AppRole, type StoredUser } from "@/lib/roleAccess";
@@ -176,6 +177,29 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           border-color: rgba(239,68,68,0.28);
           color: #f87171;
         }
+        .dl-help {
+          height: 38px;
+          flex-shrink: 0;
+          padding: 0 14px;
+          border-radius: 11px;
+          background: transparent;
+          border: 1px solid rgba(255,255,255,0.09);
+          font-size: 13px;
+          font-weight: 500;
+          color: rgba(226,232,240,0.72);
+          cursor: pointer;
+          font-family: inherit;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: all .16s;
+        }
+        .dl-help:hover {
+          background: rgba(56,189,248,0.12);
+          border-color: rgba(56,189,248,0.3);
+          color: #7dd3fc;
+        }
         @media (max-width: 900px) {
           .dl-topbar {
             padding: 0 14px;
@@ -189,10 +213,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           .dl-sub {
             display: none;
           }
-          .dl-logout span {
+          .dl-logout span,
+          .dl-help span {
             display: none;
           }
-          .dl-logout {
+          .dl-logout,
+          .dl-help {
             width: 38px;
             padding: 0;
           }
@@ -202,29 +228,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       <div style={{ minHeight: "100vh", background: "#f0f2f5", fontFamily: "Arial, Helvetica, sans-serif" }}>
         <Sidebar open={open} onClose={() => setOpen(false)} />
 
-        <div style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
+        <div className={`dl-shell${open ? " sb-expanded" : ""}`} style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
           <header className="dl-topbar">
             <button
               className="dl-hamburger"
               onClick={() => setOpen((value) => !value)}
               aria-label="Toggle sidebar"
+              aria-expanded={open}
             >
-              {open ? (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M18 6 6 18M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                  <path d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              )}
+              <span className="dl-burger" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </span>
             </button>
 
-            <img
+            {/* <img
               src="https://omsonsapp.vercel.app/headicon.png"
               alt="Omsons"
               style={{ height: 44, flexShrink: 0 }}
-            />
+            /> */}
 
             <div style={{ minWidth: 0 }}>
               <div className="dl-title">{user ? `Welcome, ${displayName}` : "Dashboard"}</div>
@@ -248,6 +271,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   />
                 )}
               </div>
+
+              {role === "dealer" && <DealerHelpButton className="dl-help" />}
 
               <button className="dl-logout" onClick={handleLogout}>
                 <LogOut size={14} />

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useParams, useRouter } from 'next/navigation';
 import { useCartStore } from "@/Store/store";
@@ -43,7 +43,24 @@ type Product = {
   variants?: Variant[];
 };
 
+// Shared by the breadcrumb, the condensed title bar and the main content so the
+// three stay aligned at any viewport width.
+const PAGE_MAX_WIDTH = 1560;
+
+// The site header (Products/layout.tsx) is sticky and 64px tall (h-16), so the
+// pinned title parks just below it rather than over it.
+const SITE_HEADER_HEIGHT = 64;
+
 type QuantityValue = number | "";
+
+// The staff assigned to the signed-in dealer, as returned by
+// GET /api/dealer/profile — only the territory fields are used here.
+type AssignedStaff = {
+  name?: string;
+  location?: string;
+  assignedStates?: string[];
+  assignedCities?: string[];
+};
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
@@ -73,6 +90,19 @@ function variantPackPricePaise(product: Product | null, v: Variant | null): numb
 function fmt(paise: number | null): string {
   if (paise === null) return "—";
   return `₹${(paise / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// "Ships from" reads off the dealer's assigned staff territory: their cities
+// first, falling back to the states, then to the free-text location.
+function shipsFromLabel(staff: AssignedStaff[]): string {
+  const parts = new Set<string>();
+  for (const member of staff) {
+    const cities = (member.assignedCities ?? []).filter(Boolean);
+    const states = (member.assignedStates ?? []).filter(Boolean);
+    const territory = cities.length ? cities : states.length ? states : [member.location ?? ""];
+    territory.filter(Boolean).forEach(entry => parts.add(entry.trim()));
+  }
+  return Array.from(parts).join(" · ");
 }
 
 // Unique spec keys across all variants — drives the table columns.
@@ -206,9 +236,21 @@ export default function ProductDetailsPage() {
   const [selectedImageIdx,    setSelectedImageIdx]    = useState(0);
   const [rowPacks,            setRowPacks]            = useState<Record<string, QuantityValue>>({});
   const [toast,               setToast]               = useState<{ name: string; sku: string; bulk?: boolean } | null>(null);
+  const [assignedStaff,       setAssignedStaff]       = useState<AssignedStaff[]>([]);
+  // Drives the condensed title bar. It takes over once the product description
+  // has scrolled off screen, so the name stays visible while you work the table.
+  const [titleOutOfView,      setTitleOutOfView]      = useState(false);
+  const infoRef = useRef<HTMLDivElement | null>(null);
+  // The in-flow slot the title occupies above the variants heading. Once that
+  // slot scrolls to the top the title switches to fixed and stays pinned; the
+  // slot keeps its height so the table below never jumps.
+  const titleSlotRef = useRef<HTMLDivElement | null>(null);
+  const [titlePinned,    setTitlePinned]    = useState(false);
+  const [titleSlotWidth, setTitleSlotWidth] = useState(0);
 
-  const addToCart = useCartStore(s => s.addToCart);
-  const cart      = useCartStore(s => s.cart);
+  const addToCart      = useCartStore(s => s.addToCart);
+  const removeFromCart = useCartStore(s => s.removeFromCart);
+  const cart           = useCartStore(s => s.cart);
 
   // Sync row quantities from cart
   useEffect(() => {
@@ -252,7 +294,60 @@ export default function ProductDetailsPage() {
       .catch(() => { setNotFound(true); setLoading(false); });
   }, [sku]);
 
+  // Reveal the condensed title once the product description has scrolled off
+  // the top. Only a crossing *above* the viewport counts — the block is also
+  // "not intersecting" while still below the fold, which would otherwise show
+  // the bar before the user has scrolled at all.
+  // Runs after the product renders, since the block is absent while loading.
+  useEffect(() => {
+    const info = infoRef.current;
+    if (!info) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => setTitleOutOfView(!entry.isIntersecting && entry.boundingClientRect.bottom < 0),
+      { threshold: 0 },
+    );
+    observer.observe(info);
+    return () => observer.disconnect();
+  }, [product]);
+
+  // Pin the title to the viewport top once its in-flow slot reaches it, and
+  // keep its width matched to that slot — a fixed element no longer inherits
+  // the content column's width.
+  useEffect(() => {
+    const slot = titleSlotRef.current;
+    if (!slot) return;
+
+    const sync = () => {
+      setTitlePinned(slot.getBoundingClientRect().top <= SITE_HEADER_HEIGHT + 8);
+      setTitleSlotWidth(slot.offsetWidth);
+    };
+
+    sync();
+    window.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync);
+    return () => {
+      window.removeEventListener("scroll", sync);
+      window.removeEventListener("resize", sync);
+    };
+  }, [product]);
+
+  // Dealer's assigned staff — drives the "Ships from" territory. Visitors who
+  // aren't signed in as a dealer get a 401/403 here, which leaves the list empty.
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/dealer/profile", { cache: "no-store" })
+      .then(response => (response.ok ? response.json() : null))
+      .then(payload => {
+        if (cancelled) return;
+        const staff = payload?.data?.assignedStaff;
+        setAssignedStaff(Array.isArray(staff) ? staff as AssignedStaff[] : []);
+      })
+      .catch(() => { if (!cancelled) setAssignedStaff([]); });
+    return () => { cancelled = true; };
+  }, []);
+
   // ── Derived ───────────────────────────────────────────────
+  const shipsFrom         = shipsFromLabel(assignedStaff);
   const selectedVariant   = product?.variants?.find(v => v.sku === selectedVariantSKU) ?? null;
   const selectedQuantityValue = selectedVariantSKU
     ? rowPacks[selectedVariantSKU] ?? ""
@@ -288,6 +383,29 @@ export default function ProductDetailsPage() {
       perUnit: unitPaise || null,
     };
   };
+
+  // This product's variants that are already in the cart — drives the summary
+  // panel beside the variants table. Cart items are keyed by variant SKU.
+  const selectedRows = (product?.variants ?? [])
+    .map(variant => {
+      const cartItem = cart.find(item => item.id === variant.sku);
+      if (!cartItem || cartItem.quantity <= 0) return null;
+      const packSize = Math.max(1, variant.pack ?? 1);
+      const packPaise = variantPackPricePaise(product, variant) ?? 0;
+      return {
+        sku: variant.sku,
+        name: variant.name || variant.sku,
+        specsText: variant.specsText || "",
+        packs: cartItem.quantity,
+        packSize,
+        pieces: cartItem.quantity * packSize,
+        totalPaise: packPaise * cartItem.quantity,
+      };
+    })
+    .filter((row): row is NonNullable<typeof row> => row !== null);
+
+  const selectedTotalPaise = selectedRows.reduce((sum, row) => sum + row.totalPaise, 0);
+  const selectedTotalPieces = selectedRows.reduce((sum, row) => sum + row.pieces, 0);
 
   const related    = product ? getRelated(allProducts, product) : [];
   const inStock    = product?.variants?.some(v => v.inStock) ?? false;
@@ -427,7 +545,7 @@ export default function ProductDetailsPage() {
 
         {/* BREADCRUMB */}
         <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0" }}>
-          <div style={{ maxWidth: 1280, margin: "0 auto", padding: "12px 28px", fontSize: 13, color: "#64748b", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+          <div style={{ maxWidth: PAGE_MAX_WIDTH, margin: "0 auto", padding: "12px 28px", fontSize: 13, color: "#64748b", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
             <Link href="/" style={{ color: "#64748b", textDecoration: "none" }}>Home</Link>
             <span>/</span>
             <Link href="/Products" style={{ color: "#64748b", textDecoration: "none" }}>Products</Link>
@@ -440,10 +558,19 @@ export default function ProductDetailsPage() {
           </div>
         </div>
 
-        <div style={{ maxWidth: 1280, margin: "0 auto", padding: "32px 28px" }}>
+        <div style={{ maxWidth: PAGE_MAX_WIDTH, margin: "0 auto", padding: "32px 28px" }}>
 
-          {/* ── 3-COLUMN LAYOUT ─────────────────────────── */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 320px", gap: 36, alignItems: "start" }}>
+          {/* ── PAGE RAIL ────────────────────────────────
+              Main content on the left, purchase card pinned far right. The rail
+              column is a fixed 340px, so selecting a variant never resizes the
+              content column (and with it the variants table). */}
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 340px", gap: 36, alignItems: "start" }}>
+
+            {/* MAIN CONTENT — image + info, with the variants table below */}
+            <div style={{ gridColumn: 1, minWidth: 0 }}>
+
+          {/* ── IMAGE + INFO ─────────────────────────── */}
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 36, alignItems: "start" }}>
 
             {/* IMAGE COLUMN */}
             <div style={{ display: "flex", gap: 10 }}>
@@ -465,8 +592,9 @@ export default function ProductDetailsPage() {
               </div>
             </div>
 
-            {/* INFO COLUMN */}
-            <div>
+            {/* INFO COLUMN — watched: once this scrolls off the top, the
+                condensed title takes over above the variants table. */}
+            <div ref={infoRef}>
               {/* Category tags */}
               {product.categories?.length > 0 && (
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
@@ -509,14 +637,25 @@ export default function ProductDetailsPage() {
                       </li>
                     ))}
                   </ul>
+                   <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 13, color: "#475569", borderTop: "1px solid #f1f5f9", paddingTop: 14 }}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <span style={{ fontWeight: 600, color: "#0f172a", minWidth: 110 }}>Supplier:</span>
+                  <span>Omson Scientific Labs</span>
                 </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <span style={{ fontWeight: 600, color: "#0f172a", minWidth: 110 }}>Certification:</span>
+                  <span>NABL Certified, ISO 9001:2015</span>
+                </div>
+              </div>
+                </div>
+                
               )}
 
               {/* Variant chips */}
-              {product.variants && product.variants.length > 0 && (
+              {/* {product.variants && product.variants.length > 0 && (
                 <div style={{ marginBottom: 20 }}>
                   <p style={{ fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: ".07em", textTransform: "uppercase", margin: "0 0 10px" }}>
-                    Select Variant
+                    Select Variant 
                     {selectedVariantSKU && (
                       <span style={{ color: "#f59e0b", textTransform: "none", marginLeft: 6, fontWeight: 600 }}>
                         ({selectedVariantSKU})
@@ -550,10 +689,10 @@ export default function ProductDetailsPage() {
                     })()}
                   </div>
                 </div>
-              )}
+              )} */}
 
               {/* Selected variant summary */}
-              {selectedVariant && (
+              {/* {selectedVariant && (
                 <div style={{ background: "#f8fafc", borderRadius: 8, padding: "12px 14px", marginBottom: 16, fontSize: 13 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
                     <span style={{ color: "#64748b" }}>Catalogue No.</span>
@@ -588,10 +727,10 @@ export default function ProductDetailsPage() {
                     </span>
                   </div>
                 </div>
-              )}
+              )} */}
 
               {/* Meta */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 13, color: "#475569", borderTop: "1px solid #f1f5f9", paddingTop: 14 }}>
+              {/* <div style={{ display: "flex", flexDirection: "column", gap: 7, fontSize: 13, color: "#475569", borderTop: "1px solid #f1f5f9", paddingTop: 14 }}>
                 <div style={{ display: "flex", gap: 8 }}>
                   <span style={{ fontWeight: 600, color: "#0f172a", minWidth: 110 }}>Supplier:</span>
                   <span>Omson Scientific Labs</span>
@@ -600,11 +739,16 @@ export default function ProductDetailsPage() {
                   <span style={{ fontWeight: 600, color: "#0f172a", minWidth: 110 }}>Certification:</span>
                   <span>NABL Certified, ISO 9001:2015</span>
                 </div>
-              </div>
+              </div> */}
             </div>
+          {/* ── end IMAGE + INFO ─────────────────────── */}
+          </div>
+          {/* ── end MAIN CONTENT (variants table is appended below) ── */}
+          </div>
 
-            {/* PURCHASE CARD */}
-            <div style={{ background: "#fff", border: "2px solid #e2e8f0", borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 18, position: "sticky", top: 20 }}>
+            {/* PURCHASE CARD — rail column, spanning the full page height so it
+                stays pinned while the variants table scrolls past. */}
+            <div style={{ gridColumn: 2, gridRow: "1 / span 2", background: "#fff", border: "2px solid #e2e8f0", borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 18, position: "sticky", top: SITE_HEADER_HEIGHT + 20, maxHeight: `calc(100vh - ${SITE_HEADER_HEIGHT + 40}px)`, overflow: "hidden" }}>
 
               {/* Price */}
               <div>
@@ -644,16 +788,18 @@ export default function ProductDetailsPage() {
 
               {/* Availability */}
               <div style={{ background: "#f8fafc", borderRadius: 8, padding: "10px 12px", fontSize: 13 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: shipsFrom ? 4 : 0 }}>
                   <span style={{ color: "#64748b" }}>Availability</span>
                   <span style={{ fontWeight: 700, color: inStock ? "#16a34a" : "#dc2626" }}>
                     {inStock ? "In Stock" : "Out of Stock"}
                   </span>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span style={{ color: "#64748b" }}>Ships from</span>
-                  <span style={{ fontWeight: 600 }}>Delhi · Mumbai · Chennai</span>
-                </div>
+                {shipsFrom && (
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                    <span style={{ color: "#64748b", flexShrink: 0 }}>Ships from</span>
+                    <span style={{ fontWeight: 600, textAlign: "right" }}>{shipsFrom}</span>
+                  </div>
+                )}
               </div>
 
               {/* Quantity spinner */}
@@ -705,16 +851,102 @@ export default function ProductDetailsPage() {
                   {product.variants.length} variants · prices may vary by size
                 </p>
               )}
-            </div>
-          </div>
+              {selectedRows.length > 0 && (
+                <aside style={{ border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0, flex: "1 1 auto" }}>
+                  <div style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", flexShrink: 0 }}>
+                    <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: ".07em", textTransform: "uppercase" }}>
+                      Selected Variants
+                    </p>
+                    <p style={{ margin: "3px 0 0", fontSize: 12, color: "#94a3b8" }}>
+                      {selectedRows.length} of {product.variants?.length ?? 0} in cart
+                    </p>
+                  </div>
 
-          {/* ── VARIANTS TABLE ─────────────────────────────── */}
+                  <div style={{ display: "flex", flexDirection: "column", overflowY: "auto", minHeight: 0, flex: "1 1 auto" }}>
+                    {selectedRows.map(row => (
+                      <div key={row.sku}
+                        onClick={() => setSelectedVariantSKU(row.sku)}
+                        style={{ padding: "11px 16px", borderBottom: "1px solid #f1f5f9", cursor: "pointer", background: row.sku === selectedVariantSKU ? "#fefce8" : "transparent", transition: "background .15s" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#d97706" }}>{row.sku}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap" }}>
+                            × {row.packs}
+                          </span>
+                        </div>
+                        {row.specsText && (
+                          <p style={{ margin: "3px 0 0", fontSize: 11, color: "#64748b", lineHeight: 1.4 }}>{row.specsText}</p>
+                        )}
+                        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 5, alignItems: "center" }}>
+                          <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                            {row.packSize > 1 ? `${row.packs} × ${row.packSize} = ${row.pieces} Pcs.` : `${row.pieces} Pcs.`}
+                          </span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#15803d" }}>
+                            {row.totalPaise ? fmt(row.totalPaise) : "—"}
+                          </span>
+                        </div>
+                        <button
+                          onClick={e => { e.stopPropagation(); removeFromCart(row.sku); setRowPacks(previous => ({ ...previous, [row.sku]: 0 })); }}
+                          style={{ marginTop: 6, padding: 0, border: "none", background: "none", color: "#94a3b8", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div style={{ padding: "12px 16px", background: "#f8fafc", borderTop: "1px solid #e2e8f0", flexShrink: 0 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#64748b" }}>
+                      <span>Total pieces</span>
+                      <span style={{ fontWeight: 600, color: "#0f172a" }}>{selectedTotalPieces}</span>
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 13 }}>
+                      <span style={{ fontWeight: 700 }}>Subtotal</span>
+                      <span style={{ fontWeight: 800, color: "#15803d" }}>{fmt(selectedTotalPaise)}</span>
+                    </div>
+                  </div>
+                </aside>
+              )}
+            </div>
+
+          {/* ── VARIANTS TABLE — second row of the content column, so its width
+              is set by the rail alone and never by the selection state. ── */}
           {product.variants && product.variants.length > 0 && specKeys.length > 0 && (
-            <div style={{ marginTop: 56 }}>
+            <div style={{ gridColumn: 1, gridRow: 2, minWidth: 0, marginTop: 56 }}>
+              {/* CONDENSED TITLE — first appears in place above "Variants &
+                  Specifications", then pins to the top of the viewport so the
+                  product stays identified however far down you scroll. */}
+              <div ref={titleSlotRef} style={{ height: titleOutOfView ? 48 : 0, transition: "height .25s ease" }}>
+                <div style={{
+                  position: titlePinned ? "fixed" : "absolute",
+                  top: titlePinned ? SITE_HEADER_HEIGHT + 8 : undefined,
+                  width: titleSlotWidth || undefined,
+                  // Below the site header (z-50) so it never covers it.
+                  zIndex: 40,
+                  display: "flex", alignItems: "center", gap: 12,
+                  padding: titleOutOfView ? "9px 14px" : "0 14px",
+                  background: "rgba(255,255,255,0.94)", backdropFilter: "blur(10px)",
+                  border: "1px solid #e2e8f0", borderRadius: 10,
+                  boxShadow: "0 2px 12px rgba(15,23,42,0.07)",
+                  maxHeight: titleOutOfView ? 60 : 0,
+                  opacity: titleOutOfView ? 1 : 0,
+                  borderWidth: titleOutOfView ? 1 : 0,
+                  overflow: "hidden",
+                  transition: "opacity .25s ease, max-height .25s ease, padding .25s ease",
+                  pointerEvents: titleOutOfView ? "auto" : "none",
+                }}>
+                  {images.length > 0 && (
+                    <img src={images[selectedImageIdx] ?? images[0]} alt=""
+                      style={{ width: 32, height: 32, objectFit: "contain", borderRadius: 6, border: "1px solid #e2e8f0", background: "#fff", padding: 2, flexShrink: 0 }} />
+                  )}
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "#0f172a", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {getCatalogueProductLabel(product)}
+                  </span>
+                </div>
+              </div>
+
               <h2 style={{ fontSize: 20, fontWeight: 300, margin: "0 0 16px" }}>Variants &amp; Specifications</h2>
 
               <div style={{ overflowX: "auto", borderRadius: 12, border: "1px solid #e2e8f0", background: "#fff" }}>
-                <table style={{ width: "100%", fontSize: 13, textAlign: "left", borderCollapse: "collapse" }}>
+                <table style={{ width: "100%", fontSize: 13, textAlign: "center", borderCollapse: "collapse" }}>
                   <thead>
                     <tr style={{ background: "#f8fafc", borderBottom: "1px solid #e2e8f0" }}>
                       <th style={{ padding: "12px 16px", fontWeight: 700, color: "#374151", whiteSpace: "nowrap" }}>CAT NO</th>
@@ -756,7 +988,7 @@ export default function ProductDetailsPage() {
 
                           {/* Qty spinner */}
                           <td style={{ padding: "11px 16px" }} onClick={e => e.stopPropagation()}>
-                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                               <div style={{ display: "flex", alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 6, overflow: "hidden" }}>
                                 <button onClick={() => setRowPacks((previous) => ({ ...previous, [v.sku]: Math.max(0, quantityAsNumber(previous[v.sku] ?? "") - 1) }))}
                                   style={{ padding: "4px 8px", border: "none", background: "#f8fafc", cursor: "pointer", fontSize: 14, color: "#374151" }}>−</button>
@@ -811,11 +1043,15 @@ export default function ProductDetailsPage() {
                   </tbody>
                 </table>
               </div>
+
+
               <p style={{ fontSize: 11, color: "#94a3b8", marginTop: 8 }}>
                 Click a row to select · Prices shown per pack
               </p>
             </div>
           )}
+          {/* ── end PAGE RAIL ─────────────────────────────── */}
+          </div>
 
           {/* ── RELATED PRODUCTS ──────────────────────────── */}
           <div style={{ marginTop: 64, paddingTop: 48, borderTop: "1px solid #e2e8f0" }}>

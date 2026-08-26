@@ -489,7 +489,7 @@ export default function DealerCategoryReport({ allowedRoles = ['admin', 'staff']
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900">
-      <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-[1840px] px-4 py-6 sm:px-6 lg:px-8">
         <div className="mb-6 rounded-[28px] border border-slate-200 bg-gradient-to-br from-slate-950 via-slate-900 to-cyan-950 px-6 py-6 text-white shadow-2xl shadow-slate-900/10 sm:px-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>

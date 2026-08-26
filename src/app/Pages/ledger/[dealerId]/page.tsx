@@ -19,6 +19,11 @@ import PayMoneyModal, { PaymentData } from '@/components/ledger/PayMoneyModal'
 import { InvoiceModal } from '@/components/InvoiceModel'
 import { downloadOrderInvoice } from '@/lib/invoicegenerator'
 import { resolveOrderAmounts } from '@/lib/orderAmounts'
+import {
+  calculateOutstandingAging,
+  getPayStatus,
+  type PayStatus,
+} from '@/lib/outstandingBalance'
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const YEAR = new Date().getFullYear()
@@ -121,18 +126,7 @@ type RawOrder = {
   netPayableAmount?: string | number
 }
 
-type PayStatus = 'Paid' | 'Partial' | 'Unpaid' | 'Overdue'
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-function mtStatusValue(s: any) {
-  if (!s) return 'NoActionTaken'
-  const key = String(s).trim().toLowerCase().replace(/[\s_-]/g, '')
-  if (key === 'pending') return 'Pending'
-  if (key === 'inprocess') return 'InProcess'
-  if (key === 'completed') return 'Completed'
-  return 'NoActionTaken'
-}
-
 function resolveRole(): { role: Role; dealerId?: string; staffId?: string } {
   if (typeof window === 'undefined') return { role: 'admin' }
   try {
@@ -159,20 +153,6 @@ function resolveRole(): { role: Role; dealerId?: string; staffId?: string } {
     if (adminRaw) return { role: 'admin' }
   } catch (_) {}
   return { role: 'admin' }
-}
-
-function getPayStatus(o: RawOrder): PayStatus {
-  if (mtStatusValue(o.mtstatus) === 'Completed') return 'Paid'
-  const ms = Number(o.mtstatus ?? 0)
-  if (ms >= 2) return 'Paid'
-  if (
-    o.outstandingDate &&
-    moment(o.outstandingDate, 'YYYY-MM-DD', true).isValid() &&
-    moment(o.outstandingDate).isBefore(TODAY)
-  )
-    return 'Overdue'
-  if (ms === 1) return 'Partial'
-  return 'Unpaid'
 }
 
 function fmt(n: number) {
@@ -221,28 +201,7 @@ function InvoiceBtn({ order }: { order: RawOrder }) {
 function DealerAgingPanel({ orders }: { orders: RawOrder[] }) {
   const [open, setOpen] = useState(true)
 
-  const aging = useMemo(() => {
-    const unpaid = orders.filter(o => {
-      const ps = getPayStatus(o)
-      return ps === 'Unpaid' || ps === 'Partial' || ps === 'Overdue'
-    })
-
-    let current = 0, d31 = 0, d61 = 0, d90 = 0
-
-    for (const o of unpaid) {
-      const net  = resolveOrderAmounts(o).netPayable
-      const ref  = o.outstandingDate || o.order_date
-      const days = ref ? TODAY.diff(moment(ref).startOf('day'), 'days') : 0
-
-      if      (days <= 30) current += net
-      else if (days <= 60) d31     += net
-      else if (days <= 90) d61     += net
-      else                 d90     += net
-    }
-
-    const total = current + d31 + d61 + d90
-    return { current, d31, d61, d90, total, count: unpaid.length }
-  }, [orders])
+  const aging = useMemo(() => calculateOutstandingAging(orders, TODAY), [orders])
 
   if (aging.count === 0) return null
 
@@ -312,7 +271,10 @@ export default function DealerLedgerPage() {
   const params = useParams()
   const router = useRouter()
   const queryClient = useQueryClient()
-  const dealerId = params.dealerId as string
+  // params values are string | string[] | undefined and are absent on the
+  // first render, so normalise instead of casting the possibility away.
+  const rawDealerId = params.dealerId
+  const dealerId = Array.isArray(rawDealerId) ? (rawDealerId[0] ?? '') : (rawDealerId ?? '')
 
   const [payModalOpen, setPayModalOpen] = useState(false)
   const [payLoading, setPayLoading] = useState(false)

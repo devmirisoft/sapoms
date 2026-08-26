@@ -285,7 +285,7 @@ export default function DraftsPage() {
       <ToastContainer position="top-right" autoClose={4000} />
 
       <main className="min-h-screen bg-gray-50 text-gray-950" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
-        <div className="mx-auto flex w-full max-w-[1040px] flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="mx-auto flex w-full max-w-[1840px] flex-col gap-5 px-4 py-6 sm:px-6 lg:px-8">
           <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
             <div className="min-w-0">
               <button
@@ -365,6 +365,9 @@ export default function DraftsPage() {
                   const isRenaming = renamingId === draft.id;
                   const orderNumber = draft.refno || provisionals[draft.id] || String(draft.id).slice(0, 8);
                   const isDiscountRejectionDraft = draft.source === "custom_discount_rejection";
+                  // Older rejection drafts predate rejection_notes and carry the
+                  // reason only inside order_note, so fall back to the badge alone.
+                  const rejectionNote = draft.rejection_notes?.reason ? draft.rejection_notes : null;
 
                   return (
                     <article key={draft.id} className="group px-4 py-4 transition hover:bg-gray-50/70">
@@ -423,6 +426,25 @@ export default function DraftsPage() {
                               </span>
                             )}
                           </div>
+
+                          {rejectionNote && (
+                            <div className="mt-2 rounded-md border border-red-100 bg-red-50/70 px-3 py-2">
+                              <p className="text-[11px] font-semibold uppercase tracking-wide text-red-700">
+                                {rejectionNote.rejected_by === "RSM" ? "Rejected by RSM" : "Rejected by Admin"}
+                              </p>
+                              <p className="mt-0.5 whitespace-pre-line text-[12px] leading-relaxed text-red-900">
+                                {rejectionNote.reason}
+                              </p>
+                              {/* An Admin rejection can follow an RSM note; show both so the
+                                  dealer sees the full review trail before resubmitting. */}
+                              {rejectionNote.rejected_by !== "RSM" && rejectionNote.rsm_note && (
+                                <p className="mt-1.5 whitespace-pre-line border-t border-red-100 pt-1.5 text-[12px] leading-relaxed text-red-800">
+                                  <span className="font-semibold">RSM note: </span>
+                                  {rejectionNote.rsm_note}
+                                </p>
+                              )}
+                            </div>
+                          )}
                         </div>
 
                         <div className="flex items-center justify-between gap-3 sm:justify-end">

@@ -47,9 +47,25 @@ function collapseWhitespace(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+const HTML_ENTITIES: Record<string, string> = {
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+  nbsp: " ",
+};
+
+export function decodeHtmlEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, dec) => String.fromCodePoint(Number(dec)))
+    .replace(/&([a-z]+);/gi, (match, name) => HTML_ENTITIES[String(name).toLowerCase()] ?? match);
+}
+
 export function stripHtml(value: string | undefined | null): string {
   if (!value) return "";
-  return collapseWhitespace(value.replace(/<[^>]*>/g, " "));
+  return collapseWhitespace(decodeHtmlEntities(value.replace(/<[^>]*>/g, " ")));
 }
 
 export function normalizeText(value: string | undefined | null): string {
@@ -85,12 +101,142 @@ function firstMeaningfulWords(value: string, limit = 18): string {
     .join(" ");
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+/**
+ * Catalogue sources frequently store the description as a bare "<SKU> - <name>"
+ * echo of the product itself, which renders as a duplicate of the title on
+ * product cards. Strip the product's own SKU prefix before comparing so those
+ * echoes are recognised regardless of whether the SKU is numeric ("254") or
+ * alphanumeric ("254B" / "OM285").
+ */
+function stripSelfReference(description: string, product: CatalogueProduct): string {
+  let cleaned = description;
+
+  const sku = String(product.sku ?? "").trim();
+  if (sku) {
+    cleaned = cleaned.replace(
+      new RegExp(`^\\s*${escapeRegExp(sku)}\\s*[-–—:]?\\s*`, "i"),
+      "",
+    );
+  }
+
+  // Fall back to a generic leading catalogue-number prefix ("254B - ", "12 – ").
+  cleaned = cleaned.replace(/^\s*[A-Za-z]{0,4}\d+[A-Za-z]{0,3}\s*[-–—:]\s*/, "");
+
+  return cleaned.trim();
+}
+
+/**
+ * Compare on words alone so punctuation, ampersands and trailing full stops
+ * cannot hide the fact that two snippets carry the same text.
+ */
+function comparableText(value: string): string {
+  return normalizeText(value)
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+/** Crude singular form so "Adapter" and "Adapters" compare as one word. */
+function stemWord(word: string): string {
+  if (word.length <= 3 || !word.endsWith("s")) return word;
+
+  // Only "-es" after a sibilant is a plural suffix ("boxes", "dishes");
+  // in "bottles" the plural is the bare "s", so stripping "es" would
+  // leave "bottl" and stop it matching the singular "bottle".
+  if (/(?:s|x|z|ch|sh)es$/.test(word)) return word.slice(0, -2);
+  if (word.endsWith("ies") && word.length > 4) return `${word.slice(0, -3)}y`;
+  if (word.endsWith("ss")) return word;
+
+  return word.slice(0, -1);
+}
+
+function contentWords(value: string): string[] {
+  return comparableText(value)
+    .split(" ")
+    .filter(Boolean)
+    .map(stemWord);
+}
+
+/** Connective words that carry no product meaning on their own. */
+const FILLER_WORDS = new Set([
+  "a", "an", "and", "or", "the", "with", "without", "for", "of", "in", "on",
+  "to", "by", "type",
+]);
+
+/** True when two short words differ by at most one edit (typo tolerance). */
+function isNearMatch(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (Math.abs(a.length - b.length) > 1) return false;
+  // Short words are kept strict: "class" and "glass" are one edit apart but
+  // mean entirely different things on a lab-glassware catalogue.
+  if (Math.min(a.length, b.length) < 6) return false;
+
+  let i = 0;
+  let j = 0;
+  let edits = 0;
+
+  while (i < a.length && j < b.length) {
+    if (a[i] === b[j]) {
+      i += 1;
+      j += 1;
+      continue;
+    }
+
+    if (++edits > 1) return false;
+
+    if (a.length > b.length) i += 1;
+    else if (b.length > a.length) j += 1;
+    else {
+      i += 1;
+      j += 1;
+    }
+  }
+
+  return edits + (a.length - i) + (b.length - j) <= 1;
+}
+
+/**
+ * True when `text` contributes no real information beyond `reference` — an
+ * exact match, a subset, or merely a reordering/pluralisation of its words.
+ *
+ * Note the asymmetry: text wholly contained in the reference is redundant,
+ * but text that *extends* the reference ("<name> Class A") is not.
+ */
+export function addsNothingBeyond(text: string, reference: string): boolean {
+  const left = comparableText(text);
+  const right = comparableText(reference);
+  if (!left || !right) return !left;
+
+  if (left === right || right.includes(left)) return true;
+
+  const referenceWords = new Set(contentWords(reference));
+  const novelWords = contentWords(text).filter(
+    (word) =>
+      !referenceWords.has(word) &&
+      !FILLER_WORDS.has(word) &&
+      // Catalogue text is riddled with typos ("Vaccum" for "Vacuum"); a word
+      // one edit away from one already in the name is not new information.
+      !Array.from(referenceWords).some((candidate) => isNearMatch(word, candidate)),
+  );
+
+  return novelWords.length === 0;
+}
+
+/** True when the descriptor adds nothing beyond the product name. */
+function echoesProductName(descriptor: string, product: CatalogueProduct): boolean {
+  return addsNothingBeyond(descriptor, product.name);
+}
+
 export function getCatalogueProductDescriptor(product: CatalogueProduct): string {
   const pieces: string[] = [];
   const description = stripHtml(product.descriptionHtml);
-  const cleanedDescription = description.replace(/^\s*\d+\s*[-–—]?\s*/g, "").trim();
+  const cleanedDescription = stripSelfReference(description, product);
 
-  if (cleanedDescription && normalizeText(cleanedDescription) !== normalizeText(product.name)) {
+  if (cleanedDescription && !echoesProductName(cleanedDescription, product)) {
     pieces.push(firstMeaningfulWords(cleanedDescription));
   }
 
@@ -103,9 +249,7 @@ export function getCatalogueProductDescriptor(product: CatalogueProduct): string
   }
 
   const descriptor = pieces.join(" ");
-  return descriptor && normalizeText(descriptor) !== normalizeText(product.name)
-    ? descriptor
-    : "";
+  return descriptor && !echoesProductName(descriptor, product) ? descriptor : "";
 }
 
 export function getCatalogueProductLabel(product: CatalogueProduct): string {

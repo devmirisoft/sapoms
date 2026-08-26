@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { CheckCircle2, Search, Trash2, Eye, EyeOff, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, X, UserPlus, Inbox } from 'lucide-react'
 import { confirmAlert } from 'react-confirm-alert'
+import { staffRoleBadge } from '@/lib/staffRoleLabel'
 type DealerStatus = "active" | "inactive" | "suspended"
 type DealerStatusFilter = "" | "ACTIVE" | "INACTIVE" | "SUSPENDED"
 type WalletFilter = "" | "active" | "inactive"
@@ -28,6 +29,16 @@ function dealerStatusBadge(value: DealerStatus) {
   if (value === "suspended") return { label: "Suspended", bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" }
   return { label: "Inactive", bg: "bg-red-50", text: "text-red-700", dot: "bg-red-500" }
 }
+type AssignedStaff = {
+  staffId: string
+  name: string
+  roleLabel: string
+  roleKey: string
+  salesRegion?: string
+  staffRoleType?: string
+  role?: string
+}
+
 type Dealer = {
   Dealer_Id: string
   Dealer_Name: string
@@ -44,6 +55,7 @@ type Dealer = {
   status: string
   assignedstaff: string
   staffname: string
+  assignedStaff?: AssignedStaff[]
   discount: string
   gst: string
   creditdays: string
@@ -1045,6 +1057,7 @@ export default function DealerListPage() {
                     <th className="p-1.5 text-left">
                       <div className="relative">
                         <select
+                          aria-label="Staff filter"
                           value={selectedStaffId}
                           onChange={(event) => {
                             setPage(1)
@@ -1186,7 +1199,25 @@ export default function DealerListPage() {
                       )}
 
                       {showStaffColumn && (
-                        <td className="px-4 py-4 text-gray-600 text-xs">{dealer.staffname || dealer.assignedstaff || "-"}</td>
+                        <td className="px-4 py-4 text-xs text-gray-600">
+                          {dealer.assignedStaff?.length ? (
+                            <div className="flex flex-col gap-1.5">
+                              {dealer.assignedStaff.map((staff) => {
+                                const roleBadge = staffRoleBadge(staff)
+                                return (
+                                  <div key={staff.staffId} className="flex items-center gap-1.5">
+                                    <span className="truncate">{staff.name || `Staff #${staff.staffId}`}</span>
+                                    <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${roleBadge.bg} ${roleBadge.text}`}>
+                                      {roleBadge.label}
+                                    </span>
+                                  </div>
+                                )
+                              })}
+                            </div>
+                          ) : (
+                            dealer.staffname || dealer.assignedstaff || "-"
+                          )}
+                        </td>
                       )}
 
                       <td className="px-4 py-4">
@@ -1234,7 +1265,7 @@ export default function DealerListPage() {
                                     <Link href={getDealerEditRoute(dealer.Dealer_Id)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                       <Pencil className="h-3.5 w-3.5 text-gray-400" /> Edit
                                     </Link>
-                                    <Link href={`/dashboard/admin/dealer/${encodeURIComponent(dealer.Dealer_Id)}/ledger`} className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
+                                    <Link href={`/dashboard/admin/dealer/${encodeURIComponent(dealer.Dealer_Id)}/ledger?wallet=addfund`} className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
                                       <Wallet className="h-3.5 w-3.5" /> Payment
                                     </Link>
                                     <button

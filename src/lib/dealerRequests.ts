@@ -1,4 +1,5 @@
 import {
+  getSelectedDealerContact,
   normalizeDealerFormSnapshot,
   type DealerFormSnapshot,
 } from "@/lib/dealerForm";
@@ -276,7 +277,10 @@ export function buildDealerRequestCreateDocument(params: {
   snapshot: DealerFormSnapshot;
   now: string;
 }) {
-  const { actor, snapshot, now } = params;
+  const { actor, now } = params;
+  // Normalize so snapshots built with the legacy `contactPerson` key still resolve their priority contact.
+  const snapshot = normalizeDealerFormSnapshot(params.snapshot);
+  const contact = getSelectedDealerContact(snapshot);
 
   return {
     requestReference: "",
@@ -286,8 +290,8 @@ export function buildDealerRequestCreateDocument(params: {
     dealerName: snapshot.name,
     dealerCode: snapshot.dealerCode,
     city: snapshot.city,
-    contactEmail: snapshot.email,
-    contactPhone: snapshot.whatsapp,
+    contactEmail: contact.email,
+    contactPhone: contact.phone,
     assignedStaffIds: snapshot.assignedStaffIds,
     assignedStaffNames: snapshot.staffNames,
     submittedById: actor.actorId,

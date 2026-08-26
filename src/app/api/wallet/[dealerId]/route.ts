@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth } from "@/server/auth/session";
+import { errorStatus } from "@/server/http/auth-error";
 import { isStaffLike } from "@/server/auth/sales-scope";
 import { getWalletSnapshot } from "@/lib/postgresWallet";
 
@@ -35,7 +36,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deal
     return NextResponse.json({ success: true, ...data });
   } catch (error) {
     console.error("[GET /api/wallet/[dealerId]]", error);
-    const message = error instanceof Error && error.message === "Invalid dealer id." ? error.message : "Unable to load wallet.";
-    return NextResponse.json({ success: false, message }, { status: message === "Invalid dealer id." ? 400 : 500 });
+    const status = error instanceof Error && error.message === "Invalid dealer id." ? 400 : errorStatus(error);
+    const message = status >= 500 ? "Unable to load wallet." : String((error as Error)?.message ?? "Unable to load wallet.");
+    return NextResponse.json({ success: false, message }, { status });
   }
 }

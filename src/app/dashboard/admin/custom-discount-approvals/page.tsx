@@ -201,8 +201,13 @@ export default function CustomDiscountApprovalsPage() {
           </div>
         ) : (
           <div className="space-y-4">
-            {filtered.map((request) => (
-              <div key={request.id} className="rounded-2xl border border-gray-200 bg-white shadow-sm">
+            {filtered.map((request) => {
+              const awaitingRsm = request.rsmApprovalStatus !== "approved";
+              return (
+              <div
+                key={request.id}
+                className={`rounded-2xl border border-gray-200 bg-white shadow-sm ${awaitingRsm ? "opacity-60" : ""}`}
+              >
                 <div className="flex flex-col gap-4 border-b border-gray-100 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
@@ -228,10 +233,14 @@ export default function CustomDiscountApprovalsPage() {
                     <p className="text-[12px] text-gray-400">
                       Submitted {request.createdAt ? new Date(request.createdAt).toLocaleString("en-IN") : "-"}
                     </p>
-                    {request.rsmApprovalStatus === "approved" && (
+                    {request.rsmApprovalStatus === "approved" ? (
                       <p className="text-[12px] font-semibold text-emerald-700">
                         RSM Approved{request.rsmReviewedBy ? ` by ${request.rsmReviewedBy}` : ""}
                       </p>
+                    ) : request.rsmApprovalStatus === "rejected" ? (
+                      <p className="text-[12px] font-semibold text-red-600">RSM Rejected</p>
+                    ) : (
+                      <p className="text-[12px] font-semibold text-amber-600">Awaiting RSM Approval</p>
                     )}
                     {request.discountScope === "product" && request.targetProduct && (
                       <p className="text-[12px] font-semibold text-indigo-700">
@@ -365,12 +374,18 @@ export default function CustomDiscountApprovalsPage() {
                       value={notes[request.id] ?? ""}
                       onChange={(e) => setNotes((prev) => ({ ...prev, [request.id]: e.target.value }))}
                       rows={5}
-                      disabled={request.normalizedStatus !== "pending" || updating === request.id}
+                      disabled={awaitingRsm || request.normalizedStatus !== "pending" || updating === request.id}
                       placeholder="Add approval or rejection note..."
                       className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100 disabled:text-gray-500"
                     />
 
-                    {request.normalizedStatus === "pending" ? (
+                    {awaitingRsm ? (
+                      <p className="mt-3 text-[12px] font-medium text-amber-700">
+                        {request.rsmApprovalStatus === "rejected"
+                          ? "This request was rejected by the RSM and is not available for Admin review."
+                          : "Waiting for RSM approval. This request becomes actionable once the RSM approves it."}
+                      </p>
+                    ) : request.normalizedStatus === "pending" ? (
                       <>
                         <p className="mt-2 text-[11px] font-medium text-red-600">
                           Rejecting this request will save the full order snapshot back to a dealer draft for correction.
@@ -424,7 +439,8 @@ export default function CustomDiscountApprovalsPage() {
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

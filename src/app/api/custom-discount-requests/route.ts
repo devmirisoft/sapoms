@@ -12,7 +12,7 @@ import {
   updateDraftApprovalState,
 } from "@/lib/postgresDiscountDrafts";
 import { buildPendingRequestLookup } from "@/lib/customDiscountRequests";
-import { buildDealerRegionWhere, isStaffLike } from "@/server/auth/sales-scope";
+import { buildRsmDiscountRequestWhere, isStaffLike } from "@/server/auth/sales-scope";
 
 export const runtime = "nodejs";
 
@@ -28,6 +28,7 @@ export async function GET(req: NextRequest) {
     const dealerParam = text(sp.get("dealer_id") || sp.get("dealerId"), 80);
     const staffParam = text(sp.get("staff_id") || sp.get("assignedStaffId") || sp.get("assigned_staff_id"), 80);
     const status = text(sp.get("status"), 40).toUpperCase();
+    const rsmStatus = text(sp.get("rsm_status") || sp.get("rsmStatus"), 40).toUpperCase();
     const orderId = text(sp.get("order_id") || sp.get("orderId"), 80);
     const orderDraftId = text(sp.get("order_draft_id") || sp.get("orderDraftId"), 80);
     const reorderable = sp.get("reorderable") === "true";
@@ -36,10 +37,12 @@ export async function GET(req: NextRequest) {
     const where: any = {};
     if (actor?.role === "DEALER") where.dealerId = actor.dealerId;
     else if (dealerParam) where.dealerId = BigInt(dealerParam);
-    if (actor?.role === "RSM") where.dealer = await buildDealerRegionWhere(actor, undefined, prisma);
+    // An RSM reviews their whole region plus everything raised by the staff
+    // reporting into them; other staff only ever see their own requests.
+    if (actor?.role === "RSM") Object.assign(where, await buildRsmDiscountRequestWhere(actor, prisma));
     else if (actor && isStaffLike(actor)) where.staffId = actor.staffId;
     else if (staffParam) where.staffId = BigInt(staffParam);
-    if (actor?.role === "ADMIN") where.rsmApprovalStatus = "APPROVED";
+    if (["PENDING", "APPROVED", "REJECTED", "CANCELLED"].includes(rsmStatus)) where.rsmApprovalStatus = rsmStatus;
     if (["PENDING", "APPROVED", "REJECTED", "CANCELLED"].includes(status)) where.status = status;
     if (orderId) where.orderId = BigInt(orderId);
     if (orderDraftId) where.orderDraftId = BigInt(orderDraftId);

@@ -11,7 +11,7 @@ import {
   useQueries,
 } from "@tanstack/react-query"
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from "recharts"
 import {
   LayoutDashboard, UserRoundPlus, ClipboardList,
@@ -439,18 +439,18 @@ function ExecutiveDashboard() {
   const MoneyTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null
     return (
-      <div style={{ background: "#1e1b4b", border: "1px solid #4f46e5", borderRadius: 8, padding: "8px 14px" }}>
-        <div style={{ color: "#c7d2fe", fontSize: 11, marginBottom: 3 }}>{label}</div>
-        <div style={{ color: "#fff", fontWeight: 700, fontSize: 13 }}>₹{Number(payload[0].value).toLocaleString("en-IN")}</div>
+      <div style={{ background: "rgba(255,255,255,.96)", border: "1px solid rgba(60,60,67,.12)", borderRadius: 14, boxShadow: "0 10px 30px rgba(0,0,0,.10)", padding: "9px 13px" }}>
+        <div style={{ color: "#6e6e73", fontSize: 11, marginBottom: 4 }}>{label}</div>
+        <div style={{ color: "#1d1d1f", fontWeight: 680, fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>₹{Number(payload[0].value).toLocaleString("en-IN")}</div>
       </div>
     )
   }
   const CountTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null
     return (
-      <div style={{ background: "#1e1b4b", border: "1px solid #4f46e5", borderRadius: 8, padding: "8px 14px" }}>
-        <div style={{ color: "#c7d2fe", fontSize: 11, marginBottom: 3 }}>{label}</div>
-        <div style={{ color: "#fff", fontWeight: 700, fontSize: 13 }}>{Number(payload[0].value).toLocaleString("en-IN")} orders</div>
+      <div style={{ background: "rgba(255,255,255,.96)", border: "1px solid rgba(60,60,67,.12)", borderRadius: 14, boxShadow: "0 10px 30px rgba(0,0,0,.10)", padding: "9px 13px" }}>
+        <div style={{ color: "#6e6e73", fontSize: 11, marginBottom: 4 }}>{label}</div>
+        <div style={{ color: "#1d1d1f", fontWeight: 680, fontSize: 12.5, fontVariantNumeric: "tabular-nums" }}>{Number(payload[0].value).toLocaleString("en-IN")} orders</div>
       </div>
     )
   }
@@ -477,127 +477,210 @@ function ExecutiveDashboard() {
   return (
     <>
       <style>{`
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-        html, body { font-family: 'DM Sans', sans-serif; }
+        *, *::before, *::after { box-sizing: border-box; }
+        html, body { margin: 0; padding: 0; }
+        button, input { font: inherit; }
 
-        .root { min-height: 100vh; background: #f0f2f5; color: #111827; font-family: 'DM Sans', sans-serif; }
+        .root {
+          min-height: 100vh;
+          background:
+            radial-gradient(circle at 12% -10%, rgba(0, 122, 255, .055), transparent 28%),
+            #f5f5f7;
+          color: #1d1d1f;
+          font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Helvetica Neue", Arial, sans-serif;
+          -webkit-font-smoothing: antialiased;
+          text-rendering: optimizeLegibility;
+        }
 
-        /* ── Sidebar ── */
+        /* ── Legacy in-page drawer — scoped so it cannot restyle the app sidebar ── */
         .sidebar { position: fixed; top: 0; left: 0; bottom: 0; width: 256px; z-index: 40; background: #0d0c16; display: flex; flex-direction: column; transform: translateX(-100%); transition: transform 0.28s cubic-bezier(0.4,0,0.2,1); }
         .sidebar.open { transform: translateX(0); }
-        .sb-head { padding: 24px 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); }
-        .sb-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; background: rgba(99,102,241,0.16); color: #818cf8; font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 10px; }
-        .sb-title { font-size: 16px; font-weight: 600; color: #fff; letter-spacing: -.3px; }
-        .sb-user { margin: 14px 14px 0; padding: 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; }
-        .sb-avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg,#6366f1,#a78bfa); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 8px; }
-        .sb-uname { font-size: 13px; font-weight: 600; color: #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sb-meta  { font-size: 10.5px; color: #475569; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sb-role  { margin-top: 6px; display: inline-block; font-size: 10px; font-family: 'DM Mono', monospace; background: rgba(99,102,241,0.18); color: #a5b4fc; padding: 2px 8px; border-radius: 6px; }
-        .sb-nav { flex: 1; padding: 10px; margin-top: 10px; overflow-y: auto; }
-        .sb-link { display: flex; align-items: center; gap: 11px; padding: 10px 13px; border-radius: 11px; font-size: 13.5px; font-weight: 500; color: #64748b; text-decoration: none; margin-bottom: 2px; transition: background .16s, color .16s; }
-        .sb-link:hover { background: rgba(255,255,255,0.05); color: #e2e8f0; }
-        .sb-link.active { background: rgba(99,102,241,0.18); color: #a5b4fc; }
-        .sb-foot { padding: 14px; border-top: 1px solid rgba(255,255,255,0.07); }
-        .sb-logout { width: 100%; padding: 9px 14px; border-radius: 11px; background: transparent; border: 1px solid rgba(255,255,255,0.09); font-size: 13px; font-weight: 500; color: #475569; cursor: pointer; font-family: inherit; transition: all .16s; display: flex; align-items: center; justify-content: center; gap: 7px; }
-        .sb-logout:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.28); color: #f87171; }
+        .sidebar .sb-head { padding: 24px 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+        .sidebar .sb-chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 20px; background: rgba(99,102,241,0.16); color: #818cf8; font-size: 10px; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 10px; }
+        .sidebar .sb-title { font-size: 16px; font-weight: 600; color: #fff; letter-spacing: -.3px; }
+        .sidebar .sb-user { margin: 14px 14px 0; padding: 14px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08); border-radius: 14px; }
+        .sidebar .sb-avatar { width: 38px; height: 38px; border-radius: 50%; background: linear-gradient(135deg,#6366f1,#a78bfa); display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 700; color: #fff; margin-bottom: 8px; }
+        .sidebar .sb-uname { font-size: 13px; font-weight: 600; color: #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sidebar .sb-meta  { font-size: 10.5px; color: #94a3b8; margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sidebar .sb-role  { margin-top: 6px; display: inline-block; font-size: 10px; font-family: monospace; background: rgba(99,102,241,0.18); color: #a5b4fc; padding: 2px 8px; border-radius: 6px; }
+        .sidebar .sb-nav { flex: 1; padding: 10px; margin-top: 10px; overflow-y: auto; }
+        .sidebar .sb-nav::-webkit-scrollbar { width: 5px; }
+        .sidebar .sb-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+        .sidebar .sb-link { display: flex; align-items: center; gap: 11px; padding: 10px 13px; border-radius: 8px; font-size: 13.5px; font-weight: 500; color: #94a3b8; text-decoration: none; margin-bottom: 2px; transition: background .16s, color .16s; }
+        .sidebar .sb-link:hover { background: rgba(255,255,255,0.05); color: #e2e8f0; }
+        .sidebar .sb-link.active { background: rgba(99,102,241,0.20); color: #a5b4fc; box-shadow: inset 3px 0 0 #6366f1; }
+        .sidebar .sb-foot { padding: 14px; border-top: 1px solid rgba(255,255,255,0.07); }
+        .sidebar .sb-logout { width: 100%; padding: 9px 14px; border-radius: 8px; background: transparent; border: 1px solid rgba(255,255,255,0.09); font-size: 13px; font-weight: 500; color: #94a3b8; cursor: pointer; font-family: inherit; transition: all .16s; display: flex; align-items: center; justify-content: center; gap: 7px; }
+        .sidebar .sb-logout:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.28); color: #f87171; }
 
-        /* ── Overlay ── */
         .overlay { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,0.5); backdrop-filter: blur(3px); opacity: 0; pointer-events: none; transition: opacity .28s; }
         .overlay.show { opacity: 1; pointer-events: all; }
 
-        /* ── Content ── */
-        .content { padding: 24px 22px; max-width: 1440px; margin: 0 auto; }
+        /* ── Shell ── */
+        .content { width: min(100%, 1840px); margin: 0 auto; padding: 38px 34px 48px; }
 
         /* ── Profile strip ── */
-        .profile-strip { background: #fff; border: 1px solid #e5e7eb; border-radius: 18px; padding: 18px 22px; margin-bottom: 20px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-        .profile-avatar { width: 52px; height: 52px; border-radius: 50%; background: linear-gradient(135deg,#6366f1,#a78bfa); display: flex; align-items: center; justify-content: center; font-size: 19px; font-weight: 700; color: #fff; flex-shrink: 0; }
-        .profile-name  { font-size: 16px; font-weight: 600; color: #111827; }
-        .profile-email { font-size: 12px; color: #6b7280; margin-top: 3px; }
-        .profile-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 8px; }
-        .pchip { padding: 3px 10px; border-radius: 20px; font-size: 11px; font-weight: 500; }
-        .pc-purple { background: #ede9fe; color: #7c3aed; }
-        .pc-blue   { background: #dbeafe; color: #1d4ed8; }
-        .pc-amber  { background: #fef3c7; color: #b45309; }
-        .pc-green  { background: #d1fae5; color: #059669; font-family: 'DM Mono', monospace; }
+        .profile-strip {
+          display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+          padding: 18px 22px; margin-bottom: 30px;
+          background: rgba(255, 255, 255, 0.88);
+          border: 1px solid rgba(60, 60, 67, .075);
+          box-shadow: 0 1px 2px rgba(0,0,0,.02), 0 10px 34px rgba(0,0,0,.045);
+          backdrop-filter: saturate(180%) blur(20px);
+          border-radius: 24px;
+        }
+        .profile-avatar { width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%; background: linear-gradient(145deg, #1d1d1f, #52525a); display: grid; place-items: center; font-size: 18px; font-weight: 700; letter-spacing: -.02em; color: #fff; }
+        .profile-name  { font-size: 16px; font-weight: 680; letter-spacing: -.022em; color: #1d1d1f; }
+        .profile-email { font-size: 11.5px; color: #6e6e73; margin-top: 3px; }
+        .profile-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; }
+        .pchip { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 620; }
+        .pc-purple { background: rgba(175,82,222,.10); color: #af52de; }
+        .pc-blue   { background: rgba(0,122,255,.10); color: #007aff; }
+        .pc-amber  { background: rgba(255,149,0,.12); color: #b25c00; }
+        .pc-green  { background: rgba(52,199,89,.12); color: #1a7f37; font-variant-numeric: tabular-nums; }
 
         /* ── Refetch indicator ── */
-        .refetch-bar { height: 3px; background: linear-gradient(90deg, #6366f1, #a78bfa); animation: slide 1.2s infinite; border-radius: 2px; margin-bottom: 12px; }
+        .refetch-bar { height: 2px; background: linear-gradient(90deg, rgba(0,122,255,0), #007aff, rgba(0,122,255,0)); animation: slide 1.2s infinite; border-radius: 2px; margin-bottom: 12px; }
         @keyframes slide { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
 
+        /* ── Page header ── */
+        .dashboard-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
+        .eyebrow { display: inline-flex; align-items: center; gap: 7px; color: #007aff; font-size: 12px; line-height: 1; font-weight: 650; margin-bottom: 10px; }
+        .eyebrow-dot { width: 7px; height: 7px; border-radius: 999px; background: #007aff; box-shadow: 0 0 0 4px rgba(0, 122, 255, .09); }
+        .page-title { margin: 0; font-size: clamp(32px, 4vw, 44px); line-height: 1.02; letter-spacing: -.045em; font-weight: 720; color: #1d1d1f; }
+        .page-subtitle { max-width: 620px; margin: 10px 0 0; color: #6e6e73; font-size: 15px; line-height: 1.45; letter-spacing: -.01em; text-wrap: pretty; }
+        .profile-chip {
+          display: flex; align-items: center; gap: 11px; flex-shrink: 0;
+          padding: 7px 9px 7px 7px;
+          border: 1px solid rgba(60, 60, 67, .09);
+          background: rgba(255,255,255,.72);
+          box-shadow: 0 4px 18px rgba(0,0,0,.035);
+          backdrop-filter: saturate(180%) blur(18px);
+          border-radius: 999px;
+        }
+        .profile-chip-avatar { width: 36px; height: 36px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(145deg, #1d1d1f, #52525a); color: #fff; font-size: 12px; font-weight: 700; letter-spacing: -.02em; }
+        .profile-copy { min-width: 0; padding-right: 5px; }
+        .profile-chip-name { max-width: 180px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #1d1d1f; font-size: 12px; font-weight: 650; }
+        .profile-chip-role { color: #8e8e93; font-size: 10.5px; margin-top: 1px; }
+
+        /* ── Section labels ── */
+        .section-label { margin: 0 0 12px 2px; color: #6e6e73; font-size: 12px; font-weight: 650; letter-spacing: .01em; }
+
         /* ── Stat cards ── */
-        .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px; }
-        .stat-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 18px; padding: 18px 20px; transition: box-shadow .2s, transform .2s; }
-        .stat-card:hover { box-shadow: 0 6px 24px rgba(0,0,0,0.07); transform: translateY(-2px); }
+        .stat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-bottom: 30px; }
+        .stat-card {
+          min-height: 158px; padding: 20px 21px; border-radius: 22px;
+          background: rgba(255, 255, 255, 0.88);
+          border: 1px solid rgba(60, 60, 67, .075);
+          box-shadow: 0 1px 2px rgba(0,0,0,.02), 0 10px 34px rgba(0,0,0,.045);
+          backdrop-filter: saturate(180%) blur(20px);
+          transition: transform 180ms ease, box-shadow 180ms ease;
+        }
+        .stat-card:hover { transform: translateY(-1px); box-shadow: 0 1px 2px rgba(0,0,0,.02), 0 14px 38px rgba(0,0,0,.055); }
         .stat-link-card { display: block; text-decoration: none; color: inherit; }
-        .stat-lbl { font-size: 10px; font-weight: 600; color: #9ca3af; text-transform: uppercase; letter-spacing: .1em; margin-bottom: 8px; }
-        .stat-sub { font-size: 11.5px; color: #6b7280; margin-top: 7px; }
-        .stat-val { font-size: 28px; font-weight: 700; color: #111827; letter-spacing: -.03em; font-family: 'DM Mono', monospace; line-height: 1; }
-        .stat-badge { display: inline-flex; align-items: center; gap: 3px; margin-top: 9px; padding: 2px 9px; border-radius: 20px; font-size: 10.5px; font-weight: 600; }
-        .badge-amber  { background: #fef3c7; color: #b45309; }
-        .badge-green  { background: #d1fae5; color: #059669; }
-        .badge-blue   { background: #dbeafe; color: #1d4ed8; }
-        .badge-purple { background: #ede9fe; color: #7c3aed; }
-        .badge-red    { background: #fee2e2; color: #b91c1c; }
-        .pulse-amber { box-shadow: 0 0 0 0 rgba(245,158,11,0.7); animation: pulseAmber 1.6s infinite; }
-        @keyframes pulseAmber { 0%{box-shadow:0 0 0 0 rgba(245,158,11,0.7)} 70%{box-shadow:0 0 0 8px rgba(245,158,11,0)} 100%{box-shadow:0 0 0 0 rgba(245,158,11,0)} }
-        .quick-action-btn { display: inline-flex; align-items: center; justify-content: center; margin-top: 10px; padding: 6px 10px; border-radius: 8px; background: #f9fafb; border: 1px solid #e5e7eb; color: #4f46e5; font-size: 11.5px; font-weight: 700; text-decoration: none; transition: background .15s, border-color .15s; }
-        .quick-action-btn:hover { background: #ede9fe; border-color: #ddd6fe; }
+        .stat-lbl { color: #6e6e73; font-size: 12px; font-weight: 600; letter-spacing: -.005em; }
+        .stat-val { margin-top: 12px; color: #1d1d1f; font-size: clamp(28px, 3.2vw, 34px); line-height: 1; font-weight: 700; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
+        .stat-sub { font-size: 11px; color: #8e8e93; margin-top: 8px; line-height: 1.4; }
+        .stat-badge {
+          display: inline-flex; align-items: center; gap: 6px;
+          margin-top: 15px; margin-right: 12px;
+          color: #6e6e73; font-size: 11.5px; line-height: 1.35; white-space: nowrap;
+        }
+        .stat-badge::before { content: ""; width: 7px; height: 7px; border-radius: 999px; background: #8e8e93; flex-shrink: 0; }
+        .badge-amber::before  { background: #ff9500; }
+        .badge-green::before  { background: #34c759; }
+        .badge-blue::before   { background: #007aff; }
+        .badge-purple::before { background: #af52de; }
+        .badge-red::before    { background: #ff3b30; }
+        .pulse-amber::before { animation: pulseAmber 1.8s infinite; }
+        @keyframes pulseAmber { 0%{box-shadow:0 0 0 0 rgba(255,149,0,0.55)} 70%{box-shadow:0 0 0 6px rgba(255,149,0,0)} 100%{box-shadow:0 0 0 0 rgba(255,149,0,0)} }
+        .quick-action-btn { display: inline-block; margin-top: 12px; color: #007aff; font-size: 11.5px; font-weight: 620; text-decoration: none; white-space: nowrap; }
+        .quick-action-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
 
         /* ── Panels / Charts ── */
-        .charts-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
-        @media (max-width: 800px) { .charts-2 { grid-template-columns: 1fr; } }
-        .panel { background: #fff; border: 1px solid #e5e7eb; border-radius: 20px; padding: 22px; }
-        .panel-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 18px; }
-        .panel-title { font-size: 13.5px; font-weight: 600; color: #111827; }
-        .panel-sub   { font-size: 11.5px; color: #9ca3af; margin-top: 2px; }
-        .chart-canvas { height: 240px; width: 100%; }
-        .chart-empty  { height: 240px; display: flex; align-items: center; justify-content: center; color: #9ca3af; font-size: 13px; }
-        .legend { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #6b7280; }
-        .leg-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+        .charts-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
+        @media (max-width: 850px) { .charts-2 { grid-template-columns: 1fr; } }
+        .panel {
+          padding: 22px; border-radius: 24px; min-width: 0;
+          background: rgba(255, 255, 255, 0.88);
+          border: 1px solid rgba(60, 60, 67, .075);
+          box-shadow: 0 1px 2px rgba(0,0,0,.02), 0 10px 34px rgba(0,0,0,.045);
+          backdrop-filter: saturate(180%) blur(20px);
+        }
+        .panel-header { display: flex; align-items: flex-start; justify-content: space-between; flex-wrap: wrap; gap: 18px; margin-bottom: 18px; }
+        .panel-title { color: #1d1d1f; font-size: 16px; line-height: 1.2; font-weight: 680; letter-spacing: -.022em; }
+        .panel-sub   { margin-top: 4px; color: #6e6e73; font-size: 11.5px; line-height: 1.35; }
+        .chart-canvas { height: 260px; width: 100%; }
+        .chart-empty  { height: 260px; display: grid; place-items: center; color: #8e8e93; font-size: 12px; }
+        .legend { display: inline-flex; align-items: center; gap: 5px; color: #6e6e73; font-size: 10.5px; white-space: nowrap; }
+        .leg-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 
         /* ── Reports ── */
-        .reports-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+        .reports-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; }
         @media (max-width: 640px) { .reports-row { grid-template-columns: 1fr; } }
-        .rpt-head { font-size: 11px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: .06em; background: #c8cacc; padding: 6px 10px; border-radius: 6px; margin-bottom: 12px; }
-        .report-item { display: flex; justify-content: space-between; align-items: center; padding: 9px 0; border-bottom: 1px solid #f3f4f6; }
-        .report-item:last-child { border-bottom: none; }
-        .report-name  { font-size: 12.5px; color: #374151; font-family: 'DM Mono', monospace; }
-        .report-value { font-size: 12.5px; font-weight: 600; color: #111827; font-family: 'DM Mono', monospace; }
-        .report-empty { font-size: 13px; color: #9ca3af; padding: 12px 0; }
+        .rpt-head { margin-bottom: 5px; color: #6e6e73; font-size: 11px; font-weight: 650; }
+        .report-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; min-height: 39px; border-top: 1px solid rgba(60, 60, 67, .11); font-size: 12px; }
+        .report-item:first-of-type { border-top: 0; }
+        .report-name  { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #6e6e73; }
+        .report-value { color: #1d1d1f; font-weight: 650; font-variant-numeric: tabular-nums; }
+        .report-empty { padding: 22px 0; color: #8e8e93; font-size: 12px; }
 
         /* ── Dealer table ── */
         .dealer-table-wrap { overflow-x: auto; }
         .dealer-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-        .dealer-table th { padding: 10px 14px; text-align: left; font-size: 10px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: .08em; background: #f9fafb; border-bottom: 1px solid #e5e7eb; white-space: nowrap; cursor: pointer; user-select: none; }
-        .dealer-table th:hover { color: #374151; }
-        .dealer-table td { padding: 11px 14px; border-bottom: 1px solid #f3f4f6; vertical-align: middle; }
-        .dealer-table tr:last-child td { border-bottom: none; }
-        .dealer-table tr:hover td { background: #fafafa; }
-        .dt-name { font-weight: 600; color: #111827; font-size: 13px; }
-        .dt-sub  { font-size: 11px; color: #9ca3af; margin-top: 2px; }
-        .dt-code { font-family: 'DM Mono', monospace; font-size: 11px; background: #fef3c7; color: #92400e; border: 1px solid #fde68a; border-radius: 5px; padding: 1px 7px; }
-        .dt-mono { font-family: 'DM Mono', monospace; font-size: 12px; color: #374151; }
-        .st-active   { background: #d1fae5; color: #065f46; font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 20px; }
-        .st-inactive { background: #fee2e2; color: #991b1b; font-size: 10px; font-weight: 700; padding: 2px 9px; border-radius: 20px; }
-        .view-btn { display: inline-flex; align-items: center; gap: 4px; padding: 4px 11px; border-radius: 7px; font-size: 11px; font-weight: 600; color: #4f46e5; background: #ede9fe; border: none; cursor: pointer; text-decoration: none; transition: background .15s; }
-        .view-btn:hover { background: #ddd6fe; }
+        .dealer-table th { padding: 0 12px 10px; text-align: left; font-size: 11px; font-weight: 650; color: #6e6e73; white-space: nowrap; cursor: pointer; user-select: none; }
+        .dealer-table th:hover { color: #1d1d1f; }
+        .dealer-table td { padding: 12px; border-top: 1px solid rgba(60, 60, 67, .11); vertical-align: middle; }
+        .dealer-table tr:hover td { background: rgba(118, 118, 128, .05); }
+        .dt-name { font-weight: 620; color: #1d1d1f; font-size: 12.5px; }
+        .dt-sub  { font-size: 10.5px; color: #8e8e93; margin-top: 2px; }
+        .dt-code { font-size: 10.5px; color: #8e8e93; font-variant-numeric: tabular-nums; }
+        .dt-mono { font-size: 12.5px; color: #6e6e73; font-variant-numeric: tabular-nums; }
+        .st-active, .st-inactive { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: #6e6e73; white-space: nowrap; }
+        .st-active::before, .st-inactive::before { content: ""; width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
+        .st-active::before   { background: #34c759; }
+        .st-inactive::before { background: #ff3b30; }
+        .view-btn { display: inline-flex; align-items: center; gap: 4px; color: #007aff; font-size: 11.5px; font-weight: 620; background: none; border: none; cursor: pointer; text-decoration: none; }
+        .view-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
 
         /* ── Error banner ── */
-        .err-banner { display: flex; align-items: center; gap: 10px; background: #fef2f2; border: 1px solid #fecaca; border-radius: 12px; padding: 12px 16px; margin-bottom: 16px; font-size: 13px; color: #dc2626; }
-        .retry-btn { margin-left: auto; font-size: 12px; font-weight: 600; color: #dc2626; background: none; border: 1px solid #fca5a5; border-radius: 6px; padding: 3px 10px; cursor: pointer; }
+        .err-banner {
+          display: flex; align-items: center; gap: 12px;
+          margin-bottom: 16px; padding: 12px 14px;
+          border: 1px solid rgba(255, 59, 48, .16);
+          background: rgba(255,255,255,.8);
+          border-radius: 16px; color: #b42318; font-size: 13px;
+        }
+        .retry-btn { margin-left: auto; border: 0; background: transparent; color: #007aff; cursor: pointer; font-weight: 650; padding: 4px 7px; }
 
         /* ── Search ── */
         .search-wrap { position: relative; display: inline-flex; align-items: center; }
-        .search-wrap svg { position: absolute; left: 10px; color: #9ca3af; pointer-events: none; }
-        .search-input { padding: 8px 12px 8px 34px; border: 1px solid #e5e7eb; border-radius: 9px; font-size: 13px; width: 220px; outline: none; font-family: inherit; color: #111827; background: #f9fafb; transition: border-color .15s, box-shadow .15s; }
-        .search-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); background: #fff; }
+        .search-wrap svg { position: absolute; left: 12px; color: #8e8e93; pointer-events: none; }
+        .search-input { height: 34px; padding: 0 12px 0 34px; border: 1px solid transparent; border-radius: 12px; font-size: 12px; width: 230px; outline: none; font-family: inherit; color: #1d1d1f; background: rgba(118, 118, 128, .10); transition: border-color .15s, box-shadow .15s, background .15s; }
+        .search-input::placeholder { color: #8e8e93; }
+        .search-input:focus { border-color: rgba(0,122,255,.4); box-shadow: 0 0 0 3px rgba(0,122,255,0.10); background: #fff; }
 
         /* ── Shimmer ── */
-        .shimmer { background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 6px; }
+        .shimmer { background: linear-gradient(90deg, rgba(118,118,128,.08) 25%, rgba(118,118,128,.16) 50%, rgba(118,118,128,.08) 75%); background-size: 200% 100%; animation: shimmer 1.4s infinite; border-radius: 8px; }
         @keyframes shimmer { 0%{background-position:200% 0} 100%{background-position:-200% 0} }
 
-        .sb-nav::-webkit-scrollbar { width: 5px; }
-        .sb-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+        @media (max-width: 850px) {
+          .content { padding: 28px 20px 36px; }
+          .dashboard-header { align-items: flex-start; }
+          .profile-copy { display: none; }
+          .profile-chip { padding-right: 7px; }
+        }
+        @media (max-width: 560px) {
+          .content { padding: 24px 16px 32px; }
+          .dashboard-header { margin-bottom: 24px; }
+          .page-title { font-size: 34px; }
+          .page-subtitle { font-size: 14px; }
+          .profile-chip { display: none; }
+          .stat-grid { grid-template-columns: 1fr; gap: 10px; }
+          .stat-card { min-height: 140px; padding: 18px; border-radius: 20px; }
+          .panel { padding: 18px; border-radius: 20px; }
+          .profile-strip { border-radius: 20px; }
+        }
       `}</style>
 
       <div className="root">
@@ -659,6 +742,23 @@ function ExecutiveDashboard() {
               </div>
             )}
 
+            {/* ── Page header ── */}
+            <header className="dashboard-header">
+              <div>
+                <div className="eyebrow"><span className="eyebrow-dot" /> Staff overview</div>
+                <h1 className="page-title">Dashboard</h1>
+                <p className="page-subtitle">Your assigned distributors, the orders and requests waiting on you, and how the territory is tracking.</p>
+              </div>
+
+              <div className="profile-chip" aria-label="Current staff member">
+                <div className="profile-chip-avatar">{initials}</div>
+                <div className="profile-copy">
+                  <div className="profile-chip-name">{user.staff_name}</div>
+                  <div className="profile-chip-role">{roleLabel}</div>
+                </div>
+              </div>
+            </header>
+
             {/* ── Profile Strip ── */}
             <div className="profile-strip">
               <div className="profile-avatar">{initials}</div>
@@ -681,13 +781,15 @@ function ExecutiveDashboard() {
               </div>
             </div>
 
+            <div className="section-label">At a glance</div>
+
             {/* ── Stat Cards ── */}
             <div className="stat-grid">
               {STAT_CONFIG.map(s => (
                 s.href ? (
                   <Link key={s.label} href={s.href} className="stat-card stat-link-card">
                     <div className="stat-lbl">{s.label}</div>
-                    <div className="font-sans font-bold">
+                    <div className="stat-val">
                       {companyMonthLoading
                         ? <span className="shimmer" style={{ display: "inline-block", width: 72, height: 26 }} />
                         : s.value}
@@ -698,7 +800,7 @@ function ExecutiveDashboard() {
                 ) : (
                   <div key={s.label} className="stat-card">
                     <div className="stat-lbl">{s.label}</div>
-                    <div className="font-sans font-bold">
+                    <div className="stat-val">
                       {globalLoading
                         ? <span className="shimmer" style={{ display: "inline-block", width: 60, height: 26 }} />
                         : s.value}
@@ -709,6 +811,8 @@ function ExecutiveDashboard() {
               ))}
             </div>
 
+            <div className="section-label">My workload</div>
+
             {/* ── Sidebar Summary Widgets ── */}
             <div className="stat-grid">
               <div className="stat-card">
@@ -718,31 +822,31 @@ function ExecutiveDashboard() {
                     ? <span className="shimmer" style={{ display: "inline-block", width: 60, height: 26 }} />
                     : stats.myDealers}
                 </div>
-                <div className="panel-sub">Dealers mapped to your staff ID</div>
-                <div className="font-sans font-bold badge-green">{activeDealers} active</div>
+                <div className="stat-sub">Dealers mapped to your staff ID</div>
+                <div className="stat-badge badge-green">{activeDealers} active</div>
                 <Link href="/dashboard/staff/dealerlist" className="quick-action-btn">+ View dealers</Link>
               </div>
 
               <div className="stat-card">
                 <div className="stat-lbl">Pending Orders</div>
-                <div className="font-sans font-bold">
+                <div className="stat-val">
                   {ordersQ.isLoading
                     ? <span className="shimmer" style={{ display: "inline-block", width: 60, height: 26 }} />
                     : stats.pendingOrders}
                 </div>
-                <div className="panel-sub">Orders awaiting action from assigned dealers</div>
+                <div className="stat-sub">Orders awaiting action from assigned dealers</div>
                 <div className={`stat-badge badge-amber${stats.pendingOrders > 0 ? " pulse-amber" : ""}`}>{stats.pendingOrders} pending</div>
                 <Link href="/Pages/Ordermanagement/outstandingorders" className="quick-action-btn">+ Review orders</Link>
               </div>
 
               <div className="stat-card">
                 <div className="stat-lbl">Discount Requests</div>
-                <div className="font-sans font-bold">
+                <div className="stat-val">
                   {discountRequestsQ.isLoading
                     ? <span className="shimmer" style={{ display: "inline-block", width: 60, height: 26 }} />
                     : stats.pendingDiscountRequests}
                 </div>
-                <div className="panel-sub">Pending discount approvals linked to your staff ID</div>
+                <div className="stat-sub">Pending discount approvals linked to your staff ID</div>
                 <div className={`stat-badge badge-amber${stats.pendingDiscountRequests > 0 ? " pulse-amber" : ""}`}>
                   {stats.pendingDiscountRequests} pending
                 </div>
@@ -751,12 +855,12 @@ function ExecutiveDashboard() {
 
               <div className="stat-card">
                 <div className="stat-lbl">Credit Watch</div>
-                <div className="font-sans font-bold">
+                <div className="stat-val">
                   {dealersQ.isLoading
                     ? <span className="shimmer" style={{ display: "inline-block", width: 60, height: 26 }} />
                     : nearCreditLimitDealers.length}
                 </div>
-                <div className="panel-sub">Dealers using over 80% of annual target</div>
+                <div className="stat-sub">Dealers using over 80% of annual target</div>
                 <div className={`stat-badge ${nearCreditLimitDealers.length > 0 ? "badge-red" : "badge-blue"}`}>
                   {nearCreditLimitDealers.length} near limit
                 </div>
@@ -771,21 +875,21 @@ function ExecutiveDashboard() {
               <ChartPanel
                 title="Monthly Orders"
                 sub="Total order count per month"
-                legendColor="rgba(99,102,241,0.78)"
+                legendColor="#007aff"
                 legendLabel="Orders"
                 loading={monthlyOrdersQ.isLoading}
                 data={ordersChartData}
-                barFill="rgba(99,102,241,0.78)"
+                barFill="#007aff"
                 Tooltip={CountTooltip}
               />
               <ChartPanel
                 title="Monthly Revenue"
                 sub="Total value per month"
-                legendColor="rgba(245,158,11,0.78)"
+                legendColor="#ff9500"
                 legendLabel="Revenue"
                 loading={monthlyValueQ.isLoading}
                 data={revenueChartData}
-                barFill="rgba(245,158,11,0.78)"
+                barFill="#ff9500"
                 Tooltip={MoneyTooltip}
               />
             </div>
@@ -795,21 +899,21 @@ function ExecutiveDashboard() {
               <ChartPanel
                 title="Top Orders"
                 sub="Order value distribution"
-                legendColor="rgba(99,102,241,0.78)"
+                legendColor="#007aff"
                 legendLabel="Order Value"
                 loading={topOrdersQ.isLoading}
                 data={topOrdersChartData}
-                barFill="rgba(99,102,241,0.78)"
+                barFill="#007aff"
                 Tooltip={MoneyTooltip}
               />
               <ChartPanel
                 title="Top Dealers"
                 sub="Dealer performance ranking"
-                legendColor="rgba(159,122,234,0.78)"
+                legendColor="#8e8e93"
                 legendLabel="Total Value"
                 loading={topDealersQ.isLoading}
                 data={topDealersChartData}
-                barFill="rgba(159,122,234,0.78)"
+                barFill="#8e8e93"
                 Tooltip={MoneyTooltip}
               />
             </div>
@@ -882,7 +986,7 @@ function ExecutiveDashboard() {
                   ))}
                 </div>
               ) : filteredDealers.length === 0 ? (
-                <div style={{ textAlign: "center", padding: "40px 0", color: "#9ca3af", fontSize: 13 }}>
+                <div style={{ textAlign: "center", padding: "40px 0", color: "#8e8e93", fontSize: 13 }}>
                   {dealers.length === 0 ? "No dealers assigned." : "No dealers match your search."}
                 </div>
               ) : (
@@ -958,24 +1062,24 @@ function ExecutiveDashboard() {
                   {/* Pagination */}
                   {totalDealerPages > 1 && (
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 18, flexWrap: "wrap", gap: 10 }}>
-                      <span style={{ fontSize: 12, color: "#9ca3af" }}>
+                      <span style={{ fontSize: 11.5, color: "#8e8e93", fontVariantNumeric: "tabular-nums" }}>
                         Showing {pageStart + 1}–{Math.min(pageStart + DEALER_PAGE_SIZE, filteredDealers.length)} of {filteredDealers.length}
                       </span>
                       <div style={{ display: "flex", gap: 4 }}>
                         <button
                           onClick={() => setDealerPage(p => p - 1)}
                           disabled={dealerPage === 1}
-                          style={{ minWidth: 36, height: 34, padding: "0 10px", fontSize: 13, borderRadius: 7, border: "1px solid #e2e8f0", background: "#fff", color: dealerPage === 1 ? "#cbd5e1" : "#0f172a", cursor: dealerPage === 1 ? "default" : "pointer", opacity: dealerPage === 1 ? 0.4 : 1 }}
+                          style={{ minWidth: 36, height: 34, padding: "0 10px", fontSize: 13, borderRadius: 7, border: "1px solid rgba(60,60,67,.11)", background: "transparent", color: dealerPage === 1 ? "#c4c4c8" : "#1d1d1f", cursor: dealerPage === 1 ? "default" : "pointer", opacity: dealerPage === 1 ? 0.4 : 1 }}
                         >‹</button>
 
                         {pageRange().map((item, idx) =>
                           item === "..." ? (
-                            <span key={`e${idx}`} style={{ width: 36, height: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#94a3b8", fontSize: 13 }}>…</span>
+                            <span key={`e${idx}`} style={{ width: 36, height: 34, display: "inline-flex", alignItems: "center", justifyContent: "center", color: "#8e8e93", fontSize: 13 }}>…</span>
                           ) : (
                             <button
                               key={item}
                               onClick={() => setDealerPage(item as number)}
-                              style={{ minWidth: 36, height: 34, padding: "0 10px", fontSize: 13, borderRadius: 7, border: "1px solid", borderColor: dealerPage === item ? "#1e3a5f" : "#e2e8f0", background: dealerPage === item ? "#1e3a5f" : "#fff", color: dealerPage === item ? "#fff" : "#0f172a", fontWeight: dealerPage === item ? 700 : 400, cursor: "pointer" }}
+                              style={{ minWidth: 36, height: 34, padding: "0 10px", fontSize: 13, borderRadius: 7, border: "1px solid", borderColor: dealerPage === item ? "#007aff" : "rgba(60,60,67,.11)", background: dealerPage === item ? "#007aff" : "transparent", color: dealerPage === item ? "#fff" : "#1d1d1f", fontWeight: dealerPage === item ? 700 : 400, cursor: "pointer" }}
                             >{item}</button>
                           )
                         )}
@@ -983,7 +1087,7 @@ function ExecutiveDashboard() {
                         <button
                           onClick={() => setDealerPage(p => p + 1)}
                           disabled={dealerPage === totalDealerPages}
-                          style={{ minWidth: 36, height: 34, padding: "0 10px", fontSize: 13, borderRadius: 7, border: "1px solid #e2e8f0", background: "#fff", color: dealerPage === totalDealerPages ? "#cbd5e1" : "#0f172a", cursor: dealerPage === totalDealerPages ? "default" : "pointer", opacity: dealerPage === totalDealerPages ? 0.4 : 1 }}
+                          style={{ minWidth: 36, height: 34, padding: "0 10px", fontSize: 13, borderRadius: 7, border: "1px solid rgba(60,60,67,.11)", background: "transparent", color: dealerPage === totalDealerPages ? "#c4c4c8" : "#1d1d1f", cursor: dealerPage === totalDealerPages ? "default" : "pointer", opacity: dealerPage === totalDealerPages ? 0.4 : 1 }}
                         >›</button>
                       </div>
                     </div>
@@ -1035,12 +1139,13 @@ function ChartPanel({
         <div className="chart-empty">No data available</div>
       ) : (
         <div className="chart-canvas">
-          <ResponsiveContainer width="100%" height={240} minWidth={0}>
-            <BarChart data={data}>
-              <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-              <YAxis tick={{ fontSize: 11 }} />
+          <ResponsiveContainer width="100%" height={260} minWidth={0}>
+            <BarChart data={data} margin={{ top: 8, right: 4, left: -8, bottom: 0 }}>
+              <CartesianGrid stroke="rgba(60,60,67,.08)" vertical={false} />
+              <XAxis dataKey="name" tick={{ fontSize: 10.5, fill: "#8e8e93" }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fontSize: 10.5, fill: "#8e8e93" }} axisLine={false} tickLine={false} width={52} />
               <Tooltip content={<TooltipComp />} />
-              <Bar dataKey="value" fill={barFill} radius={[6, 6, 0, 0]} />
+              <Bar dataKey="value" fill={barFill} radius={[8, 8, 2, 2]} maxBarSize={38} />
             </BarChart>
           </ResponsiveContainer>
         </div>

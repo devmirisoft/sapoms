@@ -55,3 +55,49 @@ export async function buildOrderRegionWhere(actor: Pick<AuthActor, "userId" | "r
   const scope = await resolveSalesScope(actor, requestedRegion, prisma);
   return scope.scope === "REGION" && scope.region ? { dealer: { region: scope.region } } : {};
 }
+
+/**
+ * Every staff profile reporting into an RSM, at any depth.
+ *
+ * `parentRsmId` is denormalized on write: an ASM gets it from the RSM it is
+ * created under, and an Executive inherits its ASM's `parentRsmId` (see
+ * staff.repository.ts). So the whole subtree is one flat query rather than a
+ * recursive walk, and the RSM's own profile is included so requests raised
+ * against dealers they hold directly stay in scope.
+ */
+export async function resolveRsmTeamStaffIds(
+  actor: Pick<AuthActor, "role" | "staffId">,
+  prisma: Pick<Prisma.TransactionClient, "staffProfile">,
+): Promise<bigint[]> {
+  if (actor.role !== "RSM" || !actor.staffId) return [];
+  const team = await prisma.staffProfile.findMany({
+    where: { parentRsmId: actor.staffId },
+    select: { id: true },
+  });
+  return [actor.staffId, ...team.map((member) => member.id)];
+}
+
+/**
+ * Discount-request scope for an RSM: anything in their sales region, plus
+ * anything raised by a staff member reporting into them. The region alone is
+ * not enough — a child ASM/Executive can hold a dealer whose region is unset or
+ * set to another region, and those requests still need RSM review.
+ */
+export async function buildRsmDiscountRequestWhere(
+  actor: Pick<AuthActor, "userId" | "role" | "staffId">,
+  prisma: Pick<Prisma.TransactionClient, "staffProfile">,
+): Promise<Prisma.CustomDiscountRequestWhereInput> {
+  const [dealerWhere, teamStaffIds] = await Promise.all([
+    buildDealerRegionWhere(actor, undefined, prisma),
+    resolveRsmTeamStaffIds(actor, prisma),
+  ]);
+
+  const clauses: Prisma.CustomDiscountRequestWhereInput[] = [];
+  // An empty dealerWhere means unscoped, which must not widen an RSM to all
+  // dealers — only add the region clause when it actually constrains.
+  if (Object.keys(dealerWhere).length > 0) clauses.push({ dealer: dealerWhere });
+  if (teamStaffIds.length > 0) clauses.push({ staffId: { in: teamStaffIds } });
+
+  if (clauses.length === 0) return { id: BigInt(-1) };
+  return clauses.length === 1 ? clauses[0] : { OR: clauses };
+}

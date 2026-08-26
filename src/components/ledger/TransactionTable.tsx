@@ -194,7 +194,7 @@ export default function TransactionTable({
         <div className="flex items-center gap-2">
           <Receipt className="h-4 w-4 text-indigo-500" />
           <div>
-            <h2 className="text-[15px] font-bold text-gray-900">Transaction History</h2>
+            <h2 className="text-[15px] font-bold text-gray-900">Invoices</h2>
             <p className="text-[12px] text-gray-500">
               {safeCount === 0 ? 'No transaction records' : `${formatCount(safeCount)} transaction records`}
               {isFetching && !isLoading ? (
