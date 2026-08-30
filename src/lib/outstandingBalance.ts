@@ -29,12 +29,11 @@ export const EMPTY_AGING: OutstandingAging = {
 };
 
 function mtStatusValue(s: unknown) {
-  if (!s) return "NoActionTaken";
-  const key = String(s).trim().toLowerCase().replace(/[\s_-]/g, "");
-  if (key === "pending") return "Pending";
-  if (key === "inprocess") return "InProcess";
+  const key = String(s ?? "").trim().toLowerCase().replace(/[\s_-]/g, "");
   if (key === "completed") return "Completed";
-  return "NoActionTaken";
+  // Legacy PHP rows carry "InProcess" for a part-dispatched order.
+  if (key === "partial" || key === "inprocess") return "Partial";
+  return "Pending";
 }
 
 export function getPayStatus(order: OutstandingOrder, today = moment().startOf("day")): PayStatus {

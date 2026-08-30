@@ -127,27 +127,27 @@ export class PrismaPostgresAuthenticationProvider implements PostgresAuthenticat
     if (expectedRole && user.role !== expectedRole) throw new Error("Invalid credentials");
 
     let diagnosticPasswordId: bigint | undefined;
+    // The account's own hash is always checked first; a temporary password is
+    // only ever a fallback, and only for dealer and staff profiles.
     const passwordMatches = await verifyPassword(input.password, user.passwordHash);
     if (!passwordMatches) {
-      if (user.role !== "DEALER" || !user.dealerProfile?.id) throw new Error("Invalid credentials");
+      const owner = user.dealerProfile?.id
+        ? { dealerId: user.dealerProfile.id }
+        : user.staffProfile?.id
+          ? { staffId: user.staffProfile.id }
+          : null;
+      if (!owner) throw new Error("Invalid credentials");
       const now = new Date();
-      const candidates = await prisma.$queryRaw<Array<{ id: bigint; password_hash: string }>>`
-        SELECT id, password_hash
-        FROM dealer_diagnostic_passwords
-        WHERE dealer_id = ${user.dealerProfile.id}
-          AND revoked_at IS NULL
-          AND expires_at > ${now}
-        ORDER BY created_at DESC
-        LIMIT 5
-      `;
+      const candidates = await prisma.diagnosticPassword.findMany({
+        where: { ...owner, revokedAt: null, expiresAt: { gt: now } },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+        select: { id: true, passwordHash: true },
+      });
       for (const candidate of candidates) {
-        if (await verifyPassword(input.password, candidate.password_hash)) {
+        if (await verifyPassword(input.password, candidate.passwordHash)) {
           diagnosticPasswordId = candidate.id;
-          await prisma.$executeRaw`
-            UPDATE dealer_diagnostic_passwords
-            SET last_used_at = ${now}
-            WHERE id = ${candidate.id}
-          `;
+          await prisma.diagnosticPassword.update({ where: { id: candidate.id }, data: { lastUsedAt: now } });
           break;
         }
       }

@@ -134,9 +134,11 @@ test("ORDER_DEBIT is counted as payment only when tied to an order id", () => {
 });
 
 test("dealer order creates ORDER_DEBIT for the exact order payable with orderId and duplicate wallet idempotency key", async () => {
-  const dealerOrderSource = await fs.readFile(path.resolve("src/app/api/dealer-order/route.ts"), "utf8");
+  // The order-debit lives in the shared creation service, which the route and
+  // the fund-request funding path both call, so the guarantee is asserted there.
+  const dealerOrderSource = await fs.readFile(path.resolve("src/lib/dealerOrderCreate.ts"), "utf8");
   assert.match(dealerOrderSource, /WalletTransactionType\.ORDER_DEBIT/);
-  assert.match(dealerOrderSource, /fromPaise\(finalPayableAmountPaise\)/);
+  assert.match(dealerOrderSource, /fromPaise\(priced\.finalPayableAmountPaise\)/);
   assert.match(dealerOrderSource, /orderId: order\.id/);
   assert.match(dealerOrderSource, /`\$\{idempotencyKey\}:wallet`/);
   assert.match(ledgerSource, /idempotencyKey/);

@@ -26,9 +26,11 @@ export type DraftProductRow = {
   productNote?: string;
 };
 
-/** Written by the discount review when either reviewer rejects a request. */
+/** Written by the discount review, and by an order disapproval, on rejection. */
 export type DraftRejectionNotes = {
-  rejected_by?: "ADMIN" | "RSM" | null;
+  rejected_by?: string | null;
+  /** Order rejections name the reviewer; discount rejections carry only the role. */
+  rejected_by_name?: string | null;
   rejected_at?: string | null;
   admin_note?: string | null;
   rsm_note?: string | null;
@@ -47,7 +49,12 @@ export type OrderDraft = {
   approval_state?: DraftApprovalState | null;
   source?: string;
   source_request_id?: string;
+  source_order_id?: string;
+  source_order_number?: string;
   rejection_notes?: DraftRejectionNotes | null;
+  /** The rows of the order as first placed, kept for the resubmission diff. */
+  original_rows?: DraftProductRow[];
+  edit_log?: Array<{ at: string; order_number: string; changes: string[] }>;
   rows: DraftProductRow[];
   created_at: string;
   updated_at: string;

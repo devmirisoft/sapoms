@@ -6,6 +6,7 @@ import {
   Eye, EyeOff, ArrowLeft, User, KeyRound, Wallet,
   ShieldCheck, Users, FileText, Search, Check, X, Loader2,
 } from 'lucide-react'
+import { normalizeDealerContacts, type DealerContact } from '@/lib/dealerForm'
 
 type DealerStatus = "active" | "inactive" | "suspended"
 
@@ -167,6 +168,9 @@ export default function EditDealerPage() {
   const [secondaryContactName,  setSecondaryContactName]  = useState("")
   const [secondaryContactPhone, setSecondaryContactPhone] = useState("")
   const [secondaryContactEmail, setSecondaryContactEmail] = useState("")
+  const [additionalContacts, setAdditionalContacts] = useState<DealerContact[]>([])
+  const updateAdditionalContact = (index: number, field: keyof DealerContact, value: string) =>
+    setAdditionalContacts(prev => prev.map((contact, position) => (position === index ? { ...contact, [field]: value } : contact)))
   const [dealerid,       setDealerid]       = useState("")
   const [status,         setStatus]         = useState<DealerStatus>("active")
   const [walletStatus,   setWalletStatus]   = useState<"active" | "inactive">("inactive")
@@ -218,6 +222,7 @@ export default function EditDealerPage() {
           setSecondaryContactName(d.secondaryContactName || "")
           setSecondaryContactPhone(d.secondaryContactPhone || "")
           setSecondaryContactEmail(d.secondaryContactEmail || "")
+          setAdditionalContacts(normalizeDealerContacts(d.additionalContacts))
           setExistingStaffNames(d.staffname || "")
           const initialStaffIds = splitCsv(d.assignedstaff)
           setAssignedStaffIds(initialStaffIds)
@@ -294,6 +299,11 @@ export default function EditDealerPage() {
       .join(",") || existingStaffNames
 
   const handleDiagnosticPasswordSave = async () => {
+    const incompleteContact = additionalContacts.findIndex((contact) => !contact.name.trim() || !contact.phone.trim() || !contact.email.trim())
+    if (incompleteContact >= 0) {
+      setToastMsg({ text: `Contact ${incompleteContact + 3} needs a name, phone and email`, type: 'error' })
+      return
+    }
     const resolvedDealerId = dealerid || dealerId
     if (!resolvedDealerId) {
       setToastMsg({ text: "Missing dealer id", type: "error" })
@@ -396,7 +406,7 @@ export default function EditDealerPage() {
     }
     setIsSaving(true)
     try {
-      const updateBody: Record<string, string | boolean> = {
+      const updateBody: Record<string, unknown> = {
         businessName: name,
         email,
         phone: number,
@@ -412,6 +422,7 @@ export default function EditDealerPage() {
         secondaryContactName,
         secondaryContactPhone,
         secondaryContactEmail,
+        additionalContacts,
         walletActive: isWalletActive,
       }
       if (!isWalletActive) {
@@ -548,6 +559,36 @@ export default function EditDealerPage() {
                     <InputField label="Second Phone No."   value={secondaryContactPhone} onChange={setSecondaryContactPhone} required={false} type="number" placeholder="Second phone number" />
                     <InputField label="Second Email"       value={secondaryContactEmail} onChange={setSecondaryContactEmail} required={false} type="email" placeholder="Second email" />
                   </div>
+                </div>
+
+                {additionalContacts.map((contact, index) => (
+                  <div key={index} className="rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                    <div className="mb-3 flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">Contact {index + 3}</span>
+                      <button
+                        type="button"
+                        onClick={() => setAdditionalContacts(prev => prev.filter((_, position) => position !== index))}
+                        className="text-xs font-semibold text-red-500 hover:text-red-600"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                      <InputField label="Person Name" value={contact.name}  onChange={value => updateAdditionalContact(index, "name", value)}  placeholder="Contact name" />
+                      <InputField label="Phone No."   value={contact.phone} onChange={value => updateAdditionalContact(index, "phone", value)} type="number" placeholder="Phone number" />
+                      <InputField label="Email"       value={contact.email} onChange={value => updateAdditionalContact(index, "email", value)} type="email" placeholder="Email" />
+                    </div>
+                  </div>
+                ))}
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => setAdditionalContacts(prev => [...prev, { name: "", phone: "", email: "" }])}
+                    className="rounded-lg border border-indigo-300 px-4 py-2 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50"
+                  >
+                    + Add Contact
+                  </button>
                 </div>
 
                 <div className="flex flex-col gap-1.5 md:max-w-xs">

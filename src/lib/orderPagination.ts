@@ -34,10 +34,10 @@ function text(value: unknown) {
 
 function normalizedMtStatus(value: unknown) {
   const key = text(value).toLowerCase().replace(/[\s_-]/g, "");
-  if (key === "pending") return "Pending";
-  if (key === "inprocess") return "InProcess";
   if (key === "completed") return "Completed";
-  return "NoActionTaken";
+  // Legacy PHP rows carry "InProcess" for a part-dispatched order.
+  if (key === "partial" || key === "inprocess") return "Partial";
+  return "Pending";
 }
 
 function normalizedOrderStatus(value: unknown) {

@@ -3,7 +3,7 @@
 // import { useEffect, useMemo, useState } from 'react'
 // import { useRouter } from 'next/navigation'
 // import { Eye, EyeOff } from 'lucide-react'
-// import { STATE_OPTIONS, CITIES_BY_STATE, citiesForStates, statesForCities } from '@/lib/places'
+// import { STATE_OPTIONS, CITIES_BY_STATE, citiesForStates } from '@/lib/places'
 // import { SALES_REGION_OPTIONS } from '@/lib/salesRegions'
 // import { mergeRegionAssignment } from '@/lib/regionAssignments'
 
@@ -428,17 +428,18 @@ function InputField({ label, value, onChange, type = 'text', placeholder, requir
   )
 }
 
-function TextAreaField({ label, value, onChange, placeholder, required = true }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; required?: boolean }) {
+function TextAreaField({ label, value, onChange, placeholder, required = true, disabled = false }: { label: string; value: string; onChange: (v: string) => void; placeholder?: string; required?: boolean; disabled?: boolean }) {
   return (
     <div className="flex flex-col gap-1.5">
       <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">{label}</label>
       <textarea
         required={required}
+        disabled={disabled}
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder || label}
         rows={2}
-        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition resize-none"
+        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition resize-none disabled:bg-gray-50 disabled:text-gray-500"
       />
     </div>
   )
@@ -468,12 +469,14 @@ export default function AddStaffPage() {
 
   // Personal info
   const [name, setName] = useState('')
+  const [personalState, setPersonalState] = useState('')
   const [location, setLocation] = useState('')
   const [email, setEmail] = useState('')
   const [mobileNo, setMobileNo] = useState('')
   const [alternateNo, setAlternateNo] = useState('')
   const [permanentAddress, setPermanentAddress] = useState('')
   const [localAddress, setLocalAddress] = useState('')
+  const [sameAddress, setSameAddress] = useState(false)
   const [gender, setGender] = useState('')
   const [dob, setDob] = useState('')
   const [nationality, setNationality] = useState('')
@@ -497,6 +500,7 @@ export default function AddStaffPage() {
 
   const placeOptions = STATE_OPTIONS
   const citiesByState = CITIES_BY_STATE
+  const personalCityOptions = citiesByState[personalState] ?? []
 
   // Designation mirrors the selected role — the two are always kept in sync.
   const designation = getRoleOption(role)?.label ?? ''
@@ -508,18 +512,14 @@ export default function AddStaffPage() {
   const selectedAsmRsm = rsmOptions.find((staff) => staff.id === selectedAsm?.parentRsmId) || selectedAsm?.parentRsm || null
   const asmStateOptions = useMemo(() => selectedRsm?.assignedStates?.length ? selectedRsm.assignedStates : [], [selectedRsm])
   const rsmAssignedStates = role === 'RSM' ? placeOptions : asmStateOptions
-  // Cities available to a Sales Manager being created: the cities already assigned
-  // to the selected ASM, grouped under the state each one belongs to.
-  const selectedAsmCities = useMemo(
-    () => (selectedAsm?.assignedCities?.length ? [...selectedAsm.assignedCities].sort((a, b) => a.localeCompare(b)) : []),
-    [selectedAsm]
-  )
+  // Cities available to a Sales Manager being created: every city within the
+  // selected ASM's assigned states, grouped by state.
   const smCitiesByState = useMemo(() => {
-    const scope = selectedAsm?.assignedStates?.length ? selectedAsm.assignedStates : statesForCities(selectedAsmCities)
+    const scope = selectedAsm?.assignedStates?.length ? selectedAsm.assignedStates : []
     return scope
-      .map((state) => ({ state, cities: (citiesByState[state] ?? []).filter((city) => selectedAsmCities.includes(city)) }))
+      .map((state) => ({ state, cities: citiesByState[state] ?? [] }))
       .filter((group) => group.cities.length)
-  }, [selectedAsm, selectedAsmCities, citiesByState])
+  }, [selectedAsm, citiesByState])
   // Reporting manager: ASM reports to its RSM, Executive ("Sales Manager") reports to its ASM.
   // RSM has no parent staff record — its reporting manager is an NSM, picked explicitly below.
   const reportingManagerLabel = role === 'ASM' || role === 'FIELD_EXECUTIVE'
@@ -542,16 +542,6 @@ export default function AddStaffPage() {
       .catch(() => setNsmOptions([]))
   }, [])
 
-  // Keep the ASM's selected cities in sync with its selected states — drop any city whose state got unchecked.
-  useEffect(() => {
-    if (role !== 'ASM') return
-    const validCities = new Set(citiesForStates(assignedStates))
-    setAssignedCities((current) => {
-      const next = current.filter((city) => validCities.has(city))
-      return next.length === current.length ? current : next
-    })
-  }, [assignedStates, role])
-
   // A Sales Manager's base location must be one of the cities they cover.
   useEffect(() => {
     if (role !== 'EXECUTIVE') return
@@ -571,8 +561,8 @@ export default function AddStaffPage() {
   const handleParentAsmChange = (nextParentAsmId: string) => {
     setParentAsmId(nextParentAsmId)
     if (role !== 'EXECUTIVE') return
-    // The city list is scoped to the newly selected ASM, so drop anything it does not cover.
-    const validCities = new Set(asmOptions.find((staff) => staff.id === nextParentAsmId)?.assignedCities || [])
+    // The city list is scoped to the newly selected ASM's states, so drop anything it does not cover.
+    const validCities = new Set(citiesForStates(asmOptions.find((staff) => staff.id === nextParentAsmId)?.assignedStates || []))
     setAssignedCities((current) => {
       const next = current.filter((city) => validCities.has(city))
       return next.length === current.length ? current : next
@@ -583,8 +573,8 @@ export default function AddStaffPage() {
   const showToast = (text: string, type: 'success' | 'error') => { setToastMsg({ text, type }); setTimeout(() => setToastMsg(null), 3500) }
   const resetHierarchy = () => { setParentRsmId(''); setParentAsmId(''); setReportingManagerId(''); setAssignedStates([]); setAssignedCities([]); setLocation('') }
   const resetForm = () => {
-    setName(''); setLocation(''); setEmail('')
-    setMobileNo(''); setAlternateNo(''); setPermanentAddress(''); setLocalAddress('')
+    setName(''); setPersonalState(''); setLocation(''); setEmail('')
+    setMobileNo(''); setAlternateNo(''); setPermanentAddress(''); setLocalAddress(''); setSameAddress(false)
     setGender(''); setDob(''); setNationality(''); setMaritalStatus(''); setQualification('')
     setEmergencyContactNo1(''); setEmergencyContactNo2('')
     setPassword(''); setRole(''); setSalesRegion(''); resetHierarchy()
@@ -592,13 +582,19 @@ export default function AddStaffPage() {
   const toggleState = (state: string) => setAssignedStates((current) => current.includes(state) ? current.filter((entry) => entry !== state) : [...current, state].sort((a, b) => a.localeCompare(b)))
   const toggleCity = (city: string) => setAssignedCities((current) => current.includes(city) ? current.filter((entry) => entry !== city) : [...current, city].sort((a, b) => a.localeCompare(b)))
 
+  // location column is a single free-text field, so the picked state rides along
+  // with the city (e.g. "Pune, Maharashtra") for roles without their own location select.
+  const localAddressValue = sameAddress ? permanentAddress : localAddress
+
+  const locationForSubmit = role === 'EXECUTIVE' || !location ? location : personalState ? `${location}, ${personalState}` : location
+
   const createStaffRequest = () => fetch('/api/admin/staff', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include',
     body: JSON.stringify({
-      name, designation, location, email,
-      mobileNo, alternateNo, permanentAddress, localAddress,
+      name, designation, location: locationForSubmit, email,
+      mobileNo, alternateNo, permanentAddress, localAddress: localAddressValue,
       gender, dob, nationality, maritalStatus, qualification,
       emergencyContactNo1, emergencyContactNo2,
       password,
@@ -608,7 +604,7 @@ export default function AddStaffPage() {
       parentRsmId: role === 'ASM' || role === 'FIELD_EXECUTIVE' ? parentRsmId : undefined,
       parentAsmId: role === 'EXECUTIVE' ? parentAsmId : undefined,
       assignedStates: role === 'ASM' || role === 'RSM' ? assignedStates : undefined,
-      assignedCities: role === 'ASM' || role === 'EXECUTIVE' ? assignedCities : undefined,
+      assignedCities: role === 'EXECUTIVE' ? assignedCities : undefined,
       reportingManagerId: role === 'RSM' ? reportingManagerId : undefined,
     }),
   })
@@ -678,7 +674,23 @@ export default function AddStaffPage() {
                     placeholder={!parentAsmId ? 'Select ASM first' : assignedCities.length ? 'Select base city' : 'Select cities below first'}
                   />
                 ) : (
-                  <InputField label="Location" value={location} onChange={setLocation} placeholder="City / Branch" required={false} />
+                  <>
+                    <SelectField
+                      label="State"
+                      value={personalState}
+                      onChange={(nextState) => { setPersonalState(nextState); setLocation('') }}
+                      options={placeOptions}
+                      required={false}
+                    />
+                    <SelectField
+                      label="City"
+                      value={location}
+                      onChange={setLocation}
+                      options={personalCityOptions}
+                      required={false}
+                      placeholder={personalState ? 'Select city' : 'Select state first'}
+                    />
+                  </>
                 )}
                 <InputField label="Mobile No." value={mobileNo} onChange={setMobileNo} type="tel" placeholder="10-digit mobile number" />
                 <InputField label="Alternate Number" value={alternateNo} onChange={setAlternateNo} type="tel" placeholder="Alternate contact number" required={false} />
@@ -690,7 +702,13 @@ export default function AddStaffPage() {
                 <InputField label="Emergency Contact No. 1" value={emergencyContactNo1} onChange={setEmergencyContactNo1} type="tel" placeholder="Emergency contact number" required={false} />
                 <InputField label="Emergency Contact No. 2" value={emergencyContactNo2} onChange={setEmergencyContactNo2} type="tel" placeholder="Emergency contact number" required={false} />
                 <TextAreaField label="Permanent Address" value={permanentAddress} onChange={setPermanentAddress} placeholder="Permanent address" />
-                <TextAreaField label="Local Address" value={localAddress} onChange={setLocalAddress} placeholder="Current / local address" required={false} />
+                <div className="flex flex-col gap-1.5">
+                  <TextAreaField label="Local Address" value={localAddressValue} onChange={setLocalAddress} placeholder="Current / local address" required={false} disabled={sameAddress} />
+                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                    <input type="checkbox" checked={sameAddress} onChange={e => setSameAddress(e.target.checked)} className="rounded border-gray-300" />
+                    Same as permanent address
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -810,25 +828,6 @@ export default function AddStaffPage() {
                           <span className="text-black">{state}</span>
                         </label>
                       )) : <p className="px-2 py-2 text-sm text-black">Select an RSM with assigned states.</p>}
-                    </div>
-                  </div>
-                )}
-
-                {role === 'ASM' && (
-                  <div className="md:col-span-2 flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">Cities</label>
-                    <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
-                      {assignedStates.length ? assignedStates.map((state) => (
-                        <div key={state} className="mb-2 last:mb-0">
-                          <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{state}</p>
-                          {citiesByState[state]?.length ? citiesByState[state].map((city) => (
-                            <label key={city} className="flex cursor-pointer items-center gap-3 rounded px-2 py-1.5 text-sm hover:bg-gray-50">
-                              <input type="checkbox" checked={assignedCities.includes(city)} onChange={() => toggleCity(city)} className="h-4 w-4 accent-indigo-600" />
-                              <span className="text-black">{city}</span>
-                            </label>
-                          )) : <p className="px-2 py-1 text-xs text-gray-400">No cities listed for this state.</p>}
-                        </div>
-                      )) : <p className="px-2 py-2 text-sm text-gray-900">Select states above to choose cities.</p>}
                     </div>
                   </div>
                 )}

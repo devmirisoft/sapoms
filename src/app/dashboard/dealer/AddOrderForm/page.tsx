@@ -41,6 +41,7 @@ import {
   type NormalizedCustomDiscountRequest,
 } from "@/lib/customDiscountRequests";
 import { useDraft } from "@/lib/useDrafts";
+import { SegmentedTabs } from "@/components/SegmentedTabs";
 import { buildPriorityRemarks } from "@/lib/orderPriority";
 import cataloguePricing from "@/lib/cataloguePricing";
 import {
@@ -1125,6 +1126,10 @@ function AddOrderPageInner() {
   const orderLockedByPendingApproval = isWaitingForApproval;
   const isApprovedDraftRequest = !reorderRequest && activeApprovalRequest?.normalizedStatus === "approved";
   const isRejectedDraftRequest = !reorderRequest && activeApprovalRequest?.normalizedStatus === "rejected";
+  // A disapproved order comes back as its own kind of draft - separate from the
+  // discount-approval flow - and resubmits as a revision of the rejected order.
+  const rejectedOrderDraft = cachedDraft?.source === "order_rejection" ? cachedDraft : null;
+  const rejectedOrderAwaitingReview = rejectedOrderDraft?.approval_state?.status === "pending";
 
   // ── Sequential discount calculation ──────────────────────────────────
   // Base discount payload — uses the new sequential slab logic.
@@ -1952,12 +1957,46 @@ const verifySubmittedProductNotes = async (orderId: string) => {
     );
   }
 };
+  /* Advance dealers only: an inactive wallet means credit terms, where the
+     order route applies no balance gate at all and Place Order stays as it is. */
+  const needsFundRequest = wallet?.status === "active"
+    && wallet.availableBalance < discountPayload.finalPayableAmount;
+
+  const submitFundRequest = async (fd: FormData) => {
+    const orderForm: Record<string, string> = {};
+    for (const [key, value] of fd.entries()) {
+      if (typeof value === "string") orderForm[key] = value;
+    }
+    try {
+      await ensureDealerIsActive();
+      setLoading(true);
+      const res = await fetch("/api/dealer-fund-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ type: "ADVANCE_ORDER", orderForm, note: orderNote.trim() || undefined }),
+      });
+      const json = await res.json();
+      if (!res.ok || !json?.success) throw new Error(json?.message || "Unable to raise the fund request.");
+      toast.success("Fund request raised. Your order will be placed automatically once it is approved and funded.", { autoClose: 6000 });
+      router.push("/dashboard/dealer/fund-requests");
+    } catch (err: any) {
+      toast.error(err?.message || "Unable to raise the fund request.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleSubmitProductArray = async () => {
     if (isWaitingForApproval) {
       toast("This order is waiting for discount approval.");
       return;
     }
     if (arr1.every(r => !r.productname)) { toast("Please select at least one product"); return; }
+    if (rejectedOrderAwaitingReview) {
+      toast("This resubmitted order is already awaiting approval.");
+      return;
+    }
     const payload = arr1.filter(r => r.productname).map(r => {
       const rowDiscountPercent = getRowDiscountPercent(r);
       const quantityPacks = safePositiveNumber(r.producQuanity);
@@ -2035,6 +2074,17 @@ const verifySubmittedProductNotes = async (orderId: string) => {
     }
     if (refno) fd.append("refno", refno);
     if (appliedCoupon) fd.append("coupon_code", appliedCoupon.code);
+    if (activeDraftId) fd.append("orderDraftId", activeDraftId);
+    if (rejectedOrderDraft?.source_order_id) fd.append("rejectedFromOrderId", rejectedOrderDraft.source_order_id);
+
+    // An advance dealer whose wallet cannot cover the order raises a fund
+    // request instead of placing it. The submission itself is what gets stored
+    // and replayed once the funds are released, so the order the approvers see
+    // is exactly the order that will be placed.
+    if (needsFundRequest) {
+      await submitFundRequest(fd);
+      return;
+    }
 
     const targetApiUrl = `/api/dealer-order`;
     const phpPayload = readFormData(fd);
@@ -2357,6 +2407,34 @@ const verifySubmittedProductNotes = async (orderId: string) => {
           </div>
         )}
 
+        {rejectedOrderDraft && (
+          <div className="mb-5 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12.5px] font-medium text-rose-800">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600">
+              Rejected Order {rejectedOrderDraft.source_order_number ?? ""}
+            </p>
+            <p className="mt-1">
+              Disapproved by {rejectedOrderDraft.rejection_notes?.rejected_by_name || "reviewer"}
+              {rejectedOrderDraft.rejection_notes?.rejected_by ? ` (${rejectedOrderDraft.rejection_notes.rejected_by})` : ""}
+              {rejectedOrderDraft.rejection_notes?.reason ? `: ${rejectedOrderDraft.rejection_notes.reason}` : ""}
+            </p>
+            <p className="mt-1 text-[11.5px] text-rose-600">
+              {rejectedOrderAwaitingReview
+                ? "Your resubmission is awaiting approval. It leaves your drafts once it is accepted."
+                : "Edit the products below and submit again to send it back for approval."}
+            </p>
+            {(rejectedOrderDraft.edit_log?.length ?? 0) > 0 && (
+              <div className="mt-2 border-t border-rose-200 pt-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-rose-600">Edit history</p>
+                {rejectedOrderDraft.edit_log!.map((entry, i) => (
+                  <p key={i} className="mt-0.5 text-[11.5px] text-rose-700">
+                    {moment(entry.at).format("DD MMM YYYY, hh:mm A")} · {entry.order_number} · {entry.changes.length ? entry.changes.join("; ") : "no line changes"}
+                  </p>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {discountRejectionDraftRequest && (
           <div className="flex flex-col gap-3 bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-5 text-[12.5px] text-red-700 font-medium lg:flex-row lg:items-center lg:justify-between">
             <div className="flex items-start gap-2">
@@ -2552,6 +2630,79 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         </div>
 
         {/* Discount Stack — Sequential Breakdown */}
+        
+
+        
+
+        {/* Coupon */}
+        <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-5">
+          <div className="flex items-center gap-2 mb-3">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-violet-500">
+              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><circle cx="7" cy="7" r="1" />
+            </svg>
+            <span className="text-[13px] font-semibold text-gray-800">Discount Code</span>
+            {appliedCoupon && (
+              <span className="ml-auto text-[11px] font-bold px-2.5 py-0.5 bg-violet-100 text-violet-700 rounded-full border border-violet-200">
+                {appliedCoupon.code} · +{appliedCoupon.pct}%
+              </span>
+            )}
+          </div>
+          {!appliedCoupon ? (
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <input type="text" placeholder="Enter discount code" value={couponInput}
+                onChange={e => { setCouponInput(e.target.value.toUpperCase()); setCouponError(""); setCouponSuccess(""); }}
+                onKeyDown={e => { if (e.key === "Enter") handleApplyCoupon(); }}
+                disabled={orderLockedByPendingApproval}
+                className={`flex-1 text-[13px] text-gray-900 border rounded-xl px-4 py-2.5 outline-none transition-all font-mono tracking-wider placeholder:text-gray-300 placeholder:font-normal ${couponError ? "border-red-300 bg-red-50/30 focus:ring-2 focus:ring-red-100" : "border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
+                  } disabled:bg-gray-100 disabled:text-gray-500`}
+              />
+              <button onClick={handleApplyCoupon} disabled={orderLockedByPendingApproval || !couponInput.trim()}
+                className="px-5 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-semibold rounded-xl transition-colors">
+                Apply
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center flex-shrink-0">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5" /></svg>
+                </div>
+                <div>
+                  <p className="text-[13px] font-bold text-violet-800 font-mono tracking-wider">{appliedCoupon.code}</p>
+                  <p className="text-[11px] text-violet-600 mt-0.5">Coupon adds {appliedCoupon.pct}% to the allocated and slab discounts</p>
+                </div>
+              </div>
+              <button onClick={handleRemoveCoupon} disabled={orderLockedByPendingApproval}
+                className="text-[12px] font-semibold text-violet-600 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all border border-violet-200 hover:border-red-200">
+                Remove
+              </button>
+            </div>
+          )}
+          {couponError && (
+            <p className="text-[12px] text-red-600 mt-2 flex items-center gap-1.5">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4m0 4h.01" /></svg>
+              {couponError}
+            </p>
+          )}
+          {couponSuccess && appliedCoupon && <p className="text-[12px] text-emerald-600 mt-2">{couponSuccess}</p>}
+        </div>
+
+        {/* Tabs */}
+        <div className="mb-5">
+          <SegmentedTabs
+            label="Order entry mode"
+            value={tab}
+            onChange={(next) => setTab(next as "manual" | "excel")}
+            disabled={orderLockedByPendingApproval}
+            items={[
+              { value: "manual", label: "Manual Entry" },
+              { value: "excel", label: "Upload Excel" },
+            ]}
+          />
+        </div>
+
+        
+
         <div className={`border rounded-2xl p-5 mb-5 ${hasAnyDiscount ? "bg-emerald-50/70 border-emerald-200" : "bg-white border-gray-200"
           }`}>
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -2672,9 +2823,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                           ? "border-red-200 bg-red-50 text-red-700"
                           : "border-amber-200 bg-amber-50 text-amber-700"
                       }`}>
-                      {visibleCustomRequest.normalizedStatus === "rejected"
-                        ? "Disapproved"
-                        : `${String(visibleCustomRequest.normalizedStatus).charAt(0).toUpperCase()}${String(visibleCustomRequest.normalizedStatus).slice(1)}`}
+                      {`${String(visibleCustomRequest.normalizedStatus).charAt(0).toUpperCase()}${String(visibleCustomRequest.normalizedStatus).slice(1)}`}
                     </span>
                   )}
                 </div>
@@ -2849,70 +2998,6 @@ const verifySubmittedProductNotes = async (orderId: string) => {
             )}
           </div>
         )}
-
-        {/* Coupon */}
-        <div className="bg-white border border-gray-200 rounded-2xl p-5 mb-5">
-          <div className="flex items-center gap-2 mb-3">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="text-violet-500">
-              <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" /><circle cx="7" cy="7" r="1" />
-            </svg>
-            <span className="text-[13px] font-semibold text-gray-800">Discount Code</span>
-            {appliedCoupon && (
-              <span className="ml-auto text-[11px] font-bold px-2.5 py-0.5 bg-violet-100 text-violet-700 rounded-full border border-violet-200">
-                {appliedCoupon.code} · +{appliedCoupon.pct}%
-              </span>
-            )}
-          </div>
-          {!appliedCoupon ? (
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <input type="text" placeholder="Enter discount code" value={couponInput}
-                onChange={e => { setCouponInput(e.target.value.toUpperCase()); setCouponError(""); setCouponSuccess(""); }}
-                onKeyDown={e => { if (e.key === "Enter") handleApplyCoupon(); }}
-                disabled={orderLockedByPendingApproval}
-                className={`flex-1 text-[13px] text-gray-900 border rounded-xl px-4 py-2.5 outline-none transition-all font-mono tracking-wider placeholder:text-gray-300 placeholder:font-normal ${couponError ? "border-red-300 bg-red-50/30 focus:ring-2 focus:ring-red-100" : "border-gray-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100"
-                  } disabled:bg-gray-100 disabled:text-gray-500`}
-              />
-              <button onClick={handleApplyCoupon} disabled={orderLockedByPendingApproval || !couponInput.trim()}
-                className="px-5 py-2.5 bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-semibold rounded-xl transition-colors">
-                Apply
-              </button>
-            </div>
-          ) : (
-            <div className="flex flex-col gap-3 rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-center gap-3">
-                <div className="w-7 h-7 rounded-full bg-violet-600 flex items-center justify-center flex-shrink-0">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5" /></svg>
-                </div>
-                <div>
-                  <p className="text-[13px] font-bold text-violet-800 font-mono tracking-wider">{appliedCoupon.code}</p>
-                  <p className="text-[11px] text-violet-600 mt-0.5">Coupon adds {appliedCoupon.pct}% to the allocated and slab discounts</p>
-                </div>
-              </div>
-              <button onClick={handleRemoveCoupon} disabled={orderLockedByPendingApproval}
-                className="text-[12px] font-semibold text-violet-600 hover:text-red-600 px-3 py-1.5 rounded-lg hover:bg-red-50 transition-all border border-violet-200 hover:border-red-200">
-                Remove
-              </button>
-            </div>
-          )}
-          {couponError && (
-            <p className="text-[12px] text-red-600 mt-2 flex items-center gap-1.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4m0 4h.01" /></svg>
-              {couponError}
-            </p>
-          )}
-          {couponSuccess && appliedCoupon && <p className="text-[12px] text-emerald-600 mt-2">{couponSuccess}</p>}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex gap-2 mb-5">
-          {(["manual", "excel"] as const).map((t) => (
-            <button key={t} onClick={() => setTab(t)} disabled={orderLockedByPendingApproval}
-              className={`px-5 py-2 rounded-xl text-[13px] font-medium border transition-all duration-150 cursor-pointer ${tab === t ? "bg-gray-900 text-white border-gray-900" : "bg-white text-gray-500 border-gray-200 hover:bg-gray-50 hover:text-gray-700"
-                } disabled:cursor-not-allowed disabled:opacity-40`}>
-              {t === "manual" ? "Manual Entry" : "Upload Excel"}
-            </button>
-          ))}
-        </div>
 
         {/* ── MANUAL TAB ───────────────────────────────────────────────────── */}
         {tab === "manual" && (
@@ -3456,16 +3541,32 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   </button>
                 </>
               ) : (
-                <button onClick={handleSubmitProductArray} disabled={wallet?.status === "active" && wallet.availableBalance < discountPayload.finalPayableAmount}
-                  className={`inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-xl text-[13.5px] font-semibold transition-all shadow-sm hover:shadow-md hover:-translate-y-px cursor-pointer border-none ${hasAnyDiscount
-                      ? "bg-gradient-to-r from-emerald-700 to-emerald-500 hover:from-emerald-800 hover:to-emerald-600"
-                      : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600"
+                <button onClick={handleSubmitProductArray} disabled={loading}
+                  title={needsFundRequest ? `Wallet short by ${fmt(toPaise(discountPayload.finalPayableAmount - wallet!.availableBalance))} - request funds to proceed` : undefined}
+                  className={`inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-xl text-[13.5px] font-semibold transition-all shadow-sm hover:shadow-md hover:-translate-y-px cursor-pointer border-none ${needsFundRequest
+                      ? "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-700 hover:to-amber-600"
+                      : hasAnyDiscount
+                        ? "bg-gradient-to-r from-emerald-700 to-emerald-500 hover:from-emerald-800 hover:to-emerald-600"
+                        : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600"
                     } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0`}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                    <path d="M20 6 9 17l-5-5" />
-                  </svg>
-                  Place Order
+                  {needsFundRequest ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
+                    </svg>
+                  ) : (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M20 6 9 17l-5-5" />
+                    </svg>
+                  )}
+                  {needsFundRequest ? "Request Funds" : "Place Order"}
                 </button>
+              )}
+
+              {needsFundRequest && !isWaitingForApproval && (
+                <p className="text-[12.5px] text-amber-700">
+                  Wallet balance {fmt(toPaise(wallet!.availableBalance))} is short of {fmt(finalPayablePaise)}.
+                  Requesting funds sends this order for approval; it is placed automatically once the funds are added.
+                </p>
               )}
 
               <button onClick={handleSaveDraft} disabled={draftSaving || orderLockedByPendingApproval}

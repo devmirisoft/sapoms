@@ -22,7 +22,7 @@ const orderInclude = {
     },
   },
   assignedStaff: { select: { id: true, displayName: true } },
-  items: { orderBy: { id: "asc" as const } },
+  items: { orderBy: { id: "asc" as const }, include: { dispatches: { select: { quantity: true } } } },
   // Bills carry paidAmountPaise, which is what wallet settlement moves. Without
   // them an order settled from advance still reads as fully unpaid.
   ledgerBills: { orderBy: { billDate: "desc" as const } },
@@ -72,10 +72,19 @@ function legacyOrderStatus(status: string) {
   return "pending";
 }
 
-function legacyFulfilment(status: string) {
-  if (status === "IN_PROCESS") return "InProcess";
-  if (status === "COMPLETED" || status === "DISPATCHED") return "Completed";
-  return "Pending";
+// Dispatch progress, in the only three states the UI shows: nothing dispatched,
+// some of it dispatched, all of it dispatched. Read off the dispatch rows rather
+// than fulfilmentStatus, which a manual status change can move without anything
+// actually leaving the warehouse.
+function legacyFulfilment(order: { items?: Array<{ quantityPacks: number; dispatches?: Array<{ quantity: number }> }> }) {
+  const items = order.items ?? [];
+  const ordered = items.reduce((sum, item) => sum + item.quantityPacks, 0);
+  const dispatched = items.reduce(
+    (sum, item) => sum + (item.dispatches ?? []).reduce((packs, dispatch) => packs + dispatch.quantity, 0),
+    0,
+  );
+  if (dispatched <= 0) return "Pending";
+  return dispatched >= ordered ? "Completed" : "Partial";
 }
 
 function legacyDispatchStatus(status: string) {
@@ -156,7 +165,7 @@ export function mapPostgresOrderItemToLegacy(item: PostgresOrderLike["items"][nu
     acceptance_reviewed_at: order.acceptanceReviewedAt?.toISOString?.() ?? null,
     fulfilmentStatus: order.fulfilmentStatus,
     fulfilment_status: order.fulfilmentStatus,
-    mtstatus: legacyFulfilment(order.fulfilmentStatus),
+    mtstatus: legacyFulfilment(order),
     del_status: legacyDeletion(order.status),
     orderdata_datetime: order.orderDate.toISOString(),
   };
@@ -240,7 +249,7 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     trackingLink: order.trackingLink || "",
     tracking_link: order.trackingLink || "",
     dock: order.dock || "",
-    mtstatus: legacyFulfilment(order.fulfilmentStatus),
+    mtstatus: legacyFulfilment(order),
     del_status: legacyDeletion(order.status),
     productorder: (order.items ?? []).map((item) => mapPostgresOrderItemToLegacy(item, order)),
     items: (order.items ?? []).map((item) => mapPostgresOrderItemToLegacy(item, order)),

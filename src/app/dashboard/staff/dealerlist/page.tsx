@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Eye, EyeOff, Search } from "lucide-react";
+import { ChevronDown, ChevronsUpDown, ChevronUp, Eye, EyeOff, Search } from "lucide-react";
 import { resolveStoredAuth } from "@/lib/roleAccess";
 import {
   applyDealerStatusOverrides,
@@ -338,6 +338,7 @@ export default function StaffDealerListPage() {
 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const [nameSort, setNameSort] = useState<"" | "asc" | "desc">("");
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(
     () => new Set()
   );
@@ -444,24 +445,29 @@ export default function StaffDealerListPage() {
       .trim()
       .toLowerCase();
 
-    return dealers
-      .filter((dealer) =>
-        !query ||
-        [
-          dealer.Dealer_Name,
-          dealer.Dealer_City,
-          dealer.Dealer_Email,
-          dealer.Dealer_Number,
-          dealer.Dealer_Username,
-          dealer.Dealer_Dealercode,
-        ].some((value) =>
-          String(value ?? "")
-            .toLowerCase()
-            .includes(query)
-        )
+    const filtered = dealers.filter((dealer) =>
+      !query ||
+      [
+        dealer.Dealer_Name,
+        dealer.Dealer_City,
+        dealer.Dealer_Email,
+        dealer.Dealer_Number,
+        dealer.Dealer_Username,
+        dealer.Dealer_Dealercode,
+      ].some((value) =>
+        String(value ?? "")
+          .toLowerCase()
+          .includes(query)
       )
-      .sort(compareNewestDealerFirst);
-  }, [dealers, search]);
+    );
+
+    if (!nameSort) return filtered.sort(compareNewestDealerFirst);
+
+    const sorted = [...filtered].sort((a, b) =>
+      (a.Dealer_Name || "").localeCompare(b.Dealer_Name || "", undefined, { sensitivity: "base" })
+    );
+    return nameSort === "asc" ? sorted : sorted.reverse();
+  }, [dealers, search, nameSort]);
 
   const totalPages = Math.max(
     1,
@@ -557,9 +563,11 @@ export default function StaffDealerListPage() {
 
         <div className="overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
           <div className="border-b border-gray-200 px-5 py-4">
-            <h2 className="font-semibold text-gray-900">
+            <h2 className="font-semibold text-gray-900 flex items-center gap-2">
               Dealer List
+
             </h2>
+            
 
             {staffSession?.id && (
               <p className="mt-1 text-xs text-gray-400">
@@ -577,7 +585,15 @@ export default function StaffDealerListPage() {
                   </th>
 
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">
-                    Dealer name
+                    <button
+                      type="button"
+                      onClick={() => setNameSort((prev) => prev === "asc" ? "desc" : prev === "desc" ? "" : "asc")}
+                      className={`inline-flex items-center gap-1 hover:text-gray-900 ${nameSort ? "text-indigo-600" : ""}`}
+                      title={nameSort === "asc" ? "A → Z" : nameSort === "desc" ? "Z → A" : "Sort alphabetically"}
+                    >
+                      Dealer name
+                      {nameSort === "asc" ? <ChevronUp className="h-3.5 w-3.5" /> : nameSort === "desc" ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronsUpDown className="h-3.5 w-3.5" />}
+                    </button>
                   </th>
 
                   <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-600">

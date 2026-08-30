@@ -6,6 +6,7 @@ import {
   normalizeCustomDiscountRequestRecord,
   type NormalizedCustomDiscountRequest,
 } from "@/lib/customDiscountRequests";
+import { SegmentedTabs } from "@/components/SegmentedTabs";
 
 type TabKey = "pending" | "approved" | "rejected";
 type DealerUser = {
@@ -117,24 +118,16 @@ export default function ApprovedDiscountsPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-          {[
-            { key: "pending", label: "Pending Approval", value: stats.pending },
-            { key: "approved", label: "Approved", value: stats.approved },
-            { key: "rejected", label: "Rejected", value: stats.rejected },
-          ].map((item) => (
-            <button
-              key={item.key}
-              onClick={() => setTab(item.key as TabKey)}
-              className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
-                tab === item.key ? "border-indigo-300 bg-indigo-50" : "border-gray-200 bg-white hover:bg-gray-50"
-              }`}
-            >
-              <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">{item.label}</p>
-              <p className="mt-1 font-mono text-xl font-bold text-gray-900">{item.value}</p>
-            </button>
-          ))}
-        </div>
+        <SegmentedTabs
+          label="Discount request status"
+          value={tab}
+          onChange={(next) => setTab(next as TabKey)}
+          items={[
+            { value: "pending", label: "Pending Approval", tone: "amber", count: stats.pending },
+            { value: "approved", label: "Approved", tone: "emerald", count: stats.approved },
+            { value: "rejected", label: "Rejected", tone: "rose", count: stats.rejected },
+          ]}
+        />
 
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">

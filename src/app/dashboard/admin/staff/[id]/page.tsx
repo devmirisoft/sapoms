@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { STATE_OPTIONS, CITIES_BY_STATE, citiesForStates, statesForCities } from '@/lib/places'
+import { Eye, EyeOff } from 'lucide-react'
+import { STATE_OPTIONS, CITIES_BY_STATE, citiesForStates } from '@/lib/places'
 import { SALES_REGION_OPTIONS } from '@/lib/salesRegions'
 
 const ADMIN_STAFF_URL = '/api/admin/staff'
@@ -19,6 +20,8 @@ const roleOptions = [
 const GENDER_OPTIONS = ['Male', 'Female', 'Other'] as const
 const MARITAL_STATUS_OPTIONS = ['Single', 'Married', 'Divorced', 'Widowed'] as const
 const QUALIFICATION_OPTIONS = ['12th Pass', 'Bachelors', 'Masters', 'PhD'] as const
+
+type DiagnosticPassword = { id: string; expiresAt: string; lastUsedAt: string | null; createdBy: string }
 
 type StaffFormRole = '' | typeof roleOptions[number]['value']
 type StaffOption = {
@@ -133,12 +136,14 @@ function TextAreaField({
   onChange,
   placeholder,
   required = true,
+  disabled = false,
 }: {
   label: string
   value: string
   onChange: (value: string) => void
   placeholder?: string
   required?: boolean
+  disabled?: boolean
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -148,11 +153,12 @@ function TextAreaField({
       </label>
       <textarea
         required={required}
+        disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder || label}
         rows={2}
-        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition resize-none"
+        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition resize-none disabled:bg-gray-50 disabled:text-gray-500"
       />
     </div>
   )
@@ -219,6 +225,7 @@ export default function EditStaffPage() {
   const [alternateNo, setAlternateNo] = useState('')
   const [permanentAddress, setPermanentAddress] = useState('')
   const [localAddress, setLocalAddress] = useState('')
+  const [sameAddress, setSameAddress] = useState(false)
   const [gender, setGender] = useState('')
   const [dob, setDob] = useState('')
   const [nationality, setNationality] = useState('')
@@ -234,6 +241,15 @@ export default function EditStaffPage() {
   const [assignedStates, setAssignedStates] = useState<string[]>([])
   const [assignedCities, setAssignedCities] = useState<string[]>([])
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
+
+  const [diagnosticPassword, setDiagnosticPassword] = useState('')
+  const [showDiagnosticPassword, setShowDiagnosticPassword] = useState(false)
+  const [diagnosticExpiryHours, setDiagnosticExpiryHours] = useState('24')
+  const [diagnosticSaving, setDiagnosticSaving] = useState(false)
+  const [diagnosticRevoking, setDiagnosticRevoking] = useState(false)
+  const [activeDiagnosticPassword, setActiveDiagnosticPassword] = useState<DiagnosticPassword | null>(null)
+
+  const diagnosticPasswordUrl = `${ADMIN_STAFF_URL}/${encodeURIComponent(id)}/diagnostic-password`
 
   const placeOptions = STATE_OPTIONS
   const citiesByState = CITIES_BY_STATE
@@ -254,23 +270,74 @@ export default function EditStaffPage() {
     [selectedRsm],
   )
   const stateOptions = role === 'RSM' ? placeOptions : asmStateOptions
-  // Cities a Sales Manager may cover: those already assigned to its ASM, grouped by state.
-  const selectedAsmCities = useMemo(
-    () => (selectedAsm?.assignedCities?.length ? [...selectedAsm.assignedCities].sort((a, b) => a.localeCompare(b)) : []),
-    [selectedAsm],
-  )
+  // Cities a Sales Manager may cover: every city within its ASM's assigned states, grouped by state.
   const smCitiesByState = useMemo(() => {
-    const scope = selectedAsm?.assignedStates?.length ? selectedAsm.assignedStates : statesForCities(selectedAsmCities)
+    const scope = selectedAsm?.assignedStates?.length ? selectedAsm.assignedStates : []
     return scope
-      .map((state) => ({ state, cities: (citiesByState[state] ?? []).filter((city) => selectedAsmCities.includes(city)) }))
+      .map((state) => ({ state, cities: citiesByState[state] ?? [] }))
       .filter((group) => group.cities.length)
-  }, [selectedAsm, selectedAsmCities, citiesByState])
+  }, [selectedAsm, citiesByState])
 
   useEffect(() => {
     if (!toastMsg) return
     const timeout = setTimeout(() => setToastMsg(null), 3500)
     return () => clearTimeout(timeout)
   }, [toastMsg])
+
+  useEffect(() => {
+    if (!id) return
+    let active = true
+    fetch(diagnosticPasswordUrl, { credentials: 'include' })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json) => { if (active) setActiveDiagnosticPassword(json?.data || null) })
+      .catch(() => { if (active) setActiveDiagnosticPassword(null) })
+    return () => { active = false }
+  }, [id, diagnosticPasswordUrl])
+
+  const handleDiagnosticPasswordSave = async () => {
+    if (diagnosticPassword.length < 5) {
+      setToastMsg({ text: 'Diagnostic password must be at least 5 characters', type: 'error' })
+      return
+    }
+    setDiagnosticSaving(true)
+    try {
+      const response = await fetch(diagnosticPasswordUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ password: diagnosticPassword, expiryHours: diagnosticExpiryHours }),
+      })
+      const payload = await response.json()
+      if (!response.ok || !payload.success) throw new Error(payload.message ?? 'Failed to save diagnostic password')
+      setActiveDiagnosticPassword(payload.data || null)
+      setToastMsg({ text: 'Diagnostic password saved', type: 'success' })
+    } catch (error) {
+      setToastMsg({ text: error instanceof Error ? error.message : 'Failed to save diagnostic password', type: 'error' })
+    } finally {
+      setDiagnosticSaving(false)
+    }
+  }
+
+  const handleDiagnosticPasswordRevoke = async () => {
+    setDiagnosticRevoking(true)
+    try {
+      const response = await fetch(diagnosticPasswordUrl, { method: 'DELETE', credentials: 'include' })
+      const payload = await response.json()
+      if (!response.ok || !payload.success) throw new Error(payload.message ?? 'Failed to revoke diagnostic password')
+      setActiveDiagnosticPassword(null)
+      setToastMsg({ text: 'Diagnostic password revoked', type: 'success' })
+    } catch (error) {
+      setToastMsg({ text: error instanceof Error ? error.message : 'Failed to revoke diagnostic password', type: 'error' })
+    } finally {
+      setDiagnosticRevoking(false)
+    }
+  }
+
+  const copyDiagnosticPassword = async () => {
+    if (!diagnosticPassword) return
+    await navigator.clipboard?.writeText(diagnosticPassword)
+    setToastMsg({ text: 'Diagnostic password copied', type: 'success' })
+  }
 
   useEffect(() => {
     fetch(`${ADMIN_STAFF_URL}?page=1&limit=200`, { credentials: 'include' })
@@ -290,16 +357,6 @@ export default function EditStaffPage() {
     const validStates = new Set(asmStateOptions)
     setAssignedStates((current) => current.filter((state) => validStates.has(state)))
   }, [role, parentRsmId, asmStateOptions])
-
-  // Drop any ASM city whose state is no longer selected.
-  useEffect(() => {
-    if (role !== 'ASM') return
-    const validCities = new Set(citiesForStates(assignedStates))
-    setAssignedCities((current) => {
-      const next = current.filter((city) => validCities.has(city))
-      return next.length === current.length ? current : next
-    })
-  }, [role, assignedStates])
 
   useEffect(() => {
     if (!id) return
@@ -327,7 +384,10 @@ export default function EditStaffPage() {
         setMobileNo(String(data.mobileNo || data.staff_mobile || data.mobile_no || ''))
         setAlternateNo(String(data.alternateNo || data.alternate_no || ''))
         setPermanentAddress(String(data.permanentAddress || data.permanent_address || ''))
-        setLocalAddress(String(data.localAddress || data.local_address || ''))
+        const loadedPermanent = String(data.permanentAddress || data.permanent_address || '')
+        const loadedLocal = String(data.localAddress || data.local_address || '')
+        setLocalAddress(loadedLocal)
+        setSameAddress(Boolean(loadedPermanent) && loadedPermanent === loadedLocal)
         setGender(String(data.gender || data.staff_gender || ''))
         setDob(String(data.dob || data.staff_dob || '').slice(0, 10))
         setNationality(String(data.nationality || data.staff_nationality || ''))
@@ -378,8 +438,8 @@ export default function EditStaffPage() {
   const handleParentAsmChange = (nextParentAsmId: string) => {
     setParentAsmId(nextParentAsmId)
     if (role !== 'EXECUTIVE') return
-    // Scoped to the newly selected ASM — drop cities it does not cover.
-    const validCities = new Set(asmOptions.find((staff) => staff.id === nextParentAsmId)?.assignedCities || [])
+    // Scoped to the newly selected ASM's states — drop cities it does not cover.
+    const validCities = new Set(citiesForStates(asmOptions.find((staff) => staff.id === nextParentAsmId)?.assignedStates || []))
     setAssignedCities((current) => {
       const next = current.filter((city) => validCities.has(city))
       return next.length === current.length ? current : next
@@ -438,7 +498,7 @@ export default function EditStaffPage() {
           mobileNo,
           alternateNo,
           permanentAddress,
-          localAddress,
+          localAddress: sameAddress ? permanentAddress : localAddress,
           gender,
           dob,
           nationality,
@@ -452,7 +512,7 @@ export default function EditStaffPage() {
           parentRsmId: role === 'ASM' || role === 'FIELD_EXECUTIVE' ? parentRsmId : undefined,
           parentAsmId: role === 'EXECUTIVE' ? parentAsmId : undefined,
           assignedStates: role === 'ASM' || role === 'RSM' ? assignedStates : undefined,
-          assignedCities: role === 'ASM' || role === 'EXECUTIVE' ? assignedCities : undefined,
+          assignedCities: role === 'EXECUTIVE' ? assignedCities : undefined,
         }),
       })
 
@@ -612,13 +672,25 @@ export default function EditStaffPage() {
                   onChange={setPermanentAddress}
                   placeholder="Permanent address"
                 />
-                <TextAreaField
-                  label="Local Address"
-                  value={localAddress}
-                  onChange={setLocalAddress}
-                  placeholder="Current / local address"
-                  required={false}
-                />
+                <div className="flex flex-col gap-1.5">
+                  <TextAreaField
+                    label="Local Address"
+                    value={sameAddress ? permanentAddress : localAddress}
+                    onChange={setLocalAddress}
+                    placeholder="Current / local address"
+                    required={false}
+                    disabled={sameAddress}
+                  />
+                  <label className="flex items-center gap-2 text-xs text-gray-600">
+                    <input
+                      type="checkbox"
+                      checked={sameAddress}
+                      onChange={(event) => setSameAddress(event.target.checked)}
+                      className="rounded border-gray-300"
+                    />
+                    Same as permanent address
+                  </label>
+                </div>
               </div>
             </div>
 
@@ -636,6 +708,62 @@ export default function EditStaffPage() {
                   required={false}
                   disabled
                 />
+
+                <div className="flex flex-col gap-1.5 md:col-span-2 rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                  <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                    Diagnostic Password
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
+                    <div className="relative">
+                      <input
+                        type={showDiagnosticPassword ? 'text' : 'password'}
+                        value={diagnosticPassword}
+                        onChange={(event) => setDiagnosticPassword(event.target.value)}
+                        placeholder="Temporary testing password"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowDiagnosticPassword((value) => !value)}
+                        className="absolute inset-y-0 right-2 flex items-center rounded-md px-2 text-gray-400 transition hover:text-indigo-600"
+                        aria-label={showDiagnosticPassword ? 'Hide diagnostic password' : 'Show diagnostic password'}
+                      >
+                        {showDiagnosticPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        min="1"
+                        max="2160"
+                        value={diagnosticExpiryHours}
+                        onChange={(event) => setDiagnosticExpiryHours(event.target.value)}
+                        aria-label="Diagnostic password expiry in hours"
+                        className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-2.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <span className="text-[11px] text-gray-400 whitespace-nowrap">hrs</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1">
+                    <button type="button" onClick={copyDiagnosticPassword} disabled={!diagnosticPassword} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
+                      Copy
+                    </button>
+                    <button type="button" onClick={handleDiagnosticPasswordSave} disabled={diagnosticSaving || diagnosticPassword.length < 5} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
+                      {diagnosticSaving ? 'Saving...' : 'Save Password'}
+                    </button>
+                  </div>
+                  {activeDiagnosticPassword ? (
+                    <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 mt-1">
+                      Active until {new Date(activeDiagnosticPassword.expiresAt).toLocaleString()}.
+                      {activeDiagnosticPassword.lastUsedAt ? ` Last used ${new Date(activeDiagnosticPassword.lastUsedAt).toLocaleString()}.` : ' Not used yet.'}
+                      <button type="button" onClick={handleDiagnosticPasswordRevoke} disabled={diagnosticRevoking} className="ml-2 font-semibold text-emerald-800 underline disabled:opacity-50">
+                        {diagnosticRevoking ? 'Revoking...' : 'Revoke'}
+                      </button>
+                    </div>
+                  ) : (
+                    <p className="text-[11px] text-gray-400 mt-1">Staff member&apos;s original password remains unchanged. Expiry is in hours, from 1 to 2160.</p>
+                  )}
+                </div>
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
@@ -750,41 +878,6 @@ export default function EditStaffPage() {
                         <p className="px-2 py-2 text-sm text-gray-500">
                           {role === 'RSM' ? 'No states available.' : 'Select an RSM with assigned states.'}
                         </p>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {role === 'ASM' && (
-                  <div className="md:col-span-2 flex flex-col gap-1.5">
-                    <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">Cities</label>
-                    <div className="max-h-64 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
-                      {assignedStates.length ? (
-                        assignedStates.map((state) => (
-                          <div key={state} className="mb-2 last:mb-0">
-                            <p className="px-2 py-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">{state}</p>
-                            {citiesByState[state]?.length ? (
-                              citiesByState[state].map((city) => (
-                                <label
-                                  key={city}
-                                  className="flex cursor-pointer items-center gap-3 rounded px-2 py-1.5 text-sm hover:bg-gray-50"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={assignedCities.includes(city)}
-                                    onChange={() => toggleCity(city)}
-                                    className="h-4 w-4 accent-indigo-600"
-                                  />
-                                  <span>{city}</span>
-                                </label>
-                              ))
-                            ) : (
-                              <p className="px-2 py-1 text-xs text-gray-400">No cities listed for this state.</p>
-                            )}
-                          </div>
-                        ))
-                      ) : (
-                        <p className="px-2 py-2 text-sm text-gray-500">Select states above to choose cities.</p>
                       )}
                     </div>
                   </div>

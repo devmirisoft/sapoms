@@ -49,3 +49,25 @@ yarn-error.log*
 next-env.d.ts
 
 /app/generated/prisma
+
+# docs & scratch output (README stays)
+!README.md
+*.txt
+!requirements.txt
+/tmp/
+/docs/
+tmp-*
+tsc_out.*
+*.err.log
+*.out.log
+_*.bat
+
+# local tool/agent state
+.refact/
+.claude/settings.local.json
+
+# db dumps / spreadsheets
+*.sqlite
+*.sqlite3
+*.dump
+*.xlsx

@@ -82,8 +82,8 @@ model User {
 
   sessions                 AuthSession[]
   emailOtps                EmailOtp[]
-  createdDealerDiagnosticPasswords DealerDiagnosticPassword[] @relation("DealerDiagnosticPasswordCreatedBy")
-  revokedDealerDiagnosticPasswords DealerDiagnosticPassword[] @relation("DealerDiagnosticPasswordRevokedBy")
+  createdDiagnosticPasswords DiagnosticPassword[] @relation("DiagnosticPasswordCreatedBy")
+  revokedDiagnosticPasswords DiagnosticPassword[] @relation("DiagnosticPasswordRevokedBy")
   adminProfile             AdminProfile?
   accountantProfile        AccountantProfile?
   staffProfile             StaffProfile?
@@ -104,6 +104,10 @@ model User {
   appliedWalletSettlements WalletSettlementApplication[] @relation("WalletSettlementAppliedBy")
   createdInvoices          Invoice[]               @relation("InvoiceCreatedBy")
   createdOrderExports      OrderExport[]           @relation("OrderExportCreatedBy")
+  regionalFundRequests     DealerFundRequest[]     @relation("FundRequestRsm")
+  rsmReviewedFundRequests  DealerFundRequest[]     @relation("FundRequestRsmReviewer")
+  staffReviewedFundRequests DealerFundRequest[]    @relation("FundRequestStaffReviewer")
+  fundedFundRequests       DealerFundRequest[]     @relation("FundRequestAccountant")
 
   @@index([role, status])
   @@map("users")
@@ -286,6 +290,8 @@ model StaffProfile {
   assignedOrders         Order[]
   customDiscountRequests CustomDiscountRequest[]
   dealerAssignments      DealerStaffAssignment[]
+  fundRequests           DealerFundRequest[]
+  diagnosticPasswords    DiagnosticPassword[]
 
   @@index([parentRsmId])
   @@index([parentAsmId])
@@ -314,6 +320,7 @@ model DealerProfile {
   secondaryContactName  String? @map("secondary_contact_name")
   secondaryContactPhone String? @map("secondary_contact_phone")
   secondaryContactEmail String? @map("secondary_contact_email")
+  additionalContacts    Json?   @map("additional_contacts")
   termsAcceptedAt  DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
   imageUrl         String?   @map("image_url")
   region           SalesRegion?
@@ -333,11 +340,12 @@ model DealerProfile {
   orderDrafts            OrderDraft[]
   draftCart              DraftCart?
   customDiscountRequests CustomDiscountRequest[]
-  diagnosticPasswords    DealerDiagnosticPassword[]
+  diagnosticPasswords    DiagnosticPassword[]
   staffAssignments       DealerStaffAssignment[]
   walletSettlements      WalletSettlement[]
   invoices               Invoice[]
   orderExports           OrderExport[]
+  fundRequests           DealerFundRequest[]
 
   @@index([deletedAt])
   @@index([region])
@@ -345,9 +353,12 @@ model DealerProfile {
   @@map("dealer_profiles")
 }
 
-model DealerDiagnosticPassword {
+// One temporary-login table for both dealer and staff profiles: exactly one of
+// dealer_id / staff_id is set (enforced by a CHECK constraint in the migration).
+model DiagnosticPassword {
   id              BigInt    @id @default(autoincrement())
-  dealerId        BigInt    @map("dealer_id")
+  dealerId        BigInt?   @map("dealer_id")
+  staffId         BigInt?   @map("staff_id")
   passwordHash    String    @map("password_hash")
   expiresAt       DateTime  @map("expires_at") @db.Timestamptz(6)
   revokedAt       DateTime? @map("revoked_at") @db.Timestamptz(6)
@@ -357,13 +368,15 @@ model DealerDiagnosticPassword {
   createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  dealer    DealerProfile @relation(fields: [dealerId], references: [id], onDelete: Cascade)
-  createdBy User          @relation("DealerDiagnosticPasswordCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
-  revokedBy User?         @relation("DealerDiagnosticPasswordRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
+  dealer    DealerProfile? @relation(fields: [dealerId], references: [id], onDelete: Cascade)
+  staff     StaffProfile?  @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  createdBy User           @relation("DiagnosticPasswordCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  revokedBy User?          @relation("DiagnosticPasswordRevokedBy", fields: [revokedByUserId], references: [id], onDelete: SetNull)
 
   @@index([dealerId, expiresAt])
+  @@index([staffId, expiresAt])
   @@index([revokedAt])
-  @@map("dealer_diagnostic_passwords")
+  @@map("diagnostic_passwords")
 }
 
 model DealerStaffAssignment {
@@ -462,6 +475,25 @@ enum OrderDraftStatus {
   ACTIVE
   CONVERTED
   CANCELLED
+}
+
+enum FundRequestType {
+  ADVANCE_ORDER
+  ADDITIONAL_FUNDS
+}
+
+/* One column drives the whole workflow. The intermediate *_PENDING states are
+   implied by the previous stage's approval, so they are not separate values:
+   RSM_PENDING is the initial REQUESTED, STAFF_PENDING is RSM_APPROVED, and
+   ACCOUNTANT_PENDING is STAFF_APPROVED. Keeping it to the states that are
+   actually written makes an invalid transition a single equality check. */
+enum FundRequestStatus {
+  REQUESTED
+  RSM_APPROVED
+  STAFF_APPROVED
+  FUNDED
+  COMPLETED
+  REJECTED
 }
 
 model DealerRequest {
@@ -621,6 +653,7 @@ model Order {
   settlementApplications WalletSettlementApplication[]
   summaryOverrides   OrderSummaryOverride[]
   overlays           OrderOverlay[]
+  fundRequest        DealerFundRequest?
 
   sourceDraft OrderDraft?
 
@@ -798,6 +831,7 @@ model WalletTransaction {
   order  Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   settlementApplication WalletSettlementApplication?
+  fundRequest           DealerFundRequest?
 
   @@index([dealerId, createdAt])
   @@index([orderId])
@@ -1184,4 +1218,87 @@ model OrderExport {
 
   @@index([dealerId, createdAt])
   @@map("order_exports")
+}
+/**
+ * Dealer fund request: the advance dealer's route to money they do not have yet.
+ *
+ * Two shapes, one workflow (dealer -> RSM -> Staff -> Accountant -> wallet):
+ *   ADVANCE_ORDER    the dealer tried to place an order the wallet cannot cover.
+ *                    `orderFormSnapshot` holds the exact submission, replayed
+ *                    through the normal order route once the funds land.
+ *   ADDITIONAL_FUNDS a standalone top-up raised from the ledger. No order.
+ *
+ * The order is NOT created up front: only `orderId`, set at placement time,
+ * says an order exists, which is also what makes double-placement impossible.
+ */
+model DealerFundRequest {
+  id BigInt @id @default(autoincrement())
+
+  dealerId BigInt @map("dealer_id")
+
+  type   FundRequestType
+  status FundRequestStatus @default(REQUESTED)
+
+  // What the dealer needs added to the wallet.
+  amountPaise BigInt @map("amount_paise")
+
+  // Captured when the request was raised, for reviewers to see the shortfall
+  // as the dealer saw it.
+  walletBalancePaise BigInt  @default(0) @map("wallet_balance_paise")
+  orderAmountPaise   BigInt? @map("order_amount_paise")
+
+  // The dealer's own POST /api/dealer-order body, replayed verbatim on funding
+  // so nothing can drift between what was approved and what is placed.
+  orderFormSnapshot Json? @map("order_form_snapshot")
+
+  // Set only once the order is actually created. Doubles as the
+  // already-placed guard.
+  orderId BigInt? @unique @map("order_id")
+
+  dealerNote String? @map("dealer_note") @db.Text
+
+  // Routing: resolved at creation from the dealer's region/assignment so the
+  // queues stay stable even if the hierarchy is edited later.
+  rsmUserId BigInt? @map("rsm_user_id")
+  staffId   BigInt? @map("staff_id")
+
+  rsmReviewedByUserId BigInt?   @map("rsm_reviewed_by_user_id")
+  rsmReviewedByName   String?   @map("rsm_reviewed_by_name")
+  rsmReviewedAt       DateTime? @map("rsm_reviewed_at") @db.Timestamptz(6)
+  rsmNote             String?   @map("rsm_note") @db.Text
+
+  staffReviewedByUserId BigInt?   @map("staff_reviewed_by_user_id")
+  staffReviewedByName   String?   @map("staff_reviewed_by_name")
+  staffReviewedAt       DateTime? @map("staff_reviewed_at") @db.Timestamptz(6)
+  staffNote             String?   @map("staff_note") @db.Text
+
+  accountantUserId BigInt?   @map("accountant_user_id")
+  accountantName   String?   @map("accountant_name")
+  fundedAt         DateTime? @map("funded_at") @db.Timestamptz(6)
+  accountantNote   String?   @map("accountant_note") @db.Text
+
+  // The CREDIT written by the accountant, so the record view can link straight
+  // into the existing ledger instead of storing the amount twice.
+  walletTransactionId BigInt? @unique @map("wallet_transaction_id")
+
+  rejectedAt   DateTime? @map("rejected_at") @db.Timestamptz(6)
+  rejectedBy   String?   @map("rejected_by")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dealer            DealerProfile      @relation(fields: [dealerId], references: [id], onDelete: Restrict)
+  order             Order?             @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  staff             StaffProfile?      @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  regionalManager   User?              @relation("FundRequestRsm", fields: [rsmUserId], references: [id], onDelete: SetNull)
+  rsmReviewedBy     User?              @relation("FundRequestRsmReviewer", fields: [rsmReviewedByUserId], references: [id], onDelete: SetNull)
+  staffReviewedBy   User?              @relation("FundRequestStaffReviewer", fields: [staffReviewedByUserId], references: [id], onDelete: SetNull)
+  accountant        User?              @relation("FundRequestAccountant", fields: [accountantUserId], references: [id], onDelete: SetNull)
+  walletTransaction WalletTransaction? @relation(fields: [walletTransactionId], references: [id], onDelete: SetNull)
+
+  @@index([dealerId, status])
+  @@index([status, createdAt])
+  @@index([rsmUserId, status])
+  @@index([staffId, status])
+  @@map("dealer_fund_requests")
 }

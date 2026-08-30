@@ -5,7 +5,10 @@ import { readFileSync } from "node:fs";
 const walletHelper = readFileSync(new URL("./postgresWallet.ts", import.meta.url), "utf8");
 const walletRoute = readFileSync(new URL("../app/api/wallet/[dealerId]/route.ts", import.meta.url), "utf8");
 const walletAdjustRoute = readFileSync(new URL("../app/api/wallet/[dealerId]/adjust/route.ts", import.meta.url), "utf8");
-const dealerOrderRoute = readFileSync(new URL("../app/api/dealer-order/route.ts", import.meta.url), "utf8");
+/* The order route delegates creation and the wallet debit to this shared
+   service, which the fund-request funding path calls too, so the PostgreSQL
+   wallet guarantees are asserted where the code actually lives. */
+const dealerOrderRoute = readFileSync(new URL("./dealerOrderCreate.ts", import.meta.url), "utf8");
 
 test("wallet routes use JWT auth and Prisma instead of Mongo", () => {
   for (const source of [walletRoute, walletAdjustRoute]) {

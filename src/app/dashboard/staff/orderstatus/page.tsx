@@ -83,7 +83,7 @@ function statusBadge(status: string) {
 
 function customDiscountBadge(progress: CustomDiscountProgress) {
   if (progress === "completely") {
-    return { bg: "bg-emerald-50", text: "text-emerald-700", label: "Completely" }
+    return { bg: "bg-emerald-50", text: "text-emerald-700", label: "Approved" }
   }
   if (progress === "partially") {
     return { bg: "bg-amber-50", text: "text-amber-700", label: "Partially" }

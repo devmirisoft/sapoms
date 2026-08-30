@@ -6,6 +6,8 @@ const source = await readFile(new URL("./postgresOrderStatus.ts", import.meta.ur
 const overlayRoute = await readFile(new URL("../app/api/order-overlays/[id]/route.ts", import.meta.url), "utf8");
 const dispatchRoute = await readFile(new URL("../app/api/order-dispatch/route.ts", import.meta.url), "utf8");
 const postgresOrders = await readFile(new URL("./postgresOrders.ts", import.meta.url), "utf8");
+const annotations = await readFile(new URL("./postgresOrderAnnotations.ts", import.meta.url), "utf8");
+const orderManagement = await readFile(new URL("../app/orders/page.tsx", import.meta.url), "utf8");
 const forbidden = /saveAcceptedState|saveCancellation|loadEffectiveContext|fetchPhpOrderPayload|getDb|MongoClient|php-compat|orderdatalist|orderhispegination|orderpegination|mirisoft|dealerapi/;
 
 test("PostgreSQL order status service validates legal transitions and timestamps", () => {
@@ -23,7 +25,7 @@ test("PostgreSQL order status service validates legal transitions and timestamps
 
 test("dealer staff and admin permissions are enforced from JWT/profile identity", () => {
   assert.match(source, /actor\.role === "ADMIN"/);
-  assert.match(source, /if \(actor\.role === "ADMIN"\) return/);
+  assert.match(source, /Admin cannot approve or disapprove orders/);
   assert.match(source, /actor\.role === "NSM"/);
   assert.match(source, /permission === "read" \|\| permission === "acceptance" \|\| permission === "fulfilment"/);
   assert.match(source, /isStaffLike\(actor\)/);
@@ -94,4 +96,30 @@ test("staff order lists stay gated behind RSM approval", () => {
   assert.match(postgresOrders, /rsmApprovalStatus: "ACCEPTED", \.\.\.staffScope/);
   assert.match(postgresOrders, /acceptanceNote: order\.acceptanceNote \|\| ""/);
   assert.match(postgresOrders, /rsmNote: order\.rsmNote \|\| ""/);
+});
+
+test("declined orders surface with their note in the cancelled orders tab", () => {
+  // The tab used to filter on cancellations alone, so a staff decline - and the
+  // reason behind it - was invisible to the RSM reviewing that dealer.
+  assert.match(annotations, /\{ type: "cancel", status: "cancelled" \}/);
+  assert.match(annotations, /\{ type: \{ in: \["acceptance", "rsm_acceptance"\] \}, status: "declined" \}/);
+  // The outcome filter owns `where.OR`, so search has to AND onto it rather
+  // than overwrite it and silently drop the outcome scoping.
+  assert.match(annotations, /where\.AND = \[\{ OR: \[\{ reason: \{ contains: input\.search/);
+  assert.match(annotations, /const isDecline = \(row\.type === "acceptance" \|\| row\.type === "rsm_acceptance"\) && row\.status === "declined"/);
+  assert.match(annotations, /outcome: isDecline \? "declined" : "cancelled"/);
+  assert.match(annotations, /stage: row\.type === "rsm_acceptance" \? "rsm" : "staff"/);
+});
+
+test("staff decline collects a required note before submitting", () => {
+  // The Decline button used to post with no note, which the lib rejects with
+  // note_required - the modal is what makes a staff decline possible at all.
+  assert.match(orderManagement, /setDeclineTarget\(oid\)/);
+  assert.match(orderManagement, /disabled=\{!note\.trim\(\) \|\| saving\}/);
+  assert.match(orderManagement, /\.\.\.\(note \? \{ note \} : \{\}\)/);
+  // A decline now lands in the cancelled list, so that cache must be refreshed.
+  assert.match(orderManagement, /if \(status === 0\) queryClient\.invalidateQueries\(\{ queryKey: \["cancelled-orders"\] \}\)/);
+  // One order can hold both a cancel and a decline overlay; keying rows on the
+  // order id alone would collide.
+  assert.match(orderManagement, /key=\{order\.id \|\| order\.orderId\}/);
 });

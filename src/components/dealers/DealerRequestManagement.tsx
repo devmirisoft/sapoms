@@ -7,6 +7,7 @@ import { Search } from "lucide-react";
 
 import { readDashboardActor, type DashboardActor } from "@/lib/dealerRequestClient";
 import { buildDealerRequestHeaders, type DealerRequestStatus, type PublicDealerRequest } from "@/lib/dealerRequests";
+import { SegmentedTabs } from "@/components/SegmentedTabs";
 
 type DealerRequestManagementProps = {
   scope: "admin" | "staff";
@@ -188,25 +189,19 @@ export default function DealerRequestManagement({ scope }: DealerRequestManageme
           </div>
 
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex flex-wrap gap-2">
-              {(["pending", "accepted", "rejected"] as DealerRequestStatus[]).map((status) => (
-                <button
-                  key={status}
-                  type="button"
-                  onClick={() => {
-                    setTab(status);
-                    setPage(1);
-                  }}
-                  className={`rounded-lg border px-4 py-2 text-sm font-medium transition ${
-                    tab === status
-                      ? "border-indigo-600 bg-indigo-600 text-white"
-                      : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
-                  }`}
-                >
-                  {tabLabel(status)}
-                </button>
-              ))}
-            </div>
+            <SegmentedTabs
+              label="Dealer request status"
+              value={tab}
+              onChange={(next) => {
+                setTab(next as DealerRequestStatus);
+                setPage(1);
+              }}
+              items={(["pending", "accepted", "rejected"] as DealerRequestStatus[]).map((status) => ({
+                value: status,
+                label: tabLabel(status),
+                tone: status === "accepted" ? "emerald" : status === "rejected" ? "rose" : "amber",
+              }))}
+            />
 
             <div className="relative w-full max-w-sm">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />

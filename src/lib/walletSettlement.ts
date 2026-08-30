@@ -280,6 +280,22 @@ export async function applySettlement(
       allowCreate: true,
     });
 
+    // The credit above is bookkeeping only - it must not leave the credit
+    // dealer's wallet balance non-zero, so consume it right back out.
+    await applyWalletChange(tx, settlement.dealerId, WalletTransactionType.DEBIT, fromPaise(amountPaise), {
+      idempotencyKey: `settlement:${idempotencyKey}:consumed`,
+      reference: bill.orderNumber,
+      note: `${note} (settlement consumed)`,
+      orderId: bill.orderId ?? null,
+      metadata: {
+        [SETTLEMENT_APPLICATION_FLAG]: true,
+        settlementId: settlement.id.toString(),
+        billId: bill.id.toString(),
+        orderNumber: bill.orderNumber,
+      },
+      actor: { userId: actor.userId, role: actor.role, displayName: actor.displayName },
+    });
+
     await tx.ledgerBill.update({
       where: { id: bill.id },
       data: { paidAmountPaise: bill.paidAmountPaise + amountPaise, lastPaymentDate: new Date() },

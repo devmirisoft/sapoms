@@ -107,6 +107,7 @@ export type PendingProductAggregate = {
   specification: string;
   category: string;
   image: string;
+  productUnit: string;
   orderedQuantity: number;
   dispatchedQuantity: number;
   pendingQuantity: number;
@@ -187,6 +188,39 @@ type PendingDispatchMergeSource = PendingProductsItemRow & {
 };
 
 const UNCATEGORIZED = "Uncategorized";
+
+export type PendingProductClubBy = "product" | "dealer" | "category";
+
+type PendingProductClubIdentity = Pick<
+  PendingProductAggregate,
+  "productKey" | "catalogueNumber" | "normalizedCatalogueNumber" | "productName" | "specification" | "category" | "image"
+>;
+
+const CLUB_IDENTITY: Record<PendingProductClubBy, (line: PendingProductLine) => PendingProductClubIdentity> = {
+  product: (line) => line,
+  dealer: (line) => ({
+    productKey: `dealer:${line.dealerId}`,
+    catalogueNumber: "",
+    normalizedCatalogueNumber: "",
+    productName: line.dealerName || line.dealerId || "Dealer",
+    specification: "",
+    category: "",
+    image: "",
+  }),
+  category: (line) => ({
+    productKey: `category:${line.category || UNCATEGORIZED}`,
+    catalogueNumber: "",
+    normalizedCatalogueNumber: "",
+    productName: line.category || UNCATEGORIZED,
+    specification: "",
+    category: line.category || UNCATEGORIZED,
+    image: "",
+  }),
+};
+
+function clubIdentityOf(clubBy: PendingProductClubBy | undefined) {
+  return CLUB_IDENTITY[clubBy as PendingProductClubBy] ?? CLUB_IDENTITY.product;
+}
 
 function safeText(value: unknown, max = 300): string {
   return typeof value === "string"
@@ -525,20 +559,63 @@ export function filterPendingProductLines(
   });
 }
 
-export function aggregatePendingProducts(lines: PendingProductLine[]): PendingProductAggregate[] {
+export type PendingReportPeriod = "all" | "day" | "month" | "quarter" | "half_year" | "year";
+
+/** Rolling window lengths, counted back from "now" rather than calendar boundaries. */
+const PENDING_REPORT_PERIOD_DAYS: Record<Exclude<PendingReportPeriod, "all">, number> = {
+  day: 1,
+  month: 30,
+  quarter: 90,
+  half_year: 180,
+  year: 365,
+};
+
+export function parsePendingReportPeriod(value: unknown): PendingReportPeriod {
+  const text = String(value ?? "").trim().toLowerCase();
+  return text in PENDING_REPORT_PERIOD_DAYS ? (text as PendingReportPeriod) : "all";
+}
+
+/** Inclusive lower bound for a period, or null when the period is unbounded. */
+export function pendingReportPeriodStartMs(period: PendingReportPeriod, nowMs: number): number | null {
+  if (period === "all") return null;
+  const days = PENDING_REPORT_PERIOD_DAYS[period];
+  return nowMs - days * 24 * 60 * 60 * 1000;
+}
+
+/** Narrows pending lines to those whose order was placed inside the period. */
+export function filterPendingLinesByPeriod(
+  lines: PendingProductLine[],
+  period: PendingReportPeriod,
+  nowMs: number = Date.now()
+): PendingProductLine[] {
+  const startMs = pendingReportPeriodStartMs(period, nowMs);
+  if (startMs === null) return lines ?? [];
+  // A line with an unparseable order date cannot be placed in a window at all,
+  // and keeping it would silently inflate every period report.
+  return (lines ?? []).filter((line) => line.orderDateMs !== null && line.orderDateMs >= startMs);
+}
+
+export function aggregatePendingProducts(
+  lines: PendingProductLine[],
+  clubBy: PendingProductClubBy = "product"
+): PendingProductAggregate[] {
   const aggregates = new Map<string, PendingProductAggregate & {
     orderIds: Set<string>;
     dealerIdsSet: Set<string>;
     assignedStaffIdsSet: Set<string>;
   }>();
 
+  const identityOf = clubIdentityOf(clubBy);
+
   for (const line of lines ?? []) {
-    const existing = aggregates.get(line.productKey);
+    const identity = identityOf(line);
+    const existing = aggregates.get(identity.productKey);
     if (existing) {
       existing.orderedQuantity += line.orderedQuantity;
       existing.dispatchedQuantity += line.dispatchedQuantity;
       existing.pendingQuantity += line.pendingQuantity;
       existing.orderIds.add(line.orderId);
+      if (!existing.productUnit) existing.productUnit = line.productUnit;
       if (line.dealerId) existing.dealerIdsSet.add(line.dealerId);
       line.assignedStaffIds.forEach((staffId) => existing.assignedStaffIdsSet.add(staffId));
 
@@ -557,14 +634,9 @@ export function aggregatePendingProducts(lines: PendingProductLine[]): PendingPr
       continue;
     }
 
-    aggregates.set(line.productKey, {
-      productKey: line.productKey,
-      catalogueNumber: line.catalogueNumber,
-      normalizedCatalogueNumber: line.normalizedCatalogueNumber,
-      productName: line.productName,
-      specification: line.specification,
-      category: line.category,
-      image: line.image,
+    aggregates.set(identity.productKey, {
+      ...identity,
+      productUnit: line.productUnit,
       orderedQuantity: line.orderedQuantity,
       dispatchedQuantity: line.dispatchedQuantity,
       pendingQuantity: line.pendingQuantity,
@@ -596,6 +668,7 @@ export function aggregatePendingProducts(lines: PendingProductLine[]): PendingPr
       specification: aggregate.specification,
       category: aggregate.category,
       image: aggregate.image,
+      productUnit: aggregate.productUnit,
       orderedQuantity: aggregate.orderedQuantity,
       dispatchedQuantity: aggregate.dispatchedQuantity,
       pendingQuantity: aggregate.pendingQuantity,
@@ -757,17 +830,19 @@ export function paginatePendingProducts<T>(items: T[], page: number, pageSize: n
 
 export function buildPendingProductDrilldown(
   lines: PendingProductLine[],
-  productKey: string
+  productKey: string,
+  clubBy: PendingProductClubBy = "product"
 ): {
   aggregate: PendingProductAggregate | null;
   orders: PendingProductOrderContribution[];
 } {
-  const productLines = (lines ?? []).filter((line) => line.productKey === productKey);
+  const identityOf = clubIdentityOf(clubBy);
+  const productLines = (lines ?? []).filter((line) => identityOf(line).productKey === productKey);
   if (productLines.length === 0) {
     return { aggregate: null, orders: [] };
   }
 
-  const aggregate = aggregatePendingProducts(productLines)[0] ?? null;
+  const aggregate = aggregatePendingProducts(productLines, clubBy)[0] ?? null;
   const grouped = new Map<string, PendingProductOrderContribution & { packSizes: number[] }>();
 
   for (const line of productLines) {

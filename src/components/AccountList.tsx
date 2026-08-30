@@ -71,7 +71,7 @@ function AccountList() {
 
   const ordersLink =
     role === "3" ? "/orders"
-    : role === "2" ? "/Pages/Ordermanagement"
+    : role === "2" ? "/orders"
     : "/dashboard/staff/orderstatus"
 
   const handleLogout = () => {

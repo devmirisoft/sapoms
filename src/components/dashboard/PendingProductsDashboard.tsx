@@ -12,8 +12,20 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import PendingProductsReportModal from "./PendingProductsReportModal";
+import { SegmentedTabs } from "@/components/SegmentedTabs";
 
 type Role = "admin" | "staff" | "dealer";
+
+type ClubBy = "product" | "dealer" | "category";
+
+type ViewMode = "list" | "club";
+
+const CLUB_OPTIONS: Record<ClubBy, { label: string; plural: string }> = {
+  product: { label: "Product", plural: "products" },
+  dealer: { label: "Dealer", plural: "dealers" },
+  category: { label: "Category", plural: "categories" },
+};
 
 type DashboardActor = {
   role: Role;
@@ -30,6 +42,7 @@ type PendingProductRow = {
   specification: string;
   category: string;
   image: string;
+  productUnit: string;
   orderedQuantity: number;
   dispatchedQuantity: number;
   pendingQuantity: number;
@@ -194,6 +207,21 @@ function buildActorHeaders(actor: DashboardActor | null): HeadersInit {
   return {};
 }
 
+async function fetchPendingProducts<T>(
+  params: URLSearchParams,
+  actor: DashboardActor | null,
+  errorMessage: string
+): Promise<ApiResponse<T>> {
+  const response = await fetch(`/api/pending-products?${params.toString()}`, {
+    headers: buildActorHeaders(actor),
+  });
+  const json = await response.json();
+  if (!response.ok || !json?.success) {
+    throw new Error(json?.message || errorMessage);
+  }
+  return json as ApiResponse<T>;
+}
+
 function formatNumber(value: number) {
   return value.toLocaleString("en-IN");
 }
@@ -239,9 +267,102 @@ function ProductMetric({
   accent: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white px-5 py-4 shadow-sm">
+    <div className="rounded-xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm">
       <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">{label}</p>
-      <p className={`mt-2 text-[24px] font-bold ${accent}`}>{value}</p>
+      <p className={`mt-1.5 text-[21px] font-bold tabular-nums ${accent}`}>{value}</p>
+    </div>
+  );
+}
+
+type ClubScope = {
+  actor: DashboardActor | null;
+  role: Role;
+  actorScopeKey: string;
+  clubBy: ClubBy;
+  dealerId: string;
+  assignedStaffId: string;
+  refreshToken: number;
+};
+
+// The contributing orders for one clubbed row. Reuses the existing productKey
+// drill-down endpoint, so there is no second grouping implementation.
+function ClubOrderBreakdown({ scope, productKey }: { scope: ClubScope; productKey: string }) {
+  const query = useQuery<ApiResponse<PendingProductsDetailPayload>>({
+    queryKey: [
+      "pending-products-club-orders",
+      scope.role,
+      scope.actorScopeKey,
+      productKey,
+      scope.clubBy,
+      scope.dealerId,
+      scope.assignedStaffId,
+      scope.refreshToken,
+    ],
+    enabled: !!scope.actor,
+    queryFn: async () => {
+      const params = new URLSearchParams({ productKey, page: "1", pageSize: "200", clubBy: scope.clubBy });
+      if (scope.dealerId) params.set("dealerId", scope.dealerId);
+      if (scope.assignedStaffId) params.set("assignedStaffId", scope.assignedStaffId);
+      if (scope.refreshToken > 0) params.set("refreshToken", String(scope.refreshToken));
+      return fetchPendingProducts<PendingProductsDetailPayload>(params, scope.actor, "Failed to load contributing orders.");
+    },
+  });
+
+  const payload = query.data?.data;
+
+  if (query.isLoading && !payload) {
+    return <div className="h-16 animate-pulse rounded-2xl bg-slate-100" />;
+  }
+
+  if (query.isError) {
+    return (
+      <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12px] text-rose-700">
+        {(query.error as Error)?.message || "Failed to load contributing orders."}
+      </div>
+    );
+  }
+
+  if (!payload) return null;
+
+  return (
+    <div className="space-y-2">
+      {payload.orders.map((order) => (
+        <div
+          key={order.orderId}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3"
+        >
+          <div className="min-w-0">
+            <Link
+              href={`/orders/${encodeURIComponent(order.orderId)}`}
+              className="font-mono text-[13px] font-bold text-indigo-700 hover:underline"
+            >
+              {formatDisplayOrderNumber(order.orderId)}
+            </Link>
+            <p className="mt-1 text-[12px] text-slate-500">
+              {formatDate(order.orderDate)}
+              {scope.role !== "dealer" && order.dealerName ? ` · ${order.dealerName}` : ""}
+              {order.packSummary ? ` · ${order.packSummary}` : ""}
+            </p>
+          </div>
+          <div className="flex items-center gap-4 text-right">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Dispatched</p>
+              <p className="font-mono text-[13px] font-semibold text-emerald-700">{formatNumber(order.dispatchedQuantity)}</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Pending</p>
+              <p className="font-mono text-[14px] font-bold text-rose-600">
+                {formatNumber(order.pendingQuantity)} {order.productUnit || ""}
+              </p>
+            </div>
+          </div>
+        </div>
+      ))}
+      {payload.total > payload.orders.length && (
+        <p className="px-1 text-[11px] text-slate-400">
+          Showing {payload.orders.length} of {formatNumber(payload.total)} contributing orders.
+        </p>
+      )}
     </div>
   );
 }
@@ -254,10 +375,14 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
   const [dealerId, setDealerId] = useState("");
   const [assignedStaffId, setAssignedStaffId] = useState("");
   const [sort, setSort] = useState<"pending_desc" | "oldest_pending" | "alphabetical">("pending_desc");
+  const [clubBy, setClubBy] = useState<ClubBy>("product");
+  const [viewMode, setViewMode] = useState<ViewMode>("list");
+  const [expandedKey, setExpandedKey] = useState("");
   const [page, setPage] = useState(1);
   const [refreshToken, setRefreshToken] = useState(0);
   const [detailProductKey, setDetailProductKey] = useState("");
   const [detailPage, setDetailPage] = useState(1);
+  const [reportOpen, setReportOpen] = useState(false);
   const queryClient = useQueryClient();
   const actorScopeKey = `${actor?.role ?? ""}:${actor?.id ?? ""}`;
 
@@ -302,6 +427,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
       dealerId,
       assignedStaffId,
       sort,
+      clubBy,
       page,
       refreshToken,
     ],
@@ -312,6 +438,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
         page: String(page),
         pageSize: "12",
         sort,
+        clubBy,
       });
       if (search) params.set("search", search);
       if (category) params.set("category", category);
@@ -319,14 +446,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
       if (assignedStaffId) params.set("assignedStaffId", assignedStaffId);
       if (refreshToken > 0) params.set("refreshToken", String(refreshToken));
 
-      const response = await fetch(`/api/pending-products?${params.toString()}`, {
-        headers: buildActorHeaders(actor),
-      });
-      const json = await response.json();
-      if (!response.ok || !json?.success) {
-        throw new Error(json?.message || "Failed to load pending products.");
-      }
-      return json as ApiResponse<PendingProductsListPayload>;
+      return fetchPendingProducts<PendingProductsListPayload>(params, actor, "Failed to load pending products.");
     },
   });
 
@@ -336,6 +456,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
       role,
       actorScopeKey,
       detailProductKey,
+      clubBy,
       dealerId,
       assignedStaffId,
       detailPage,
@@ -348,19 +469,13 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
         productKey: detailProductKey,
         page: String(detailPage),
         pageSize: "8",
+        clubBy,
       });
       if (dealerId) params.set("dealerId", dealerId);
       if (assignedStaffId) params.set("assignedStaffId", assignedStaffId);
       if (refreshToken > 0) params.set("refreshToken", String(refreshToken));
 
-      const response = await fetch(`/api/pending-products?${params.toString()}`, {
-        headers: buildActorHeaders(actor),
-      });
-      const json = await response.json();
-      if (!response.ok || !json?.success) {
-        throw new Error(json?.message || "Failed to load pending product details.");
-      }
-      return json as ApiResponse<PendingProductsDetailPayload>;
+      return fetchPendingProducts<PendingProductsDetailPayload>(params, actor, "Failed to load pending product details.");
     },
   });
 
@@ -368,6 +483,29 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
   const detailPayload = detailQuery.data?.data;
   const warnings = listPayload?.warnings ?? [];
   const summary = listPayload?.summary;
+
+  const columns = useMemo(
+    () =>
+      [
+        CLUB_OPTIONS[clubBy].label,
+        clubBy === "product" ? "Catalogue" : null,
+        clubBy === "product" ? "Category" : null,
+        "Ordered",
+        "Dispatched",
+        "Pending",
+        "Progress",
+        "Orders",
+        role !== "dealer" && clubBy !== "dealer" ? "Dealers" : null,
+        "Oldest",
+        "Action",
+      ].filter((label): label is string => !!label),
+    [clubBy, role]
+  );
+
+  const clubScope = useMemo<ClubScope>(
+    () => ({ actor, role, actorScopeKey, clubBy, dealerId, assignedStaffId, refreshToken }),
+    [actor, role, actorScopeKey, clubBy, dealerId, assignedStaffId, refreshToken]
+  );
 
   const summaryCards = useMemo(() => {
     if (!summary) return [];
@@ -406,14 +544,60 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
 
   return (
     <>
+      <PendingProductsReportModal
+        open={reportOpen}
+        onClose={() => setReportOpen(false)}
+        enabled={!!actor && actor.role === role}
+        scope={{ search, category, dealerId, assignedStaffId, sort }}
+      />
       <div className="mx-auto max-w-[1840px] px-6 py-6">
         <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-[28px] font-bold tracking-tight text-slate-900">Pending Products</h1>
-            <p className="mt-1 text-sm text-slate-500">{subtitleForRole(role)}</p>
+            <h1 className="text-[22px] font-bold tracking-tight text-slate-900">Pending Products</h1>
+            <p className="mt-1 text-[13px] text-slate-500">{subtitleForRole(role)}</p>
           </div>
-          <div className="rounded-full border border-slate-200 bg-white px-4 py-2 text-[12px] font-semibold text-slate-500 shadow-sm">
-            Product-first fulfilment view
+          <div className="flex flex-wrap items-center gap-2">
+            <SegmentedTabs
+              label="Pending products view"
+              value={viewMode}
+              onChange={(next) => {
+                setViewMode(next as ViewMode);
+                setExpandedKey("");
+              }}
+              items={[
+                {
+                  value: "list",
+                  label: "List View",
+                  icon: (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18" />
+                    </svg>
+                  ),
+                },
+                {
+                  value: "club",
+                  label: "Club View",
+                  icon: (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+                    </svg>
+                  ),
+                },
+              ]}
+            />
+            <button
+              type="button"
+              onClick={() => setReportOpen(true)}
+              className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-[12.5px] font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              Download Report
+            </button>
           </div>
         </div>
 
@@ -429,8 +613,8 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
           ))}
         </div>
 
-        <div className="mb-5 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.5fr)_repeat(4,minmax(0,1fr))]">
+        <div className="mb-5 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-[minmax(0,1.5fr)_repeat(5,minmax(0,1fr))]">
             <div>
               <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
                 Search Products
@@ -440,7 +624,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Name, catalogue no., specification, category..."
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-indigo-300 focus:bg-white"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
               />
             </div>
 
@@ -454,7 +638,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                   setCategory(event.target.value);
                   setPage(1);
                 }}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-indigo-300"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
               >
                 <option value="">All categories</option>
                 {(listPayload?.filters.categories ?? []).map((entry) => (
@@ -475,11 +659,31 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                   setSort(event.target.value as typeof sort);
                   setPage(1);
                 }}
-                className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-indigo-300"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
               >
                 <option value="pending_desc">Highest pending</option>
                 <option value="oldest_pending">Oldest pending</option>
                 <option value="alphabetical">Alphabetical</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="mb-1.5 block text-[11px] font-bold uppercase tracking-[0.12em] text-slate-400">
+                Club By
+              </label>
+              <select
+                value={clubBy}
+                onChange={(event) => {
+                  setClubBy(event.target.value as ClubBy);
+                  setPage(1);
+                  setDetailProductKey("");
+                  setDetailPage(1);
+                }}
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              >
+                <option value="product">Product (default)</option>
+                {role !== "dealer" && <option value="dealer">Dealer</option>}
+                <option value="category">Category</option>
               </select>
             </div>
 
@@ -494,7 +698,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                     setDealerId(event.target.value);
                     setPage(1);
                   }}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-indigo-300"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                 >
                   <option value="">All dealers</option>
                   {(listPayload?.filters.dealers ?? []).map((dealer) => (
@@ -517,7 +721,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                     setAssignedStaffId(event.target.value);
                     setPage(1);
                   }}
-                  className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-indigo-300"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
                 >
                   <option value="">All staff</option>
                   {(listPayload?.filters.staff ?? []).map((staff) => (
@@ -538,13 +742,13 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
         )}
 
         {!listQuery.isError && (
-          <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-100 px-5 py-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="text-[15px] font-bold text-slate-900">Product Queue</h2>
                   <p className="mt-1 text-[12px] text-slate-500">
-                    {listPayload ? `${formatNumber(listPayload.total)} matching products` : "Loading pending products..."}
+                    {listPayload ? `${formatNumber(listPayload.total)} matching ${CLUB_OPTIONS[clubBy].plural}` : "Loading pending products..."}
                   </p>
                 </div>
               </div>
@@ -568,12 +772,95 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
               </div>
             ) : (
               <>
+                {viewMode === "club" ? (
+                  <div className="divide-y divide-slate-100">
+                    {listPayload?.items.map((item) => {
+                      const expanded = expandedKey === item.productKey;
+                      const identity =
+                        clubBy === "product"
+                          ? [item.catalogueNumber, item.specification, item.category].filter(Boolean).join(" · ") ||
+                            "No catalogue"
+                          : CLUB_OPTIONS[clubBy].label;
+
+                      return (
+                        <div key={item.productKey} className="px-5 py-4">
+                          <div className="flex flex-wrap items-center gap-x-5 gap-y-3">
+                            <button
+                              type="button"
+                              onClick={() => setExpandedKey(expanded ? "" : item.productKey)}
+                              aria-expanded={expanded}
+                              className="flex min-w-[220px] flex-1 items-center gap-3 text-left"
+                            >
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.4"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className={`flex-shrink-0 text-slate-400 transition-transform ${expanded ? "rotate-90" : ""}`}
+                              >
+                                <polyline points="9 18 15 12 9 6" />
+                              </svg>
+                              <span className="min-w-0">
+                                <span className="block truncate text-[14px] font-semibold text-slate-900">
+                                  {item.productName}
+                                </span>
+                                <span className="mt-0.5 block truncate text-[12px] text-slate-500">{identity}</span>
+                              </span>
+                            </button>
+
+                            <div className="text-right">
+                              <p className="font-mono text-[22px] font-bold leading-none tabular-nums text-rose-600">
+                                {formatNumber(item.pendingQuantity)}
+                              </p>
+                              <p className="mt-1 text-[11px] text-slate-500">{item.productUnit || "Units"} pending</p>
+                            </div>
+
+                            <div className="w-20 text-right">
+                              <p className="font-mono text-[14px] font-semibold tabular-nums text-indigo-700">
+                                {formatNumber(item.pendingOrders)}
+                              </p>
+                              <p className="text-[11px] text-slate-500">
+                                {item.pendingOrders === 1 ? "order" : "orders"}
+                              </p>
+                            </div>
+
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">
+                                {formatNumber(item.dispatchedQuantity)} / {formatNumber(item.orderedQuantity)} ·{" "}
+                                {clampPercent(item.fulfillmentPercent)}%
+                              </span>
+                              <span className="rounded-full bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700">
+                                Oldest {formatAge(item.oldestPendingDate)}
+                              </span>
+                              {role !== "dealer" && clubBy !== "dealer" && (
+                                <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">
+                                  {formatNumber(item.dealersAffected)} dealers
+                                </span>
+                              )}
+                            </div>
+                          </div>
+
+                          {expanded && (
+                            <div className="mt-3 rounded-2xl bg-slate-50 p-3">
+                              <ClubOrderBreakdown scope={clubScope} productKey={item.productKey} />
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <>
                 <div className="hidden overflow-x-auto lg:block">
                   <table className="w-full border-collapse text-left text-sm">
                     <thead className="bg-slate-50">
                       <tr>
-                        {["Product", "Catalogue", "Category", "Ordered", "Dispatched", "Pending", "Progress", "Orders", role !== "dealer" ? "Dealers" : null, "Oldest", "Action"].filter(Boolean).map((label) => (
-                          <th key={label as string} className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                        {columns.map((label) => (
+                          <th key={label} className="px-5 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
                             {label}
                           </th>
                         ))}
@@ -604,14 +891,18 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                               </div>
                               <div>
                                 <p className="text-[14px] font-semibold text-slate-900">{item.productName}</p>
-                                <p className="mt-1 text-[12px] text-slate-500">{item.specification || "No specification"}</p>
+                                <p className="mt-1 text-[12px] text-slate-500">{item.specification || (clubBy === "product" ? "No specification" : CLUB_OPTIONS[clubBy].label)}</p>
                               </div>
                             </div>
                           </td>
-                          <td className="px-5 py-4 font-mono text-[12px] font-semibold text-amber-700">
-                            {item.catalogueNumber || "—"}
-                          </td>
-                          <td className="px-5 py-4 text-[12px] text-slate-600">{item.category || "—"}</td>
+                          {clubBy === "product" && (
+                            <>
+                              <td className="px-5 py-4 font-mono text-[12px] font-semibold text-amber-700">
+                                {item.catalogueNumber || "—"}
+                              </td>
+                              <td className="px-5 py-4 text-[12px] text-slate-600">{item.category || "—"}</td>
+                            </>
+                          )}
                           <td className="px-5 py-4 font-mono text-[13px] font-semibold text-slate-900">{formatNumber(item.orderedQuantity)}</td>
                           <td className="px-5 py-4 font-mono text-[13px] font-semibold text-emerald-700">{formatNumber(item.dispatchedQuantity)}</td>
                           <td className="px-5 py-4 font-mono text-[13px] font-bold text-rose-600">{formatNumber(item.pendingQuantity)}</td>
@@ -630,7 +921,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                             </div>
                           </td>
                           <td className="px-5 py-4 text-[12px] font-semibold text-slate-700">{formatNumber(item.pendingOrders)}</td>
-                          {role !== "dealer" && (
+                          {role !== "dealer" && clubBy !== "dealer" && (
                             <td className="px-5 py-4 text-[12px] font-semibold text-slate-700">{formatNumber(item.dealersAffected)}</td>
                           )}
                           <td className="px-5 py-4">
@@ -661,7 +952,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                       <div className="mb-3 flex items-start justify-between gap-3">
                         <div>
                           <p className="text-[15px] font-semibold text-slate-900">{item.productName}</p>
-                          <p className="mt-1 text-[12px] text-slate-500">{item.catalogueNumber || "No catalogue"} · {item.category || "Uncategorized"}</p>
+                          <p className="mt-1 text-[12px] text-slate-500">{clubBy === "product" ? `${item.catalogueNumber || "No catalogue"} · ${item.category || "Uncategorized"}` : CLUB_OPTIONS[clubBy].label}</p>
                         </div>
                         <div className="text-right">
                           <p className="text-[22px] font-bold text-rose-600">{formatNumber(item.pendingQuantity)}</p>
@@ -700,6 +991,8 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                     </div>
                   ))}
                 </div>
+                  </>
+                )}
 
                 {listPayload && listPayload.totalPages > 1 && (
                   <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-5 py-4">
@@ -734,14 +1027,14 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
 
       {detailProductKey && (
         <div className="fixed inset-0 z-[70] flex items-center justify-end bg-black/30 p-0 sm:p-4">
-          <div className="h-full w-full max-w-4xl overflow-hidden bg-white shadow-2xl sm:h-[92vh] sm:rounded-3xl">
+          <div className="h-full w-full max-w-4xl overflow-hidden bg-white shadow-2xl sm:h-[92vh] sm:rounded-xl">
             <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
               <div>
                 <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Contributing Orders</p>
                 <h2 className="mt-1 text-[20px] font-bold text-slate-900">
                   {detailPayload?.product.productName || "Pending product"}
                 </h2>
-                {detailPayload?.product && (
+                {clubBy === "product" && detailPayload?.product && (
                   <p className="mt-1 text-[13px] text-slate-500">
                     {detailPayload.product.catalogueNumber || "No catalogue"} · {detailPayload.product.category || "Uncategorized"}
                   </p>

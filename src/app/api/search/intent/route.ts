@@ -7,7 +7,7 @@ const roleRouteMap = {
     "add dealer": "/dashboard/admin/dealer/AddDealerForm",
     staff: "/dashboard/admin/staff/stafflist",
     "add staff": "/dashboard/admin/staff/addstaff",
-    orders: "/Pages/Ordermanagement",
+    orders: "/orders",
     "outstanding orders": "/Pages/Ordermanagement/outstandingorders",
     products: "/Pages/products",
     "add product": "/Pages/products/addproducts",

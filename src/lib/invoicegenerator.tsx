@@ -16,6 +16,7 @@ import {
     type InvoiceRowStage,
 } from "@/lib/invoiceRowReconciliation";
 import {
+    buildInvoiceDescriptionMeta,
     mergeProductNotesIntoInvoiceItems,
 } from "@/lib/orderProductNotes.mjs";
 import { resolveStoredAuth } from "@/lib/roleAccess";
@@ -149,33 +150,9 @@ type InvoiceDescriptionMeta = {
 type InvoiceDisplayRow = InvoiceRowStage & {
     descriptionMainText: string;
     descriptionNoteText: string;
+    catNo: string;
+    unitPrice: number;
 };
-
-function buildInvoiceDescriptionMeta({
-    productName,
-    catalogueNumber,
-    productNote,
-    isPriority,
-}: {
-    productName: string;
-    catalogueNumber: string;
-    productNote: string;
-    isPriority: boolean;
-}): InvoiceDescriptionMeta {
-    const baseName = String(productName || catalogueNumber || "â€”").trim();
-    const catNumber = String(catalogueNumber || "").trim();
-    const normalizedNote = String(productNote || "").trim();
-
-    const mainLines = [
-        `${baseName}${productName && catNumber ? ` â€” Cat. No: ${catNumber}` : ""}`,
-        isPriority ? "[PRIORITY DELIVERY]" : "",
-    ].filter(Boolean);
-
-    return {
-        mainText: mainLines.join("\n"),
-        noteText: normalizedNote ? `(${normalizedNote})` : "",
-    };
-}
 
 async function fetchOrderSummaryOverride(order: OrderInvoiceData): Promise<Record<string, any> | null> {
     try {
@@ -196,20 +173,14 @@ async function fetchOrderSummaryOverride(order: OrderInvoiceData): Promise<Recor
     }
 }
 
-async function fetchOrderItems(orderId: string): Promise<OrderItem[]> {
+async function fetchOrderDetail(orderId: string): Promise<Record<string, any> | null> {
     try {
         const normalized = await fetch(`/api/order-access/${encodeURIComponent(orderId)}`, { cache: "no-store" }).catch(() => null);
-        if (!normalized?.ok) return [];
+        if (!normalized?.ok) return null;
         const payload = await normalized.json().catch(() => null);
-        const normalizedOrder = payload?.data;
-        const normalizedItems = Array.isArray(normalizedOrder?.items)
-            ? normalizedOrder.items
-            : Array.isArray(normalizedOrder?.productorder)
-                ? normalizedOrder.productorder
-                : [];
-        return normalizedItems as OrderItem[];
+        return payload?.data ?? null;
     } catch {
-        return [];
+        return null;
     }
 }
 
@@ -393,18 +364,11 @@ function toWords(amount: number): string {
     return out + " Only";
 }
 
-function cell(
-    doc: jsPDF,
-    x: number, y: number, w: number, h: number,
-    text: string,
-    opts: { bold?: boolean; align?: "left" | "right" | "center"; fontSize?: number; paddingX?: number } = {}
-) {
-    doc.rect(x, y, w, h);
-    doc.setFont("Helvetica", opts.bold ? "bold" : "normal");
-    doc.setFontSize(opts.fontSize ?? 7.5);
-    const px = opts.paddingX ?? 2;
-    const tx = opts.align === "right" ? x + w - px : opts.align === "center" ? x + w / 2 : x + px;
-    doc.text(text, tx, y + h * 0.62, { align: opts.align ?? "left" });
+// Discount is shown as a percentage of the row's list price.
+export function pctText(discountAmount: number, grossAmount: number): string {
+    if (!(grossAmount > 0)) return "0%";
+    const value = (discountAmount / grossAmount) * 100;
+    return `${Number.isInteger(value) ? value : value.toFixed(2)}%`;
 }
 
 
@@ -440,11 +404,18 @@ function resolveCatalogueNumber(item: any): string {
 export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?: InvoiceDownloadOptions): Promise<Blob> {
     if (!canGenerateOrderInvoiceForActor(order, options)) throw new Error("Unauthorized invoice access");
     const dp = getDealerProfile();
-    const inlineSummaryOverride = (order as any).__source === "postgres" && Array.isArray((order as any).summaryOverrides)
-        ? (order as any).summaryOverrides[0] ?? null
+    // Callers often pass a shallow list row (no items, no dealer address, no notes).
+    // Hydrate from the normalized detail endpoint before rendering.
+    const hasInlineItems = Array.isArray((order as any).items)
+        ? (order as any).items.length > 0
+        : Array.isArray((order as any).productorder) && (order as any).productorder.length > 0;
+    const detail = hasInlineItems ? null : await fetchOrderDetail(String(order.order_id));
+    const fullOrder: OrderInvoiceData = detail ? { ...(order as any), ...detail } : order;
+    const inlineSummaryOverride = (fullOrder as any).__source === "postgres" && Array.isArray((fullOrder as any).summaryOverrides)
+        ? (fullOrder as any).summaryOverrides[0] ?? null
         : null;
-    const summaryOverride = inlineSummaryOverride ?? ((order as any).__source === "postgres" ? null : await fetchOrderSummaryOverride(order));
-    const displayOrder = summaryOverride ? { ...(order as any), ...summaryOverride } : order;
+    const summaryOverride = inlineSummaryOverride ?? ((fullOrder as any).__source === "postgres" ? null : await fetchOrderSummaryOverride(fullOrder));
+    const displayOrder = summaryOverride ? { ...(fullOrder as any), ...summaryOverride } : fullOrder;
     const dealerSource = { ...(displayOrder as any), ...(dp ?? {}) };
 
     const isPostgresOrder = (displayOrder as any).__source === "postgres";
@@ -490,8 +461,6 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
             finalPrice: it.finalAmount ?? it.finalPrice ?? it.final_price ?? undefined,
             productNote: it.productNote ?? it.product_note ?? undefined,
         }));
-    } else if (!isPostgresOrder) {
-        orderItems = await fetchOrderItems(displayOrder.order_id);
     }
 
     const productNotes = Array.isArray((displayOrder as any).orderProductNotes)
@@ -511,10 +480,16 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
         [item.remark, item.remarks].filter(Boolean)
     );
 
+    // One source of truth for the item grid: the table, the page-total bar and
+    // its separators all measure from this.
+    const COL_W = [10, 15, 58, 10, 16, 12, 10, 20, 17, 22];
+    const colX = (index: number) => 10 + COL_W.slice(0, index).reduce((a, b) => a + b, 0);
+
     const doc = new jsPDF("p", "mm", "a4");
-    const PW = doc.internal.pageSize.getWidth();
-    const ML = 14;
-    const MR = 14;
+    const PW = doc.internal.pageSize.getWidth();   // 210
+    const PH = doc.internal.pageSize.getHeight();  // 297
+    const ML = 10;
+    const MR = 10;
     const CW = PW - ML - MR;
 
     const amounts = resolveOrderAmounts(displayOrder);
@@ -525,153 +500,194 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
     let discountBreakdown = resolveOrderDiscountBreakdown(displayOrder as OrderAmountSource);
     let invoiceRemark = "N/A";
 
-    // Shared inner padding used consistently everywhere
-    const PAD = 4;
+    // ── Theme ────────────────────────────────────────────────────────────────
+    const BLUE: [number, number, number] = [13, 92, 196];
+    const BLUE_TINT: [number, number, number] = [232, 241, 253];
+    const PANEL: [number, number, number] = [248, 250, 253];
+    const BORDER: [number, number, number] = [205, 220, 240];
+    const MUTED: [number, number, number] = [95, 110, 130];
+    const INK: [number, number, number] = [17, 24, 39];
+    const WHITE: [number, number, number] = [255, 255, 255];
+    const PAD = 3;
 
-    doc.setFont("Helvetica", "normal");
-    doc.setFontSize(8);
-    doc.setTextColor(0, 0, 0);
-    doc.setDrawColor(0, 0, 0);
+    const fill = (c: number[]) => doc.setFillColor(c[0], c[1], c[2]);
+    const stroke = (c: number[]) => doc.setDrawColor(c[0], c[1], c[2]);
+    const ink = (c: number[]) => doc.setTextColor(c[0], c[1], c[2]);
+    const font = (style: "normal" | "bold" | "italic" | "bolditalic", size: number) => {
+        doc.setFont("Helvetica", style);
+        doc.setFontSize(size);
+    };
+    const box = (
+        x: number, y: number, w: number, h: number,
+        opts: { fill?: number[]; border?: number[]; r?: number; lw?: number } = {}
+    ) => {
+        if (opts.fill) fill(opts.fill);
+        if (opts.border) { stroke(opts.border); doc.setLineWidth(opts.lw ?? 0.2); }
+        const style = opts.fill && opts.border ? "FD" : opts.fill ? "F" : "S";
+        const r = opts.r ?? 1.5;
+        doc.roundedRect(x, y, w, h, r, r, style);
+    };
+    /* Stroked line icons drawn straight into the PDF. jsPDF has no icon font
+       and an image per glyph would bloat every file, so each one is a handful
+       of primitives inside an s x s box. */
+    type IconName = "calendar" | "calendarCheck" | "clock" | "user" | "users" | "truck"
+        | "clipboard" | "rupee" | "card" | "shield" | "pin" | "mail" | "doc" | "box" | "qr";
+    const icon = (name: IconName, x: number, y: number, s = 4.2, color: number[] = BLUE) => {
+        stroke(color); fill(color); doc.setLineWidth(0.26);
+        const cx = x + s / 2;
+        const cy = y + s / 2;
+        switch (name) {
+            case "calendar":
+            case "calendarCheck":
+                doc.roundedRect(x, y + s * 0.14, s, s * 0.86, 0.4, 0.4, "S");
+                doc.line(x, y + s * 0.42, x + s, y + s * 0.42);
+                doc.line(x + s * 0.28, y, x + s * 0.28, y + s * 0.26);
+                doc.line(x + s * 0.72, y, x + s * 0.72, y + s * 0.26);
+                if (name === "calendarCheck") {
+                    doc.line(x + s * 0.28, y + s * 0.7, x + s * 0.44, y + s * 0.84);
+                    doc.line(x + s * 0.44, y + s * 0.84, x + s * 0.76, y + s * 0.54);
+                }
+                break;
+            case "clock":
+                doc.circle(cx, cy, s * 0.46, "S");
+                doc.line(cx, cy, cx, cy - s * 0.26);
+                doc.line(cx, cy, cx + s * 0.2, cy + s * 0.12);
+                break;
+            case "user":
+                doc.circle(cx, y + s * 0.3, s * 0.19, "S");
+                doc.line(x + s * 0.14, y + s * 0.95, x + s * 0.32, y + s * 0.6);
+                doc.line(x + s * 0.86, y + s * 0.95, x + s * 0.68, y + s * 0.6);
+                doc.line(x + s * 0.14, y + s * 0.95, x + s * 0.86, y + s * 0.95);
+                break;
+            case "users":
+                doc.circle(x + s * 0.34, y + s * 0.3, s * 0.17, "S");
+                doc.circle(x + s * 0.76, y + s * 0.34, s * 0.13, "S");
+                doc.line(x + s * 0.06, y + s * 0.95, x + s * 0.62, y + s * 0.95);
+                doc.line(x + s * 0.06, y + s * 0.95, x + s * 0.2, y + s * 0.62);
+                doc.line(x + s * 0.62, y + s * 0.95, x + s * 0.48, y + s * 0.62);
+                doc.line(x + s * 0.7, y + s * 0.86, x + s * 0.98, y + s * 0.86);
+                break;
+            case "truck":
+                doc.rect(x, y + s * 0.24, s * 0.56, s * 0.48, "S");
+                doc.line(x + s * 0.58, y + s * 0.44, x + s * 0.82, y + s * 0.44);
+                doc.line(x + s * 0.82, y + s * 0.44, x + s, y + s * 0.62);
+                doc.line(x + s, y + s * 0.62, x + s, y + s * 0.72);
+                doc.line(x + s * 0.58, y + s * 0.72, x + s, y + s * 0.72);
+                doc.line(x + s * 0.58, y + s * 0.24, x + s * 0.58, y + s * 0.72);
+                doc.circle(x + s * 0.24, y + s * 0.82, s * 0.13, "S");
+                doc.circle(x + s * 0.8, y + s * 0.82, s * 0.13, "S");
+                break;
+            case "clipboard":
+                doc.roundedRect(x + s * 0.1, y + s * 0.12, s * 0.8, s * 0.88, 0.4, 0.4, "S");
+                doc.rect(x + s * 0.32, y, s * 0.36, s * 0.22, "S");
+                doc.line(x + s * 0.26, y + s * 0.48, x + s * 0.74, y + s * 0.48);
+                doc.line(x + s * 0.26, y + s * 0.68, x + s * 0.62, y + s * 0.68);
+                break;
+            case "rupee": {
+                doc.circle(cx, cy, s * 0.5, "S");
+                const prev = doc.getFontSize();
+                font("bold", 3.4); ink(color);
+                doc.text("Rs", cx, cy + s * 0.14, { align: "center" });
+                doc.setFontSize(prev);
+                break;
+            }
+            case "card":
+                doc.roundedRect(x, y + s * 0.18, s, s * 0.64, 0.4, 0.4, "S");
+                doc.rect(x, y + s * 0.34, s, s * 0.14, "F");
+                doc.line(x + s * 0.14, y + s * 0.66, x + s * 0.42, y + s * 0.66);
+                break;
+            case "shield":
+                doc.line(cx, y, x, y + s * 0.22);
+                doc.line(x, y + s * 0.22, x + s * 0.12, y + s * 0.7);
+                doc.line(x + s * 0.12, y + s * 0.7, cx, y + s);
+                doc.line(cx, y + s, x + s * 0.88, y + s * 0.7);
+                doc.line(x + s * 0.88, y + s * 0.7, x + s, y + s * 0.22);
+                doc.line(x + s, y + s * 0.22, cx, y);
+                break;
+            case "pin":
+                doc.circle(cx, y + s * 0.36, s * 0.32, "S");
+                doc.circle(cx, y + s * 0.36, s * 0.12, "F");
+                doc.line(x + s * 0.24, y + s * 0.6, cx, y + s);
+                doc.line(x + s * 0.76, y + s * 0.6, cx, y + s);
+                break;
+            case "mail":
+                doc.rect(x, y + s * 0.2, s, s * 0.6, "S");
+                doc.line(x, y + s * 0.2, cx, y + s * 0.56);
+                doc.line(x + s, y + s * 0.2, cx, y + s * 0.56);
+                break;
+            case "doc":
+                doc.line(x + s * 0.12, y, x + s * 0.68, y);
+                doc.line(x + s * 0.68, y, x + s * 0.9, y + s * 0.24);
+                doc.line(x + s * 0.9, y + s * 0.24, x + s * 0.9, y + s);
+                doc.line(x + s * 0.9, y + s, x + s * 0.12, y + s);
+                doc.line(x + s * 0.12, y + s, x + s * 0.12, y);
+                doc.line(x + s * 0.28, y + s * 0.52, x + s * 0.74, y + s * 0.52);
+                doc.line(x + s * 0.28, y + s * 0.74, x + s * 0.62, y + s * 0.74);
+                break;
+            case "box":
+                doc.rect(x, y + s * 0.28, s, s * 0.66, "S");
+                doc.line(x, y + s * 0.28, cx, y);
+                doc.line(x + s, y + s * 0.28, cx, y);
+                doc.line(cx, y, cx, y + s * 0.94);
+                break;
+            case "qr": {
+                const u = s / 5;
+                ([[0, 0], [3, 0], [0, 3]] as const).forEach(([gx, gy]) => {
+                    doc.rect(x + gx * u, y + gy * u, u * 2, u * 2, "S");
+                    doc.rect(x + gx * u + u * 0.6, y + gy * u + u * 0.6, u * 0.8, u * 0.8, "F");
+                });
+                ([[3, 3], [4.2, 3], [3, 4.2], [4.2, 4.2]] as const)
+                    .forEach(([gx, gy]) => doc.rect(x + gx * u, y + gy * u, u * 0.7, u * 0.7, "F"));
+                break;
+            }
+        }
+        doc.setLineWidth(0.2);
+    };
+
+    /* Icon + small-caps label + value: the unit every meta cell and footer line
+       in the design is built from, so they all align on the same grid. */
+    const iconLine = (
+        name: IconName, x: number, y: number, label: string, value: string | string[],
+        opts: { width?: number; labelSize?: number; valueSize?: number; valueBold?: boolean; maxLines?: number } = {},
+    ) => {
+        icon(name, x, y - 3.4, 4.2);
+        font("bold", opts.labelSize ?? 5.6); ink(MUTED);
+        doc.text(label.toUpperCase(), x + 6, y);
+        font(opts.valueBold === false ? "normal" : "bold", opts.valueSize ?? 7);
+        ink(INK);
+        const lines = Array.isArray(value)
+            ? value
+            : opts.width
+                ? (doc.splitTextToSize(value, opts.width) as string[]).slice(0, opts.maxLines ?? 2)
+                : [value];
+        doc.text(lines, x + 6, y + 4.2);
+        return lines.length;
+    };
+
+    const cardTitle = (x: number, y: number, text: string, align?: "center") => {
+        font("bold", 6.2);
+        ink(BLUE);
+        doc.text(text.toUpperCase(), x, y, align ? { align } : undefined);
+    };
+
     doc.setLineWidth(0.2);
 
-    let y = 12;
-
-    // â”€â”€ LOGO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const LOGO_W = 28;
-    const LOGO_H = 16;
-
-    try {
-        const logoImg = await loadImage(OMSONS_LOGO_URL);
-        doc.addImage(logoImg, "JPEG", ML, y, LOGO_W, LOGO_H);
-    } catch {
-        console.warn("Logo could not be loaded; skipping.");
-    }
-
-    // â”€â”€ HEADER â€” 8 mm gap between logo right edge and company name â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const infoX = ML + LOGO_W + 8;   // â† was +5
-
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("Omsons Glassware Pvt. Ltd.", infoX, y + 6);
-
-    doc.setFont("Helvetica", "normal");
-    doc.setFontSize(7.5);
-    [
-        "KHATA No. 278/364 AND 285/372 HADBAST No. 66 Khuda Kalan to Sapehra Road, P.O. Pilkhani,",
-        "Ambala, Haryana 133104, India",
-        "Email: info@omsonsglass.com  |  Phone: +91-1234567890",
-        "PAN: AAACO1234F  |  GSTIN: 06AAACO1234F1Z5  |  CIN: U12345HR2000PTC012345",
-    ].forEach((line, i) => doc.text(line, infoX, y + 11 + i * 4));
-
-    y += LOGO_H + 10;   // â† was +8; extra bottom room below header
-
-    // â”€â”€ SEPARATOR â€” consistent left/right margins â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    doc.setDrawColor(160, 160, 160);
-    doc.setLineWidth(0.4);
-    doc.line(ML, y, PW - MR, y);   // ML â€¦ PW-MR â€” same as all boxes
-    doc.setDrawColor(0, 0, 0);
-    doc.setLineWidth(0.2);
-    y += 6;
-
-    // â”€â”€ DOCUMENT TITLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(11);
-    const isApproved = (displayOrder as any).accept_order === "1" || Number(displayOrder.mtstatus ?? 0) >= 2 || String(displayOrder.mtstatus ?? "").toLowerCase().includes("completed");
+    // ── Document identity ────────────────────────────────────────────────────
+    const isApproved = (displayOrder as any).accept_order === "1"
+        || Number(displayOrder.mtstatus ?? 0) >= 2
+        || String(displayOrder.mtstatus ?? "").toLowerCase().includes("completed");
     const normalizedRole = String(options?.normalizedRole ?? "").trim().toLowerCase();
-    const documentTitle = normalizedRole === "staff" ? "SALES ORDER" : "PURCHASE ORDER";
-    const titleStr = isApproved ? "ORDER INVOICE" : documentTitle;
-    const titleW = doc.getTextWidth(titleStr);
-    const titleX = PW / 2;
-    doc.text(titleStr, titleX, y, { align: "center" });
-    doc.setLineWidth(0.35);
-    doc.line(titleX - titleW / 2, y + 0.8, titleX + titleW / 2, y + 0.8);
-    doc.setLineWidth(0.2);
-    y += 6;
+    const titleStr = isApproved
+        ? "ORDER INVOICE"
+        : normalizedRole === "staff" ? "SALES ORDER" : "PURCHASE ORDER";
+    const titleWords = titleStr.split(" ");
+    const titleTail = titleWords.pop() as string;
+    const titleHead = titleWords.join(" ");
+    const docNoLabel = isApproved ? "Invoice No." : "PO No.";
 
-    // â”€â”€ META TABLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const half = CW / 2;
-    const LBW = 32;
-    const VW = half - LBW;
-    const RH = 6;
-
-    const metaRows: [string, string, string, string][] = [
-        [isApproved ? "Invoice No" : "Purchase Order No", invNo,
-        isApproved ? "Invoice Date" : "PO Date", moment(displayOrder.order_date).format("DD-MM-YYYY")],
-        ["Order Date", moment(displayOrder.order_date).format("DD-MM-YYYY"),
-            "Order Time", moment(displayOrder.order_date).format("hh:mm A")],
-        ["Dealer", dealerSource.Dealer_Name || displayOrder.Dealer_Name || "â€”",
-            "Outstanding Date", displayOrder.outstandingDate ? moment(displayOrder.outstandingDate).format("DD-MM-YYYY") : "â€”"],
-    ];
-
-    metaRows.forEach(([l1, v1, l2, v2], i) => {
-        const ry = y + i * RH;
-        cell(doc, ML, ry, LBW, RH, l1, { bold: true });
-        cell(doc, ML + LBW, ry, VW, RH, v1);
-        cell(doc, ML + half, ry, LBW, RH, l2, { bold: true });
-        cell(doc, ML + half + LBW, ry, VW, RH, v2);
-    });
-
-    y += metaRows.length * RH + 5;
-
-    // â”€â”€ DEALER / SHIP-TO â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const SEC_HDR_H = 6;
-
-    const dealerLines: [string, string][] = [];
-    if (dealerSource.Dealer_Name) dealerLines.push(["Name", dealerSource.Dealer_Name]);
-    if (dealerSource.Dealer_Address) dealerLines.push(["Address", dealerSource.Dealer_Address]);
-    if (dealerSource.Dealer_City) dealerLines.push(["City", dealerSource.Dealer_City]);
-    if (dealerSource.gst) dealerLines.push(["GST No", dealerSource.gst]);
-    if (dealerSource.Dealer_Number) dealerLines.push(["Phone", dealerSource.Dealer_Number]);
-    if (dealerSource.Dealer_Email) dealerLines.push(["Email", dealerSource.Dealer_Email]);
-    if (dealerLines.length === 0 && displayOrder.Dealer_Name)
-        dealerLines.push(["Name", displayOrder.Dealer_Name]);
-
-    const ROW_STEP = 5.2;
-    const DEALER_BOD_H = Math.max(28, dealerLines.length * ROW_STEP + 10);
-    const LAB_W = 24;   // label column inside dealer boxes
-
-    cell(doc, ML, y, half, SEC_HDR_H, "Details of Dealer / Vendor", { bold: true });
-    cell(doc, ML + half, y, half, SEC_HDR_H, "Ship To Details", { bold: true });
-    y += SEC_HDR_H;
-
-    doc.rect(ML, y, half, DEALER_BOD_H);
-    doc.rect(ML + half, y, half, DEALER_BOD_H);
-
-    // Dealer rows â€” PAD from left, LAB_W for label column
-    dealerLines.forEach(([label, value], i) => {
-        const lineY = y + 7 + i * ROW_STEP;
-        doc.setFont("Helvetica", "bold"); doc.setFontSize(7.5);
-        doc.text(`${label} :`, ML + PAD, lineY);
-        doc.setFont("Helvetica", "normal");
-        const wrapped = doc.splitTextToSize(value, half - PAD - LAB_W - PAD);
-        doc.text(wrapped[0], ML + PAD + LAB_W, lineY);
-    });
-
-    // Ship To â€” same PAD / LAB_W convention
-    const shipAddr = dealerSource.Dealer_shipto
-        || "Omsons Glassware Pvt. Ltd., KHATA No. 278/364 AND 285/372 HADBAST No. 66, Ambala, Haryana 133104";
-
-    doc.setFont("Helvetica", "bold"); doc.setFontSize(7.5);
-    doc.text("Name :", ML + half + PAD, y + 7);
-    doc.text("Address :", ML + half + PAD, y + 13);
-    doc.setFont("Helvetica", "normal"); doc.setFontSize(7);
-    doc.text(dealerSource.Dealer_Name || displayOrder.Dealer_Name || "â€”", ML + half + PAD + LAB_W, y + 7);
-    const shipWrapped = doc.splitTextToSize(shipAddr, half - PAD - LAB_W - PAD);
-    doc.text(shipWrapped, ML + half + PAD + LAB_W, y + 13);
-
-    y += DEALER_BOD_H + 5;
-
-    // â”€â”€ ITEMS LABEL â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    doc.setFont("Helvetica", "bold");
-    doc.setFontSize(8.5);
-    doc.text("Items", ML, y);
-    y += 4;
-
-    // â”€â”€ ITEMS TABLE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    // Build item rows from fetched order items, or fall back to a single row
+    // ── Item rows ────────────────────────────────────────────────────────────
     const itemRows: any[][] = [];
-    let totalQty = 0;
-    let totalPieces = 0;
+    const rowMeta: Array<{ quantity: number; pieces: number; netAmount: number }> = [];
     const stagedRows: InvoiceDisplayRow[] = [];
 
     // Build pack lookup from products.json (public data)
@@ -681,9 +697,7 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
         if (resp.ok) {
             const plist = await resp.json();
             for (const p of plist) {
-                const desc = p.Description ?? p.Description ?? "";
-                const pmap = parsePackSizes(desc);
-                Object.assign(packLookup, pmap);
+                Object.assign(packLookup, parsePackSizes(p.Description ?? ""));
             }
         }
     } catch {
@@ -727,15 +741,14 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
             const isPriority = hasPriorityTag(item.priority, item.isPriority, item.is_priority, item.remark, item.remarks);
             const productName = String(item.product_name || "").trim();
             const catalogueNumber = resolveCatalogueNumber(itemAny);
+            // Cat. No. has its own column now, so it stays out of the description.
             const descriptionMeta = buildInvoiceDescriptionMeta({
                 productName,
-                catalogueNumber,
+                catalogueNumber: "",
                 productNote: String(item.productNote ?? ""),
                 isPriority,
             });
 
-            totalQty += qty;
-            totalPieces += pieces;
             stagedRows.push({
                 grossAmount: rowGross,
                 stagedDiscountAmount: rowDiscount,
@@ -747,6 +760,8 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
                 descriptionMainText: descriptionMeta.mainText,
                 descriptionNoteText: descriptionMeta.noteText,
                 productUnit: item.product_unit || "Pcs",
+                catNo: catalogueNumber || "-",
+                unitPrice: Number(itemAny.unitPrice) || (pieces > 0 ? rowGross / pieces : 0),
             });
         });
 
@@ -766,10 +781,11 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
         reconciled.rows.forEach((row, idx) => {
             const displayRow = stagedRows[idx];
             itemRows.push([
-                { content: String(idx + 1).padStart(2, "0"), styles: { halign: "center" } },
+                { content: String(idx + 1), styles: { halign: "center" } },
+                { content: displayRow.catNo, styles: { halign: "center" } },
                 {
                     content: row.description,
-                    styles: { halign: "left", textColor: [255, 255, 255] },
+                    styles: { halign: "left", textColor: WHITE },
                     customDescription: {
                         mainText: displayRow.descriptionMainText,
                         noteText: displayRow.descriptionNoteText,
@@ -779,32 +795,20 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
                 { content: `${row.quantity} x ${row.packSize}`, styles: { halign: "center" } },
                 { content: String(row.pieces), styles: { halign: "center" } },
                 { content: row.productUnit, styles: { halign: "center" } },
-                { content: fmt(row.grossAmount), styles: { halign: "right" } },
-                { content: fmt(row.discountAmount), styles: { halign: "right" } },
+                { content: fmt(displayRow.unitPrice), styles: { halign: "right" } },
+                { content: pctText(row.discountAmount, row.grossAmount), styles: { halign: "center" } },
                 { content: fmt(row.netAmount), styles: { halign: "right" } },
             ]);
+            rowMeta.push({ quantity: row.quantity, pieces: row.pieces, netAmount: row.netAmount });
         });
-
-        const totals = reconciled.totals;
-        itemRows.push([
-            { content: "Total", colSpan: 2, styles: { halign: "right", fontStyle: "bold" } },
-            { content: String(totalQty), styles: { halign: "center", fontStyle: "bold" } },
-            { content: "", styles: {} },
-            { content: String(totalPieces), styles: { halign: "center", fontStyle: "bold" } },
-            { content: "", styles: {} },
-            { content: fmt(totals.grossAmount), styles: { halign: "right", fontStyle: "bold" } },
-            { content: fmt(totals.discountAmount), styles: { halign: "right", fontStyle: "bold" } },
-            { content: fmt(totals.netAmount), styles: { halign: "right", fontStyle: "bold" } },
-        ]);
     } else {
         // Fallback: single row with whatever info we have
-        totalQty = Number(displayOrder.orderdata_item_quantity);
+        const totalQty = Number(displayOrder.orderdata_item_quantity);
         const fpack = Number(packLookup[(displayOrder as any).orderdata_cat_no] ?? 1) || 1;
         const fpieces = totalQty * fpack;
-        totalPieces = fpieces;
         const fallbackDescription = buildInvoiceDescriptionMeta({
             productName: String(displayOrder.product_name || "").trim(),
-            catalogueNumber: String((displayOrder as any).orderdata_cat_no || "").trim(),
+            catalogueNumber: "",
             productNote: String((displayOrder as any).productNote ?? ""),
             isPriority: hasPriorityTag(
                 (displayOrder as any).priority,
@@ -815,20 +819,22 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
             ),
         });
         itemRows.push([
-            { content: "01", styles: { halign: "center" } },
+            { content: "1", styles: { halign: "center" } },
+            { content: String((displayOrder as any).orderdata_cat_no || "-"), styles: { halign: "center" } },
             {
                 content: [fallbackDescription.mainText, fallbackDescription.noteText].filter(Boolean).join("\n"),
-                styles: { halign: "left", textColor: [255, 255, 255] },
+                styles: { halign: "left", textColor: WHITE },
                 customDescription: fallbackDescription,
             },
             { content: String(totalQty), styles: { halign: "center" } },
             { content: `${totalQty} x ${fpack}`, styles: { halign: "center" } },
             { content: String(fpieces), styles: { halign: "center" } },
             { content: "Pcs", styles: { halign: "center" } },
-            { content: fmt(gross), styles: { halign: "right" } },
-            { content: fmt(discount), styles: { halign: "right" } },
+            { content: fmt(fpieces > 0 ? gross / fpieces : gross), styles: { halign: "right" } },
+            { content: pctText(discount, gross), styles: { halign: "center" } },
             { content: fmt(net), styles: { halign: "right" } },
         ]);
+        rowMeta.push({ quantity: totalQty, pieces: fpieces, netAmount: net });
     }
 
     invoiceRemark = resolveInvoiceRemark({
@@ -841,72 +847,376 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
         discountBreakdown,
     });
 
-    // Totals row (now includes pieces)
-    if (orderItems.length === 0) {
-        itemRows.push([
-            { content: "Total", colSpan: 2, styles: { halign: "right", fontStyle: "bold" } },
-            { content: String(totalQty), styles: { halign: "center", fontStyle: "bold" } },
-            { content: "", styles: {} },
-            { content: String(totalPieces), styles: { halign: "center", fontStyle: "bold" } },
-            { content: "", styles: {} },
-            { content: fmt(gross), styles: { halign: "right", fontStyle: "bold" } },
-            { content: fmt(discount), styles: { halign: "right", fontStyle: "bold" } },
-            { content: fmt(net), styles: { halign: "right", fontStyle: "bold" } },
-        ]);
+    // ── Footer content (repeated identically on every page) ──────────────────
+    const wordsText = toWords(net);
+    const paymentTerms = dealerSource.creditdays ? `Net ${dealerSource.creditdays} days` : "Net 30 days";
+    const DISPATCH_FROM = "Ambala Warehouse";
+    const grandQuantity = rowMeta.reduce((sum, row) => sum + row.quantity, 0);
+    const grandPieces = rowMeta.reduce((sum, row) => sum + row.pieces, 0);
+    const settlementInfo = (displayOrder as any)?.settlement;
+    const settledPaid = Number(settlementInfo?.paidAmount ?? 0);
+
+    const summaryLines: Array<{ label: string; value: string; bold?: boolean }> =
+        getOrderDiscountSummaryRows(discountBreakdown, { net: "Net Amount" }).map((row) => ({
+            label: row.label,
+            value: `Rs. ${fmt(row.amount)}`,
+            bold: row.key === "net",
+        }));
+    if (settlementInfo && settledPaid > 0) {
+        const settledDue = Number(settlementInfo.dueAmount ?? Math.max(0, net - settledPaid));
+        summaryLines.push({ label: "Amount Paid", value: `Rs. ${fmt(settledPaid)}` });
+        summaryLines.push({
+            label: settledDue > 0 ? "Balance Due" : "Status",
+            value: settledDue > 0 ? `Rs. ${fmt(settledDue)}` : "Fully settled",
+        });
     }
 
+    const logoImg = await loadImage(OMSONS_LOGO_URL).catch(() => null);
+
+    const HEADER_H = 48;          // header band, repeated on every page
+    const FOOT_TOP = PH - 82;     // bottom card band, drawn in full on the last page
+    const TOTAL_PAGES = "{tp}";
+
+    const drawHeader = () => {
+        if (logoImg) doc.addImage(logoImg, "JPEG", ML, 9, 26, 15);
+
+        font("bold", 13.5); ink(INK);
+        doc.text("Omsons Glassware Pvt. Ltd.", ML + 30, 15);
+        const addressLines: Array<[IconName | null, string]> = [
+            ["pin", "KHATA No. 278/364 AND 285/372 HADBAST No. 66 Khuda Kalan to Sapehra Road,"],
+            [null, "P.O. Pilkhani, Ambala, Haryana 133104, India"],
+            ["mail", "Email: info@omsonsglass.com   |   Phone: +91-1234567890"],
+            ["doc", "PAN: AAACO1234F   |   GSTIN: 06AAACO1234F1Z5   |   CIN: U12345HR2000PTC012345"],
+        ];
+        addressLines.forEach(([glyph, line], i) => {
+            const ly = 20 + i * 3.6;
+            if (glyph) icon(glyph, ML + 30, ly - 2.4, 3);
+            font("normal", 6.2); ink(MUTED);
+            doc.text(line, ML + 34.5, ly);
+        });
+
+        font("bold", 15); ink(INK);
+        doc.text(titleHead, PW - MR, 16, { align: "right" });
+        ink(BLUE);
+        doc.text(titleTail, PW - MR, 24, { align: "right" });
+        stroke(BLUE); doc.setLineWidth(0.6);
+        doc.line(PW - MR - 44, 26.5, PW - MR, 26.5);
+
+        box(PW - MR - 46, 29, 46, 12, { fill: BLUE_TINT, border: BLUE, lw: 0.3 });
+        cardTitle(PW - MR - 23, 33.5, docNoLabel, "center");
+        font("bold", 9.5); ink(BLUE);
+        doc.text(invNo, PW - MR - 23, 38.5, { align: "center" });
+
+        stroke(BLUE); doc.setLineWidth(0.8);
+        doc.line(ML, 44, PW - MR, 44);
+        doc.setLineWidth(0.2);
+    };
+
+    /* Continuation pages pin the page total to the foot of the sheet so every
+       sheet ends on the same line; the last page tucks it straight under the
+       final row, where the summary picks up. */
+    const drawTotalBar = (
+        atY: number,
+        page: { quantity: number; pieces: number; netAmount: number },
+        isLastPage: boolean,
+    ) => {
+        if (!isLastPage) {
+            stroke(BORDER); doc.setLineWidth(0.3);
+            doc.setLineDashPattern([1, 1], 0);
+            doc.line(ML, atY + 3, PW - MR, atY + 3);
+            doc.setLineDashPattern([], 0);
+            const label = "More items on next page";
+            font("bold", 6);
+            const lw = doc.getTextWidth(label) + 6;
+            fill(WHITE);
+            doc.rect(PW / 2 - lw / 2, atY + 0.6, lw, 4.4, "F");
+            ink(BLUE);
+            doc.text(label, PW / 2, atY + 3.8, { align: "center" });
+        }
+        const barY = isLastPage ? atY + 2 : FOOT_TOP - 11;
+        box(ML, barY, CW, 8, { fill: BLUE_TINT, border: BORDER, r: 1 });
+        // Separators and figures sit on the item grid, not on eyeballed offsets.
+        stroke(BORDER); doc.setLineWidth(0.2);
+        [3, 4, 5, 9].forEach((col) => doc.line(colX(col), barY + 0.6, colX(col), barY + 7.4));
+        font("bold", 7); ink(BLUE);
+        doc.text(isLastPage ? "TOTAL" : "TOTAL (This Page)", colX(3) - 4, barY + 5.2, { align: "right" });
+        doc.text(String(page.quantity), colX(3) + COL_W[3] / 2, barY + 5.2, { align: "center" });
+        doc.text(String(page.pieces), colX(5) + COL_W[5] / 2, barY + 5.2, { align: "center" });
+        doc.text(fmt(page.netAmount), PW - MR - 2, barY + 5.2, { align: "right" });
+    };
+
+    const drawPageFoot = (pageNumber: number, isLastPage: boolean) => {
+        font("normal", 5.8); ink(MUTED);
+        doc.text(`Page ${pageNumber} of ${TOTAL_PAGES}`, PW / 2, PH - 12, { align: "center" });
+        font("italic", 5.5);
+        doc.text("Powered by Teemers ERP", ML, PH - 12);
+        if (!isLastPage) {
+            const label = `Continued on Page ${pageNumber + 1}`;
+            font("bold", 6);
+            const w = doc.getTextWidth(label) + 10;
+            box(PW - MR - w, PH - 17, w, 6.5, { fill: BLUE, r: 1 });
+            ink(WHITE);
+            doc.text(label, PW - MR - w / 2, PH - 12.7, { align: "center" });
+        }
+        fill(BLUE_TINT); doc.rect(0, PH - 9, PW, 3, "F");
+        fill(BLUE); doc.rect(0, PH - 6, PW, 6, "F");
+        doc.setLineWidth(0.2);
+    };
+
+    /* Footer band, four cards on the item grid. Continuation pages lead with
+       the words / payment pair; the last page swaps that column for the money
+       summary, exactly as the printed design does. */
+    const drawBottomBand = (pageNumber: number, isLastPage: boolean) => {
+        const y = FOOT_TOP;
+        const CARD_H = 38;
+        const c1 = { x: ML, w: 58 };
+        const c2 = { x: ML + 60, w: 44 };
+        const c3 = { x: ML + 106, w: 52 };
+        const c4 = { x: ML + 160, w: 30 };
+
+        if (isLastPage) {
+            box(c1.x, y, c1.w, CARD_H, { fill: PANEL, border: BORDER });
+            cardTitle(c1.x + PAD, y + 5, "Order Summary");
+            const rows = [
+                { label: "Total Quantity", value: String(grandQuantity) },
+                { label: "Total Pieces", value: String(grandPieces) },
+                ...summaryLines,
+            ];
+            const step = Math.min(4.6, (CARD_H - 10) / Math.max(1, rows.length));
+            rows.forEach((line, i) => {
+                const ly = y + 9 + i * step + step * 0.62;
+                if (line.bold) box(c1.x + 1, ly - step * 0.72, c1.w - 2, step, { fill: BLUE_TINT, r: 0.8 });
+                font(line.bold ? "bold" : "normal", line.bold ? 7 : 5.8);
+                ink(line.bold ? BLUE : MUTED);
+                doc.text(line.label, c1.x + PAD, ly);
+                ink(line.bold ? BLUE : INK);
+                doc.text(line.value, c1.x + c1.w - PAD, ly, { align: "right" });
+            });
+        } else {
+            box(c1.x, y, c1.w, 20, { fill: BLUE_TINT, border: BORDER });
+            iconLine("rupee", c1.x + PAD, y + 5, "Amount in Words", wordsText,
+                { labelSize: 5.6, valueSize: 6, valueBold: false, width: c1.w - PAD - 8, maxLines: 3 });
+
+            box(c1.x, y + 22, c1.w, CARD_H - 22, { fill: PANEL, border: BORDER });
+            iconLine("card", c1.x + PAD, y + 27, "Payment Terms", paymentTerms,
+                { labelSize: 5.6, valueSize: 6, valueBold: false });
+        }
+
+        box(c2.x, y, c2.w, CARD_H, { fill: PANEL, border: BORDER });
+        cardTitle(c2.x + PAD, y + 5, "Other Details");
+        const details: Array<[IconName, string, string | string[]]> = [
+            ["box", "Dispatch From", DISPATCH_FROM],
+            ["truck", "Delivery Terms", "As Disclosed"],
+            ["card", "Payment Terms", paymentTerms],
+        ];
+        if (isLastPage) details.unshift(["rupee", "Amount in Words", wordsText]);
+        // Four entries have to fit inside CARD_H, so the step is measured, not guessed.
+        else if (invoiceRemark && invoiceRemark !== "N/A") details.push(["doc", "Remarks", invoiceRemark]);
+        let dy = y + 9.5;
+        details.forEach(([glyph, label, value]) => {
+            const lines = iconLine(glyph, c2.x + PAD, dy, label, value,
+                { labelSize: 5.4, valueSize: 6, valueBold: false, width: c2.w - PAD - 8, maxLines: 2 });
+            dy += 3.4 + lines * 2.6;
+        });
+
+        box(c3.x, y, c3.w, CARD_H, { fill: PANEL, border: BORDER });
+        icon("shield", c3.x + PAD, y + 1.6, 3.6);
+        cardTitle(c3.x + PAD + 5, y + 5, "Terms & Conditions");
+        font("normal", 5.2); ink(MUTED);
+        let ty = y + 10;
+        tcLines().forEach((t, i) => {
+            const lines = doc.splitTextToSize(`${i + 1}. ${t}`, c3.w - PAD * 2) as string[];
+            doc.text(lines, c3.x + PAD, ty);
+            ty += lines.length * 2.6;
+        });
+
+        // ponytail: the code is drawn, not encoded - a real QR needs a Reed-Solomon
+        // encoder (`qrcode` dep). The PO number below it stays the readable token.
+        box(c4.x, y, c4.w, CARD_H, { fill: BLUE_TINT, border: BORDER });
+        cardTitle(c4.x + c4.w / 2, y + 5, "Scan to Verify", "center");
+        box(c4.x + c4.w / 2 - 9, y + 7.5, 18, 18, { fill: WHITE, border: BLUE, lw: 0.3, r: 1 });
+        icon("qr", c4.x + c4.w / 2 - 6, y + 10.5, 12);
+        cardTitle(c4.x + c4.w / 2, y + 30, docNoLabel, "center");
+        font("bold", 6.5); ink(BLUE);
+        doc.text(invNo, c4.x + c4.w / 2, y + 34, { align: "center" });
+
+        // Signature row, stamp centred between the two signatories.
+        const sy = y + CARD_H + 9;
+        font("bold", 6.5); ink(INK);
+        doc.text("Checked By", ML + 6, sy);
+        stroke(BORDER); doc.setLineWidth(0.3);
+        doc.line(ML + 6, sy + 6, ML + 60, sy + 6);
+        font("normal", 5.8); ink(MUTED);
+        doc.text("Signature & Date", ML + 6, sy + 9.5);
+
+        stroke(BLUE); doc.setLineWidth(0.5);
+        doc.circle(PW / 2, sy + 3, 9, "S");
+        doc.circle(PW / 2, sy + 3, 7.2, "S");
+        font("bold", 4.4); ink(BLUE);
+        doc.text("OMSONS GLASSWARE", PW / 2, sy + 1.4, { align: "center" });
+        doc.text("PVT. LTD.", PW / 2, sy + 6.4, { align: "center" });
+        icon("box", PW / 2 - 1.8, sy + 2, 3.6);
+
+        font("bold", 6.5); ink(BLUE);
+        doc.text("For Omsons Glassware Pvt. Ltd.", PW - MR - 6, sy, { align: "right" });
+        stroke(BORDER); doc.setLineWidth(0.3);
+        doc.line(PW - MR - 60, sy + 6, PW - MR - 6, sy + 6);
+        font("normal", 5.8); ink(MUTED);
+        doc.text("Authorized Signatory", PW - MR - 6, sy + 9.5, { align: "right" });
+
+        drawPageFoot(pageNumber, isLastPage);
+    };
+
+    // ── Page 1: meta strip, dealer panels, items label ───────────────────────
+    const META_Y = HEADER_H + 2;
+    const metaCols: [string, string, IconName][] = [
+        ["Order Date", moment(displayOrder.order_date).format("DD-MM-YYYY"), "calendar"],
+        [isApproved ? "Invoice Date" : "PO Date", moment(displayOrder.order_date).format("DD-MM-YYYY"), "calendar"],
+        ["Order Time", moment(displayOrder.order_date).format("hh:mm A"), "clock"],
+        ["Dealer", dealerSource.Dealer_Name || displayOrder.Dealer_Name || "-", "user"],
+        ["Outstanding Date", displayOrder.outstandingDate ? moment(displayOrder.outstandingDate).format("DD-MM-YYYY") : "-", "calendarCheck"],
+    ];
+    box(ML, META_Y, CW, 15, { fill: WHITE, border: BORDER });
+    const metaW = CW / metaCols.length;
+    metaCols.forEach(([label, value, glyph], i) => {
+        const cx = ML + i * metaW;
+        if (i > 0) {
+            stroke(BORDER); doc.setLineWidth(0.2);
+            doc.line(cx, META_Y + 3, cx, META_Y + 12);
+        }
+        iconLine(glyph, cx + PAD, META_Y + 6.2, label, value, { width: metaW - PAD - 7, valueSize: 7, maxLines: 2 });
+    });
+
+    // Dealer / ship-to panels
+    const panelY = META_Y + 19;
+    const half = (CW - 4) / 2;
+    const dealerLines: [string, string][] = [];
+    if (dealerSource.Dealer_Name) dealerLines.push(["Name", dealerSource.Dealer_Name]);
+    if (dealerSource.Dealer_Address) dealerLines.push(["Address", dealerSource.Dealer_Address]);
+    if (dealerSource.Dealer_City) dealerLines.push(["City", dealerSource.Dealer_City]);
+    if (dealerSource.gst) dealerLines.push(["GST No.", dealerSource.gst]);
+    if (dealerSource.Dealer_Number) dealerLines.push(["Phone", dealerSource.Dealer_Number]);
+    if (dealerSource.Dealer_Email) dealerLines.push(["Email", dealerSource.Dealer_Email]);
+    if (dealerLines.length === 0 && displayOrder.Dealer_Name)
+        dealerLines.push(["Name", displayOrder.Dealer_Name]);
+
+    const shipAddr = dealerSource.Dealer_shipto
+        || "Omsons Glassware Pvt. Ltd., KHATA No. 278/364 AND 285/372 HADBAST No. 66, Ambala, Haryana 133104";
+    const LAB_W = 20;
+    const ROW_STEP = 5;
+    const wrapValue = (text: string) => doc.splitTextToSize(text, half - PAD * 2 - LAB_W) as string[];
+    const dealerRowCount = dealerLines.reduce(
+        (sum, [, value]) => sum + Math.min(3, wrapValue(value).length), 0
+    );
+    const shipRowCount = 1 + Math.min(3, wrapValue(shipAddr).length);
+    const bodyH = Math.max(30, Math.max(dealerRowCount, shipRowCount) * ROW_STEP + 8);
+
+    // Label, colon and value each keep their own column so the two panels read
+    // as one grid instead of drifting with label length.
+    const panel = (x: number, title: string, glyph: IconName, rows: [string, string][]) => {
+        box(x, panelY, Math.min(64, half), 7, { fill: BLUE, r: 1.5 });
+        icon(glyph, x + 3.5, panelY + 1.6, 3.6, WHITE);
+        font("bold", 6.6); ink(WHITE);
+        doc.text(title.toUpperCase(), x + 9, panelY + 4.7);
+        box(x, panelY + 7, half, bodyH, { fill: PANEL, border: BORDER });
+        let ry = panelY + 12.5;
+        rows.forEach(([label, value]) => {
+            font("bold", 6.4); ink(MUTED);
+            doc.text(label, x + PAD + 1, ry);
+            doc.text(":", x + PAD + LAB_W - 4, ry);
+            font("normal", 6.8); ink(INK);
+            const wrapped = wrapValue(value).slice(0, 3);
+            doc.text(wrapped, x + PAD + LAB_W, ry);
+            ry += Math.max(1, wrapped.length) * ROW_STEP;
+        });
+    };
+
+    panel(ML, "Supplier / Dealer Details", "users", dealerLines);
+    panel(ML + half + 4, "Ship To Details", "truck", [
+        ["Name", dealerSource.Dealer_Name || displayOrder.Dealer_Name || "-"],
+        ["Address", shipAddr],
+    ]);
+
+    const itemsY = panelY + 7 + bodyH + 7;
+    icon("clipboard", ML, itemsY - 4.4, 4.6);
+    font("bold", 8.5); ink(BLUE);
+    doc.text("ITEMS", ML + 6.5, itemsY);
+    stroke(BLUE); doc.setLineWidth(0.4);
+    doc.line(ML + 21, itemsY - 1.2, PW - MR, itemsY - 1.2);
+    doc.setLineWidth(0.2);
+
+    // ── Items table ──────────────────────────────────────────────────────────
+    const pageTotals = new Map<number, { quantity: number; pieces: number; netAmount: number }>();
+    let drawnRows = 0;
+
     autoTable(doc, {
-        startY: y,
+        startY: itemsY + 3,
+        margin: { left: ML, right: MR, top: HEADER_H + 2, bottom: 94 },
+        rowPageBreak: "avoid",
         head: [[
-            { content: "Sr\nNo", styles: { halign: "center", cellWidth: 9 } },
-            { content: "Description", styles: { halign: "left", cellWidth: "auto" as const } },
-            { content: "Qty", styles: { halign: "center", cellWidth: 12 } },
-            { content: "Pack\nSize", styles: { halign: "center", cellWidth: 17 } },
-            { content: "Pieces", styles: { halign: "center", cellWidth: 13 } },
-            { content: "UOM", styles: { halign: "center", cellWidth: 11 } },
-            { content: "Gross Amt\n(Rs.)", styles: { halign: "right", cellWidth: 23 } },
-            { content: "Discount\n(Rs.)", styles: { halign: "right", cellWidth: 21 } },
-            { content: "Net Amt\n(Rs.)", styles: { halign: "right", cellWidth: 21 } },
+            { content: "Sr.\nNo.", styles: { halign: "center" } },
+            { content: "Cat.\nNo.", styles: { halign: "center" } },
+            { content: "Product Description", styles: { halign: "left" } },
+            { content: "Qty", styles: { halign: "center" } },
+            { content: "Pack\nSize", styles: { halign: "center" } },
+            { content: "Pieces", styles: { halign: "center" } },
+            { content: "UOM", styles: { halign: "center" } },
+            { content: "Unit Price\n(Rs.)", styles: { halign: "right" } },
+            { content: "Discount\n(%)", styles: { halign: "center" } },
+            { content: "Net Amount\n(Rs.)", styles: { halign: "right" } },
         ]],
         body: itemRows,
-        margin: { left: ML, right: MR },
         styles: {
-            font: "Helvetica", fontSize: 8,
-            cellPadding: { top: 3, right: 2.5, bottom: 3, left: 2.5 },
-            textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.2,
-            fillColor: [255, 255, 255], overflow: "linebreak",
+            font: "Helvetica", fontSize: 7,
+            cellPadding: { top: 2.4, right: 2, bottom: 2.4, left: 2 },
+            textColor: INK, lineColor: BORDER, lineWidth: 0.15,
+            fillColor: WHITE, overflow: "linebreak", valign: "middle",
         },
         headStyles: {
-            fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: "bold",
-            lineColor: [0, 0, 0], lineWidth: 0.2, valign: "middle", minCellHeight: 10,
+            fillColor: BLUE, textColor: WHITE, fontStyle: "bold", fontSize: 6.2,
+            lineColor: BLUE, lineWidth: 0.15, valign: "middle", minCellHeight: 9,
         },
-        alternateRowStyles: { fillColor: [255, 255, 255] },
+        alternateRowStyles: { fillColor: WHITE },
+        columnStyles: Object.fromEntries(COL_W.map((w, i) => [i, { cellWidth: w }])),
         didDrawCell: (data) => {
+            if (data.section !== "body") return;
+
+            if (data.column.index === 0) {
+                const meta = rowMeta[data.row.index];
+                const acc = pageTotals.get(data.pageNumber) ?? { quantity: 0, pieces: 0, netAmount: 0 };
+                if (meta) {
+                    acc.quantity += meta.quantity;
+                    acc.pieces += meta.pieces;
+                    acc.netAmount += meta.netAmount;
+                }
+                pageTotals.set(data.pageNumber, acc);
+                drawnRows += 1;
+            }
+
             const rawCell = data.cell.raw as { customDescription?: InvoiceDescriptionMeta } | undefined;
             const descriptionMeta = rawCell?.customDescription;
-
-            if (data.section !== "body" || data.column.index !== 1 || !descriptionMeta) {
-                return;
-            }
+            if (data.column.index !== 2 || !descriptionMeta) return;
 
             const availableWidth = data.cell.width - data.cell.padding("left") - data.cell.padding("right");
             const mainLines = doc.splitTextToSize(descriptionMeta.mainText, availableWidth) as string[];
             const noteLines = descriptionMeta.noteText
                 ? doc.splitTextToSize(descriptionMeta.noteText, availableWidth) as string[]
                 : [];
-            const lineHeight = ((data.cell.styles.fontSize ?? 8) * 0.352778) * 1.15;
-            let cursorY = data.cell.y + data.cell.padding("top") + ((data.cell.styles.fontSize ?? 8) * 0.352778);
+            const fontSize = data.cell.styles.fontSize ?? 7;
+            const lineHeight = (fontSize * 0.352778) * 1.15;
+            let cursorY = data.cell.y + data.cell.padding("top") + (fontSize * 0.352778);
             const textX = data.cell.x + data.cell.padding("left");
 
-            doc.setTextColor(0, 0, 0);
+            doc.setFontSize(fontSize);
             doc.setFont("Helvetica", "normal");
+            ink(INK);
             mainLines.forEach((line) => {
                 doc.text(line, textX, cursorY);
                 cursorY += lineHeight;
             });
-
             if (noteLines.length > 0) {
-                doc.setFont("Helvetica", "italic");
+                doc.setFont("Helvetica", "bolditalic");
+                ink(BLUE);
                 noteLines.forEach((line) => {
                     doc.text(line, textX, cursorY);
                     cursorY += lineHeight;
@@ -914,150 +1224,18 @@ export async function generateOrderInvoicePDF(order: OrderInvoiceData, options?:
                 doc.setFont("Helvetica", "normal");
             }
         },
+        didDrawPage: (data) => {
+            drawHeader();
+            const totals = pageTotals.get(data.pageNumber) ?? { quantity: 0, pieces: 0, netAmount: 0 };
+            const isLastPage = drawnRows >= rowMeta.length;
+            drawTotalBar(data.cursor?.y ?? FOOT_TOP - 12, totals, isLastPage);
+            drawBottomBand(data.pageNumber, isLastPage);
+        },
     });
 
-    y = (doc as any).lastAutoTable.finalY + 3;
-
-    // â”€â”€ REMARKS + T&C (left) | SUMMARY (right) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const SUM_W = 78;
-    const LEFT_W = CW - SUM_W;
-
-    const remarkTextWidth = LEFT_W - PAD * 2 - 4;
-    const allRemarkLines = doc.splitTextToSize(
-        invoiceRemark || "N/A",
-        remarkTextWidth
-    ) as string[];
-
-    // Prevent unusually long notes from breaking the invoice layout.
-    const remarkLines = allRemarkLines.slice(0, 6);
-
-    if (allRemarkLines.length > 6) {
-        remarkLines[5] = `${remarkLines[5]}...`;
+    if (typeof (doc as any).putTotalPages === "function") {
+        (doc as any).putTotalPages(TOTAL_PAGES);
     }
-
-    const REM_H = Math.max(
-        22,
-        PAD * 2 + 8 + remarkLines.length * 4
-    );
-    // T&C height: PAD top + header line + gap + lines + PAD bottom
-    const TC_LINE_H = 4;
-    const TC_H = PAD + 5 + 3 + tcLines().length * TC_LINE_H + PAD;
-    const TOTAL_L_H = REM_H + TC_H;
-
-    // Remarks
-    doc.rect(ML, y, LEFT_W, REM_H);
-    doc.setFont("Helvetica", "bold"); doc.setFontSize(8);
-    doc.text("Remarks", ML + PAD, y + PAD + 2);
-    doc.rect(ML + PAD, y + PAD + 4, LEFT_W - PAD * 2, REM_H - PAD * 2 - 4);
-    doc.setFont("Helvetica", "normal"); doc.setFontSize(7.5);
-    doc.text(
-        remarkLines,
-        ML + PAD + 2,
-        y + PAD + 8
-    );
-    // T&C â€” all four sides use PAD
-    const tcY = y + REM_H;
-    doc.rect(ML, tcY, LEFT_W, TC_H);
-    doc.setFont("Helvetica", "bold"); doc.setFontSize(8);
-    doc.text("Terms & Conditions", ML + PAD, tcY + PAD + 3);
-    doc.setFont("Helvetica", "normal"); doc.setFontSize(7.5);
-    tcLines().forEach((t, i) =>
-        doc.text(
-            `${i + 1}. ${t}`,
-            ML + PAD,                                       // â† left = PAD
-            tcY + PAD + 3 + 4 + i * TC_LINE_H              // â† top = PAD
-        )
-    );
-
-    // Summary
-    const sx = ML + LEFT_W;
-    const ROW_H = 6;
-    const sumItems = getOrderDiscountSummaryRows(discountBreakdown, { net: "Net Amount" }).map((row) => ({
-        label: row.label,
-        value: fmt(row.amount),
-        bold: row.key === "net",
-    }));
-    doc.rect(sx, y, SUM_W, TOTAL_L_H);
-    doc.setFont("Helvetica", "bold"); doc.setFontSize(8.5);
-    doc.text("Summary", sx + PAD, y + 6);
-    const LW = SUM_W * 0.55;
-    const VW2 = SUM_W - LW;
-    let sy = y + 10;
-    sumItems.forEach(item => {
-        doc.rect(sx, sy, LW, ROW_H);
-        doc.rect(sx + LW, sy, VW2, ROW_H);
-        doc.setFont("Helvetica", item.bold ? "bold" : "normal"); doc.setFontSize(7.5);
-        doc.text(item.label, sx + PAD, sy + ROW_H * 0.63);
-        doc.text(`Rs. ${item.value}`, sx + SUM_W - PAD, sy + ROW_H * 0.63, { align: "right" });
-        sy += ROW_H;
-    });
-
-    y += TOTAL_L_H;
-
-    // â”€â”€ AMOUNT IN WORDS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    const FRH = 6;
-    doc.rect(ML, y, CW, FRH);
-    doc.setFont("Helvetica", "bold"); doc.setFontSize(7.5);
-    doc.text("Amount in Words:", ML + PAD, y + FRH * 0.63);
-    doc.setFont("Helvetica", "normal");
-    const wordsText = toWords(net);
-    const wrappedWords = doc.splitTextToSize(wordsText, CW - 40);
-    doc.text(wrappedWords[0], ML + 36, y + FRH * 0.63);
-    y += FRH;
-
-    // SETTLEMENT: shown only when the Accountant has settled against this order,
-    // so an unsettled invoice renders exactly as before.
-    const settlementInfo = (displayOrder as any)?.settlement;
-    const settledPaid = Number(settlementInfo?.paidAmount ?? 0);
-    if (settlementInfo && settledPaid > 0) {
-        const settledDue = Number(settlementInfo.dueAmount ?? Math.max(0, net - settledPaid));
-        doc.rect(ML, y, CW, FRH);
-        doc.setFont("Helvetica", "bold"); doc.setFontSize(7.5);
-        doc.text("Amount Paid:", ML + PAD, y + FRH * 0.63);
-        doc.setFont("Helvetica", "normal");
-        doc.text(fmt(settledPaid), ML + 32, y + FRH * 0.63);
-        doc.setFont("Helvetica", "bold");
-        doc.text(settledDue > 0 ? "Balance Due:" : "Status:", ML + CW / 2, y + FRH * 0.63);
-        doc.setFont("Helvetica", "normal");
-        doc.text(
-            settledDue > 0 ? fmt(settledDue) : "Fully settled",
-            ML + CW / 2 + 26,
-            y + FRH * 0.63,
-        );
-        y += FRH;
-    }
-
-    // ââ PAYMENT TERMS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    doc.rect(ML, y, CW, FRH);
-    doc.setFont("Helvetica", "bold"); doc.setFontSize(7.5);
-    doc.text("Payment Terms:", ML + PAD, y + FRH * 0.63);
-    doc.setFont("Helvetica", "normal");
-    const pt = dealerSource.creditdays ? `Net ${dealerSource.creditdays} days` : "Net 30";
-    doc.text(pt, ML + 32, y + FRH * 0.63);
-    y += FRH + 14;
-
-    // â”€â”€ SIGNATURES â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    doc.setFont("Helvetica", "normal"); doc.setFontSize(7.5);
-    doc.text("Checked By", ML, y);
-    doc.setLineWidth(0.3);
-    doc.line(ML, y + 8, ML + 50, y + 8);
-    doc.setLineWidth(0.2);
-    doc.text("Signature & Date", ML, y + 12);
-
-    const PW_R = PW - MR;
-    doc.setFont("Helvetica", "bold");
-    doc.text("For Omsons Glassware Pvt. Ltd.", PW_R, y, { align: "right" });
-    doc.setFont("Helvetica", "normal");
-    doc.text("Authorized Signatory", PW_R, y + 14, { align: "right" });
-    y += 22;
-
-    // â”€â”€ PAGE FOOTER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-    doc.setFont("Helvetica", "normal"); doc.setFontSize(7);
-    doc.setTextColor(100, 100, 100);
-    doc.text("Page 1 of 1", PW_R, y, { align: "right" });
-    doc.setFont("Helvetica", "italic");
-    doc.text("Powered by Teemers ERP", PW_R, y + 4, { align: "right" });
-    doc.setTextColor(0, 0, 0);
 
     return doc.output("blob");
 }

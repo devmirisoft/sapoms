@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import moment from "moment";
 import * as XLSX from "xlsx";
+import { SegmentedTabs } from "@/components/SegmentedTabs";
 import { hasPriorityTag } from "@/lib/orderPriority";
 import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
 import { downloadOrderInvoice, type OrderInvoiceData } from "@/lib/invoicegenerator";
@@ -200,6 +201,16 @@ type OrderDispatchAccessMeta = {
 type OrderDispatchAccessState = {
   key: string;
   meta: OrderDispatchAccessMeta | null;
+};
+
+type OrderRevision = {
+  previousOrderNumber?: string;
+  previousOrderId?: string;
+  rejectedByName?: string;
+  rejectionNote?: string;
+  rejectedAt?: string | null;
+  submittedAt?: string;
+  changes?: Array<{ type?: string; catNo?: string; summary?: string }>;
 };
 
 type EffectiveOrderOverlayState = {
@@ -591,24 +602,32 @@ type ViewMode = "table" | "cards";
 
 function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
   return (
-    <div className="flex items-center bg-gray-100 rounded-xl p-1 gap-1">
-      {(["table", "cards"] as ViewMode[]).map(m => (
-        <button key={m} onClick={() => onChange(m)}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold transition-all ${mode === m ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"}`}>
-          {m === "table" ? (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18" />
-            </svg>
-          ) : (
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-              <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
-            </svg>
-          )}
-          {m === "table" ? "List" : "Cards"}
-        </button>
-      ))}
-    </div>
+    <SegmentedTabs
+      label="Result view"
+      value={mode}
+      onChange={(next) => onChange(next as ViewMode)}
+      items={[
+        {
+          value: "table",
+          label: "List",
+          icon: (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18" />
+                    </svg>
+                  ),
+        },
+        {
+          value: "cards",
+          label: "Cards",
+          icon: (
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                      <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+                    </svg>
+                  ),
+        },
+      ]}
+    />
   );
 }
 
@@ -788,13 +807,14 @@ function EditOrderDialog({
   const [reviewing, setReviewing] = useState(false);
   const [requestNote, setRequestNote] = useState("");
   const visibleItems = draftItems.filter((item) => !(item as Record<string, unknown>)._removed);
+  const invalidQuantity = visibleItems.some((item) => !(Number(item.orderdata_item_quantity) > 0));
   const changeSummaries = draftItems.flatMap((item) => {
     const original = items.find((entry) => entry.orderdata_id === item.originalLineId);
     if (!original) return [];
     if ((item as Record<string, unknown>)._removed) return [`Removed: ${original.product_name || original.orderdata_cat_no}`];
     const changes: string[] = [];
-    if (String(original.orderdata_cat_no) !== String(item.orderdata_cat_no)) changes.push(`Replaced ${original.orderdata_cat_no} with ${item.orderdata_cat_no}`);
-    if (String(original.orderdata_item_quantity) !== String(item.orderdata_item_quantity)) changes.push(`Quantity ${original.orderdata_item_quantity} to ${item.orderdata_item_quantity} for ${item.product_name || item.orderdata_cat_no}`);
+    if (String(original.orderdata_cat_no ?? "").trim().toLowerCase() !== String(item.orderdata_cat_no ?? "").trim().toLowerCase()) changes.push(`Replaced ${original.orderdata_cat_no} with ${item.orderdata_cat_no}`);
+    if (Number(original.orderdata_item_quantity) !== Number(item.orderdata_item_quantity)) changes.push(`Quantity ${original.orderdata_item_quantity} to ${item.orderdata_item_quantity} for ${item.product_name || item.orderdata_cat_no}`);
     return changes;
   });
 
@@ -867,13 +887,14 @@ function EditOrderDialog({
           </label>
         )}
         {visibleItems.length === 0 && <p className="mt-3 text-sm font-medium text-red-600">An edited order cannot be saved with no items. Use Cancel Order instead.</p>}
+        {visibleItems.length > 0 && invalidQuantity && <p className="mt-3 text-sm font-medium text-red-600">Every remaining item needs a quantity greater than zero.</p>}
         {error && <p className="mt-3 text-sm font-medium text-red-600">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
           {reviewing && <button type="button" onClick={() => setReviewing(false)} disabled={saving} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700">Back</button>}
           {!reviewing ? (
-            <button type="button" onClick={() => setReviewing(true)} disabled={saving || visibleItems.length === 0} className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Review Changes</button>
+            <button type="button" onClick={() => setReviewing(true)} disabled={saving || visibleItems.length === 0 || invalidQuantity} className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Review Changes</button>
           ) : (
-            <button type="button" disabled={saving || visibleItems.length === 0 || changeSummaries.length === 0 || (requestMode && !requestNote.trim())} onClick={() => onSave({ expectedRevision: latestRevision, items: visibleItems, note: requestNote })} className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            <button type="button" disabled={saving || visibleItems.length === 0 || invalidQuantity || changeSummaries.length === 0 || (requestMode && !requestNote.trim())} onClick={() => onSave({ expectedRevision: latestRevision, items: visibleItems, note: requestNote })} className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
               {saving ? (requestMode ? "Sending..." : "Saving...") : (requestMode ? "Request Edit" : "Save Edit")}
             </button>
           )}
@@ -926,12 +947,21 @@ export default function ViewOrderDealerPage() {
   const [invoiceToast, setInvoiceToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [overlayState, setOverlayState] = useState<EffectiveOrderOverlayState | null>(null);
   const [overlayItems, setOverlayItems] = useState<OrderData[] | null>(null);
+  // Revisions of a previously disapproved order: what the dealer changed before
+  // sending it back for approval.
+  const [orderRevisions, setOrderRevisions] = useState<OrderRevision[]>([]);
   const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
   const [cancelSaving, setCancelSaving] = useState(false);
   const [cancelError, setCancelError] = useState("");
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
+  // RSM approval lives here (moved out of the order-management row menu).
+  const [isRsm, setIsRsm] = useState(false);
+  const [rsmSaving, setRsmSaving] = useState(false);
+  const [rsmDeclineOpen, setRsmDeclineOpen] = useState(false);
+  const [rsmDeclineNote, setRsmDeclineNote] = useState("");
+  const [reloadKey, setReloadKey] = useState(0);
   const dealer = useMemo<DealerInfo | null>(() => {
     if (typeof window === "undefined") return null;
     try {
@@ -1011,6 +1041,11 @@ export default function ViewOrderDealerPage() {
         setOverlayTotals(null);
         setOverlayItems(null);
         setOverlayState({ isCancelled: String(json.data.status ?? "") === "CANCELLED", isEdited: false, latestRevision: 0, acceptance: null });
+        setOrderRevisions(
+          (Array.isArray(json.data.overlays) ? json.data.overlays : [])
+            .filter((overlay: { type?: string }) => overlay?.type === "revision")
+            .map((overlay: { metadata?: OrderRevision }) => (overlay.metadata ?? {}) as OrderRevision)
+        );
         setDispatchRecords(Array.isArray(json.data.dispatchRecords) ? json.data.dispatchRecords : []);
         setDispatchRecordsLoaded(true);
         setDispatchRecordsOrderId(id);
@@ -1049,7 +1084,7 @@ export default function ViewOrderDealerPage() {
     return () => {
       cancelled = true;
     };
-  }, [currentUser, id]);
+  }, [currentUser, id, reloadKey]);
 
   useEffect(() => {
     if (!orderAccessVerified || isPostgresDetail || !id || !orderAccessKey || !currentUser) return;
@@ -1082,7 +1117,7 @@ export default function ViewOrderDealerPage() {
   }, [currentUser, id, orderAccessDealerId, orderAccessKey, isPostgresDetail, orderAccessVerified]);
 
   useEffect(() => {
-    if (!orderAccessVerified || isPostgresDetail || !id) return;
+    if (!orderAccessVerified || !isPostgresDetail || !id) return;
 
     let cancelled = false;
     fetch(`/api/order-overlays/${encodeURIComponent(id)}`, {
@@ -1129,7 +1164,7 @@ export default function ViewOrderDealerPage() {
     return () => {
       cancelled = true;
     };
-  }, [currentUser, id, isPostgresDetail, orderAccessVerified]);
+  }, [currentUser, id, isPostgresDetail, orderAccessVerified, reloadKey]);
 
   useEffect(() => {
     if (!orderAccessVerified || isPostgresDetail || !id) return;
@@ -1624,6 +1659,50 @@ export default function ViewOrderDealerPage() {
     }
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => {
+        if (!cancelled) setIsRsm(String(json?.data?.role ?? "").toLowerCase() === "rsm");
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const rsmStatus = String(
+    (activeOrderHeader?.rsmApprovalStatus as string) ??
+    (activeOrderHeader?.rsm_approval_status as string) ??
+    (phpOrders[0] as Record<string, unknown> | undefined)?.rsmApprovalStatus ?? ""
+  ).toUpperCase();
+  const canRsmReview = isRsm && !overlayState?.isCancelled && (rsmStatus === "AWAITING" || rsmStatus === "");
+
+  const submitRsmReview = async (approve: boolean, note?: string) => {
+    if (rsmSaving) return;
+    setRsmSaving(true);
+    try {
+      const response = await fetch(`/api/order-overlays/${encodeURIComponent(id)}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...buildDispatchHeaders(currentUser) },
+        body: JSON.stringify({
+          action: approve ? "mirror_acceptance" : "decline",
+          acceptOrder: approve ? "1" : "2",
+          ...(note ? { note } : {}),
+        }),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok || json?.success === false) throw new Error(json?.message || "Approval update failed.");
+      setRsmDeclineOpen(false);
+      setRsmDeclineNote("");
+      setInvoiceToast({ type: "success", text: approve ? "Order approved." : "Order disapproved." });
+      setReloadKey((k) => k + 1);
+    } catch (error) {
+      setInvoiceToast({ type: "error", text: error instanceof Error ? error.message : "Action failed." });
+    } finally {
+      setRsmSaving(false);
+    }
+  };
+
   const submitCancellation = async (reason: string) => {
     const trimmedReason = reason.trim();
     if (!trimmedReason) {
@@ -1708,23 +1787,29 @@ export default function ViewOrderDealerPage() {
         window.setTimeout(() => setInvoiceToast(null), 3000);
         return;
       }
-      const latestEdit = Array.isArray(json.data?.edits) ? json.data.edits[json.data.edits.length - 1] : null;
-      if (Array.isArray(latestEdit?.effectiveItems)) {
-        setOverlayItems(normalizeOrderDetailResponse({ data: { items: latestEdit.effectiveItems } }, id).items as OrderData[]);
+      // The route returns the resolved effective order (effectiveItems/effectiveTotals/changeHistory),
+      // the same shape the GET loader consumes -- not the overlay document's `edits` array.
+      const saved = json.data ?? {};
+      if (Array.isArray(saved.effectiveItems)) {
+        setOverlayItems(normalizeOrderDetailResponse({ data: { ...saved, items: saved.effectiveItems } }, id).items as OrderData[]);
       }
-      if (latestEdit?.totals) {
+      if (saved.effectiveTotals) {
         setOverlayTotals({
-          grossAmount: latestEdit.totals.grossAmount,
-          discountAmount: latestEdit.totals.discountAmount,
-          netPayableAmount: latestEdit.totals.netPayableAmount,
+          grossAmount: saved.effectiveTotals.grossAmount,
+          discountAmount: saved.effectiveTotals.discountAmount,
+          netPayableAmount: saved.effectiveTotals.netPayableAmount,
         });
       }
       setOverlayState((current) => ({
         ...(current ?? { isCancelled: false }),
+        isCancelled: !!saved.isCancelled,
         isEdited: true,
-        latestRevision: Number(json.data?.latestRevision ?? payload.expectedRevision + 1),
-        changeHistory: latestEdit?.changes ?? current?.changeHistory ?? [],
-        eligibility: current?.eligibility ?? { canDealerChange: true, reason: "eligible" },
+        latestRevision: Number(saved.latestRevision ?? payload.expectedRevision + 1),
+        cancellation: saved.cancellation ?? current?.cancellation,
+        changeHistory: saved.changeHistory ?? current?.changeHistory ?? [],
+        changeRequests: Array.isArray(saved.overlay?.changeRequests) ? saved.overlay.changeRequests : current?.changeRequests ?? [],
+        acceptance: saved.overlay?.acceptance ?? current?.acceptance ?? null,
+        eligibility: saved.eligibility ?? current?.eligibility ?? { canDealerChange: true, reason: "eligible" },
       }));
       setEditDialogOpen(false);
       setInvoiceToast({ type: "success", text: "Order edit saved. The PHP order was preserved." });
@@ -1860,6 +1945,18 @@ export default function ViewOrderDealerPage() {
                   Dispatch Selected ({selectedDispatchLines.length})
                 </button>
               </div>
+            )}
+            {canRsmReview && (
+              <>
+                <button onClick={() => submitRsmReview(true)} disabled={rsmSaving}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[13px] font-semibold rounded-xl transition-colors">
+                  {rsmSaving ? "Saving..." : "Approve Order"}
+                </button>
+                <button onClick={() => { setRsmDeclineNote(""); setRsmDeclineOpen(true); }} disabled={rsmSaving}
+                  className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[13px] font-semibold rounded-xl transition-colors">
+                  Disapprove Order
+                </button>
+              </>
             )}
             {dealerCanChangeOrder && (
               <>
@@ -2086,6 +2183,36 @@ export default function ViewOrderDealerPage() {
                 <rect x="9" y="3" width="6" height="4" rx="1" />
               </svg>
               <p className="text-[14px]">No order items found.</p>
+            </div>
+          )}
+
+          {orderRevisions.length > 0 && (
+            <div className="bg-white border border-rose-200 rounded-2xl p-5">
+              <p className="text-[11px] font-bold text-rose-600 uppercase tracking-widest">Resubmitted after disapproval</p>
+              {orderRevisions.map((revision, index) => (
+                <div key={index} className={index > 0 ? "mt-4 border-t border-rose-100 pt-4" : "mt-3"}>
+                  <p className="text-[13px] leading-6 text-gray-800">
+                    Replaces order <span className="font-mono font-bold">{revision.previousOrderNumber || revision.previousOrderId}</span>
+                    {revision.rejectedByName ? `, disapproved by ${revision.rejectedByName}` : ""}
+                    {revision.rejectedAt ? ` on ${moment(revision.rejectedAt).format("DD MMM YYYY, hh:mm A")}` : ""}.
+                  </p>
+                  {revision.rejectionNote && (
+                    <p className="mt-1 text-[13px] leading-6 text-rose-700">Reason: {revision.rejectionNote}</p>
+                  )}
+                  <p className="mt-3 text-[11px] font-bold uppercase tracking-widest text-gray-400">
+                    Changes made by the dealer ({revision.changes?.length ?? 0})
+                  </p>
+                  {(revision.changes?.length ?? 0) === 0 ? (
+                    <p className="mt-1 text-[13px] leading-6 text-gray-600">Resubmitted with the same products.</p>
+                  ) : (
+                    <ul className="mt-1 list-disc pl-5">
+                      {revision.changes!.map((change, changeIndex) => (
+                        <li key={changeIndex} className="text-[13px] leading-6 text-gray-700">{change.summary}</li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
             </div>
           )}
 
@@ -2376,6 +2503,30 @@ export default function ViewOrderDealerPage() {
                   {dispatchAllSaving ? "Dispatching..." : "Dispatch Selected Products"}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {rsmDeclineOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
+          onClick={(event) => { if (event.target === event.currentTarget && !rsmSaving) setRsmDeclineOpen(false); }}>
+          <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
+            <h2 className="text-base font-bold text-gray-900">Disapprove this order?</h2>
+            <p className="mt-2 text-sm leading-6 text-gray-600">The dealer sees this reason and can revise the order before sending it back.</p>
+            <textarea
+              value={rsmDeclineNote}
+              onChange={(event) => setRsmDeclineNote(event.target.value.slice(0, 1000))}
+              disabled={rsmSaving}
+              placeholder="Why is this order being disapproved?"
+              className="mt-4 text-gray-900 h-28 w-full resize-none rounded-xl border border-gray-200 p-3 text-sm outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100"
+            />
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setRsmDeclineOpen(false)} disabled={rsmSaving}
+                className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Keep Order</button>
+              <button type="button" onClick={() => submitRsmReview(false, rsmDeclineNote.trim())} disabled={rsmSaving || !rsmDeclineNote.trim()}
+                className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                {rsmSaving ? "Disapproving..." : "Disapprove Order"}
+              </button>
             </div>
           </div>
         </div>

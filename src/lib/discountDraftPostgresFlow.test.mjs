@@ -11,6 +11,7 @@ const flowFiles = [
   "src/app/api/drafts/[id]/route.ts",
   "src/app/api/draft-cart/route.ts",
   "src/app/api/dealer-order/route.ts",
+  "src/lib/dealerOrderCreate.ts",
   "src/lib/postgresDiscountDrafts.ts",
   "src/lib/customDiscountRequests.ts",
   "src/lib/drafts.ts",
@@ -37,7 +38,9 @@ test("custom discount routes enforce dealer scope, admin review, order linking, 
     read("src/app/api/custom-discount-requests/[id]/route.ts"),
     read("src/app/api/custom-discount-requests/[id]/reorder-log/route.ts"),
     read("src/lib/postgresDiscountDrafts.ts"),
-    read("src/app/api/dealer-order/route.ts"),
+    // Discount linking and draft conversion moved into the shared order
+    // creation service when the fund-request flow began reusing it.
+    read("src/lib/dealerOrderCreate.ts"),
   ]);
 
   assert.doesNotMatch(listRoute + detailRoute + reorderRoute + helperRoute, /actorFromRequestHeaders|x-omsons-actor|header-fallback/);

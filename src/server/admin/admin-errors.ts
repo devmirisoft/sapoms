@@ -48,7 +48,15 @@ export function adminErrorResponse(error: unknown, fallbackMessage = "Admin requ
       success: false,
       msg: message,
       message,
-      error: { code, ...((error instanceof AdminRouteError && error.details) ? error.details : {}) },
+      error: {
+        code,
+        ...((error instanceof AdminRouteError && error.details) ? error.details : {}),
+        // Unmapped failures reach the client as a generic message; in dev, carry the
+        // real one so the browser console is enough to debug without the server log.
+        ...(process.env.NODE_ENV !== "production" && !(error instanceof AdminRouteError)
+          ? { detail: error instanceof Error ? `${error.name}: ${error.message}` : String(error) }
+          : {}),
+      },
     },
     {
       status: STATUS_BY_CODE[code],

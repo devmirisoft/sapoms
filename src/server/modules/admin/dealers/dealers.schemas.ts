@@ -100,6 +100,15 @@ const optionalStaffIds = z.preprocess((value) => {
   return value;
 }, z.array(z.string().regex(/^\d+$/)).transform((values) => Array.from(new Set(values))).optional());
 
+const additionalContacts = z.preprocess(
+  (value) => (value === undefined || value === null ? undefined : value),
+  z.array(z.object({
+    name: z.preprocess((value) => String(value ?? "").trim(), z.string().min(1).max(200)),
+    phone: z.preprocess((value) => String(value ?? "").trim(), z.string().min(1).max(30)),
+    email: z.preprocess((value) => String(value ?? "").trim().toLowerCase(), z.string().email().max(200)),
+  })).max(20).optional(),
+);
+
 function aliases(body: Record<string, unknown>) {
   return {
     businessName: body.businessName ?? body.Dealer_Name ?? body.name,
@@ -122,6 +131,7 @@ function aliases(body: Record<string, unknown>) {
     secondaryContactName: body.secondaryContactName ?? body.Dealer_Secondary_Contact_Name,
     secondaryContactPhone: body.secondaryContactPhone ?? body.Dealer_Secondary_Contact_Phone,
     secondaryContactEmail: body.secondaryContactEmail ?? body.Dealer_Secondary_Contact_Email,
+    additionalContacts: body.additionalContacts,
     imageUrl: body.imageUrl,
     status: body.status,
     assignedStaffIds: body.assignedStaffIds ?? body.assignedstaff,
@@ -150,6 +160,7 @@ const createSchema = z.preprocess((value) => aliases((value && typeof value === 
   secondaryContactName: text(200),
   secondaryContactPhone: text(30),
   secondaryContactEmail: optionalEmail,
+  additionalContacts,
   imageUrl: text(1000),
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
   assignedStaffIds: staffIds.default([]),
@@ -176,6 +187,7 @@ const updateSchema = z.preprocess((value) => aliases((value && typeof value === 
   secondaryContactName: text(200),
   secondaryContactPhone: text(30),
   secondaryContactEmail: optionalEmail,
+  additionalContacts,
   imageUrl: text(1000),
   assignedStaffIds: optionalStaffIds,
   rsmUserId: optionalBigIntString,

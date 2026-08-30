@@ -13,6 +13,7 @@
     "lint": "eslint",
     "test:crash": "node scripts/smoke-client-crash.mjs",
     "test:invoice-storage": "node -r dotenv/config scripts/verify-invoice-storage.mjs",
+    "test:invoice-layout": "node scripts/verify-invoice-layout.mjs",
     "auth:create-user": "node scripts/create-auth-user.mjs"
   },
   "dependencies": {

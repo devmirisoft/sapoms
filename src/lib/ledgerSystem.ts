@@ -37,7 +37,8 @@ const orderInclude = {
     },
   },
   assignedStaff: { select: { id: true, displayName: true } },
-  items: { orderBy: { id: "asc" as const } },
+  // dispatches feed the order's Pending/Partial/Completed status in the mappers.
+  items: { orderBy: { id: "asc" as const }, include: { dispatches: { select: { quantity: true } } } },
   // Required by mapPostgresOrderToLegacy, which derives the order's settled
   // position from its bills.
   ledgerBills: { orderBy: { billDate: "desc" as const } },

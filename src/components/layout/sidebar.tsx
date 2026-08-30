@@ -13,7 +13,7 @@ import { clearAuthStorage, type AppRole, type StoredUser } from "@/lib/roleAcces
 import { useAuthSession } from "@/hooks/useAuthSession";
 
 type NavItem = { label: string; href: string; icon: React.ReactNode; section?: string; badgeKey?: BadgeKey };
-type BadgeKey = "discountRequests";
+type BadgeKey = "discountRequests" | "fundRequests" | "dealerRequests" | "pendingOrders" | "drafts" | "orders" | "settlements";
 type SidebarUser = {
   role: AppRole;
   name?: string;
@@ -35,14 +35,14 @@ const NAV: Record<AppRole, NavItem[]> = {
     { section: "Dealers",     label: "Dealer List",        href: "/dashboard/admin/dealer/DealerList",               icon: <Users size={15} />           },
     {                         label: "Dealer Ledger",       href: "/dashboard/admin/ledger",                          icon: <BookOpen size={15} />        },
     {                         label: "Add Dealer",          href: "/dashboard/admin/dealer/AddDealerForm",            icon: <UserRoundPlus size={15} />   },
-    {                         label: "Dealer Requests",     href: "/dashboard/admin/dealer/requests",                 icon: <Receipt size={15} />         },
+    {                         label: "Dealer Requests",     href: "/dashboard/admin/dealer/requests",                 icon: <Receipt size={15} />, badgeKey: "dealerRequests" },
     { section: "Staff",       label: "Staff List",         href: "/dashboard/admin/staff/stafflist",                 icon: <Users size={15} />           },
     {                         label: "Manage Regions",     href: "/dashboard/admin/manage-regions",                 icon: <MapPinned size={15} />       },
     {                         label: "Add Staff",           href: "/dashboard/admin/staff/addstaff",                  icon: <SquareUser size={15} />      },
     { section: "Products",    label: "Products",           href: "/Pages/products",                                  icon: <Package size={15} />         },
     {                         label: "Add Product",         href: "/Pages/products/addproducts",                      icon: <Plus size={15} />            },
-    { section: "Orders",      label: "Order List",         href: "/Pages/Ordermanagement",                           icon: <ClipboardList size={15} />   },
-    {                         label: "Pending Orders",      href: "/Pages/Ordermanagement/outstandingorders",         icon: <ClipboardList size={15} />   },
+    { section: "Orders",      label: "Order List",         href: "/orders",                           icon: <ClipboardList size={15} />   },
+    {                         label: "Pending Orders",      href: "/Pages/Ordermanagement/outstandingorders",         icon: <ClipboardList size={15} />, badgeKey: "pendingOrders" },
     {                         label: "Pending Products",    href: "/dashboard/admin/pending-products",                icon: <Package size={15} />         },
     {                         label: "Discount Approvals",  href: "/dashboard/admin/custom-discount-approvals",       icon: <Receipt size={15} />, badgeKey: "discountRequests" },
     { section: "Content",     label: "Slider Images",      href: "/dashboard/admin/slider",                          icon: <Images size={15} />          },
@@ -56,22 +56,24 @@ const NAV: Record<AppRole, NavItem[]> = {
     { section: "Home",     label: "Home",             href: "/home",                          icon: <Home size={15} />          },
     {                      label: "Dashboard",         href: "/dashboard/dealer",              icon: <LayoutDashboard size={15} /> },
     {                      label: "Profile",           href: "/dashboard/dealer/profile",      icon: <SquareUser size={15} />      },
-    { section: "Orders",   label: "My Order Status",  href: "/Pages/Ordermanagement",         icon: <ClipboardList size={15} /> },
+    { section: "Orders",   label: "My Order Status",  href: "/orders",         icon: <ClipboardList size={15} />, badgeKey: "orders" },
     {                      label: "My Order History",  href: "/orders",                        icon: <ClipboardList size={15} /> },
     {                      label: "Pending Products",  href: "/dashboard/dealer/pending-products", icon: <Package size={15} /> },
     {                      label: "Add Order",         href: "/dashboard/dealer/AddOrderForm", icon: <Plus size={15} />          },
-    {                      label: "Saved Drafts",      href: "/drafts",                        icon: <FileText size={15} />      },
+    {                      label: "Saved Drafts",      href: "/drafts",                        icon: <FileText size={15} />, badgeKey: "drafts" },
     {                      label: "Approved Discounts", href: "/dashboard/dealer/approved-discounts", icon: <Receipt size={15} /> },
     { section: "Finance",  label: "My Ledger",         href: "/Pages/ledger",                  icon: <Wallet size={15} />        },
+    {                      label: "My Fund Requests",  href: "/dashboard/dealer/fund-requests", icon: <Receipt size={15} />, badgeKey: "fundRequests" },
   ],
   staff: [
     { section: "Overview", label: "Dashboard",     href: "/dashboard/staff",                                icon: <LayoutDashboard size={15} /> },
     {                     label: "Profile",       href: "/dashboard/staff/profile",                        icon: <SquareUser size={15} />      },
     {                     label: "Add Dealer",    href: "/dashboard/admin/dealer/AddDealerForm",           icon: <UserRoundPlus size={15} />   },
-    {                     label: "Dealer Requests", href: "/dashboard/staff/dealer-requests",              icon: <Receipt size={15} />         },
+    {                     label: "Dealer Requests", href: "/dashboard/staff/dealer-requests",              icon: <Receipt size={15} />, badgeKey: "dealerRequests" },
     {                     label: "Discount Requests", href: "/dashboard/staff/discount-requests",           icon: <Receipt size={15} />, badgeKey: "discountRequests" },
-    { section: "Orders",   label: "Order List",    href: "/Pages/Ordermanagement",                          icon: <ClipboardList size={15} />   },
-    {                      label: "Pending Orders", href: "/Pages/Ordermanagement/outstandingorders",        icon: <ClipboardList size={15} />   },
+    {                     label: "Fund Requests",     href: "/dashboard/staff/fund-requests",                icon: <Wallet size={15} />, badgeKey: "fundRequests" },
+    { section: "Orders",   label: "Order List",    href: "/orders",                          icon: <ClipboardList size={15} />   },
+    {                      label: "Pending Orders", href: "/Pages/Ordermanagement/outstandingorders",        icon: <ClipboardList size={15} />, badgeKey: "pendingOrders" },
     {                      label: "Pending Products", href: "/dashboard/staff/pending-products",             icon: <Package size={15} />         },
     { section: "Dealers",  label: "Dealer List",   href: "/dashboard/staff/dealerlist",              icon: <Users size={15} />           },
     {                      label: "Dealer Ledger",  href: "/Pages/ledger",                                   icon: <BookOpen size={15} />        },
@@ -81,10 +83,12 @@ const NAV: Record<AppRole, NavItem[]> = {
   ],
   accountant: [
     { section: "Overview",  label: "Dashboard",      href: "/dashboard/accountant",                         icon: <LayoutDashboard size={15} /> },
-    { section: "Orders",    label: "All Orders",     href: "/Pages/Ordermanagement",
+    { section: "Orders",    label: "All Orders",     href: "/orders",
             icon: <Receipt size={15} />         },
     { section: "Finance",   label: "Order Book",     href: "/dashboard/accountant/order-book",              icon: <BookOpen size={15} />        },
-    {                       label: "Wallet Settlements", href: "/dashboard/accountant/settle",              icon: <Wallet size={15} />          },
+    {                       label: "Wallet Settlements", href: "/dashboard/accountant/settle",              icon: <Wallet size={15} />, badgeKey: "settlements" },
+    {                       label: "Advance Order Requests", href: "/dashboard/accountant/fund-requests",     icon: <Wallet size={15} />, badgeKey: "fundRequests" },
+    {                       label: "Fund Addition Records",  href: "/dashboard/accountant/fund-records",      icon: <BookOpen size={15} />        },
     {                       label: "Dealer Ledger",   href: "/dashboard/admin/ledger",                       icon: <Wallet size={15} />          },
     {                       label: "Reports",        href: "/dashboard/accountant",                          icon: <TrendingUp size={15} />      },
   ],
@@ -131,32 +135,26 @@ function writePin(next: boolean) {
   pinListeners.forEach((notify) => notify());
 }
 
-/* Pending-approval counts for the nav badges. Only the roles that actually
-   review discounts ask for them; the endpoint scopes the number to the actor,
-   so an RSM sees their region's awaiting-review count and an admin sees the
-   RSM-cleared queue — matching what each role's page shows. */
+/* Every nav badge comes from one endpoint, which scopes each number to the
+   actor the same way the page behind the badge does. */
 function useBadgeCounts(role: AppRole | undefined, pathname: string) {
   const [counts, setCounts] = useState<Partial<Record<BadgeKey, number>>>({});
-  const enabled = role === "admin" || role === "staff";
 
   useEffect(() => {
-    if (!enabled) {
+    if (!role) {
       setCounts({});
       return;
     }
 
     let cancelled = false;
-
     const load = () => {
-      fetch("/api/custom-discount-requests/pending-count", { credentials: "include", cache: "no-store" })
+      fetch("/api/sidebar-counts", { credentials: "include", cache: "no-store" })
         .then((res) => (res.ok ? res.json() : null))
         .then((json) => {
-          if (cancelled) return;
-          const count = Number(json?.count);
-          setCounts(Number.isFinite(count) ? { discountRequests: count } : {});
+          if (!cancelled && json?.counts) setCounts(json.counts);
         })
         .catch(() => {
-          /* a badge is ancillary — leave the last good number rather than
+          /* a badge is ancillary — leave the last good numbers rather than
              flashing an error into the nav */
         });
     };
@@ -169,9 +167,9 @@ function useBadgeCounts(role: AppRole | undefined, pathname: string) {
       cancelled = true;
       window.removeEventListener("focus", load);
     };
-    // pathname is a dependency so approving on the page updates the badge on
-    // the way out of it.
-  }, [enabled, pathname]);
+    // pathname is a dependency so acting on the page updates the badge on the
+    // way out of it.
+  }, [role, pathname]);
 
   return counts;
 }
@@ -623,7 +621,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
                     const count = item.badgeKey ? badgeCounts[item.badgeKey] ?? 0 : 0;
                     return (
                       <Link
-                        key={item.href}
+                        key={item.label}
                         href={item.href}
                         onClick={onClose}
                         className={`sb-link${active ? " active" : ""}`}

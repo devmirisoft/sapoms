@@ -80,7 +80,11 @@ export function mapDraft(row: any) {
     approval_state: row.approvalState ?? null,
     source: snap.source ?? undefined,
     source_request_id: snap.source_request_id ?? undefined,
+    source_order_id: snap.source_order_id ?? undefined,
+    source_order_number: snap.source_order_number ?? undefined,
     rejection_notes: snap.rejection_notes ?? null,
+    original_rows: Array.isArray(snap.original_rows) ? snap.original_rows : [],
+    edit_log: Array.isArray(snap.edit_log) ? snap.edit_log : [],
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
     created_at: row.createdAt.toISOString(),
@@ -98,6 +102,12 @@ export function draftSnapshot(input: Record<string, unknown>) {
     coupon_pct: input.coupon_pct ?? null,
     source: input.source ?? null,
     source_request_id: input.source_request_id ?? null,
+    // Rejected-order drafts carry their origin and revision trail through every
+    // dealer edit; a plain draft simply keeps these null/empty.
+    source_order_id: input.source_order_id ?? null,
+    source_order_number: input.source_order_number ?? null,
+    original_rows: Array.isArray(input.original_rows) ? input.original_rows : [],
+    edit_log: Array.isArray(input.edit_log) ? input.edit_log : [],
     // Carried through dealer edits so the reviewer's reason survives until the
     // draft is resubmitted, rather than being dropped on the first save.
     rejection_notes: input.rejection_notes ?? null,

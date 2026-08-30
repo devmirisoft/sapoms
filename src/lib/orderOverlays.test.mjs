@@ -271,3 +271,104 @@ test("PostgreSQL edit normalization preserves packs, pack size, and total pieces
   assert.equal(revision.effectiveItems[0].packSize, 12);
   assert.equal(revision.effectiveItems[0].totalPieces, 72);
 });
+
+test("dealer quantity edit wins over the stale pack-count aliases carried by the loaded row", () => {
+  const originalItems = overlays.normalizeOrderItems({
+    data: [{
+      orderdata_id: "9001",
+      orderdata_cat_no: "CAT-1",
+      product_name: "Widget",
+      orderdata_item_quantity: "4",
+      quantityPacks: 4,
+      quantity_packs: 4,
+      packs: 4,
+      packSize: 10,
+      totalPieces: 40,
+      producQuanity: 40,
+    }],
+  }, "700").items;
+
+  // The edit dialog only rewrites orderdata_item_quantity; every other alias is echoed back stale.
+  const requestedItems = originalItems.map((item) => ({ ...item, originalLineId: item.orderdata_id, orderdata_item_quantity: "7" }));
+
+  const revision = overlays.buildOrderEditRevision({
+    orderId: "700",
+    originalItems,
+    requestedItems,
+    expectedRevision: 0,
+    actor: { actorId: "1", role: "dealer" },
+  });
+
+  assert.equal(revision.changes.length, 1);
+  assert.equal(revision.changes[0].type, "quantity_changed");
+  assert.equal(revision.changes[0].fromQuantity, 4);
+  assert.equal(revision.changes[0].toQuantity, 7);
+  assert.equal(revision.effectiveItems[0].orderdata_item_quantity, "7");
+  assert.equal(revision.effectiveItems[0].quantityPacks, 7);
+  assert.equal(revision.effectiveItems[0].totalPieces, 70);
+});
+
+test("pack-count aliases still drive the quantity when no explicit quantity field is submitted", () => {
+  const originalItems = overlays.normalizeOrderItems({
+    data: [{ orderdata_id: "9002", orderdata_cat_no: "CAT-2", orderdata_item_quantity: "2", packSize: 5 }],
+  }, "701").items;
+
+  const { orderdata_item_quantity: _omitted, ...withoutQuantityField } = originalItems[0];
+  const revision = overlays.buildOrderEditRevision({
+    orderId: "701",
+    originalItems,
+    requestedItems: [{ ...withoutQuantityField, originalLineId: "9002", quantityPacks: 3 }],
+    expectedRevision: 0,
+    actor: { actorId: "1", role: "dealer" },
+  });
+
+  assert.equal(revision.changes[0].toQuantity, 3);
+  assert.equal(revision.effectiveItems[0].totalPieces, 15);
+});
+
+test("a pack-size only edit recomputes total pieces from the unchanged quantity", () => {
+  const originalItems = overlays.normalizeOrderItems({
+    data: [{ orderdata_id: "9003", orderdata_cat_no: "CAT-3", orderdata_item_quantity: "2", packSize: 5 }],
+  }, "702").items;
+
+  // Pack size alone is not a tracked change, so the edit is still rejected as "no changes".
+  assert.throws(
+    () => overlays.buildOrderEditRevision({
+      orderId: "702",
+      originalItems,
+      requestedItems: [{ ...originalItems[0], originalLineId: "9003", packSize: 8, pack_size: 8 }],
+      expectedRevision: 0,
+      actor: { actorId: "1", role: "dealer" },
+    }),
+    (error) => error.code === "no_changes"
+  );
+});
+
+test("the saved-edit response exposes effectiveItems/effectiveTotals, not an edits array", () => {
+  const originalItems = overlays.normalizeOrderItems({
+    data: [{ orderdata_id: "9100", orderdata_cat_no: "CAT-9", orderdata_item_quantity: "4", packSize: 2, orderdata_price: "10" }],
+  }, "800").items;
+
+  const revision = overlays.buildOrderEditRevision({
+    orderId: "800",
+    originalItems,
+    requestedItems: [{ ...originalItems[0], originalLineId: "9100", orderdata_item_quantity: "6" }],
+    expectedRevision: 0,
+    actor: { actorId: "1", role: "dealer" },
+  });
+
+  // This mirrors what POST /api/order-overlays/[id] returns as `data` after saving an edit.
+  const responseData = overlays.resolveEffectiveOrder({
+    orderId: "800",
+    originalOrder: {},
+    originalItems,
+    overlay: { edits: [revision], latestRevision: revision.revision, status: "active" },
+  });
+
+  assert.equal(responseData.edits, undefined, "response has no `edits` array for the client to read");
+  assert.equal(responseData.isEdited, true);
+  assert.equal(responseData.latestRevision, 1);
+  assert.equal(responseData.effectiveItems[0].orderdata_item_quantity, "6");
+  assert.equal(responseData.effectiveTotals.grossAmount, 120);
+  assert.equal(responseData.changeHistory[0].type, "quantity_changed");
+});

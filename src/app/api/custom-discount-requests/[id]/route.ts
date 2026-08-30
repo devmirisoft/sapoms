@@ -25,7 +25,7 @@ function jsonError(error: any, fallback: string) {
 
 function statusValue(value: string) {
   const status = value.toUpperCase();
-  if (["APPROVED", "REJECTED", "PENDING", "CANCELLED"].includes(status)) return status as "APPROVED" | "REJECTED" | "PENDING" | "CANCELLED";
+  if (["APPROVED", "REJECTED", "PENDING"].includes(status)) return status as "APPROVED" | "REJECTED" | "PENDING";
   return null;
 }
 
@@ -131,6 +131,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // so an RSM reason is never confused with, or overwritten by, an Admin one.
       data.rsmNote = text(body.rsmNote ?? body.rsm_note ?? body.adminNote ?? body.admin_note, 1500) || null;
       if (nextRsmStatus === "REJECTED") {
+        // A disapproval must always carry a reason the dealer can act on.
+        if (!data.rsmNote) throw Object.assign(new Error("A disapproval note is required when rejecting a discount request"), { status: 400 });
         data.status = "REJECTED";
         data.allowReorder = false;
       }
@@ -138,6 +140,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (reviewUpdate && nextStatus) {
       data.status = nextStatus;
       data.adminNote = text(body.adminNote ?? body.admin_note, 1500) || null;
+      // A disapproval must always carry a reason the dealer can act on.
+      if (nextStatus === "REJECTED" && !data.adminNote) throw Object.assign(new Error("A disapproval note is required when rejecting a discount request"), { status: 400 });
       data.reviewedByUserId = actor?.userId && actor.userId > BigInt(0) ? actor.userId : null;
       data.reviewedAt = nextStatus === "PENDING" ? null : new Date();
       data.allowReorder = nextStatus === "APPROVED" ? true : nextStatus === "REJECTED" ? false : existing.allowReorder;

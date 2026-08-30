@@ -119,7 +119,6 @@ function requireValidRoleRegion<T extends { role?: string; salesRegion?: string;
   if (value.role === "ASM" && !value.parentRsmId) throw new AdminRouteError("INVALID_REQUEST", "ASM must have a valid RSM parent", { code: "ASM_RSM_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "1" && !value.parentAsmId) throw new AdminRouteError("INVALID_REQUEST", "Executive must have a valid ASM parent", { code: "EXECUTIVE_ASM_REQUIRED" });
   if (value.role === "ASM" && value.assignedStates && !value.assignedStates.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one state", { code: "ASM_STATES_REQUIRED" });
-  if (value.role === "ASM" && value.assignedCities && !value.assignedCities.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one city", { code: "ASM_CITIES_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "1" && value.assignedCities && !value.assignedCities.length) throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must cover at least one city", { code: "EXECUTIVE_CITIES_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "2" && !value.parentRsmId) throw new AdminRouteError("INVALID_REQUEST", "Staff must have a valid RSM parent", { code: "STAFF_RSM_REQUIRED" });
   if (value.role === "NSM") { value.staffRoleType = undefined; value.parentRsmId = undefined; value.parentAsmId = undefined; value.assignedStates = undefined; }
@@ -131,9 +130,9 @@ function requireValidRoleRegion<T extends { role?: string; salesRegion?: string;
   if (value.role === "STAFF" && value.staffRoleType === "2") { value.parentAsmId = undefined; value.assignedStates = undefined; value.assignedCities = undefined; }
   // Only RSM has an explicit reporting manager (NSM); ASM/STAFF derive theirs from parentRsm/parentAsm.
   if (value.role && value.role !== "RSM") value.reportingManagerId = undefined;
-  // Cities are tracked for ASM (carved out of its RSM states) and for the Sales
-  // Manager under it; RSM/NSM/Staff hold no city list.
-  if (value.role && value.role !== "ASM" && !(value.role === "STAFF" && value.staffRoleType === "1")) value.assignedCities = undefined;
+  // Only the Sales Manager holds a city list, carved out of its ASM's states;
+  // NSM/RSM/ASM/Staff hold no cities of their own.
+  if (!(value.role === "STAFF" && value.staffRoleType === "1")) value.assignedCities = undefined;
   return value;
 }
 
@@ -150,9 +149,8 @@ const requireReportingManagerForCreate = <T extends { role?: string; reportingMa
  * field alone; on create an omitted list is just as invalid as an empty one.
  */
 const requireTerritoryForCreate = <T extends { role?: string; staffRoleType?: string; assignedStates?: string[]; assignedCities?: string[] }>(value: T) => {
-  if (value.role === "ASM") {
-    if (!value.assignedStates?.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one state", { code: "ASM_STATES_REQUIRED" });
-    if (!value.assignedCities?.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one city", { code: "ASM_CITIES_REQUIRED" });
+  if (value.role === "ASM" && !value.assignedStates?.length) {
+    throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one state", { code: "ASM_STATES_REQUIRED" });
   }
   if (value.role === "STAFF" && value.staffRoleType === "1" && !value.assignedCities?.length) {
     throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must cover at least one city", { code: "EXECUTIVE_CITIES_REQUIRED" });
@@ -181,6 +179,11 @@ const updateSchema = z.preprocess((value) => aliases((value && typeof value === 
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
 }).refine((value) => Object.values(value).some((entry) => entry !== undefined), "At least one field is required").transform(requireValidRoleRegion));
 
+const statusSchema = z.object({
+  status: z.preprocess((value) => String(value ?? "").trim().toUpperCase(), z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"])),
+  reason: text(500),
+});
+
 function parseWith<T>(schema: z.ZodType<T>, body: unknown): T {
   const parsed = schema.safeParse(body);
   if (!parsed.success) {
@@ -196,4 +199,8 @@ export function parseCreateAdminStaffInput(body: unknown) {
 
 export function parseUpdateAdminStaffInput(body: unknown) {
   return parseWith(updateSchema, body);
+}
+
+export function parseUpdateStaffStatusInput(body: unknown) {
+  return parseWith(statusSchema, body);
 }

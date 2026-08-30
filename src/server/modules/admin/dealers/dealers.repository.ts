@@ -77,7 +77,7 @@ function buildWhere(input: AdminDealerListInput): Prisma.DealerProfileWhereInput
 }
 
 const staffAssignmentInclude = {
-  staff: { select: { id: true, displayName: true, designation: true, staffRoleType: true, salesRegion: true, user: { select: { email: true, status: true, deletedAt: true, role: true } } } },
+  staff: { select: { id: true, displayName: true, designation: true, staffRoleType: true, salesRegion: true, mobileNo: true, user: { select: { email: true, status: true, deletedAt: true, role: true } } } },
 } satisfies Prisma.DealerStaffAssignmentInclude;
 
 const include = {
@@ -145,6 +145,11 @@ function mapUniqueError(error: unknown): never {
     if (target.includes("dealer_code")) throw conflict("Dealer code already exists", "DEALER_CODE_CONFLICT");
     if (target.includes("gstin")) throw conflict("GSTIN already exists", "GSTIN_CONFLICT");
   }
+  // Wallet settlement guards throw plain Error with a .code tag, not AdminRouteError —
+  // map them so their real message reaches the client instead of a generic 500.
+  if (error instanceof Error && "code" in error && (error.code === "settlement_open" || error.code === "settlement_already_open")) {
+    throw conflict(error.message, String(error.code).toUpperCase());
+  }
   throw error;
 }
 
@@ -190,6 +195,7 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
       secondaryContactName: cleanOptional(input.secondaryContactName),
       secondaryContactPhone: cleanOptional(input.secondaryContactPhone),
       secondaryContactEmail: cleanOptional(input.secondaryContactEmail),
+      additionalContacts: input.additionalContacts ?? undefined,
       imageUrl: cleanOptional(input.imageUrl),
       region: rsm?.region,
       rsmUserId: rsm?.rsmUserId,
@@ -251,6 +257,7 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
           ["secondaryContactName", "secondaryContactName", input.secondaryContactName],
           ["secondaryContactPhone", "secondaryContactPhone", input.secondaryContactPhone],
           ["secondaryContactEmail", "secondaryContactEmail", input.secondaryContactEmail],
+          ["additionalContacts", "additionalContacts", input.additionalContacts],
         ] as Array<[keyof UpdateAdminDealerInput, keyof Prisma.DealerProfileUpdateInput, unknown]>) {
           if (value !== undefined) {
             (dealerData as Record<string, unknown>)[dbKey as string] = value;

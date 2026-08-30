@@ -22,6 +22,12 @@ export function normalizePhpOrderItems(payload: unknown, fallbackOrderId?: strin
 export function buildFallbackLookupKey(orderId: string, normalizedSku: string, occurrence: number): string;
 export function extractLegacyProductNote(value: unknown): string;
 export function buildInvoiceProductName(productName: string, productNote: string): string;
+export function buildInvoiceDescriptionMeta(input: {
+  productName?: unknown;
+  catalogueNumber?: unknown;
+  productNote?: unknown;
+  isPriority?: boolean;
+}): { mainText: string; noteText: string };
 export function mergeFallbackProductNotes<T extends Record<string, unknown>>(
   items: T[],
   fallbackNotes: Array<Record<string, unknown>>

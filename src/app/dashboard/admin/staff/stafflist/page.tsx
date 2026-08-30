@@ -4,7 +4,9 @@ import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import axios from 'axios'
-import { Pencil, Trash2, Download, Search, Users, UserPlus, Eye, EyeOff, MoreVertical, ChevronDown, X } from 'lucide-react'
+import { Pencil, Trash2, Download, Search, Users, UserPlus, MoreVertical, ChevronDown, ChevronLeft, Network, Briefcase, User, X } from 'lucide-react'
+
+type StaffRelation = { id: string; name: string; email?: string } | null
 
 type StaffData = {
   staff_id: string
@@ -14,10 +16,15 @@ type StaffData = {
   sales_region?: string
   salesRegion?: string
   role?: string
-  staff_password: string
   staff_designation: string
   staff_location: string
+  gender?: string
+  assigned_cities?: string[]
+  assigned_states?: string[]
   status: string
+  parentRsm?: StaffRelation
+  parentAsm?: StaffRelation
+  reportingManager?: StaffRelation
 }
 
 type StaffResponse = {
@@ -82,6 +89,42 @@ function roleBadge(staff: Pick<StaffData, "role" | "staff_roletype" | "sales_reg
   }
 }
 
+type StaffStatus = "ACTIVE" | "INACTIVE" | "SUSPENDED"
+
+function normalizeStaffStatus(value: unknown): StaffStatus {
+  const normalized = String(value ?? "").trim().toUpperCase()
+  return normalized === "INACTIVE" || normalized === "SUSPENDED" ? normalized : "ACTIVE"
+}
+
+function statusBadge(status: StaffStatus) {
+  if (status === "ACTIVE") return { bg: "bg-emerald-50", text: "text-emerald-700", label: "Active" }
+  if (status === "SUSPENDED") return { bg: "bg-amber-50", text: "text-amber-700", label: "Suspended" }
+  return { bg: "bg-red-50", text: "text-red-600", label: "Inactive" }
+}
+
+// Mirrors the hierarchy the staff repository writes: RSM reports to the NSM,
+// ASM and plain Staff to their RSM, a Sales Manager to its ASM.
+function reportingManagerOf(staff: StaffData): StaffRelation {
+  const authRole = String(staff.role ?? "").toUpperCase()
+  const staffRoleType = String(staff.staff_roletype ?? "").toUpperCase()
+  if (authRole === "NSM") return null
+  if (authRole === "RSM" || staffRoleType === "RSM") return staff.reportingManager ?? null
+  if (authRole === "ASM" || staffRoleType === "ASM") return staff.parentRsm ?? null
+  if (staffRoleType === "1") return staff.parentAsm ?? null
+  return staff.parentRsm ?? null
+}
+
+// A list cell that stays one line: first entry, then "+N".
+function listSummary(values: string[] | undefined, fallback?: string) {
+  const items = (values ?? []).filter(Boolean)
+  if (!items.length) return fallback?.trim() || ""
+  return items.length === 1 ? items[0] : `${items[0]} +${items.length - 1}`
+}
+
+function csvCell(value: unknown) {
+  return `"${String(value ?? "").replace(/"/g, '""')}"`
+}
+
 function initials(name: string) {
   return name?.split(" ").slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?"
 }
@@ -97,6 +140,341 @@ function getRole(): AppRole {
   return 'admin'
 }
 
+
+// ---------------------------------------------------------------- hierarchy
+
+// Walk up via reportingManagerOf. A manager that isn't in the staff list
+// (the NSM lives in the admin table) still gets a node from its relation.
+function ancestorsOf(staff: StaffData, byId: Map<string, StaffData>) {
+  const chain: { id: string; name: string; label: string }[] = []
+  const seen = new Set<string>()
+  let current: StaffData | null = staff
+  while (current) {
+    const rel = reportingManagerOf(current)
+    if (!rel || seen.has(rel.id)) break
+    seen.add(rel.id)
+    const full = byId.get(rel.id)
+    chain.unshift({ id: rel.id, name: rel.name || full?.staff_name || "-", label: full ? roleBadge(full).label : "NSM" })
+    current = full ?? null
+  }
+  return chain
+}
+
+function countTeam(id: string, reports: Map<string, StaffData[]>): number {
+  return (reports.get(id) ?? []).reduce((sum, r) => sum + 1 + countTeam(r.staff_id, reports), 0)
+}
+
+type TreeNode = { id: string; name: string; role: string; email?: string; children: TreeNode[]; subject?: boolean; muted?: boolean }
+
+const CARD_W = 232
+const CARD_H = 148
+const COL_GAP = 44
+const ROW_GAP = 104
+const SLOT = CARD_W + COL_GAP
+const LEVEL = CARD_H + ROW_GAP
+const PAD_X = 24
+const PAD_TOP = 34   // room for the avatar that overhangs the first row
+const ELBOW = 14
+
+function toTreeNode(staff: StaffData, reports: Map<string, StaffData[]>, subject: boolean): TreeNode {
+  return {
+    id: staff.staff_id,
+    name: staff.staff_name || "-",
+    role: roleBadge(staff).label,
+    email: staff.staff_email,
+    subject,
+    children: (reports.get(staff.staff_id) ?? []).map(child => toTreeNode(child, reports, false)),
+  }
+}
+
+// Accent colour + spelled-out job title per role, shared by the cards and the legend.
+function roleStyle(node: TreeNode) {
+  if (node.muted) return { color: "#94a3b8", title: node.role, icon: Briefcase }
+  if (node.role === "NSM") return { color: "#059669", title: "National Sales Manager", icon: Briefcase }
+  if (node.role.endsWith("RSM")) return { color: "#3730a3", title: "Regional Sales Manager", icon: Briefcase }
+  if (node.role === "ASM") return { color: "#0d9488", title: "Area Sales Manager", icon: User }
+  if (node.role === "Sales Manager") return { color: "#a855f7", title: "Sales Manager", icon: User }
+  return { color: "#6366f1", title: "Staff", icon: User }
+}
+
+// Tidy-tree pass: leaves take the next slot, a parent centres over its first
+// and last child. Connectors drop to a shared bus between the two rows.
+function HierarchyTree({ root, collapsed, onToggle }: { root: TreeNode; collapsed: Set<string>; onToggle: (id: string) => void }) {
+  const { cards, links, joints, width, height } = useMemo(() => {
+    const cards: { node: TreeNode; x: number; y: number; hidden: number }[] = []
+    const links: string[] = []
+    const joints: { cx: number; cy: number }[] = []
+    let cursor = PAD_X + CARD_W / 2
+    let maxDepth = 0
+
+    const place = (node: TreeNode, depth: number): number => {
+      maxDepth = Math.max(maxDepth, depth)
+      const kids = collapsed.has(node.id) ? [] : node.children
+      const y = PAD_TOP + depth * LEVEL
+      let x: number
+
+      if (!kids.length) {
+        x = cursor
+        cursor += SLOT
+      } else {
+        const kidXs = kids.map(kid => place(kid, depth + 1))
+        x = (kidXs[0] + kidXs[kidXs.length - 1]) / 2
+        const bottom = y + CARD_H
+        const busY = bottom + ROW_GAP / 2
+        const childTop = y + LEVEL
+        links.push(`M ${x} ${bottom} V ${busY}`)
+        joints.push({ cx: x, cy: bottom })
+        kidXs.forEach(kidX => {
+          if (Math.abs(kidX - x) < 1) {
+            links.push(`M ${x} ${busY} V ${childTop}`)
+          } else {
+            const dir = kidX > x ? 1 : -1
+            links.push(
+              `M ${x} ${busY} H ${kidX - dir * ELBOW} A ${ELBOW} ${ELBOW} 0 0 ${dir > 0 ? 1 : 0} ${kidX} ${busY + ELBOW} V ${childTop}`,
+            )
+          }
+          joints.push({ cx: kidX, cy: childTop })
+        })
+      }
+
+      cards.push({ node, x, y, hidden: kids.length ? 0 : node.children.length })
+      return x
+    }
+
+    place(root, 0)
+    return {
+      cards,
+      links,
+      joints,
+      width: Math.max(cursor - CARD_W / 2 - COL_GAP + PAD_X, 320),
+      height: PAD_TOP + maxDepth * LEVEL + CARD_H + 32,
+    }
+  }, [root, collapsed])
+
+  return (
+    <div className="h-full overflow-auto p-6">
+      <div className="relative mx-auto" style={{ width, height }}>
+        <svg width={width} height={height} className="absolute inset-0">
+          {links.map((d, i) => (
+            <path key={d} d={d} fill="none" stroke="#cbd5e1" strokeWidth={1.5} className="staff-edge" style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }} />
+          ))}
+          {joints.map((joint, i) => (
+            <circle key={`${joint.cx}-${joint.cy}`} cx={joint.cx} cy={joint.cy} r={3} fill="#cbd5e1" className="staff-edge" style={{ animationDelay: `${Math.min(i, 12) * 25}ms` }} />
+          ))}
+        </svg>
+
+        {cards.map(({ node, x, y, hidden }, i) => {
+          const { color, title, icon: Icon } = roleStyle(node)
+          const foldable = node.children.length > 0
+          return (
+            <div
+              key={node.id}
+              className="staff-card absolute"
+              style={{ left: x - CARD_W / 2, top: y, width: CARD_W, animationDelay: `${Math.min(i, 12) * 35}ms` }}
+            >
+              <div
+                onClick={() => foldable && onToggle(node.id)}
+                role={foldable ? "button" : undefined}
+                tabIndex={foldable ? 0 : undefined}
+                onKeyDown={(e) => { if (foldable && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onToggle(node.id) } }}
+                title={node.email || node.name}
+                className={`relative flex flex-col rounded-2xl border border-gray-100 bg-white px-4 pb-4 pt-8 text-center shadow-[0_4px_20px_rgba(15,23,42,0.06)] transition duration-200 ${
+                  foldable ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(15,23,42,0.10)]" : ""
+                } ${node.subject ? "ring-2 ring-indigo-500/25" : ""}`}
+                style={{ minHeight: CARD_H, borderTop: `3px solid ${color}` }}
+              >
+                <span
+                  className="absolute -top-6 left-1/2 grid h-12 w-12 -translate-x-1/2 place-items-center rounded-full text-sm font-bold text-white ring-4 ring-slate-50"
+                  style={{ background: color }}
+                >
+                  {initials(node.name)}
+                </span>
+
+                {foldable && (
+                  <span className="absolute right-2.5 top-2.5 rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-slate-500">
+                    {hidden > 0 ? `+${hidden}` : node.children.length}
+                  </span>
+                )}
+
+                <p className="truncate text-sm font-bold text-slate-800">{node.name}</p>
+                <p className="mt-1 truncate text-xs text-slate-400">{node.role}</p>
+
+                <div className="mt-auto flex items-center justify-center gap-1.5 border-t border-gray-100 pt-3 text-xs font-medium" style={{ color }}>
+                  <Icon className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate">{title}</span>
+                </div>
+              </div>
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+const LEGEND = [
+  { code: "RSM", title: "Regional Sales Manager", color: "#3730a3", icon: Briefcase },
+  { code: "ASM", title: "Area Sales Manager", color: "#0d9488", icon: User },
+  { code: "SM", title: "Sales Manager", color: "#a855f7", icon: User },
+  { code: "Staff", title: "Team Member", color: "#6366f1", icon: User },
+]
+
+function HierarchyLegend() {
+  return (
+    <div className="flex flex-wrap items-center justify-center gap-x-8 gap-y-3 border-t border-gray-200 bg-white px-5 py-3">
+      {LEGEND.map(({ code, title, color, icon: Icon }) => (
+        <div key={code} className="flex items-center gap-2">
+          <span className="grid h-8 w-8 place-items-center rounded-full text-white" style={{ background: color }}>
+            <Icon className="h-3.5 w-3.5" />
+          </span>
+          <div className="leading-tight">
+            <p className="text-xs font-bold text-slate-800">{code}</p>
+            <p className="text-[11px] text-slate-400">{title}</p>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function HierarchyPanel({ open, onClose, data, reports }: { open: boolean; onClose: () => void; data: StaffData[]; reports: Map<string, StaffData[]> }) {
+  const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [query, setQuery] = useState("")
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
+
+  const byId = useMemo(() => new Map(data.map(s => [s.staff_id, s])), [data])
+  const selected = selectedId ? byId.get(selectedId) ?? null : null
+
+  const matches = useMemo(() => {
+    const needle = query.trim().toLowerCase()
+    return data
+      .filter(s => !needle || `${s.staff_name} ${s.staff_email} ${roleBadge(s).label}`.toLowerCase().includes(needle))
+      .sort((a, b) =>
+        countTeam(b.staff_id, reports) - countTeam(a.staff_id, reports) ||
+        String(a.staff_name ?? "").localeCompare(String(b.staff_name ?? "")))
+  }, [data, query, reports])
+
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose() }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [open, onClose])
+
+  const teamSize = selected ? countTeam(selected.staff_id, reports) : 0
+
+  // Managers above the subject form a single-child trunk; everything below is
+  // the subject's real team.
+  const root = useMemo(() => {
+    if (!selected) return null
+    return ancestorsOf(selected, byId).reduceRight<TreeNode>(
+      (child, node) => ({ id: node.id, name: node.name, role: node.label, muted: true, children: [child] }),
+      toTreeNode(selected, reports, true),
+    )
+  }, [selected, byId, reports])
+
+  const toggleNode = (id: string) => setCollapsed(prev => {
+    const next = new Set(prev)
+    next.has(id) ? next.delete(id) : next.add(id)
+    return next
+  })
+
+  return (
+    <div className={`fixed inset-0 z-[60] ${open ? "" : "pointer-events-none"}`} aria-hidden={!open}>
+      <div
+        onClick={onClose}
+        className={`absolute inset-0 bg-black/40 transition-opacity duration-300 ${open ? "opacity-100" : "opacity-0"}`}
+      />
+      <aside
+        className={`absolute right-0 top-0 flex h-full w-full max-w-5xl flex-col bg-slate-50 shadow-2xl transition-transform duration-300 ease-out motion-reduce:transition-none ${
+          open ? "translate-x-0" : "translate-x-full"
+        }`}
+      >
+        <div className="relative border-b border-gray-200 bg-white px-5 py-5 text-center">
+          <h2 className="text-xl font-extrabold tracking-tight text-slate-900">Organizational Hierarchy</h2>
+          <p className="mt-1 truncate text-xs text-slate-400">
+            {selected ? `${selected.staff_name} · ${teamSize} in team` : "Sales Team Structure"}
+          </p>
+          <span className="mx-auto mt-2.5 block h-[3px] w-9 rounded-full bg-indigo-500" />
+          <button
+            onClick={onClose}
+            aria-label="Close hierarchy"
+            className={`absolute right-4 top-4 rounded-md p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 ${pressable}`}
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        {!selected ? (
+          <>
+            <div className="border-b border-gray-200 bg-white px-5 pb-4">
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="Search staff by name, email or role"
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                />
+              </div>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 py-3">
+              {matches.length === 0 && <p className="px-2 py-8 text-center text-sm text-gray-400">No staff found</p>}
+              {matches.map((s, i) => {
+                const badge = roleBadge(s)
+                const team = countTeam(s.staff_id, reports)
+                return (
+                  <button
+                    key={s.staff_id}
+                    onClick={() => { setCollapsed(new Set()); setSelectedId(s.staff_id) }}
+                    style={{ animationDelay: `${Math.min(i, 10) * 25}ms` }}
+                    className={`staff-node mb-1.5 flex w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/40 ${pressable}`}
+                  >
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-indigo-50 text-[11px] font-semibold text-indigo-600">
+                      {initials(s.staff_name)}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-gray-800">{s.staff_name || "-"}</div>
+                      <div className="truncate text-[11px] text-gray-400">{s.staff_email || "-"}</div>
+                    </div>
+                    <span className={`${badge.bg} ${badge.text} shrink-0 rounded-full px-2 py-0.5 text-[10px] font-medium whitespace-nowrap`}>{badge.label}</span>
+                    {team > 0 && <span className="shrink-0 text-[11px] tabular-nums text-gray-400">{team}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          </>
+        ) : (
+          <div className="flex min-h-0 flex-1 flex-col">
+            <div className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-2.5">
+              <button
+                onClick={() => setSelectedId(null)}
+                className={`inline-flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-600 shadow-sm hover:bg-gray-50 ${pressable}`}
+              >
+                <ChevronLeft className="h-3.5 w-3.5" />
+                Change staff
+              </button>
+              <span className="text-[11px] text-gray-400">Click a node to fold or unfold its team</span>
+            </div>
+
+            <div className="min-h-0 flex-1 bg-slate-50">
+              {root && <HierarchyTree root={root} collapsed={collapsed} onToggle={toggleNode} />}
+            </div>
+
+            {teamSize === 0 && (
+              <p className="border-t border-gray-200 bg-white px-4 py-2.5 text-center text-xs text-gray-400">
+                No one reports to {selected.staff_name || "this staff member"}.
+              </p>
+            )}
+
+            <HierarchyLegend />
+          </div>
+        )}
+      </aside>
+    </div>
+  )
+}
+
 export default function StaffListPage() {
   const [page,          setPage]          = useState(1)
   const [search,        setSearch]        = useState("")
@@ -104,10 +482,17 @@ export default function StaffListPage() {
   const [roleFilter,    setRoleFilter]    = useState("")
   const [emailFilter,   setEmailFilter]   = useState("")
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [statusFilter,  setStatusFilter]  = useState<"" | StaffStatus>("")
+  const [statusConfirm, setStatusConfirm] = useState<StaffData | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
+  // Optimistic per-row status so a toggle shows immediately without refetching
+  // the whole (client-paginated) staff list.
+  const [statusOverrides, setStatusOverrides] = useState<Record<string, StaffStatus>>({})
   const [toastMsg,      setToastMsg]      = useState<{ text: string; type: 'success' | 'error' } | null>(null)
-  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(() => new Set())
   const [openMenu, setOpenMenu] = useState<FloatingMenuState>(null)
   const [role, setRole] = useState<AppRole>('admin')
+  const [hierarchyOpen, setHierarchyOpen] = useState(false)
 
   const queryClient = useQueryClient()
 
@@ -179,7 +564,26 @@ export default function StaffListPage() {
     staleTime: 5 * 60 * 1000,
   })
 
-  const data: StaffData[] = response?.data || []
+  const data: StaffData[] = useMemo(
+    () => (response?.data || []).map((staff) => ({ ...staff, status: statusOverrides[staff.staff_id] ?? normalizeStaffStatus(staff.status) })),
+    [response?.data, statusOverrides],
+  )
+
+  // Team = whoever reports to this row, derived from the full list the page
+  // already fetched. RSMs report to the NSM (an admin profile with its own id
+  // namespace), so they never contribute to a staff row's team.
+  const directReports = useMemo(() => {
+    const map = new Map<string, StaffData[]>()
+    data.forEach((staff) => {
+      const authRole = String(staff.role ?? "").toUpperCase()
+      const roleType = String(staff.staff_roletype ?? "").toUpperCase()
+      if (authRole === "RSM" || roleType === "RSM" || authRole === "NSM") return
+      const managerId = reportingManagerOf(staff)?.id
+      if (!managerId) return
+      map.set(managerId, [...(map.get(managerId) ?? []), staff])
+    })
+    return map
+  }, [data])
 
   // Headcount per role label in the current dataset — drives both the Role
   // dropdown options and the summary chips above the table.
@@ -202,12 +606,13 @@ export default function StaffListPage() {
     const email = emailFilter.trim().toLowerCase()
     return data.filter(s => {
       if (roleFilter && roleBadge(s).label !== roleFilter) return false
+      if (statusFilter && normalizeStaffStatus(s.status) !== statusFilter) return false
       if (email && !String(s.staff_email ?? "").toLowerCase().includes(email)) return false
       return true
     })
-  }, [data, roleFilter, emailFilter])
+  }, [data, roleFilter, statusFilter, emailFilter])
 
-  const clientFiltered = !!(roleFilter || emailFilter.trim())
+  const clientFiltered = !!(roleFilter || statusFilter || emailFilter.trim())
 
   const totalFromServer = response?.count ?? 0
   const total = clientFiltered ? roleFilteredData.length : (totalFromServer || data.length)
@@ -219,7 +624,7 @@ export default function StaffListPage() {
   const displayedData: StaffData[] = serverPaging ? roleFilteredData : roleFilteredData.slice((page - 1) * ITEMS_PER_PAGE, page * ITEMS_PER_PAGE)
 
   // Reset to page 1 whenever a client-side filter changes so pagination stays in sync.
-  useEffect(() => { setPage(1) }, [roleFilter, emailFilter])
+  useEffect(() => { setPage(1) }, [roleFilter, statusFilter, emailFilter])
 
   // Prefetch next page (only when searching / using server pagination)
   useEffect(() => {
@@ -246,26 +651,59 @@ export default function StaffListPage() {
   }, [searchInput])
 
   const handleDelete = async (id: string) => {
+    setDeletingId(id)
     try {
-      setToastMsg({ text: "Staff deletion is not available in Stage 3", type: 'error' })
-    } catch {
-      setToastMsg({ text: "Failed to delete staff", type: 'error' })
+      await axios.delete(`${ADMIN_STAFF_URL}/${encodeURIComponent(id)}`, { withCredentials: true })
+      setToastMsg({ text: "Staff member deleted", type: 'success' })
+      await refetch()
+    } catch (error: any) {
+      setToastMsg({ text: error?.response?.data?.message || "Failed to delete staff", type: 'error' })
     } finally {
+      setDeletingId(null)
       setDeleteConfirm(null)
+    }
+  }
+
+  const updateStaffStatus = async (staff: StaffData, nextStatus: StaffStatus) => {
+    setStatusUpdatingId(staff.staff_id)
+    try {
+      const res = await axios.patch(
+        `${ADMIN_STAFF_URL}/${encodeURIComponent(staff.staff_id)}/status`,
+        { status: nextStatus },
+        { withCredentials: true },
+      )
+      const applied = normalizeStaffStatus(res.data?.data?.status ?? nextStatus)
+      setStatusOverrides((prev) => ({ ...prev, [staff.staff_id]: applied }))
+      setToastMsg({
+        text: applied === "ACTIVE"
+          ? `${staff.staff_name || "Staff member"} can now log in.`
+          : `${staff.staff_name || "Staff member"} is deactivated and blocked from logging in.`,
+        type: 'success',
+      })
+    } catch (error: any) {
+      setToastMsg({ text: error?.response?.data?.message || "Failed to update staff status", type: 'error' })
+    } finally {
+      setStatusUpdatingId(null)
+      setStatusConfirm(null)
     }
   }
 
   const handleDownloadCSV = () => {
     if (!roleFilteredData.length) return
-    const headers = ["S.No.", "Name", "Email", "Role", "Password"]
+    const headers = ["S.No.", "Name", "Email", "Role", "City", "State", "Gender", "Team", "Status", "Reports To"]
     const rows = roleFilteredData.map((s, i) => [
       i + 1,
       s.staff_name,
       s.staff_email,
       roleBadge(s).label,
-      s.staff_password,
+      (s.assigned_cities ?? []).join(" | ") || s.staff_location || "-",
+      (s.assigned_states ?? []).join(" | ") || "-",
+      s.gender || "-",
+      (directReports.get(s.staff_id) ?? []).map(r => `${r.staff_name} (${roleBadge(r).label})`).join(" | ") || "-",
+      statusBadge(normalizeStaffStatus(s.status)).label,
+      reportingManagerOf(s)?.name ?? "-",
     ])
-    const csv = [headers, ...rows].map(r => r.join(",")).join("\n")
+    const csv = [headers, ...rows].map(r => r.map(csvCell).join(",")).join("\n")
     const blob = new Blob([csv], { type: "text/csv" })
     const url = URL.createObjectURL(blob)
     const a = document.createElement("a")
@@ -305,8 +743,14 @@ export default function StaffListPage() {
         @keyframes staff-menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
         .staff-toast { animation: staff-toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
         .staff-menu { animation: staff-menu-in 140ms cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top right; }
+        @keyframes staff-node-in { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: translateX(0); } }
+        .staff-node { animation: staff-node-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+        @keyframes staff-card-in { from { opacity: 0; transform: translateY(12px) scale(0.96); } to { opacity: 1; transform: none; } }
+        @keyframes staff-edge-in { from { opacity: 0; } to { opacity: 1; } }
+        .staff-card { animation: staff-card-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+        .staff-edge { animation: staff-edge-in 380ms ease both; }
         @media (prefers-reduced-motion: reduce) {
-          .staff-toast, .staff-menu { animation: none; }
+          .staff-toast, .staff-menu, .staff-node, .staff-card, .staff-edge { animation: none; }
         }
       `}</style>
 
@@ -330,7 +774,7 @@ export default function StaffListPage() {
               <h3 className="font-semibold text-gray-900">Delete Staff</h3>
             </div>
             <p className="text-sm text-gray-500 mb-5">
-              Are you sure you want to delete this staff member? This action cannot be undone.
+              This permanently removes the staff member and their login from the database. This action cannot be undone.
             </p>
             <div className="flex gap-2 justify-end">
               <button
@@ -340,15 +784,55 @@ export default function StaffListPage() {
                 Cancel
               </button>
               <button
-                onClick={() => handleDelete(deleteConfirm)}
-                className={`px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium ${pressable}`}
+                onClick={() => void handleDelete(deleteConfirm)}
+                disabled={deletingId === deleteConfirm}
+                className={`px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium disabled:opacity-60 ${pressable}`}
               >
-                Delete
+                {deletingId === deleteConfirm ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Activate / Deactivate Confirm Modal */}
+      {statusConfirm && (() => {
+        const nextStatus: StaffStatus = normalizeStaffStatus(statusConfirm.status) === "ACTIVE" ? "INACTIVE" : "ACTIVE"
+        const deactivating = nextStatus === "INACTIVE"
+        return (
+          <div className="fixed inset-0 z-40 bg-black/40 flex items-center justify-center">
+            <div className="bg-white rounded-xl shadow-xl p-6 w-96 border border-gray-200">
+              <h3 className="font-semibold text-gray-900 mb-3">
+                {deactivating ? "Deactivate Staff" : "Activate Staff"}
+              </h3>
+              <p className="text-sm text-gray-500 mb-5">
+                {deactivating
+                  ? `${statusConfirm.staff_name || "This staff member"} will be signed out and blocked from logging in until reactivated.`
+                  : `${statusConfirm.staff_name || "This staff member"} will be able to log in again.`}
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  onClick={() => setStatusConfirm(null)}
+                  className={`px-4 py-2 text-sm border border-gray-200 rounded-lg text-gray-600 hover:bg-gray-50 ${pressable}`}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => void updateStaffStatus(statusConfirm, nextStatus)}
+                  disabled={statusUpdatingId === statusConfirm.staff_id}
+                  className={`px-4 py-2 text-sm rounded-lg text-white font-medium disabled:opacity-50 ${pressable} ${
+                    deactivating ? "bg-red-500 hover:bg-red-600" : "bg-emerald-600 hover:bg-emerald-700"
+                  }`}
+                >
+                  {statusUpdatingId === statusConfirm.staff_id ? "Saving..." : deactivating ? "Deactivate" : "Activate"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      <HierarchyPanel open={hierarchyOpen} onClose={() => setHierarchyOpen(false)} data={data} reports={directReports} />
 
       <div className="p-6 admin-page-shell">
 
@@ -362,6 +846,13 @@ export default function StaffListPage() {
               </p>
             </div>
             <div className="flex items-center gap-2">
+              <button
+                onClick={() => setHierarchyOpen(true)}
+                className={`flex items-center gap-2 px-4 py-2 text-sm bg-white border border-gray-200 rounded-lg text-gray-700 hover:bg-gray-50 shadow-sm ${pressable}`}
+              >
+                <Network className="w-4 h-4" />
+                Hierarchy
+              </button>
               <button
                 onClick={handleDownloadCSV}
                 disabled={!roleFilteredData.length}
@@ -407,13 +898,13 @@ export default function StaffListPage() {
                 </button>
               )
             })}
-            {roleFilter && (
+            {(roleFilter || statusFilter) && (
               <button
                 type="button"
-                onClick={() => setRoleFilter("")}
+                onClick={() => { setRoleFilter(""); setStatusFilter("") }}
                 className="text-xs text-gray-500 underline hover:text-gray-800"
               >
-                Clear role filter
+                Clear filters
               </button>
             )}
           </div>
@@ -496,7 +987,39 @@ export default function StaffListPage() {
                   </th>
 
                   <th className="p-1.5 text-left">
-                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Password</div>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">City</div>
+                  </th>
+
+                  <th className="p-1.5 text-left">
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">State</div>
+                  </th>
+
+                  <th className="p-1.5 text-left">
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Gender</div>
+                  </th>
+
+                  <th className="p-1.5 text-left">
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Team</div>
+                  </th>
+
+                  <th className="p-1.5 text-left">
+                    <div className="relative">
+                      <select
+                        value={statusFilter}
+                        onChange={(e) => setStatusFilter(e.target.value as "" | StaffStatus)}
+                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                      >
+                        <option value="">Status</option>
+                        <option value="ACTIVE">Active</option>
+                        <option value="INACTIVE">Inactive</option>
+                        <option value="SUSPENDED">Suspended</option>
+                      </select>
+                      <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                    </div>
+                  </th>
+
+                  <th className="p-1.5 text-left">
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Reports To</div>
                   </th>
 
                   <th className="p-1.5 text-right">
@@ -509,7 +1032,7 @@ export default function StaffListPage() {
                 {/* Shimmer */}
                 {isLoading && Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
                   <tr key={i}>
-                    {Array.from({ length: 6 }).map((_, j) => (
+                    {Array.from({ length: 11 }).map((_, j) => (
                       <td key={j} className="px-4 py-4">
                         <div className={`${SHIMMER} h-4 w-full`} />
                       </td>
@@ -520,7 +1043,7 @@ export default function StaffListPage() {
                 {/* Empty */}
                 {!isLoading && displayedData.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-6 py-16 text-center">
+                    <td colSpan={11} className="px-6 py-16 text-center">
                       <div className="flex flex-col items-center gap-2 text-gray-400">
                         <Users className="w-8 h-8" />
                         <span className="text-sm">No staff members found</span>
@@ -553,30 +1076,52 @@ export default function StaffListPage() {
                         </span>
                       </td>
 
-                      <td className="px-4 py-4 font-mono text-xs tracking-widest">
+                      <td className="px-4 py-4 text-gray-600 text-xs whitespace-nowrap" title={(staff.assigned_cities ?? []).join(", ")}>
+                        {listSummary(staff.assigned_cities, staff.staff_location) || <span className="text-gray-300">-</span>}
+                      </td>
+
+                      <td className="px-4 py-4 text-gray-600 text-xs whitespace-nowrap" title={(staff.assigned_states ?? []).join(", ")}>
+                        {listSummary(staff.assigned_states) || <span className="text-gray-300">-</span>}
+                      </td>
+
+                      <td className="px-4 py-4 text-gray-600 text-xs capitalize">{staff.gender || <span className="text-gray-300">-</span>}</td>
+
+                      <td className="px-4 py-4">
                         {(() => {
-                          const visible = visiblePasswords.has(staff.staff_id)
+                          const team = directReports.get(staff.staff_id) ?? []
+                          if (!team.length) return <span className="text-gray-300 text-xs">-</span>
                           return (
-                            <div className="flex items-center gap-2">
-                              <span className={`${visible ? 'text-gray-800 bg-amber-50 px-2 py-0.5 rounded border border-amber-100 select-all' : 'text-gray-300'}`}>
-                                {visible ? staff.staff_password || "-" : "********"}
-                              </span>
-                              {/* {(
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); setVisiblePasswords(prev => {
-                                    const next = new Set(prev)
-                                    if (next.has(staff.staff_id)) next.delete(staff.staff_id)
-                                    else next.add(staff.staff_id)
-                                    return next
-                                  })}}
-                                  className="p-1 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 transition"
-                                  aria-label={visible ? 'Hide staff password' : 'Show staff password'}
-                                  title={visible ? 'Hide password' : 'Show password'}
-                                >
-                                  {visible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                                </button>
-                              )} */}
+                            <div className="flex flex-col gap-0.5" title={team.map(m => `${m.staff_name} (${roleBadge(m).label})`).join(", ")}>
+                              {team.slice(0, 2).map(m => (
+                                <span key={m.staff_id} className="text-gray-700 text-xs whitespace-nowrap">
+                                  {m.staff_name} <span className="text-gray-400">· {roleBadge(m).label}</span>
+                                </span>
+                              ))}
+                              {team.length > 2 && <span className="text-gray-400 text-[11px]">+{team.length - 2} more</span>}
+                            </div>
+                          )
+                        })()}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {(() => {
+                          const badge = statusBadge(normalizeStaffStatus(staff.status))
+                          return (
+                            <span className={`${badge.bg} ${badge.text} text-xs font-medium px-2.5 py-1 rounded-full whitespace-nowrap`}>
+                              {badge.label}
+                            </span>
+                          )
+                        })()}
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {(() => {
+                          const manager = reportingManagerOf(staff)
+                          if (!manager) return <span className="text-gray-300 text-xs">-</span>
+                          return (
+                            <div className="flex flex-col">
+                              <span className="text-gray-700 text-xs font-medium">{manager.name || "-"}</span>
+                              {manager.email && <span className="text-gray-400 text-[11px]">{manager.email}</span>}
                             </div>
                           )
                         })()}
@@ -596,6 +1141,9 @@ export default function StaffListPage() {
                             {isMenuOpen(openMenu, staff.staff_id) && (
                               <div onClick={(e) => e.stopPropagation()} data-menu-id={staff.staff_id} style={{ top: openMenu?.top ?? 0, left: openMenu?.left ?? 0 }} className="staff-menu fixed w-44 bg-white border border-gray-200 rounded-md shadow-2xl z-[9999] py-1">
                                 <Link href={getStaffEditRoute(staff.staff_id)} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Edit</Link>
+                                <button onClick={(e) => { e.stopPropagation(); setStatusConfirm(staff); setOpenMenu(null) }} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
+                                  {normalizeStaffStatus(staff.status) === "ACTIVE" ? "Deactivate" : "Activate"}
+                                </button>
                                 <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(staff.staff_id); setOpenMenu(null) }} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50">Delete</button>
                               </div>
                             )}

@@ -8,7 +8,8 @@ import { isStaffLike } from "@/server/auth/sales-scope";
 const orderAccessInclude = {
   dealer: { select: { id: true, businessName: true } },
   assignedStaff: { select: { id: true, displayName: true } },
-  items: { orderBy: { id: "asc" as const } },
+  // dispatches feed the order's Pending/Partial/Completed status in the mappers.
+  items: { orderBy: { id: "asc" as const }, include: { dispatches: { select: { quantity: true } } } },
 } satisfies Prisma.OrderInclude;
 
 type PgOrder = Prisma.OrderGetPayload<{ include: typeof orderAccessInclude }>;
@@ -241,7 +242,31 @@ export async function createOrderOverlayRecord(actor: AuthActor, order: PgOrder,
 
 export function overlayDoc(row: any, order: PgOrder) {
   const cancellation = row.type === "cancel" || row.status === "cancelled" ? { status: "cancelled", reason: row.reason ?? "", cancelledBy: { id: row.actorUserId?.toString?.() ?? "", role: "admin" }, cancelledAt: row.createdAt?.toISOString?.() ?? row.createdAt } : undefined;
+  // A decline is not a cancellation: the order was reviewed and turned down
+  // rather than pulled. The Cancelled Orders tab lists both, so it needs the
+  // reviewer's note and identity kept separate from `cancellation`.
+  const isDecline = (row.type === "acceptance" || row.type === "rsm_acceptance") && row.status === "declined";
+  const decline = isDecline
+    ? {
+        status: "declined",
+        stage: row.type === "rsm_acceptance" ? "rsm" : "staff",
+        note: row.reason ?? "",
+        declinedBy: {
+          id: row.actorUserId?.toString?.() ?? "",
+          // The order carries the reviewer's resolved display name per stage;
+          // the overlay actor only has an email, so prefer the stored name.
+          name: (row.type === "rsm_acceptance" ? order.rsmReviewedByName : order.acceptanceReviewedByName)
+            || row.actor?.staffProfile?.displayName
+            || row.actor?.email
+            || "",
+          role: (row.actorRole ?? "").toString().toLowerCase(),
+        },
+        declinedAt: row.createdAt?.toISOString?.() ?? row.createdAt,
+      }
+    : undefined;
   return {
+    decline,
+    outcome: isDecline ? "declined" : "cancelled",
     id: row.id?.toString?.() ?? "",
     orderId: order.id.toString(),
     dealerId: order.dealerId.toString(),
@@ -262,15 +287,27 @@ export function overlayDoc(row: any, order: PgOrder) {
 }
 
 export async function listPostgresCancelledOverlays(actor: AuthActor, input: { search?: string; page?: number; limit?: number }) {
-  const where: Prisma.OrderOverlayWhereInput = { type: "cancel", status: "cancelled" };
+  // Cancellations (order pulled) and declines (order reviewed and refused) both
+  // belong in this tab, so reviewers - the RSM especially - can read why a
+  // staff member turned an order down.
+  const where: Prisma.OrderOverlayWhereInput = {
+    OR: [
+      { type: "cancel", status: "cancelled" },
+      { type: { in: ["acceptance", "rsm_acceptance"] }, status: "declined" },
+    ],
+  };
   if (actor.role === "DEALER") where.order = { dealerId: actor.dealerId };
   if (isStaffLike(actor) && actor.staffId) where.order = { OR: [{ assignedStaffId: actor.staffId }, { dealer: { staffAssignments: { some: { staffId: actor.staffId, active: true } } } }] };
-  if (input.search) where.OR = [{ reason: { contains: input.search, mode: "insensitive" } }, { order: { orderNumber: { contains: input.search, mode: "insensitive" } } }];
+  // `where.OR` is already spent on the outcome filter above, so search has to
+  // AND onto it instead of overwriting it.
+  if (input.search) {
+    where.AND = [{ OR: [{ reason: { contains: input.search, mode: "insensitive" } }, { order: { orderNumber: { contains: input.search, mode: "insensitive" } } }] }];
+  }
   const page = Math.max(1, Math.floor(input.page ?? 1));
   const limit = Math.min(100, Math.max(1, Math.floor(input.limit ?? 10)));
   const [total, rows] = await Promise.all([
     prisma.orderOverlay.count({ where }),
-    prisma.orderOverlay.findMany({ where, include: { order: { include: orderAccessInclude } }, orderBy: { updatedAt: "desc" }, skip: (page - 1) * limit, take: limit }),
+    prisma.orderOverlay.findMany({ where, include: { order: { include: orderAccessInclude }, actor: { select: { email: true, staffProfile: { select: { displayName: true } } } } }, orderBy: { updatedAt: "desc" }, skip: (page - 1) * limit, take: limit }),
   ]);
   return { rows: rows.map((row) => overlayDoc(row, row.order as PgOrder)), total, page, limit, totalPages: Math.ceil(total / limit) };
 }

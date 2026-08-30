@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { CheckCircle2, Search, Trash2, Eye, EyeOff, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, X, UserPlus, Inbox } from 'lucide-react'
+import { CheckCircle2, Search, Trash2, Eye, EyeOff, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, X, UserPlus, Inbox } from 'lucide-react'
 import { confirmAlert } from 'react-confirm-alert'
 import { staffRoleBadge } from '@/lib/staffRoleLabel'
 type DealerStatus = "active" | "inactive" | "suspended"
@@ -32,6 +32,7 @@ function dealerStatusBadge(value: DealerStatus) {
 type AssignedStaff = {
   staffId: string
   name: string
+  phone?: string
   roleLabel: string
   roleKey: string
   salesRegion?: string
@@ -296,11 +297,11 @@ function getStaffId(): string {
 }
 
 export default function DealerListPage() {
-  const [role]          = useState<AppRole>(() => getRole())
-  const [staffId]       = useState(() => getStaffId())
-  const [page,          setPage]          = useState(1)
-  const [search,        setSearch]        = useState("")
-  const [searchInput,   setSearchInput]   = useState("")
+  const [role] = useState<AppRole>(() => getRole())
+  const [staffId] = useState(() => getStaffId())
+  const [page, setPage] = useState(1)
+  const [search, setSearch] = useState("")
+  const [searchInput, setSearchInput] = useState("")
   const [selectedStaffId, setSelectedStaffId] = useState("")
   const [statusFilter, setStatusFilter] = useState<DealerStatusFilter>("")
   const [walletFilter, setWalletFilter] = useState<WalletFilter>("")
@@ -312,12 +313,13 @@ export default function DealerListPage() {
   const [phoneSearchInput, setPhoneSearchInput] = useState("")
   const [phoneSearch, setPhoneSearch] = useState("")
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-  const [toastMsg,      setToastMsg]      = useState<{ text: string; type: 'success' | 'error' } | null>(null)
+  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(() => new Set())
   const [openMenu, setOpenMenu] = useState<FloatingMenuState>(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
   const [bulkActivating, setBulkActivating] = useState(false)
   const [statusOverrides, setStatusOverrides] = useState<Record<string, DealerStatus>>({})
+  const [nameSort, setNameSort] = useState<"" | "asc" | "desc">("")
 
   const queryClient = useQueryClient()
 
@@ -392,19 +394,23 @@ export default function DealerListPage() {
       status: statusOverrides[String(dealer.Dealer_Id)] ?? normalizeDealerStatus(dealer.status),
     }))
 
-    if (role !== "staff") return merged
+    const filtered = role !== "staff" ? merged : (() => {
+      const normalizedSearch = search.trim().toLowerCase()
+      return merged
+        .filter((dealer) => isActiveDealerStatus(dealer.status))
+        .filter((dealer) => !normalizedSearch || [
+          dealer.Dealer_Name,
+          dealer.Dealer_Dealercode,
+          dealer.Dealer_City,
+          dealer.Dealer_Email,
+          dealer.Dealer_Number,
+        ].some((value) => String(value ?? "").toLowerCase().includes(normalizedSearch)))
+    })()
 
-    const normalizedSearch = search.trim().toLowerCase()
-    return merged
-      .filter((dealer) => isActiveDealerStatus(dealer.status))
-      .filter((dealer) => !normalizedSearch || [
-        dealer.Dealer_Name,
-        dealer.Dealer_Dealercode,
-        dealer.Dealer_City,
-        dealer.Dealer_Email,
-        dealer.Dealer_Number,
-      ].some((value) => String(value ?? "").toLowerCase().includes(normalizedSearch)))
-  }, [response?.data, role, search, statusOverrides])
+    if (!nameSort) return filtered
+    const sorted = [...filtered].sort((a, b) => (a.Dealer_Name || "").localeCompare(b.Dealer_Name || "", undefined, { sensitivity: "base" }))
+    return nameSort === "asc" ? sorted : sorted.reverse()
+  }, [response?.data, role, search, statusOverrides, nameSort])
 
   const total =
     role === "staff"
@@ -416,8 +422,8 @@ export default function DealerListPage() {
   const totalPages = role === "staff"
     ? 1
     : Number(response?.last_page) ||
-      Math.ceil(total / ITEMS_PER_PAGE) ||
-      (data.length < ITEMS_PER_PAGE ? page : page + 1)
+    Math.ceil(total / ITEMS_PER_PAGE) ||
+    (data.length < ITEMS_PER_PAGE ? page : page + 1)
 
   // Prefetch next page
   useEffect(() => {
@@ -696,9 +702,8 @@ export default function DealerListPage() {
                   onClose()
                   void updateDealerStatus(dealerId, nextStatus)
                 }}
-                className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${pressable} ${
-                  isDeactivating ? "bg-red-500 hover:bg-red-600" : "bg-emerald-600 hover:bg-emerald-700"
-                }`}
+                className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${pressable} ${isDeactivating ? "bg-red-500 hover:bg-red-600" : "bg-emerald-600 hover:bg-emerald-700"
+                  }`}
               >
                 {isDeactivating ? "Deactivate" : "Activate"}
               </button>
@@ -743,7 +748,7 @@ export default function DealerListPage() {
   const showStaffColumn = role !== "staff"
   const tableColumnCount = 8 + (canViewDealerPasswords ? 1 : 0) + (showStaffColumn ? 1 : 0)
   const startIndex = role === "staff" ? 1 : (page - 1) * ITEMS_PER_PAGE + 1
-  const endIndex   = role === "staff" ? data.length : Math.min(page * ITEMS_PER_PAGE, total)
+  const endIndex = role === "staff" ? data.length : Math.min(page * ITEMS_PER_PAGE, total)
   const activeFilterCount = [selectedStaffId, statusFilter, walletFilter, cityFilter, nameSearch, emailSearch, phoneSearch].filter(Boolean).length
 
   // Summary tiles double as filter buttons: clicking one sets the matching
@@ -792,14 +797,13 @@ export default function DealerListPage() {
 
       {/* Toast */}
       {toastMsg && (
-        <div className={`dealer-toast fixed top-5 right-5 z-50 text-sm font-medium px-4 py-3 rounded-xl shadow-lg backdrop-blur-md border flex items-center gap-2 ${
-          toastMsg.type === 'success'
+        <div className={`dealer-toast fixed top-5 right-5 z-50 text-sm font-medium px-4 py-3 rounded-xl shadow-lg backdrop-blur-md border flex items-center gap-2 ${toastMsg.type === 'success'
             ? 'bg-emerald-600/90 border-emerald-400/40 text-white shadow-emerald-900/10'
             : 'bg-red-500/90 border-red-300/40 text-white shadow-red-900/10'
-        }`}>
+          }`}>
           {toastMsg.type === 'success'
-            ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6 9 17l-5-5"/></svg>
-            : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
+            ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6 9 17l-5-5" /></svg>
+            : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4m0 4h.01" /></svg>
           }
           {toastMsg.text}
         </div>
@@ -887,11 +891,10 @@ export default function DealerListPage() {
                   type="button"
                   onClick={() => handleSummaryTileClick(tile)}
                   aria-pressed={active}
-                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-left transition-all duration-150 ease-out ${pressable} ${
-                    active
+                  className={`inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-left transition-all duration-150 ease-out ${pressable} ${active
                       ? `ring-1 ${tile.ring}`
                       : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
-                  }`}
+                    }`}
                 >
                   <span className={`h-1.5 w-1.5 rounded-full ${tile.dot}`} />
                   <span className="text-xs font-medium text-gray-500">{tile.label}</span>
@@ -949,6 +952,22 @@ export default function DealerListPage() {
               Clear filters
             </button>
           )}
+          <div className="flex my-auto mx-3 ">
+
+
+             <button
+              type="button"
+              onClick={() => setNameSort((prev) => prev === "asc" ? "desc" : prev === "desc" ? "" : "asc")}
+              className={`rounded-md  text-gray-400 hover:bg-gray-200 hover:text-gray-600 ${pressable} ${nameSort ? "text-indigo-600" : ""}`}
+              aria-label={nameSort === "asc" ? "Sorted A to Z, click to sort Z to A" : nameSort === "desc" ? "Sorted Z to A, click to clear sort" : "Sort by dealer name"}
+              title={nameSort === "asc" ? "A → Z" : nameSort === "desc" ? "Z → A" : "Sort alphabetically"}
+            >
+              <div className="flex p-2 items-center gap-1">
+                <p className="text-sm text-gray-600">{nameSort === "asc" ? "A → Z" : nameSort === "desc" ? "Z → A" : "Sort alphabetically"}</p>
+                {nameSort === "asc" ? <ChevronUp className="h-3.5 w-3.5" /> : nameSort === "desc" ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronsUpDown className="h-3.5 w-3.5" />}
+              </div>
+             </button>
+          </div>
         </div>
 
         {isError && (
@@ -973,18 +992,21 @@ export default function DealerListPage() {
                         value={nameSearchInput}
                         onChange={(event) => setNameSearchInput(event.target.value)}
                         placeholder="Dealer"
-                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-4 pr-16 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
                       />
-                      {nameSearchInput && (
-                        <button
-                          type="button"
-                          onClick={() => setNameSearchInput("")}
-                          className={`absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600 ${pressable}`}
-                          aria-label="Clear dealer name search"
-                        >
-                          <X className="h-3.5 w-3.5" />
-                        </button>
-                      )}
+                      <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
+                        {nameSearchInput && (
+                          <button
+                            type="button"
+                            onClick={() => setNameSearchInput("")}
+                            className={`rounded-md p-0.5 text-gray-400 hover:bg-gray-200 hover:text-gray-600 ${pressable}`}
+                            aria-label="Clear dealer name search"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+
+                      </div>
                     </div>
                   </th>
                   <th className="p-1.5 text-left">
@@ -1144,7 +1166,7 @@ export default function DealerListPage() {
 
                 {/* Rows */}
                 {!isLoading && data.map((dealer, i) => {
-                  const badge  = statusBadge(dealer.status)
+                  const badge = statusBadge(dealer.status)
                   const walletActive = String(dealer.walletStatus ?? "").toLowerCase() === "active"
                   const passwordVisible = visiblePasswords.has(dealer.Dealer_Id)
                   return (
@@ -1207,6 +1229,7 @@ export default function DealerListPage() {
                                 return (
                                   <div key={staff.staffId} className="flex items-center gap-1.5">
                                     <span className="truncate">{staff.name || `Staff #${staff.staffId}`}</span>
+                                    {staff.phone && <span className="shrink-0 text-gray-400">{staff.phone}</span>}
                                     <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${roleBadge.bg} ${roleBadge.text}`}>
                                       {roleBadge.label}
                                     </span>
@@ -1215,7 +1238,7 @@ export default function DealerListPage() {
                               })}
                             </div>
                           ) : (
-                            dealer.staffname || dealer.assignedstaff || "-"
+                            dealer.staffname || dealer.assignedstaff || "-" 
                           )}
                         </td>
                       )}
@@ -1223,7 +1246,7 @@ export default function DealerListPage() {
                       <td className="px-4 py-4">
                         <span className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${walletActive ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
                           <span className={`h-1.5 w-1.5 rounded-full ${walletActive ? "bg-emerald-500" : "bg-gray-400"}`} />
-                          {walletActive ? "Wallet" : "Non-wallet"}
+                          {walletActive ? "Advance" : "Credit"}
                         </span>
                       </td>
 
@@ -1257,7 +1280,7 @@ export default function DealerListPage() {
                                 </Link>
                                 {role === 'staff' && (
                                   <Link href={getStaffDealerRoute(dealer.Dealer_Id)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
-                                    <Eye className="h-3.5 w-3.5 text-gray-400" /> View (staff)
+                                    <Eye className="h-3.5 w-3.5 text-gray-400" /> View (staff) 
                                   </Link>
                                 )}
                                 {canManageDealers && (
@@ -1265,9 +1288,11 @@ export default function DealerListPage() {
                                     <Link href={getDealerEditRoute(dealer.Dealer_Id)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                       <Pencil className="h-3.5 w-3.5 text-gray-400" /> Edit
                                     </Link>
-                                    <Link href={`/dashboard/admin/dealer/${encodeURIComponent(dealer.Dealer_Id)}/ledger?wallet=addfund`} className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
-                                      <Wallet className="h-3.5 w-3.5" /> Payment
-                                    </Link>
+                                    {walletActive && (
+                                      <Link href={`/dashboard/admin/dealer/${encodeURIComponent(dealer.Dealer_Id)}/ledger?wallet=addfund`} className="flex items-center gap-2.5 px-3 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-50">
+                                        <Wallet className="h-3.5 w-3.5" /> Payment
+                                      </Link>
+                                    )}
                                     <button
                                       onClick={(e) => { e.stopPropagation(); confirmDealerStatusChange(dealer) }}
                                       disabled={statusUpdatingId === String(dealer.Dealer_Id)}
@@ -1320,11 +1345,10 @@ export default function DealerListPage() {
                   <button
                     key={p}
                     onClick={() => handlePageChange(p)}
-                    className={`px-3 py-1.5 text-sm rounded-lg border ${pressable} ${
-                      p === page
+                    className={`px-3 py-1.5 text-sm rounded-lg border ${pressable} ${p === page
                         ? "bg-indigo-600 text-white border-indigo-600 font-medium"
                         : "border-gray-200 text-gray-600 hover:bg-gray-50"
-                    }`}
+                      }`}
                   >
                     {p}
                   </button>

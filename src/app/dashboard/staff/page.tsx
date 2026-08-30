@@ -39,7 +39,7 @@ const NAV_ITEMS = [
   { label: "Dealer Ledger",   href: "/Pages/ledger",                             icon: <BookOpen size={15} /> },
   { label: "Add Dealer",      href: "/dashboard/admin/dealer/AddDealerForm",     icon: <UserRoundPlus size={15} /> },
   { label: "Dealer Category Report", href: "/dashboard/staff/reports/dealer-category", icon: <ClipboardList size={15} /> },
-  { label: "Order List",      href: "/Pages/Ordermanagement",                    icon: <ClipboardList size={15} /> },
+  { label: "Order List",      href: "/orders",                    icon: <ClipboardList size={15} /> },
   { label: "Pending Orders",  href: "/Pages/Ordermanagement/outstandingorders",  icon: <ClipboardList size={15} /> },
   { label: "Discount Requests", href: "/dashboard/staff/discount-requests",      icon: <Receipt size={15} /> },
 ]
@@ -578,6 +578,8 @@ function ExecutiveDashboard() {
         }
         .stat-card:hover { transform: translateY(-1px); box-shadow: 0 1px 2px rgba(0,0,0,.02), 0 14px 38px rgba(0,0,0,.055); }
         .stat-link-card { display: block; text-decoration: none; color: inherit; }
+        .stat-card { position: relative; }
+        .stat-card > .quick-action-btn::after { content: ""; position: absolute; inset: 0; }
         .stat-lbl { color: #6e6e73; font-size: 12px; font-weight: 600; letter-spacing: -.005em; }
         .stat-val { margin-top: 12px; color: #1d1d1f; font-size: clamp(28px, 3.2vw, 34px); line-height: 1; font-weight: 700; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
         .stat-sub { font-size: 11px; color: #8e8e93; margin-top: 8px; line-height: 1.4; }

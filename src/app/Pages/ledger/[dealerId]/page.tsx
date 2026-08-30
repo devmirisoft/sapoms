@@ -3,6 +3,7 @@
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
@@ -267,6 +268,110 @@ function OrdersSkeleton() {
 }
 
 // ─── MAIN ─────────────────────────────────────────────────────────────────────
+/**
+ * Standalone wallet top-up request, raised by the dealer from their ledger.
+ *
+ * Posts to the same endpoint the advance-order flow uses, with no order
+ * attached, so both request types share one approval chain and one funding
+ * path rather than duplicating either.
+ */
+function RequestFundsPanel({
+  onDone,
+  onRefresh,
+}: {
+  onDone: (text: string, type: 'success' | 'error') => void
+  onRefresh: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [amount, setAmount] = useState('')
+  const [note, setNote] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+
+  const submit = async () => {
+    const value = Number(amount)
+    if (!Number.isFinite(value) || value <= 0) {
+      onDone('Enter a valid amount to request.', 'error')
+      return
+    }
+    setSubmitting(true)
+    try {
+      const res = await fetch('/api/dealer-fund-requests', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ type: 'ADDITIONAL_FUNDS', amount: value, note: note.trim() || undefined }),
+      })
+      const json = await res.json()
+      if (!res.ok || !json?.success) throw new Error(json?.message || 'Unable to raise the fund request.')
+      onDone('Fund request raised. You can track it under My Fund Requests.', 'success')
+      setOpen(false)
+      setAmount('')
+      setNote('')
+      onRefresh()
+    } catch (err: any) {
+      onDone(err?.message || 'Unable to raise the fund request.', 'error')
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <div className="mt-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="text-[15px] font-bold text-gray-900">Request Additional Funds</h3>
+          <p className="mt-0.5 text-[13px] text-gray-500">
+            Ask for funds to be added to your wallet. Goes to your RSM, then Staff, then the Accountant.
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/dashboard/dealer/fund-requests"
+            className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-[13px] font-semibold text-gray-700 hover:bg-gray-100"
+          >
+            My Fund Requests
+          </Link>
+          <button
+            type="button"
+            onClick={() => setOpen((current) => !current)}
+            className="rounded-xl bg-emerald-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-emerald-700"
+          >
+            {open ? 'Cancel' : 'Request Funds'}
+          </button>
+        </div>
+      </div>
+
+      {open && (
+        <div className="mt-4 flex flex-col gap-2 border-t border-gray-100 pt-4 sm:flex-row sm:items-center">
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            placeholder="Amount"
+            className="w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-emerald-300 sm:w-48"
+          />
+          <input
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Reason (optional)"
+            className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-emerald-300"
+          />
+          <button
+            type="button"
+            disabled={submitting}
+            onClick={() => void submit()}
+            className="rounded-xl bg-emerald-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            {submitting ? 'Submitting...' : 'Submit request'}
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function DealerLedgerPage() {
   const params = useParams()
   const router = useRouter()
@@ -547,6 +652,16 @@ export default function DealerLedgerPage() {
           onPayMoneyClick={() => setPayModalOpen(true)}
           canRecordPayment={canManageLedgerEntries}
         />
+
+        {/* A dealer can ask for a wallet top-up from their own ledger. The
+            request runs the same RSM -> Staff -> Accountant chain as an
+            advance order; there is simply no order to place at the end. */}
+        {userRole === 'dealer' && (
+          <RequestFundsPanel
+            onDone={(text, type) => setToast({ text, type })}
+            onRefresh={() => void refetchWallet()}
+          />
+        )}
 
         {/* Summary Cards */}
         <LedgerSummary

@@ -35,6 +35,7 @@ type Dealer = {
   creditDays?: string | number
   credit_period?: string | number
   Credit_Period?: string | number
+  walletBalance?: string | number
   accountBook?: AccountBook
 }
 
@@ -809,6 +810,7 @@ export default function DealerLedgerShellPage() {
               <FormField
                 label="Invoice Date"
                 type="date"
+                min={new Date().toISOString().slice(0, 10)}
                 value={billForm.billDate}
                 onChange={(value) => setBillForm((prev) => ({ ...prev, billDate: value }))}
                 required
@@ -934,6 +936,7 @@ export default function DealerLedgerShellPage() {
               <FormField
                 label="Payment Date"
                 type="date"
+                min={new Date().toISOString().slice(0, 10)}
                 value={paymentForm.paymentDate}
                 onChange={(value) => setPaymentForm((prev) => ({ ...prev, paymentDate: value }))}
                 required
@@ -1058,7 +1061,19 @@ function FragmentRow({
           )}
         </td>
         <td className="px-4 py-4 text-right">
-          {canManageLedgerEntries ? (
+          {/* Advance dealers pay up front, so there is no invoice to raise - show what is left in their wallet instead. */}
+          {terms === 'advance' ? (
+            <div className="inline-flex flex-col items-end">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Wallet balance</span>
+              <span
+                className={`text-sm font-semibold ${
+                  Number(dealer.walletBalance || 0) < 0 ? 'text-rose-600' : 'text-emerald-600'
+                }`}
+              >
+                {formatAmount(dealer.walletBalance)}
+              </span>
+            </div>
+          ) : canManageLedgerEntries ? (
             <button
               type="button"
               onClick={onAddBill}

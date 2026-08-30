@@ -19,6 +19,12 @@ export type StaffMember = {
   asmId?: string;
 };
 
+export type DealerContact = {
+  name: string;
+  phone: string;
+  email: string;
+};
+
 export type DealerFormValues = {
   name: string;
   email: string;
@@ -27,7 +33,9 @@ export type DealerFormValues = {
   secondaryContactName: string;
   secondaryContactPhone: string;
   secondaryContactEmail: string;
+  additionalContacts: DealerContact[];
   city: string;
+  state: string;
   address: string;
   pincode: string;
   dealerCode: string;
@@ -56,7 +64,9 @@ export const emptyDealerForm: DealerFormValues = {
   secondaryContactName: "",
   secondaryContactPhone: "",
   secondaryContactEmail: "",
+  additionalContacts: [],
   city: "",
+  state: "",
   address: "",
   pincode: "",
   dealerCode: "",
@@ -99,6 +109,20 @@ export function getAssignedStaffNames(selectedStaff: string[], staffList: StaffM
     .join(",");
 }
 
+export function normalizeDealerContacts(value: unknown): DealerContact[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map((entry) => {
+      const source = entry && typeof entry === "object" ? entry as Record<string, unknown> : {};
+      return {
+        name: cleanText(source.name),
+        phone: cleanText(source.phone),
+        email: cleanText(source.email),
+      };
+    })
+    .filter((contact) => contact.name || contact.phone || contact.email);
+}
+
 export function normalizeDealerFormSnapshot(value: unknown): DealerFormSnapshot {
   const source = value && typeof value === "object" ? value as Record<string, unknown> : {};
 
@@ -111,7 +135,9 @@ export function normalizeDealerFormSnapshot(value: unknown): DealerFormSnapshot 
     secondaryContactName: cleanText(source.secondaryContactName),
     secondaryContactPhone: cleanText(source.secondaryContactPhone),
     secondaryContactEmail: cleanText(source.secondaryContactEmail),
+    additionalContacts: normalizeDealerContacts(source.additionalContacts),
     city: cleanText(source.city),
+    state: cleanText(source.state),
     address: cleanText(source.address),
     pincode: cleanText(source.pincode),
     dealerCode: cleanText(source.dealerCode),
@@ -136,6 +162,7 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
     { key: "email", label: "Email address" },
     { key: "whatsapp", label: "WhatsApp number" },
     { key: "city", label: "City" },
+    { key: "state", label: "State" },
     { key: "address", label: "Bill-to address" },
     { key: "pincode", label: "Pin code" },
     { key: "dealerCode", label: "Dealer code" },
@@ -180,6 +207,13 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
     }
   }
 
+  for (const [index, contact] of snapshot.additionalContacts.entries()) {
+    const position = index + 3;
+    if (!contact.name) return `Contact ${position} name is required`;
+    if (!contact.phone) return `Contact ${position} phone is required`;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) return `Enter a valid contact ${position} email address`;
+  }
+
   return null;
 }
 
@@ -219,6 +253,7 @@ export function buildDealerPhpFormData(snapshot: DealerFormSnapshot): FormData {
   formData.append("Dealer_Secondary_Contact_Phone", snapshot.secondaryContactPhone);
   formData.append("Dealer_Secondary_Contact_Email", snapshot.secondaryContactEmail);
   formData.append("Dealer_City", snapshot.city);
+  formData.append("Dealer_State", snapshot.state);
   formData.append("Dealer_Address", snapshot.address);
   formData.append("Dealer_Pincode", snapshot.pincode);
   formData.append("Dealer_Dealercode", snapshot.dealerCode);

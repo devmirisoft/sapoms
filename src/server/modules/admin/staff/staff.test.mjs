@@ -9,6 +9,11 @@ const staffRepo = readFileSync("src/server/modules/admin/staff/staff.repository.
 const staffMapper = readFileSync("src/server/modules/admin/staff/staff.mapper.ts", "utf8");
 const dealerRepo = readFileSync("src/server/modules/admin/dealers/dealers.repository.ts", "utf8");
 const staffRoute = readFileSync("src/app/api/admin/staff/route.ts", "utf8");
+const staffStatusRoute = readFileSync("src/app/api/admin/staff/[staffId]/status/route.ts", "utf8");
+const staffListPage = readFileSync("src/app/dashboard/admin/staff/stafflist/page.tsx", "utf8");
+const staffDiagnosticRoute = readFileSync("src/app/api/admin/staff/[staffId]/diagnostic-password/route.ts", "utf8");
+const diagnosticService = readFileSync("src/server/modules/admin/diagnostic-passwords.service.ts", "utf8");
+const authProvider = readFileSync("src/server/auth/providers/postgres-auth.provider.ts", "utf8");
 
 test("admin staff mapper does not expose password fields", () => {
   assert.equal(staffMapper.includes("password"), false);
@@ -87,17 +92,18 @@ test("staff directory route allows staff-like reads for dealer assignment withou
   assert.match(staffRoute, /const actor = await requireAdmin\(\)/);
 });
 
-test("ASM territory is a city subset of its own states, itself inside the parent RSM states", () => {
+test("ASM territory is states only, a subset of the parent RSM states, with no cities of its own", () => {
   assert.match(staffRepo, /assertSubset\(assignedStates, rsm\.assignedStates, "ASM_STATES_OUTSIDE_RSM_SCOPE"\)/);
-  assert.match(staffRepo, /assertSubset\(assignedCities, citiesForStates\(assignedStates\), "ASM_CITIES_OUTSIDE_STATE_SCOPE", "cities"\)/);
   assert.match(staffSchemas, /ASM_STATES_REQUIRED/);
-  assert.match(staffSchemas, /ASM_CITIES_REQUIRED/);
+  assert.doesNotMatch(staffSchemas, /ASM_CITIES_REQUIRED/);
+  assert.match(staffRepo, /parentRsmId = rsm\.id;\r?\n\s*assignedCities = \[\];/);
+  assert.match(staffRepo, /staffData\.assignedStates = assignedStates;\r?\n\s*staffData\.assignedCities = \[\];/);
 });
 
-test("Sales Manager holds its own cities, carved out of its ASM and never wider", () => {
+test("Sales Manager holds its own cities, carved out of its ASM's states and never wider", () => {
   // Create and update both re-check against the ASM: it may have changed, or shrunk.
-  assert.equal(staffRepo.match(/assertSubset\(assignedCities, asm\.assignedCities, "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities"\)/g)?.length, 2);
-  assert.match(staffRepo, /select: \{ id: true, parentRsmId: true, assignedStates: true, assignedCities: true \}/);
+  assert.equal(staffRepo.match(/assertSubset\(assignedCities, citiesForStates\(asm\.assignedStates\), "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities"\)/g)?.length, 2);
+  assert.match(staffRepo, /select: \{ id: true, parentRsmId: true, assignedStates: true \}/);
   assert.match(staffSchemas, /EXECUTIVE_CITIES_REQUIRED/);
 });
 
@@ -109,6 +115,12 @@ test("Sales Manager states are derived from its cities, not picked in the form",
 
 test("staff subtype 2 keeps no territory of its own", () => {
   assert.match(staffSchemas, /value\.staffRoleType === "2"\) \{ value\.parentAsmId = undefined; value\.assignedStates = undefined; value\.assignedCities = undefined; \}/);
+});
+
+test("staff creation caps NSM at one and RSM at the number of sales regions", () => {
+  assert.match(staffRepo, /import \{ SALES_REGION_OPTIONS \} from "@\/lib\/salesRegions";/);
+  assert.match(staffRepo, /existingNsm >= 1.*NSM_LIMIT_REACHED/s);
+  assert.match(staffRepo, /existingRsm >= SALES_REGION_OPTIONS\.length.*RSM_LIMIT_REACHED/s);
 });
 
 test("staff update accepts hierarchy and territory changes", () => {
@@ -124,7 +136,55 @@ test("Add and Edit Staff both offer ASM and Sales Manager city pickers from one 
     assert.match(source, /from '@\/lib\/places'/);
     assert.doesNotMatch(source, /^import places from/m);
     assert.match(source, /smCitiesByState/);
-    assert.match(source, /assignedCities: role === 'ASM' \|\| role === 'EXECUTIVE' \? assignedCities : undefined/);
+    assert.match(source, /assignedCities: role === 'EXECUTIVE' \? assignedCities : undefined/);
     assert.match(source, /Limited to the cities assigned to the selected ASM\./);
   }
+});
+
+test("deactivating staff revokes sessions and bumps the token version", () => {
+  // Both the status endpoint and a status-carrying edit must go through the
+  // same helper, or one path leaves an inactive staff member still signed in.
+  assert.match(staffRepo, /async function applyUserStatus[\s\S]*?tokenVersion: \{ increment: 1 \}[\s\S]*?authSession\.updateMany[\s\S]*?revokedAt: new Date\(\)/);
+  assert.match(staffRepo, /async updateStatus\([\s\S]*?applyUserStatus\(tx, staff\.userId, input\.status\)/);
+  assert.match(staffRepo, /if \(input\.status !== undefined\) await applyUserStatus\(tx, current\.userId, input\.status\)/);
+  assert.doesNotMatch(staffRepo, /userData\.status = input\.status/);
+});
+
+test("staff status endpoint is admin-only and validates the status value", () => {
+  assert.match(staffStatusRoute, /requireAdmin\(\)/);
+  assert.match(staffStatusRoute, /parseUpdateStaffStatusInput/);
+  assert.match(staffSchemas, /const statusSchema[\s\S]*?z\.enum\(\["ACTIVE", "INACTIVE", "SUSPENDED"\]\)/);
+  assert.match(staffSchemas, /export function parseUpdateStaffStatusInput/);
+});
+
+test("staff list can toggle a staff member active or inactive", () => {
+  assert.match(staffListPage, /\/status`/);
+  assert.match(staffListPage, /Deactivate" : "Activate/);
+});
+
+test("staff temporary passwords reuse the dealer diagnostic-password flow", () => {
+  assert.match(staffDiagnosticRoute, /requireAdmin\(\)/);
+  for (const method of ["GET", "POST", "DELETE"]) {
+    assert.match(staffDiagnosticRoute, new RegExp(`export async function ${method}`));
+  }
+  assert.match(staffDiagnosticRoute, /\{ staffId: id \}/);
+  // One owner column is ever set, so a staff password can never resolve a dealer.
+  assert.match(diagnosticService, /hashPassword\(password\)/);
+  assert.match(diagnosticService, /ADMIN_STAFF_DIAGNOSTIC_PASSWORD_CREATED/);
+  assert.match(diagnosticService, /ADMIN_STAFF_DIAGNOSTIC_PASSWORD_REVOKED/);
+  assert.match(editStaffPage, /Diagnostic Password/);
+  assert.match(editStaffPage, /diagnosticPassword\.length < 5/);
+});
+
+test("staff login falls back to a temporary password only after the real hash fails", () => {
+  assert.match(authProvider, /verifyPassword\(input\.password, user\.passwordHash\)/);
+  assert.match(authProvider, /if \(!passwordMatches\)/);
+  assert.match(authProvider, /staffId: user\.staffProfile\.id/);
+  assert.match(authProvider, /revokedAt: null, expiresAt: \{ gt: now \}/);
+});
+
+test("staff list shows who each staff member reports to instead of a password", () => {
+  assert.doesNotMatch(staffListPage, /password/i);
+  assert.match(staffListPage, /Reports To/);
+  assert.match(staffListPage, /function reportingManagerOf/);
 });

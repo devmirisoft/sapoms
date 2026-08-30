@@ -690,6 +690,10 @@ type CategorySourceProduct = { category?: CategoryValue; categories?: CategoryVa
 
 const defaultCategoryOptions = ['Joints', 'Laboratory Glassware', 'Accessories']
 
+// Suggestions only — the field stays free text so a product saved with an
+// odd unit still loads and round-trips unchanged.
+const unitOptions = ['Pcs.', 'Set', 'Pair', 'Pack', 'Box', 'Nos.', 'Kg', 'Gm', 'Ltr', 'Ml', 'Mtr']
+
 const defaultColumns: Column[] = [
   { id: 'catalogueNumber', title: 'Catalogue No.', locked: true, kind: 'catalogue' },
   { id: 'packSize', title: 'Pack Size', locked: true, kind: 'pack' },
@@ -997,6 +1001,15 @@ export default function AddProductPage() {
     setVariants((rows) => rows.map((row) => ({ ...row, values: { ...row.values, [id]: '' } })))
   }
 
+  const removeColumn = (columnId: string) => {
+    setColumns((items) => items.filter((item) => item.id !== columnId))
+    setVariants((rows) => rows.map((row) => {
+      const values = { ...row.values }
+      delete values[columnId]
+      return { ...row, values }
+    }))
+  }
+
   const addVariant = () => {
     const row = initialVariant()
     for (const column of columns) row.values[column.id] = row.values[column.id] ?? ''
@@ -1256,7 +1269,11 @@ export default function AddProductPage() {
                     <span className="field-hint">Prefixes every catalogue number below — e.g. {catalogueNumberFor(productCode, 1)}, {catalogueNumberFor(productCode, 2)}...</span>
                   </label>
                   <label className="field"><span className="field-label">Selected Category</span><input className="field-input" value={effectiveCategory} readOnly placeholder="Choose or add a category above" /></label>
-                  <label className="field"><span className="field-label">Unit</span><input className="field-input" value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Pcs." disabled={loading} /></label>
+                  <label className="field">
+                    <span className="field-label">Unit</span>
+                    <input className="field-input" list="unit-options" value={unit} onChange={(event) => setUnit(event.target.value)} placeholder="Pcs." disabled={loading} />
+                    <datalist id="unit-options">{unitOptions.map((option) => <option key={option} value={option} />)}</datalist>
+                  </label>
                   <label className="field wide"><span className="field-label">Description</span><textarea className="field-textarea" value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Brief product description" disabled={loading} /></label>
                 </div>
 
@@ -1327,7 +1344,10 @@ export default function AddProductPage() {
                             >
                               <GripVertical size={12} />
                             </span>
-                            {column.locked ? column.title : <input className="column-input" value={column.title} onChange={(event) => setColumns((items) => items.map((item) => item.id === column.id ? { ...item, title: event.target.value } : item))} disabled={loading} />}
+                            {column.locked ? column.title : <>
+                              <input className="column-input" value={column.title} onChange={(event) => setColumns((items) => items.map((item) => item.id === column.id ? { ...item, title: event.target.value } : item))} disabled={loading} />
+                              <button className="icon-btn" type="button" onClick={() => removeColumn(column.id)} disabled={loading} aria-label={`Remove ${column.title} column`}><X size={13} /></button>
+                            </>}
                           </span>
                         </th>
                       ))}

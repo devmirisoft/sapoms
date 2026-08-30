@@ -22,6 +22,7 @@ export type AdminDealerStaffAssignment = {
     designation: string | null;
     staffRoleType: string | null;
     salesRegion: SalesRegion | null;
+    mobileNo: string | null;
     user: { email: string; status: string; deletedAt: Date | null; role: string };
   };
 };
@@ -45,6 +46,7 @@ export type AdminDealerRecord = {
   secondaryContactName?: string | null;
   secondaryContactPhone?: string | null;
   secondaryContactEmail?: string | null;
+  additionalContacts?: unknown;
   imageUrl?: string | null;
   deletedAt?: Date | null;
   user: { id: bigint; email: string; username?: string | null; status: string; deletedAt?: Date | null };
@@ -75,6 +77,7 @@ export type CreateAdminDealerInput = {
   secondaryContactName?: string;
   secondaryContactPhone?: string;
   secondaryContactEmail?: string;
+  additionalContacts?: Array<{ name: string; phone: string; email: string }>;
   imageUrl?: string;
   status?: UserStatus;
   assignedStaffIds: string[];

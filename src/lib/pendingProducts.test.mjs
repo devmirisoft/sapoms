@@ -506,3 +506,85 @@ test("dealer pending-product results and independently cached role views remain 
   assert.equal(cache.get("101").some((order) => order.Dealer_Name === "Dealer B"), false);
   assert.equal(cache.get("202").some((order) => order.Dealer_Name === "Dealer A"), false);
 });
+
+test("club view groups the same pending lines by dealer or category without changing the default product view", () => {
+  const lines = buildFixtureLines();
+
+  const byProduct = pendingProducts.aggregatePendingProducts(lines);
+  assert.deepEqual(byProduct.map((entry) => entry.productKey).sort(), ["sku:508", "sku:509"]);
+
+  const byDealer = pendingProducts.aggregatePendingProducts(lines, "dealer");
+  const dealerA = byDealer.find((entry) => entry.productKey === "dealer:D-1");
+  assert.equal(byDealer.length, 2);
+  assert.equal(dealerA.productName, "Dealer A");
+  assert.deepEqual(
+    { ordered: dealerA.orderedQuantity, dispatched: dealerA.dispatchedQuantity, pending: dealerA.pendingQuantity, orders: dealerA.pendingOrders },
+    { ordered: 21, dispatched: 6, pending: 15, orders: 2 },
+  );
+
+  const byCategory = pendingProducts.aggregatePendingProducts(lines, "category");
+  assert.equal(byCategory.length, 1);
+  assert.equal(byCategory[0].productKey, "category:Glassware");
+  assert.equal(byCategory[0].pendingQuantity, 23);
+  assert.equal(byCategory[0].dealersAffected, 2);
+
+  const dealerDrilldown = pendingProducts.buildPendingProductDrilldown(lines, "dealer:D-1", "dealer");
+  assert.equal(dealerDrilldown.aggregate.pendingQuantity, 15);
+  assert.deepEqual(dealerDrilldown.orders.map((order) => order.orderId).sort(), ["1001", "1003"]);
+});
+
+test("report periods are rolling windows over the order date", () => {
+  // Fixture orders sit on 2026-08-01, 08-02 and 08-04.
+  const lines = buildFixtureLines();
+  const now = Date.parse("2026-08-05T00:00:00.000Z");
+  const orderIdsFor = (period) =>
+    Array.from(new Set(pendingProducts.filterPendingLinesByPeriod(lines, period, now).map((line) => line.orderId))).sort();
+
+  assert.equal(pendingProducts.pendingReportPeriodStartMs("all", now), null);
+  assert.deepEqual(orderIdsFor("all"), ["1001", "1002", "1003"]);
+
+  // Only 08-04 falls inside the 24h window ending 08-05.
+  assert.deepEqual(orderIdsFor("day"), ["1002"]);
+  assert.deepEqual(orderIdsFor("month"), ["1001", "1002", "1003"]);
+  assert.deepEqual(orderIdsFor("year"), ["1001", "1002", "1003"]);
+
+  // A year later every fixture order has aged out of the shorter windows.
+  const muchLater = Date.parse("2027-08-05T00:00:00.000Z");
+  assert.deepEqual(pendingProducts.filterPendingLinesByPeriod(lines, "quarter", muchLater), []);
+  assert.equal(pendingProducts.filterPendingLinesByPeriod(lines, "all", muchLater).length, lines.length);
+});
+
+test("unknown report periods fall back to all time rather than an empty report", () => {
+  assert.equal(pendingProducts.parsePendingReportPeriod("month"), "month");
+  assert.equal(pendingProducts.parsePendingReportPeriod("HALF_YEAR"), "half_year");
+  assert.equal(pendingProducts.parsePendingReportPeriod("fortnight"), "all");
+  assert.equal(pendingProducts.parsePendingReportPeriod(undefined), "all");
+
+  // An undated line cannot be placed in a window, so a bounded period drops it
+  // instead of silently inflating the totals.
+  const undated = [{ orderDateMs: null, orderId: "x", productKey: "sku:1" }];
+  assert.deepEqual(pendingProducts.filterPendingLinesByPeriod(undated, "year", Date.now()), []);
+  assert.equal(pendingProducts.filterPendingLinesByPeriod(undated, "all", Date.now()).length, 1);
+});
+
+test("club-view rows carry a unit, stay JSON-safe, and collapse to nothing when there is no pending stock", () => {
+  const aggregates = pendingProducts.aggregatePendingProducts(buildFixtureLines());
+  const flask100 = aggregates.find((entry) => entry.catalogueNumber === "50/8");
+
+  // The clubbed row renders "<pending> <unit> pending", so the unit has to survive
+  // aggregation rather than only existing on the drill-down contributions.
+  assert.ok(flask100);
+  assert.equal(flask100.productUnit, "Units");
+  assert.equal(
+    flask100.productUnit,
+    pendingProducts.buildPendingProductDrilldown(buildFixtureLines(), flask100.productKey).orders[0].productUnit
+  );
+
+  // Order ids and quantities come back as strings/numbers, so the payload the
+  // Club View fetches never trips BigInt serialization.
+  assert.doesNotThrow(() => JSON.stringify(aggregates));
+  assert.equal(typeof flask100.pendingQuantity, "number");
+
+  assert.deepEqual(pendingProducts.aggregatePendingProducts([]), []);
+  assert.deepEqual(pendingProducts.buildPendingProductDrilldown([], "sku:50/8"), { aggregate: null, orders: [] });
+});

@@ -28,7 +28,7 @@ async function loadDispatchModule() {
 const dispatch = await loadDispatchModule();
 
 const orderDetailPath = path.resolve("src/app/orders/[id]/page.tsx");
-const orderListPath = path.resolve("src/app/Pages/Ordermanagement/page.tsx");
+const orderListPath = path.resolve("src/app/orders/page.tsx");
 const dispatchApiPath = path.resolve("src/app/api/order-dispatch/route.ts");
 const dispatchPanelPath = path.resolve("src/components/orders/ProductDispatchPanel.tsx");
 
@@ -491,9 +491,10 @@ test("No full-page reload occurs after dispatch update", async () => {
 
 test("Existing View, Accept, and Decline flows remain unchanged on the order list", async () => {
   const source = await fs.readFile(orderListPath, "utf8");
-  assert.match(source, /onView=\{\(\) => router\.push\(`\/orders\/\$\{order\.order_id\}`\)\}/);
-  assert.match(source, /onAccept=\{\(\) => handleAccept\(order\.order_id, 1\)\}/);
-  assert.match(source, /onDecline=\{\(\) => handleAccept\(order\.order_id, 0\)\}/);
+  assert.match(source, /onView=\{\(\) => router\.push\(`\/orders\/\$\{oid\}`\)\}/);
+  assert.match(source, /onAccept=\{\(\) => handleAccept\(oid, 1\)\}/);
+  // Decline routes through the note modal - the lib rejects a note-less decline.
+  assert.match(source, /onDecline=\{\(\) => \{ setDeclineTarget\(oid\); setDeclineNote\(""\); \}\}/);
 });
 
 test("Admin and Staff use the shared dispatch component on the unified order details route", async () => {
@@ -540,7 +541,7 @@ test("Admin acceptance uses the migrated order overlay route without the old PHP
   const mirrorCall = source.indexOf("mirror_acceptance");
   assert.ok(overlayCall >= 0 && mirrorCall > overlayCall);
   assert.doesNotMatch(source, /acceptstatus_requst/);
-  assert.match(source, /action: status === 1 \? 'mirror_acceptance' : 'decline'/);
+  assert.match(source, /action: status === 1 \? "mirror_acceptance" : "decline"/);
 });
 
 test("acceptance mirror writes PostgreSQL order overlay history", async () => {

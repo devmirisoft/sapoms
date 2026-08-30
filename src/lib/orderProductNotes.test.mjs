@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 
 import {
   buildInvoiceProductName,
+  buildInvoiceDescriptionMeta,
   buildMatchedOrderRows,
   buildOrderRemarks,
   extractLegacyProductNote,
@@ -340,4 +341,28 @@ test("Draft and reorder source paths still carry productNote fields", async () =
   assert.match(addOrderSource, /maxLength=\{500\}/);
   assert.match(orderDetailSource, /api\/order-product-notes\?orderId=/);
   assert.doesNotMatch(orderDetailSource, /getremark\?id=/);
+});
+
+test("Invoice description puts Cat. No before the product name and keeps the note separate", () => {
+  const meta = buildInvoiceDescriptionMeta({
+    productName: "Borosilicate Measuring Cylinder",
+    catalogueNumber: "50/8",
+    productNote: "Pack separately",
+    isPriority: true,
+  });
+
+  assert.equal(
+    meta.mainText,
+    "50/8 - Borosilicate Measuring Cylinder" + String.fromCharCode(10) + "[PRIORITY DELIVERY]"
+  );
+  assert.equal(meta.noteText, "Pack separately");
+
+  const noNote = buildInvoiceDescriptionMeta({
+    productName: "",
+    catalogueNumber: "50/8",
+    productNote: "",
+  });
+
+  assert.equal(noNote.mainText, "50/8");
+  assert.equal(noNote.noteText, "");
 });

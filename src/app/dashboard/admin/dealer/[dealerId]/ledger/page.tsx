@@ -255,6 +255,10 @@ export default function DealerLedgerPage() {
       setToast({ text: 'Transaction date and note are required', type: 'error' })
       return
     }
+    if (walletAdjustType !== 'disable' && !walletAdjustReference.trim()) {
+      setToast({ text: 'Reference is required', type: 'error' })
+      return
+    }
 
     setWalletAdjustLoading(true)
     try {
@@ -264,7 +268,7 @@ export default function DealerLedgerPage() {
       const response = await axios.post(`/api/wallet/${dealerId}/adjust`, {
         action: walletAdjustType,
         ...(walletAdjustType !== 'disable' && Number.isFinite(amount) && amount > 0 ? { amount } : {}),
-        reference: walletAdjustReference,
+        reference: walletAdjustReference.trim(),
         note: walletAdjustNote,
         transactionDate: walletTransactionDate,
         idempotencyKey,
@@ -402,11 +406,11 @@ export default function DealerLedgerPage() {
 
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">Transaction date</span>
-                <input type="date" value={walletTransactionDate} onChange={(e) => setWalletTransactionDate(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <input type="date" min={new Date().toISOString().slice(0, 10)} value={walletTransactionDate} onChange={(e) => setWalletTransactionDate(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </label>
 
               <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">Reference</span>
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">Reference <span className="text-red-500">*</span></span>
                 <input
                   type="text"
                   value={walletAdjustReference}

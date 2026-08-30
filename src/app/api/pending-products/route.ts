@@ -9,11 +9,14 @@ import {
   buildPendingProductFilterOptions,
   buildPendingProductLines,
   buildPendingProductsSummaryFromLines,
+  filterPendingLinesByPeriod,
   filterPendingProductLines,
   filterPendingProducts,
+  parsePendingReportPeriod,
   paginatePendingProducts,
   sortPendingProducts,
   type PendingDealerDirectoryRow,
+  type PendingProductClubBy,
   type PendingProductsItemRow,
   type PendingProductsOrderRow,
   type PendingProductsRole,
@@ -45,6 +48,10 @@ function safeInteger(value: unknown, fallback: number) {
 function parseSort(value: string) {
   if (value === "alphabetical" || value === "oldest_pending") return value;
   return "pending_desc";
+}
+
+function parseClubBy(value: string): PendingProductClubBy {
+  return value === "dealer" || value === "category" ? value : "product";
 }
 
 async function loadOrders(actor: PendingProductsActor) {
@@ -149,6 +156,7 @@ export async function GET(req: NextRequest) {
     const search = safeText(req.nextUrl.searchParams.get("search"), 240);
     const category = safeText(req.nextUrl.searchParams.get("category"), 120);
     const sort = parseSort(safeText(req.nextUrl.searchParams.get("sort"), 40));
+    const clubBy = parseClubBy(safeText(req.nextUrl.searchParams.get("clubBy"), 40));
     const dealerId = safeText(req.nextUrl.searchParams.get("dealerId"), 120);
     const assignedStaffId = safeText(req.nextUrl.searchParams.get("assignedStaffId"), 120);
     const productKey = safeText(req.nextUrl.searchParams.get("productKey"), 260);
@@ -202,8 +210,57 @@ export async function GET(req: NextRequest) {
     const summary = buildPendingProductsSummaryFromLines(scopedLines);
     const filters = buildPendingProductFilterOptions(scopedLines);
 
+    // Report mode returns every matching row unpaginated so the client can build
+    // a workbook. It always groups by product — the dealer/category clubbing is a
+    // browse aid, and mixing it in would desync the two sheets.
+    if (safeText(req.nextUrl.searchParams.get("report"), 20)) {
+      const period = parsePendingReportPeriod(req.nextUrl.searchParams.get("period"));
+      const periodLines = filterPendingLinesByPeriod(scopedLines, period);
+      const products = sortPendingProducts(
+        filterPendingProducts(aggregatePendingProducts(periodLines, "product"), { search, category }),
+        sort
+      );
+      const keptKeys = new Set(products.map((product) => product.productKey));
+      const keptLines = periodLines.filter((line) => keptKeys.has(line.productKey));
+
+      return NextResponse.json(
+        {
+          success: true,
+          data: {
+            products,
+            // Trimmed to the columns the workbook renders; the full line carries
+            // ~30 fields and this payload is unpaginated.
+            lines: keptLines.map((line) => ({
+              productKey: line.productKey,
+              catalogueNumber: line.catalogueNumber,
+              productName: line.productName,
+              specification: line.specification,
+              category: line.category,
+              orderId: line.orderId,
+              orderDate: line.orderDate,
+              dealerId: line.dealerId,
+              dealerName: line.dealerName,
+              assignedStaffNames: line.assignedStaffNames,
+              orderedQuantity: line.orderedQuantity,
+              dispatchedQuantity: line.dispatchedQuantity,
+              pendingQuantity: line.pendingQuantity,
+              productUnit: line.productUnit,
+              packSize: line.packSize,
+              dispatchStatus: line.dispatchStatus,
+              mtstatus: line.mtstatus,
+            })),
+            summary: buildPendingProductsSummaryFromLines(keptLines),
+            period,
+            generatedAt: new Date().toISOString(),
+            warnings,
+          },
+        },
+        { headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     if (productKey) {
-      const detail = buildPendingProductDrilldown(scopedLines, productKey);
+      const detail = buildPendingProductDrilldown(scopedLines, productKey, clubBy);
       if (!detail.aggregate) {
         return NextResponse.json({ success: false, message: "Pending product not found in your permitted scope." }, { status: 404 });
       }
@@ -211,7 +268,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: true, data: { product: detail.aggregate, orders: paginatedOrders.items, summary, filters, page: paginatedOrders.page, pageSize: paginatedOrders.pageSize, total: paginatedOrders.total, totalPages: paginatedOrders.totalPages, warnings } }, { headers: { "Cache-Control": "no-store" } });
     }
 
-    const aggregates = sortPendingProducts(filterPendingProducts(aggregatePendingProducts(scopedLines), { search, category }), sort);
+    const aggregates = sortPendingProducts(filterPendingProducts(aggregatePendingProducts(scopedLines, clubBy), { search, category }), sort);
     const paginatedProducts = paginatePendingProducts(aggregates, page, pageSize);
     return NextResponse.json({ success: true, data: { items: paginatedProducts.items, summary, filters, page: paginatedProducts.page, pageSize: paginatedProducts.pageSize, total: paginatedProducts.total, totalPages: paginatedProducts.totalPages, warnings } }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

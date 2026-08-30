@@ -6,7 +6,7 @@ const read = (relative) => readFileSync(new URL(relative, import.meta.url), "utf
 const repo = read("./dealers.repository.ts");
 const mapper = read("./dealers.mapper.ts");
 const schemas = read("./dealers.schemas.ts");
-const diagnosticService = read("./dealer-diagnostic-passwords.service.ts");
+const diagnosticService = read("../diagnostic-passwords.service.ts");
 const authProvider = read("../../../auth/providers/postgres-auth.provider.ts");
 const authSession = read("../../../auth/session.ts");
 const prismaSchema = read("../../../../../prisma/schema.prisma");
@@ -73,27 +73,26 @@ test("dealer mapper returns compatibility assignment aliases without passwords",
 
 
 test("diagnostic dealer passwords are hashed, expiring, admin-only, and not list-exposed", () => {
-  assert.match(prismaSchema, /model DealerDiagnosticPassword/);
+  assert.match(prismaSchema, /model DiagnosticPassword/);
   assert.match(diagnosticService, /hashPassword\(password\)/);
   assert.doesNotMatch(diagnosticService, /password:\s*password|temporaryPassword:\s*password/);
   assert.match(diagnosticService, /expiresAt/);
-  assert.match(diagnosticService, /revoked_at IS NULL/);
+  assert.match(diagnosticService, /revokedAt: null/);
   assert.match(diagnosticService, /ADMIN_DEALER_DIAGNOSTIC_PASSWORD_CREATED/);
   assert.match(diagnosticService, /ADMIN_DEALER_DIAGNOSTIC_PASSWORD_REVOKED/);
-  assert.doesNotMatch(mapper, /diagnosticPassword|DealerDiagnosticPassword/);
+  assert.doesNotMatch(mapper, /diagnosticPassword|DiagnosticPassword/);
   assert.match(editDealerPage, /Diagnostic Password/);
   assert.match(editDealerPage, /diagnostic-password/);
   assert.match(editDealerPage, /diagnosticPassword\.length < 5/);
 });
 
-test("dealer login checks the original hash before dealer-only diagnostic fallback", () => {
+test("login checks the original hash before the diagnostic fallback", () => {
   assert.match(authProvider, /verifyPassword\(input\.password, user\.passwordHash\)/);
   assert.match(authProvider, /if \(!passwordMatches\)/);
-  assert.match(authProvider, /user\.role !== "DEALER"/);
-  assert.match(authProvider, /FROM dealer_diagnostic_passwords/);
-  assert.match(authProvider, /expires_at > \$\{now\}/);
-  assert.match(authProvider, /SET last_used_at = \$\{now\}/);
-  assert.match(authSession, /dealerDiagnosticPassword/);
+  assert.match(authProvider, /prisma\.diagnosticPassword\.findMany/);
+  assert.match(authProvider, /expiresAt: \{ gt: now \}/);
+  assert.match(authProvider, /lastUsedAt: now/);
+  assert.match(authSession, /diagnosticPassword/);
 });
 
 test("schemas normalize legacy aliases at the route boundary", () => {

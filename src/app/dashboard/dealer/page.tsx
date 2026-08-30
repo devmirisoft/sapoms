@@ -637,6 +637,8 @@ function DealerDashboardInner() {
           transition: transform 180ms ease, box-shadow 180ms ease;
         }
         .icard:hover { transform: translateY(-1px); box-shadow: 0 1px 2px rgba(0,0,0,.02), 0 14px 38px rgba(0,0,0,.055); }
+        .icard { position: relative; }
+        .icard > .quick-action-btn::after { content: ""; position: absolute; inset: 0; }
         .icard-lbl { color: #6e6e73; font-size: 12px; font-weight: 600; letter-spacing: -.005em; }
         .icard-val { margin-top: 12px; color: #1d1d1f; font-size: clamp(28px, 3.2vw, 34px); line-height: 1; font-weight: 700; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
         .icard-sub { font-size: 11px; color: #8e8e93; margin-top: 8px; line-height: 1.4; }

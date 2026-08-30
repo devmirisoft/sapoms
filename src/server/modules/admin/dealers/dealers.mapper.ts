@@ -1,3 +1,4 @@
+import { normalizeDealerContacts } from "@/lib/dealerForm";
 import { staffRoleLabel, resolveStaffRoleKey } from "@/lib/staffRoleLabel";
 import type { AdminDealerRecord, AdminDealerStaffAssignment } from "./dealers.types";
 
@@ -21,6 +22,7 @@ export function mapAdminDealerStaffAssignment(record: AdminDealerStaffAssignment
     id: record.staffId.toString(),
     name: record.staff.displayName || "",
     email: record.staff.user.email || "",
+    phone: record.staff.mobileNo || "",
     designation: record.staff.designation || "",
     role: record.staff.user.role || "",
     staffRoleType: record.staff.staffRoleType || "",
@@ -52,6 +54,7 @@ export function mapAdminDealer(record: AdminDealerRecord) {
   const secondaryContactName = record.secondaryContactName || "";
   const secondaryContactPhone = record.secondaryContactPhone || "";
   const secondaryContactEmail = record.secondaryContactEmail || "";
+  const extraContacts = normalizeDealerContacts(record.additionalContacts);
   const assignedStaff = (record.staffAssignments ?? [])
     .filter((assignment) => assignment.active && !assignment.staff.user.deletedAt && assignment.staff.user.status === "ACTIVE")
     .map(mapAdminDealerStaffAssignment);
@@ -94,6 +97,7 @@ export function mapAdminDealer(record: AdminDealerRecord) {
     secondaryContactName,
     secondaryContactPhone,
     secondaryContactEmail,
+    additionalContacts: extraContacts,
     status: record.user.status,
     walletStatus,
     assignedStaff,

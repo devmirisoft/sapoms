@@ -1,13 +1,14 @@
 import "server-only";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type UserStatus } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { paginationToPrisma } from "@/server/admin/admin-pagination";
 import { AdminRouteError } from "@/server/admin/admin-errors";
 import { normalizeEmail } from "@/server/auth/providers/postgres-auth.provider";
 import { hashPassword } from "@/server/auth/password";
 import { citiesForStates, statesForCities } from "@/lib/places";
-import type { AdminStaffListInput, AdminStaffRecord, CreateAdminStaffInput, UpdateAdminStaffInput } from "./staff.types";
+import { SALES_REGION_OPTIONS } from "@/lib/salesRegions";
+import type { AdminStaffListInput, AdminStaffRecord, CreateAdminStaffInput, UpdateAdminStaffInput, UpdateStaffStatusInput } from "./staff.types";
 import type { AuthActor } from "@/server/auth/session";
 
 function buildWhere(input: AdminStaffListInput): Prisma.StaffProfileWhereInput {
@@ -127,6 +128,14 @@ async function audit(tx: Prisma.TransactionClient, actor: AuthActor, eventType: 
   });
 }
 
+// Deactivating must also cut the staff member off mid-session: bumping the
+// token version invalidates issued access tokens, revoking kills refresh.
+async function applyUserStatus(tx: Prisma.TransactionClient, userId: bigint, status: UserStatus) {
+  const disable = status !== "ACTIVE";
+  await tx.user.update({ where: { id: userId }, data: { status, ...(disable ? { tokenVersion: { increment: 1 } } : {}) } });
+  if (disable) await tx.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+}
+
 async function ensureUniqueEmail(tx: Prisma.TransactionClient, email: string, currentUserId?: bigint) {
   const normalizedEmail = normalizeEmail(email);
   const duplicate = await tx.user.findUnique({ where: { normalizedEmail }, select: { id: true } });
@@ -148,10 +157,10 @@ async function resolveAsm(tx: Prisma.TransactionClient, id: bigint | null) {
   if (!id) throw invalid("ASM parent is required", "ASM_PARENT_REQUIRED");
   const asm = await tx.staffProfile.findFirst({
     where: { id, user: { role: "ASM", status: "ACTIVE", deletedAt: null } },
-    select: { id: true, parentRsmId: true, assignedStates: true, assignedCities: true },
+    select: { id: true, parentRsmId: true, assignedStates: true },
   });
   if (!asm?.parentRsmId) throw invalid("Selected ASM was not found or has no RSM parent", "ASM_PARENT_INVALID", { asmId: id.toString() });
-  return { id: asm.id, parentRsmId: asm.parentRsmId, assignedStates: asm.assignedStates, assignedCities: asm.assignedCities };
+  return { id: asm.id, parentRsmId: asm.parentRsmId, assignedStates: asm.assignedStates };
 }
 
 async function resolveNsm(tx: Prisma.TransactionClient, id: bigint | null) {
@@ -206,6 +215,15 @@ export class PostgresAdminStaffRepository {
 
   async create(input: CreateAdminStaffInput, actor: AuthActor): Promise<AdminStaffRecord> {
     return prisma.$transaction(async (tx) => {
+      if (input.role === "NSM") {
+        const existingNsm = await tx.adminProfile.count({ where: nsmWhereBase });
+        if (existingNsm >= 1) throw conflict("An NSM already exists", "NSM_LIMIT_REACHED");
+      }
+      if (input.role === "RSM") {
+        const existingRsm = await tx.staffProfile.count({ where: { user: { role: "RSM", status: "ACTIVE", deletedAt: null } } });
+        if (existingRsm >= SALES_REGION_OPTIONS.length) throw conflict("All regions already have an RSM assigned", "RSM_LIMIT_REACHED");
+      }
+
       const normalizedEmail = await ensureUniqueEmail(tx, input.email);
       const passwordHash = await hashPassword(input.password);
       let parentRsmId: bigint | null = null;
@@ -217,15 +235,15 @@ export class PostgresAdminStaffRepository {
       if (input.role === "ASM") {
         const rsm = await resolveRsm(tx, parseId(input.parentRsmId, "ASM_RSM_INVALID"));
         assertSubset(assignedStates, rsm.assignedStates, "ASM_STATES_OUTSIDE_RSM_SCOPE");
-        assertSubset(assignedCities, citiesForStates(assignedStates), "ASM_CITIES_OUTSIDE_STATE_SCOPE", "cities");
         parentRsmId = rsm.id;
+        assignedCities = [];
       } else if (input.role === "STAFF" && input.staffRoleType === "1") {
         const asm = await resolveAsm(tx, parseId(input.parentAsmId, "EXECUTIVE_ASM_INVALID"));
         parentAsmId = asm.id;
         parentRsmId = asm.parentRsmId;
-        // A Sales Manager works a subset of its ASM's cities; its states are
-        // derived from those cities rather than picked separately.
-        assertSubset(assignedCities, asm.assignedCities, "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities");
+        // A Sales Manager works a subset of the cities in its ASM's assigned
+        // states; its own states are derived from those cities.
+        assertSubset(assignedCities, citiesForStates(asm.assignedStates), "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities");
         assignedStates = statesForCities(assignedCities, asm.assignedStates);
       } else if (input.role === "STAFF" && input.staffRoleType === "2") {
         const rsm = await resolveRsm(tx, parseId(input.parentRsmId, "STAFF_RSM_INVALID"));
@@ -312,7 +330,6 @@ export class PostgresAdminStaffRepository {
         userData.username = normalizedEmail;
         userData.normalizedUsername = normalizedEmail;
       }
-      if (input.status !== undefined) userData.status = input.status;
       if (input.role !== undefined) userData.role = input.role;
       if (input.name !== undefined) staffData.displayName = input.name;
       if (input.designation !== undefined) staffData.designation = input.designation;
@@ -340,17 +357,15 @@ export class PostgresAdminStaffRepository {
         staffData.salesRegion = null;
         staffData.parentRsm = { connect: { id: rsm.id } };
         staffData.parentAsm = { disconnect: true };
-        const assignedCities = uniqueStrings(input.assignedCities ?? current.assignedCities);
-        assertSubset(assignedCities, citiesForStates(assignedStates), "ASM_CITIES_OUTSIDE_STATE_SCOPE", "cities");
         staffData.assignedStates = assignedStates;
-        staffData.assignedCities = assignedCities;
+        staffData.assignedCities = [];
         staffData.reportingManager = { disconnect: true };
       } else if (nextRole === "STAFF" && nextStaffRoleType === "1") {
         const asm = await resolveAsm(tx, parseId(input.parentAsmId ?? current.parentAsmId?.toString(), "EXECUTIVE_ASM_INVALID"));
         // Re-validate against the ASM even when the cities were not edited: the
         // ASM may have changed, or its own territory may have shrunk since.
         const assignedCities = uniqueStrings(input.assignedCities ?? current.assignedCities);
-        assertSubset(assignedCities, asm.assignedCities, "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities");
+        assertSubset(assignedCities, citiesForStates(asm.assignedStates), "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities");
         staffData.staffRoleType = "1";
         staffData.salesRegion = null;
         staffData.parentAsm = { connect: { id: asm.id } };
@@ -377,8 +392,41 @@ export class PostgresAdminStaffRepository {
         staffData.reportingManager = { disconnect: true };
       }
       if (Object.keys(userData).length) await tx.user.update({ where: { id: current.userId }, data: userData });
+      if (input.status !== undefined) await applyUserStatus(tx, current.userId, input.status);
       if (Object.keys(staffData).length) await tx.staffProfile.update({ where: { id: staffId }, data: staffData });
       await audit(tx, actor, "ADMIN_STAFF_UPDATED", { staffId: staffId.toString(), role: nextRole });
+      return tx.staffProfile.findUniqueOrThrow({ where: { id: staffId }, include });
+    });
+  }
+
+  // Hard delete: the profile and its user row leave the database. Everything
+  // that points at the staff either cascades (diagnostic passwords, sessions,
+  // OTPs) or nulls out (orders, discount requests, fund requests, children).
+  async hardDelete(staffId: bigint, actor: AuthActor): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      const staff = await tx.staffProfile.findUnique({ where: { id: staffId }, include: { user: { select: { id: true, email: true, role: true } } } });
+      if (!staff) throw notFound("Staff member not found", "STAFF_NOT_FOUND");
+
+      const children = await tx.staffProfile.count({ where: { OR: [{ parentRsmId: staffId }, { parentAsmId: staffId }] } });
+      if (children) throw conflict("Reassign the staff reporting to this member before deleting", "STAFF_HAS_REPORTS");
+
+      const activeDealers = await tx.dealerStaffAssignment.count({ where: { staffId, active: true } });
+      if (activeDealers) throw conflict("Reassign this member's dealers before deleting", "STAFF_HAS_DEALERS");
+
+      // Join rows are Restrict-guarded; only stale ones remain at this point.
+      await tx.dealerStaffAssignment.deleteMany({ where: { staffId } });
+      await tx.staffProfile.delete({ where: { id: staffId } });
+      await tx.user.delete({ where: { id: staff.userId } });
+      await audit(tx, actor, "ADMIN_STAFF_DELETED", { staffId: staffId.toString(), email: staff.user.email, role: staff.user.role });
+    });
+  }
+
+  async updateStatus(staffId: bigint, input: UpdateStaffStatusInput, actor: AuthActor): Promise<AdminStaffRecord> {
+    return prisma.$transaction(async (tx) => {
+      const staff = await tx.staffProfile.findFirst({ where: { id: staffId, user: { deletedAt: null } }, include: { user: true } });
+      if (!staff) throw notFound("Staff member not found", "STAFF_NOT_FOUND");
+      await applyUserStatus(tx, staff.userId, input.status);
+      await audit(tx, actor, "ADMIN_STAFF_STATUS_CHANGED", { staffId: staffId.toString(), oldStatus: staff.user.status, newStatus: input.status, reason: input.reason });
       return tx.staffProfile.findUniqueOrThrow({ where: { id: staffId }, include });
     });
   }

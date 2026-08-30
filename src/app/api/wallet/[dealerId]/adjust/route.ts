@@ -28,9 +28,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dea
     const body = await req.json();
     const action = text(body.action ?? body.type, 40).toLowerCase();
     const note = text(body.note);
+    const reference = text(body.reference, 200);
     const idempotencyKey = text(req.headers.get("idempotency-key") || body.idempotencyKey, 240);
     if (!idempotencyKey) return NextResponse.json({ success: false, message: "Idempotency key is required." }, { status: 400 });
     if (!note) return NextResponse.json({ success: false, message: "A note is required." }, { status: 400 });
+    if (!reference && action !== "disable" && action !== "deactivate") return NextResponse.json({ success: false, message: "A reference is required." }, { status: 400 });
 
     const result = await prisma.$transaction(async (tx) => {
       const actorMeta = { userId: actor.userId, role: actor.role, displayName: actor.displayName };
@@ -40,7 +42,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dea
         await applyWalletAdjustment(tx, dealerId, body.amount, {
           direction: text(body.direction, 20).toLowerCase() === "debit" || Number(body.amount) < 0 ? "debit" : "credit",
           idempotencyKey,
-          reference: text(body.reference, 200),
+          reference,
           note,
           actor: actorMeta,
           allowCreate: true,
@@ -51,7 +53,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dea
       if (!type) throw Object.assign(new Error("Unsupported wallet action."), { status: 400, code: "unsupported_action" });
       await applyWalletChange(tx, dealerId, type, body.amount, {
         idempotencyKey,
-        reference: text(body.reference, 200),
+        reference,
         note,
         actor: actorMeta,
         allowCreate: type === WalletTransactionType.CREDIT || type === WalletTransactionType.REFUND,

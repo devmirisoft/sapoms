@@ -262,6 +262,29 @@ export function buildInvoiceProductName(productName, productNote) {
 }
 
 /**
+ * Invoice description cell: "<Cat. No> - <Product name>" plus the product note
+ * on its own line (rendered bold + italic by the PDF generator).
+ *
+ * @param {{ productName?: unknown, catalogueNumber?: unknown, productNote?: unknown, isPriority?: boolean }} input
+ * @returns {{ mainText: string, noteText: string }}
+ */
+export function buildInvoiceDescriptionMeta(input) {
+  const productName = String(input?.productName ?? "").trim();
+  const catNumber = String(input?.catalogueNumber ?? "").trim();
+  const baseName = productName || catNumber || "-";
+
+  const mainLines = [
+    catNumber && productName ? catNumber + " - " + productName : baseName,
+    input?.isPriority ? "[PRIORITY DELIVERY]" : "",
+  ].filter(Boolean);
+
+  return {
+    mainText: mainLines.join(String.fromCharCode(10)),
+    noteText: normalizeProductNote(input?.productNote),
+  };
+}
+
+/**
  * @param {Array<Record<string, any>>} items
  * @param {Array<Record<string, any>>} fallbackNotes
  */

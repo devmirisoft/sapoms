@@ -2,6 +2,7 @@ import type { OrderAcceptanceStatus, OrderFulfilmentStatus, OrderStatus } from "
 import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
 import { buildOrderRegionWhere, isStaffLike } from "@/server/auth/sales-scope";
+import { createOrderRejectionDraft, refundDeclinedOrderWallet } from "@/lib/orderRejectionDrafts";
 
 export class PostgresOrderStatusError extends Error {
   status: number;
@@ -72,6 +73,9 @@ export async function findPostgresStatusOrder(orderId: unknown) {
     include: {
       dealer: true,
       assignedStaff: true,
+      // The decline path rebuilds the order as an editable draft, so the lines
+      // travel with the order rather than costing a second query per review.
+      items: { orderBy: { id: "asc" } },
     },
   });
 }
@@ -85,7 +89,12 @@ function requiresRsmApprovalBeforeAcceptance(actor: AuthActor) {
 }
 
 async function assertCanAct(actor: AuthActor, order: StatusOrder, permission: "read" | "acceptance" | "fulfilment" | "cancel") {
-  if (actor.role === "ADMIN") return;
+  if (actor.role === "ADMIN") {
+    if (permission === "acceptance") {
+      throw new PostgresOrderStatusError(403, "forbidden", "Admin cannot approve or disapprove orders.");
+    }
+    return;
+  }
   if (actor.role === "NSM") {
     if (permission === "read" || permission === "acceptance" || permission === "fulfilment") return;
     throw new PostgresOrderStatusError(403, "forbidden", "NSM cannot cancel Dealer orders.");
@@ -188,6 +197,10 @@ export async function updatePostgresOrderAcceptance(
         },
       });
       await tx.orderOverlay.create({ data: { orderId: order.id, type: "rsm_acceptance", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, reason: reviewNote || null, metadata: { source: "postgres_status", stage: "rsm" } } });
+      if (next === "DECLINED") {
+        await createOrderRejectionDraft(tx, order, { role: actor.role, name: actor.displayName || actor.email || "" }, reviewNote);
+        await refundDeclinedOrderWallet(tx, order);
+      }
       return row;
     });
     return { ...updated, accept_order: legacyAcceptOrderAlias(updated.acceptanceStatus), del_status: legacyDelStatusAlias(updated.status) };
@@ -211,6 +224,14 @@ export async function updatePostgresOrderAcceptance(
       },
     });
     await tx.orderOverlay.create({ data: { orderId: order.id, type: "acceptance", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, reason: reviewNote || null, metadata: { source: "postgres_status", stage: "staff" } } });
+    if (next === "DECLINED") {
+      await createOrderRejectionDraft(tx, order, { role: actor.role, name: actor.displayName || actor.email || "" }, reviewNote);
+      await refundDeclinedOrderWallet(tx, order);
+    } else {
+      // The rejection draft stays visible while its resubmission is under
+      // review; acceptance is what finally retires it.
+      await tx.orderDraft.updateMany({ where: { orderId: order.id, dealerId: order.dealerId, status: "ACTIVE" }, data: { status: "CONVERTED" } });
+    }
     return row;
   });
   return { ...updated, accept_order: legacyAcceptOrderAlias(updated.acceptanceStatus), del_status: legacyDelStatusAlias(updated.status) };

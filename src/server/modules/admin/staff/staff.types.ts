@@ -61,6 +61,11 @@ export type CreateAdminStaffInput = {
   status?: UserStatus;
 };
 
+export type UpdateStaffStatusInput = {
+  status: UserStatus;
+  reason?: string;
+};
+
 export type UpdateAdminStaffInput = {
   name?: string;
   email?: string;

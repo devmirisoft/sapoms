@@ -246,7 +246,7 @@ const NAV_ITEMS = [
     icon: <SquareUser />
   },
   { label: "Order List",
-     href: "/Pages/Ordermanagement",
+     href: "/orders",
      icon: <ClipboardList size={15} />
   },
   { label: "Dealer Category Report",
@@ -870,6 +870,7 @@ function AdminDashboardInner() {
           white-space: nowrap;
         }
         .metric-link:hover { text-decoration: underline; text-underline-offset: 2px; }
+        .metric-card .metric-link::after { content: ""; position: absolute; inset: 0; }
 
         .exposure-card {
           display: flex;

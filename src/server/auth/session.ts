@@ -161,7 +161,7 @@ export async function createSessionForUser(actor: AuthenticatedPostgresUser, req
         userAgent: userAgent(request),
         metadata: {
           userId: actor.userId.toString(),
-          ...(actor.diagnosticPasswordId ? { diagnosticPasswordId: actor.diagnosticPasswordId.toString(), authMethod: "dealerDiagnosticPassword" } : {}),
+          ...(actor.diagnosticPasswordId ? { diagnosticPasswordId: actor.diagnosticPasswordId.toString(), authMethod: "diagnosticPassword" } : {}),
         },
       },
     });

@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Receipt, RefreshCw, ArrowLeft } from "lucide-react";
+import { normalizeCustomDiscountRequestRecord } from "@/lib/customDiscountRequests";
+import { SegmentedTabs } from "@/components/SegmentedTabs";
 
 type StaffUser = {
   staff_id: string;
@@ -39,7 +41,7 @@ type DiscountRequest = {
     variantCode?: string;
   } | null;
   status: "pending" | "approved" | "rejected";
-  rsmApprovalStatus?: "pending" | "approved" | "rejected" | "cancelled";
+  rsmApprovalStatus?: "pending" | "approved" | "rejected";
   rsmReviewedBy?: string;
   rsmReviewedAt?: string | null;
   rsmNote?: string;
@@ -49,11 +51,11 @@ type DiscountRequest = {
 
 type TabKey = "awaiting" | "pending" | "approved" | "rejected" | "all";
 
-const TABS: { key: TabKey; label: string; rsmOnly?: boolean }[] = [
-  { key: "awaiting", label: "Awaiting my review", rsmOnly: true },
-  { key: "pending", label: "Pending" },
-  { key: "approved", label: "Approved" },
-  { key: "rejected", label: "Disapproved" },
+const TABS: { key: TabKey; label: string; tone?: "neutral" | "rose" | "amber" | "emerald"; rsmOnly?: boolean }[] = [
+  { key: "awaiting", label: "Awaiting my review", tone: "amber", rsmOnly: true },
+  { key: "pending", label: "Pending", tone: "amber" },
+  { key: "approved", label: "Approved", tone: "emerald" },
+  { key: "rejected", label: "Rejected", tone: "rose" },
   { key: "all", label: "All" },
 ];
 
@@ -71,7 +73,7 @@ function statusBadge(status: DiscountRequest["status"]) {
 }
 
 function statusLabel(status: DiscountRequest["status"]) {
-  return status === "rejected" ? "Disapproved" : status[0].toUpperCase() + status.slice(1);
+  return status[0].toUpperCase() + status.slice(1);
 }
 
 export default function StaffDiscountRequestsPage() {
@@ -150,6 +152,12 @@ export default function StaffDiscountRequestsPage() {
   }, [isRsm]);
 
   const review = async (request: DiscountRequest, rsmStatus: "approved" | "rejected") => {
+    const rsmNote = (notes[request.id] ?? "").trim();
+    // A disapproval must always carry a reason the dealer can act on.
+    if (rsmStatus === "rejected" && !rsmNote) {
+      setError("Add a note explaining the disapproval before rejecting this request.");
+      return;
+    }
     setUpdating(request.id);
     setError("");
     try {
@@ -159,7 +167,7 @@ export default function StaffDiscountRequestsPage() {
         credentials: "include",
         body: JSON.stringify({
           rsmStatus,
-          rsmNote: (notes[request.id] ?? "").trim() || undefined,
+          rsmNote: rsmNote || undefined,
         }),
       });
       const json = await res.json();
@@ -186,6 +194,12 @@ export default function StaffDiscountRequestsPage() {
   }), [requests, awaitingRsm]);
 
   const visibleTabs = useMemo(() => TABS.filter((t) => !t.rsmOnly || isRsm), [isRsm]);
+
+  // Same snapshot the admin approvals page renders, from the same API record.
+  const snapshots = useMemo(
+    () => new Map(requests.map((r) => [r.id, normalizeCustomDiscountRequestRecord(r).orderSnapshot])),
+    [requests],
+  );
 
   const visibleRequests = useMemo(() => {
     if (tab === "all") return requests;
@@ -228,30 +242,17 @@ export default function StaffDiscountRequestsPage() {
           </button>
         </div>
 
-        <div className="flex flex-wrap gap-2">
-          {visibleTabs.map((item) => {
-            const active = tab === item.key;
-            return (
-              <button
-                key={item.key}
-                type="button"
-                onClick={() => setTab(item.key)}
-                className={`rounded-2xl border px-4 py-3 text-left shadow-sm transition ${
-                  active
-                    ? "border-indigo-300 bg-indigo-50 ring-2 ring-indigo-200"
-                    : "border-gray-200 bg-white hover:bg-gray-50"
-                }`}
-              >
-                <p className={`text-[11px] font-bold uppercase tracking-wider ${active ? "text-indigo-500" : "text-gray-400"}`}>
-                  {item.label}
-                </p>
-                <p className={`mt-1 font-mono text-xl font-bold ${active ? "text-indigo-700" : "text-gray-900"}`}>
-                  {stats[item.key]}
-                </p>
-              </button>
-            );
-          })}
-        </div>
+        <SegmentedTabs
+          label="Discount request status"
+          value={tab}
+          onChange={(next) => setTab(next as TabKey)}
+          items={visibleTabs.map((item) => ({
+            value: item.key,
+            label: item.label,
+            tone: item.tone,
+            count: stats[item.key],
+          }))}
+        />
 
         {error && (
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">
@@ -354,6 +355,76 @@ export default function StaffDiscountRequestsPage() {
                         <p className="mt-1 font-mono text-[13px] font-semibold text-gray-700">{statusLabel(request.status)}</p>
                       </div>
                     </div>
+
+                    {(() => {
+                      const snapshot = snapshots.get(request.id);
+                      if (!snapshot || snapshot.products.length === 0) return null;
+                      const discounted = snapshot.products.filter((p) => p.usesCustomDiscount).length;
+                      return (
+                        <details className="overflow-hidden rounded-xl border border-gray-200" open>
+                          <summary className="cursor-pointer bg-gray-50 px-4 py-3 text-[12px] font-bold text-gray-700">
+                            Full order &middot; {snapshot.products.length} products &middot; {discounted} with requested discount
+                            <span className="ml-2 font-normal text-gray-400">(click to minimise)</span>
+                          </summary>
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                              <thead className="bg-white">
+                                <tr className="border-b border-gray-100">
+                                  {["Cat. No.", "Product", "Qty", "Pack Size", "Pieces", "Unit Price", "Gross", "Base", "Requested Custom", "Final"].map((header) => (
+                                    <th key={header} className="px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                                      {header}
+                                    </th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody className="divide-y divide-gray-100">
+                                {snapshot.products.map((product, index) => (
+                                  <tr
+                                    key={`${request.id}-${product.productKey || product.sku}-${index}`}
+                                    className={product.usesCustomDiscount ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200" : ""}
+                                  >
+                                    <td className="px-3 py-3 font-mono text-[12px] font-bold text-amber-700">{product.catalogueNumber || product.sku || "-"}</td>
+                                    <td className="px-3 py-3">
+                                      <p className="text-[12px] font-semibold text-gray-900">{product.productName || "-"}</p>
+                                      <div className="mt-1 flex flex-wrap gap-1.5">
+                                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${product.usesCustomDiscount ? "border-indigo-300 bg-white text-indigo-700" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
+                                          {product.usesCustomDiscount ? "Discount Requested" : "Standard Discount"}
+                                        </span>
+                                        {product.isPriority && (
+                                          <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                                            Priority
+                                          </span>
+                                        )}
+                                      </div>
+                                      {product.productNote && (
+                                        <p className="mt-1 text-[11px] text-gray-500">Product Note: {product.productNote}</p>
+                                      )}
+                                    </td>
+                                    <td className="px-3 py-3 font-mono text-[12px] text-gray-700">{product.quantity}</td>
+                                    <td className="px-3 py-3 font-mono text-[12px] text-gray-700">{product.packSize}</td>
+                                    <td className="px-3 py-3 font-mono text-[12px] text-gray-700">{product.totalPieces}</td>
+                                    <td className="px-3 py-3 font-mono text-[12px] text-gray-700">{money(product.unitPrice)}</td>
+                                    <td className="px-3 py-3 font-mono text-[12px] text-gray-900">{money(product.grossAmount)}</td>
+                                    <td className="px-3 py-3 font-mono text-[12px] text-amber-700">
+                                      {product.baseDiscountPercent}% &middot; -{money(product.baseDiscountAmount)}
+                                    </td>
+                                    <td className="px-3 py-3 font-mono text-[12px] font-bold text-indigo-700">
+                                      {product.usesCustomDiscount
+                                        ? `${product.requestedCustomDiscountPercent ?? 0}% · -${money(product.requestedCustomDiscountAmount ?? 0)}`
+                                        : "-"}
+                                    </td>
+                                    <td className="px-3 py-3 font-mono text-[12px] font-bold text-emerald-700">{money(product.finalAmount)}</td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                          {snapshot.orderNote && (
+                            <p className="border-t border-gray-100 px-4 py-3 text-[12px] text-gray-600">Order note: {snapshot.orderNote}</p>
+                          )}
+                        </details>
+                      );
+                    })()}
                   </div>
 
                   {(() => {
@@ -383,7 +454,7 @@ export default function StaffDiscountRequestsPage() {
                             <textarea
                               value={notes[request.id] ?? ""}
                               onChange={(e) => setNotes((prev) => ({ ...prev, [request.id]: e.target.value }))}
-                              placeholder="Note for the dealer (optional; used if you disapprove)"
+                              placeholder="Note for the dealer (required to disapprove)"
                               rows={3}
                               className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-indigo-300"
                             />
@@ -398,7 +469,8 @@ export default function StaffDiscountRequestsPage() {
                               </button>
                               <button
                                 type="button"
-                                disabled={updating === request.id}
+                                disabled={updating === request.id || !(notes[request.id] ?? "").trim()}
+                                title={!(notes[request.id] ?? "").trim() ? "Add a note to disapprove" : undefined}
                                 onClick={() => void review(request, "rejected")}
                                 className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-red-700 disabled:opacity-50"
                               >

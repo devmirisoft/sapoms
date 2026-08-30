@@ -77,7 +77,7 @@ test("Dealer callers use session-scoped native order APIs without a hard-coded f
   assert.doesNotMatch(combined, /return "225"|\?\? "225"/);
   assert.doesNotMatch(combined, /php-compat|orderpegination|orderhispegination|staffOrderrPagination|Orderstspegination|orderpeginationnew/);
   assert.doesNotMatch(combined, /orders-data[^`\"']*source=|orders-data[^`\"']*role=|orders-data[^`\"']*id=/);
-  assert.match(sources[1], /\["orders", actorRole, actorId/);
+  assert.match(sources[1], /\["orders", STAFF_ORDER_SCOPE_VERSION, actorRole, actorId/);
   assert.match(sources[2], /\["dealerSidebarSummary", "orders", "dealer", dealer\.Dealer_Id/);
   assert.match(sources[3], /actor\?\.role[\s\S]*actor\?\.id/);
 });

@@ -401,6 +401,8 @@ function AccountantDashboardInner() {
           transition: transform 180ms ease, box-shadow 180ms ease;
         }
         .icard:hover, .stat-card:hover { transform: translateY(-1px); box-shadow: 0 1px 2px rgba(0,0,0,.02), 0 14px 38px rgba(0,0,0,.055); }
+        .icard, .stat-card { position: relative; }
+        .icard > .quick-action-btn::after, .stat-card > .quick-action-btn::after { content: ""; position: absolute; inset: 0; }
         .icard-lbl, .stat-lbl { color: #6e6e73; font-size: 12px; font-weight: 600; letter-spacing: -.005em; }
         .icard-val, .stat-val { margin-top: 12px; color: #1d1d1f; font-size: clamp(28px, 3.2vw, 34px); line-height: 1; font-weight: 700; letter-spacing: -.045em; font-variant-numeric: tabular-nums; }
         .icard-sub { font-size: 11px; color: #8e8e93; margin-top: 8px; line-height: 1.4; }
@@ -646,7 +648,7 @@ function AccountantDashboardInner() {
         </div>
         <div className="panel-foot">
           <span style={{ color: "#8e8e93" }}>Showing up to 10 recent orders</span>
-          <Link href="/Pages/Ordermanagement" className="quick-action-btn" style={{ marginTop: 0 }}>View all →</Link>
+          <Link href="/orders" className="quick-action-btn" style={{ marginTop: 0 }}>View all →</Link>
         </div>
       </div>
 

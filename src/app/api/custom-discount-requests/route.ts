@@ -42,8 +42,8 @@ export async function GET(req: NextRequest) {
     if (actor?.role === "RSM") Object.assign(where, await buildRsmDiscountRequestWhere(actor, prisma));
     else if (actor && isStaffLike(actor)) where.staffId = actor.staffId;
     else if (staffParam) where.staffId = BigInt(staffParam);
-    if (["PENDING", "APPROVED", "REJECTED", "CANCELLED"].includes(rsmStatus)) where.rsmApprovalStatus = rsmStatus;
-    if (["PENDING", "APPROVED", "REJECTED", "CANCELLED"].includes(status)) where.status = status;
+    if (["PENDING", "APPROVED", "REJECTED"].includes(rsmStatus)) where.rsmApprovalStatus = rsmStatus;
+    if (["PENDING", "APPROVED", "REJECTED"].includes(status)) where.status = status;
     if (orderId) where.orderId = BigInt(orderId);
     if (orderDraftId) where.orderDraftId = BigInt(orderDraftId);
     if (reorderable) {

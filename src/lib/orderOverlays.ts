@@ -329,10 +329,31 @@ export function computeOverlayTotals(items: Array<Record<string, unknown>>, base
   };
 }
 
+const QUANTITY_FIELD = "orderdata_item_quantity";
+const QUANTITY_ALIASES = ["quantityPacks", "quantity_packs", "packs", "quantity", "producQuanity"] as const;
+const PIECE_ALIASES = ["totalPieces", "total_pieces", "pieces", "producQuanity"] as const;
+
 function itemSummary(item: Record<string, unknown>) {
   const name = firstNonEmpty(item.product_name, item.productName, item.orderdata_cat_no, item.productId, "Item");
   const cat = firstNonEmpty(item.orderdata_cat_no, item.catNo, item.productId);
   return cat ? `${name} - Cat. No. ${cat}` : name;
+}
+
+function mergeRequestedItem(original: Record<string, unknown> | undefined, requested: Record<string, unknown>) {
+  const merged: Record<string, unknown> = { ...(original ?? {}), ...requested };
+  if (!(QUANTITY_FIELD in requested)) return merged;
+
+  // The edit dialog rewrites `orderdata_item_quantity` but echoes the row's other pack-count
+  // aliases back untouched. normalizeItem() prefers those aliases, so an edited quantity used to
+  // be silently discarded and the edit was rejected as a 422 "no_changes". When the submitted
+  // quantity disagrees with the echoed aliases, the explicit field is the dealer's intent.
+  const submittedQuantity = numberValue(requested[QUANTITY_FIELD]);
+  const aliasQuantity = QUANTITY_ALIASES.map((alias) => requested[alias]).find((value) => value !== undefined);
+  if (aliasQuantity === undefined || numberValue(aliasQuantity) === submittedQuantity) return merged;
+
+  for (const alias of QUANTITY_ALIASES) delete merged[alias];
+  for (const alias of PIECE_ALIASES) delete merged[alias];
+  return merged;
 }
 
 export function buildOrderEditRevision(input: {
@@ -349,7 +370,7 @@ export function buildOrderEditRevision(input: {
   const effectiveItems = input.requestedItems.map((item, index) => {
     const originalId = text(item.originalLineId ?? item.orderdata_id ?? item.orderItemId);
     const original = originalsById.get(originalId);
-    const normalized = normalizeItem({ ...(original ?? {}), ...item }, input.orderId, index);
+    const normalized = normalizeItem(mergeRequestedItem(original, item), input.orderId, index);
     const lineId = original ? text(original.orderdata_id) : firstNonEmpty(item.orderdata_id, item.orderItemId, `overlay:${input.orderId}:${randomUUID()}`);
     return { ...normalized, orderdata_id: lineId.startsWith("overlay:") || original ? lineId : `overlay:${input.orderId}:${lineId}` };
   });

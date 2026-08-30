@@ -9,10 +9,12 @@ import {
   normalizeDealerFormSnapshot,
   toDealerFormSnapshot,
   validateDealerFormSnapshot,
+  type DealerContact,
   type DealerFormSnapshot,
   type DealerFormValues,
   type StaffMember,
 } from "@/lib/dealerForm";
+import { STATE_OPTIONS } from "@/lib/places";
 
 const ADMIN_STAFF_URL = "/api/admin/staff";
 const DEALER_CODE_PREFIX = "OM-";
@@ -106,7 +108,9 @@ function toFormValues(snapshot?: DealerFormSnapshot | null): DealerFormValues {
     secondaryContactName: snapshot.secondaryContactName,
     secondaryContactPhone: snapshot.secondaryContactPhone,
     secondaryContactEmail: snapshot.secondaryContactEmail,
+    additionalContacts: snapshot.additionalContacts.map((contact) => ({ ...contact })),
     city: snapshot.city,
+    state: snapshot.state,
     address: snapshot.address,
     pincode: snapshot.pincode,
     dealerCode: snapshot.dealerCode,
@@ -271,6 +275,24 @@ export default function DealerFormCard({
     setFormData((prev) => ({ ...prev, dealerCode: typed }));
   };
 
+  const handleAdditionalContactChange = (index: number, field: keyof DealerContact, value: string) => {
+    setInlineError("");
+    setFormData((prev) => ({
+      ...prev,
+      additionalContacts: prev.additionalContacts.map((contact, position) => (position === index ? { ...contact, [field]: value } : contact)),
+    }));
+  };
+
+  const handleAddContact = () => {
+    setInlineError("");
+    setFormData((prev) => ({ ...prev, additionalContacts: [...prev.additionalContacts, { name: "", phone: "", email: "" }] }));
+  };
+
+  const handleRemoveContact = (index: number) => {
+    setInlineError("");
+    setFormData((prev) => ({ ...prev, additionalContacts: prev.additionalContacts.filter((_, position) => position !== index) }));
+  };
+
   const handleAssignmentChange = (roleKey: AssignmentRoleKey, staffId: string) => {
     setInlineError("");
     setRoleAssignments((prev) => resolveNextRoleAssignments(prev, roleOptions, roleKey, staffId));
@@ -421,6 +443,41 @@ export default function DealerFormCard({
                     </select>
                   </Field>
                 </div>
+
+                {formData.additionalContacts.map((contact, index) => (
+                  <div key={index} className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[34px_1.2fr_1.8fr_1.8fr_1.2fr] xl:items-end">
+                    <div className="hidden pb-3 text-sm font-semibold text-[#405064] xl:block">{index + 3}.</div>
+                    <Field label="Person Name" required>
+                      <input type="text" value={contact.name} onChange={(event) => handleAdditionalContactChange(index, "name", event.target.value)} placeholder="Contact name" required />
+                    </Field>
+                    <Field label="Phone No." required>
+                      <div className="flex gap-3">
+                        <input className="!w-16 text-center" value="+91" readOnly aria-label="Country code" />
+                        <input type="number" value={contact.phone} onChange={(event) => handleAdditionalContactChange(index, "phone", event.target.value)} placeholder="Phone number" required />
+                      </div>
+                    </Field>
+                    <Field label="Email" required>
+                      <input type="email" value={contact.email} onChange={(event) => handleAdditionalContactChange(index, "email", event.target.value)} placeholder="Email" required />
+                    </Field>
+                    <div className="pb-1">
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveContact(index)}
+                        className="h-9 rounded border border-[#e3b7b7] px-4 text-[12px] font-semibold text-[#c0392b] transition hover:bg-[#fdecea]"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                ))}
+
+                <button
+                  type="button"
+                  onClick={handleAddContact}
+                  className="mt-5 rounded border border-[#5d7df0] px-4 py-2 text-[12px] font-semibold text-[#5d7df0] transition hover:bg-[#eef2ff]"
+                >
+                  + Add Contact
+                </button>
               </div>
             </div>
 
@@ -469,6 +526,14 @@ export default function DealerFormCard({
                       </Field>
                       <Field label="City" required>
                         <input name="city" type="text" value={formData.city} onChange={handleInputChange} placeholder="City" required />
+                      </Field>
+                      <Field label="State" required>
+                        <select name="state" value={formData.state} onChange={handleInputChange} required className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff]">
+                          <option value="">Select state</option>
+                          {STATE_OPTIONS.map((state) => (
+                            <option key={state} value={state}>{state}</option>
+                          ))}
+                        </select>
                       </Field>
                       <Field label="Password" required>
                         <div className="relative">
