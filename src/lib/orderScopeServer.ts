@@ -22,6 +22,7 @@ export type OrderActor = {
   isRsm?: boolean;
   isAsm?: boolean;
   userId?: string;
+  warehouse?: string;
 };
 
 function safeText(value: unknown, max = 120) {
@@ -41,7 +42,11 @@ export function parseOrderActor(input: {
 
 export function orderActorFromAuth(actor: AuthActor): OrderActor | null {
   const rawRole = actor.role.toLowerCase();
-  const role = rawRole === "rsm" || rawRole === "asm" || rawRole === "sales_manager" ? "staff" : rawRole;
+  // NSM is an admin-profile role with full order scope — same normalisation the
+  // client does in normalizeRoleFromProfile.
+  const role = rawRole === "rsm" || rawRole === "asm" || rawRole === "sales_manager"
+    ? "staff"
+    : rawRole === "nsm" ? "admin" : rawRole;
   if (role !== "admin" && role !== "accountant" && role !== "staff" && role !== "dealer") return null;
   const actorId = role === "staff"
     ? actor.staffId?.toString() ?? ""
@@ -54,6 +59,7 @@ export function orderActorFromAuth(actor: AuthActor): OrderActor | null {
     actorId,
     ...(rawRole === "rsm" ? { isRsm: true, userId: actor.userId?.toString() } : {}),
     ...(rawRole === "asm" ? { isAsm: true } : {}),
+    ...(actor.warehouse ? { warehouse: actor.warehouse } : {}),
   } as OrderActor;
 }
 

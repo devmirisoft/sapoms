@@ -10,6 +10,7 @@ type OrderActor = {
   isRsm?: boolean;
   isAsm?: boolean;
   userId?: string;
+  warehouse?: string;
 };
 
 type OrderAccessOptions = {
@@ -71,6 +72,9 @@ async function findPostgresAccessOrder(id: string): Promise<Record<string, unkno
 }
 
 async function canStaffAccessOrder(order: Record<string, unknown>, options: OrderAccessOptions, lookupId: string) {
+  // Warehouse isolation runs before every other grant, so a direct order URL
+  // cannot reach past the same filter the order list applies.
+  if (options.actor.warehouse && safeText(order.staffwarehouse) !== options.actor.warehouse) return false;
   if (splitScopeIds([order.assignedstaff, order.staffid]).includes(safeText(options.actor.actorId))) return true;
   const dealerId = resolveOrderDealerId(order);
   if (!!dealerId && new Set(splitScopeIds(options.assignedDealerIds)).has(dealerId)) return true;

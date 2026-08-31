@@ -21,6 +21,7 @@ export function mapAdminStaff(record: AdminStaffRecord, detail = false) {
   const staffRoleType = record.staffRoleType || "";
   const role = record.user.role;
   const salesRegion = record.salesRegion || "";
+  const warehouse = record.warehouse || "";
   const parentRsmId = record.parentRsmId?.toString() || "";
   const parentAsmId = record.parentAsmId?.toString() || "";
   const assignedCities = record.assignedCities ?? [];
@@ -46,6 +47,7 @@ export function mapAdminStaff(record: AdminStaffRecord, detail = false) {
     emergencyContactNo2,
     staffRoleType,
     salesRegion,
+    warehouse,
     parentRsmId,
     parentAsmId,
     assignedStates: record.assignedStates ?? [],

@@ -36,7 +36,7 @@ const orderInclude = {
       user: { select: { email: true, status: true } },
     },
   },
-  assignedStaff: { select: { id: true, displayName: true } },
+  assignedStaff: { select: { id: true, displayName: true, warehouse: true } },
   // dispatches feed the order's Pending/Partial/Completed status in the mappers.
   items: { orderBy: { id: "asc" as const }, include: { dispatches: { select: { quantity: true } } } },
   // Required by mapPostgresOrderToLegacy, which derives the order's settled

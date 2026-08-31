@@ -16,7 +16,8 @@ import {
   getCustomDiscountProgressKeyForOrder,
   type CustomDiscountProgress,
 } from "@/lib/customDiscountProgress";
-import { SegmentedTabs } from "@/components/SegmentedTabs";
+import { SegmentedTabs, type SegItem } from "@/components/SegmentedTabs";
+import { WAREHOUSE_OPTIONS } from "@/lib/warehouses";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import type { AppRole } from "@/lib/roleAccess";
 
@@ -312,8 +313,9 @@ class OrdersRequestError extends Error {
   }
 }
 
-async function fetchOrders(page: number, pageSize: number, search: string, filters: OrderFilters, role: AppRole, actorId: string): Promise<ApiResponse> {
+async function fetchOrders(page: number, pageSize: number, search: string, filters: OrderFilters, role: AppRole, actorId: string, warehouse: string): Promise<ApiResponse> {
   const params = new URLSearchParams({ page: String(page), limit: String(pageSize), search });
+  if (warehouse)           params.set("warehouse",  warehouse);
   if (filters.orderId)     params.set("order_id",   filters.orderId);
   if (filters.dateFrom)    params.set("date_from",  filters.dateFrom);
   if (filters.dateTo)      params.set("date_to",    filters.dateTo);
@@ -1077,6 +1079,9 @@ export default function OrderHistoryPage() {
   const queryClient = useQueryClient();
   const auth = useAuthSession();
   const [section, setSection] = useState<"active" | "cancelled">("active");
+  // "" = every warehouse. Kept out of `filters` so it reads as a tab, not a
+  // removable filter chip.
+  const [warehouse, setWarehouse] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
   const [search, setSearch] = useState("");
@@ -1147,8 +1152,8 @@ export default function OrderHistoryPage() {
   const showToast = (type: "success" | "error", text: string) => setToast({ type, text });
 
   const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
-    queryKey: ["orders", STAFF_ORDER_SCOPE_VERSION, actorRole, actorId, page, pageSize, query, filters],
-    queryFn: () => fetchOrders(page, pageSize, query, filters, actorRole as AppRole, actorId),
+    queryKey: ["orders", STAFF_ORDER_SCOPE_VERSION, actorRole, actorId, page, pageSize, query, filters, warehouse],
+    queryFn: () => fetchOrders(page, pageSize, query, filters, actorRole as AppRole, actorId, warehouse),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
     enabled: !auth.loading && auth.session.status === "authenticated" && actorReady && section === "active",
@@ -1775,7 +1780,7 @@ export default function OrderHistoryPage() {
                 {
                   value: "active",
                   label: "Active Orders",
-                  tone: "neutral",
+                  tone: "emerald",
                   title: "Orders currently in the pipeline",
                   count: section === "active" && !isLoading && !isError ? totalCount : null,
                   icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 7h18M3 12h18M3 17h11" /></svg>,
@@ -1790,6 +1795,22 @@ export default function OrderHistoryPage() {
                 },
               ]}
             />
+
+            {actorRole === "admin" && section === "active" && (
+              <SegmentedTabs
+                label="Warehouse"
+                value={warehouse}
+                onChange={next => { setWarehouse(next); setPage(1); }}
+                items={[{ value: "", label: "All" }, ...WAREHOUSE_OPTIONS].map(option => ({
+                  value: option.value,
+                  label: option.label,
+                  tone: option.value ? "amber" : "neutral",
+                  title: option.value ? `Orders dispatched from ${option.label}` : "Orders from every warehouse",
+                  count: warehouse === option.value && !isLoading && !isError ? totalCount : null,
+                  icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 21V9l9-5 9 5v12" /><path d="M9 21v-6h6v6" /></svg>,
+                } satisfies SegItem))}
+              />
+            )}
 
             {isRsm && section === "active" && (
               <SegmentedTabs

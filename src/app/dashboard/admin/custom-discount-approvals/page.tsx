@@ -583,7 +583,9 @@ export default function CustomDiscountApprovalsPage() {
                 <div className="flex flex-col gap-4 border-b border-gray-100 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2">
                     <div className="flex flex-wrap items-center gap-2">
-                      <h2 className="text-[16px] font-bold text-gray-900">{request.dealerName || "Dealer"}</h2>
+                      <span className="rounded-full bg-amber-50 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-700">
+                        {request.requestReference || request.id}
+                      </span>
                       <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge(request.normalizedStatus)}`}>
                         {statusLabel(request.normalizedStatus)}
                       </span>
@@ -596,14 +598,12 @@ export default function CustomDiscountApprovalsPage() {
                         </span>
                       )}
                     </div>
-                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-gray-500">
-                      <span>Dealer ID: {request.dealerId}</span>
-                      {request.source?.dealerCode ? <span>Code: {String(request.source.dealerCode)}</span> : null}
-                      {request.assignedStaffId ? <span>Assigned Staff: {request.assignedStaffId}</span> : null}
-                      <span>Request Ref.: {request.requestReference || request.id}</span>
-                    </div>
-                    <p className="text-[12px] text-gray-400">
-                      Submitted {request.createdAt ? new Date(request.createdAt).toLocaleString("en-IN") : "-"}
+                    <p className="flex flex-wrap items-baseline gap-x-2 text-[12px] text-gray-500">
+                      <span className="text-[16px] font-bold text-gray-900">{request.dealerName || "Dealer"}</span>
+                      Dealer ID: {request.dealerId}
+                      {request.source?.dealerCode ? ` · Code: ${String(request.source.dealerCode)}` : ""}
+                      {request.assignedStaffId ? ` · Assigned Staff: ${request.assignedStaffId}` : ""}
+                      {` · Submitted ${request.createdAt ? new Date(request.createdAt).toLocaleString("en-IN") : "-"}`}
                     </p>
                     {request.rsmApprovalStatus === "approved" ? (
                       <p className="text-[12px] font-semibold text-emerald-700">

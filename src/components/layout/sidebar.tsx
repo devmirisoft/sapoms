@@ -36,6 +36,7 @@ const NAV: Record<AppRole, NavItem[]> = {
     {                         label: "Dealer Ledger",       href: "/dashboard/admin/ledger",                          icon: <BookOpen size={15} />        },
     {                         label: "Add Dealer",          href: "/dashboard/admin/dealer/AddDealerForm",            icon: <UserRoundPlus size={15} />   },
     {                         label: "Dealer Requests",     href: "/dashboard/admin/dealer/requests",                 icon: <Receipt size={15} />, badgeKey: "dealerRequests" },
+    {                         label: "Terms Acceptance",    href: "/dashboard/admin/terms-acceptance",                icon: <FileText size={15} />        },
     { section: "Staff",       label: "Staff List",         href: "/dashboard/admin/staff/stafflist",                 icon: <Users size={15} />           },
     {                         label: "Manage Regions",     href: "/dashboard/admin/manage-regions",                 icon: <MapPinned size={15} />       },
     {                         label: "Add Staff",           href: "/dashboard/admin/staff/addstaff",                  icon: <SquareUser size={15} />      },

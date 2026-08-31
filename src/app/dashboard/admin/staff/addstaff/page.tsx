@@ -374,6 +374,7 @@ import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
 import { STATE_OPTIONS, CITIES_BY_STATE, citiesForStates, statesForCities } from '@/lib/places'
 import { SALES_REGION_OPTIONS } from '@/lib/salesRegions'
+import { WAREHOUSE_OPTIONS } from '@/lib/warehouses'
 import { mergeRegionAssignment } from '@/lib/regionAssignments'
 
 const roleOptions = [
@@ -490,6 +491,7 @@ export default function AddStaffPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [role, setRole] = useState<StaffFormRole>('')
   const [salesRegion, setSalesRegion] = useState('')
+  const [warehouse, setWarehouse] = useState('')
   const [parentRsmId, setParentRsmId] = useState('')
   const [parentAsmId, setParentAsmId] = useState('')
   const [reportingManagerId, setReportingManagerId] = useState('')
@@ -577,7 +579,7 @@ export default function AddStaffPage() {
     setMobileNo(''); setAlternateNo(''); setPermanentAddress(''); setLocalAddress(''); setSameAddress(false)
     setGender(''); setDob(''); setNationality(''); setMaritalStatus(''); setQualification('')
     setEmergencyContactNo1(''); setEmergencyContactNo2('')
-    setPassword(''); setRole(''); setSalesRegion(''); resetHierarchy()
+    setPassword(''); setRole(''); setSalesRegion(''); setWarehouse(''); resetHierarchy()
   }
   const toggleState = (state: string) => setAssignedStates((current) => current.includes(state) ? current.filter((entry) => entry !== state) : [...current, state].sort((a, b) => a.localeCompare(b)))
   const toggleCity = (city: string) => setAssignedCities((current) => current.includes(city) ? current.filter((entry) => entry !== city) : [...current, city].sort((a, b) => a.localeCompare(b)))
@@ -601,6 +603,7 @@ export default function AddStaffPage() {
       role: selectedRoleRef(),
       staffRoleType: selectedStaffRoleTypeRef(),
       salesRegion: selectedAuthRoleRef() === 'RSM' ? salesRegion : undefined,
+      warehouse: role === 'FIELD_EXECUTIVE' ? warehouse : undefined,
       parentRsmId: role === 'ASM' || role === 'FIELD_EXECUTIVE' ? parentRsmId : undefined,
       parentAsmId: role === 'EXECUTIVE' ? parentAsmId : undefined,
       assignedStates: role === 'ASM' || role === 'RSM' ? assignedStates : undefined,
@@ -777,6 +780,22 @@ export default function AddStaffPage() {
                       <option value="" disabled>{nsmOptions.length ? 'Select NSM' : 'No NSM accounts found'}</option>
                       {nsmOptions.map((option) => <option key={option.id} value={option.id}>{displayStaff(option)}</option>)}
                     </select>
+                  </div>
+                )}
+
+                {role === 'FIELD_EXECUTIVE' && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">Warehouse</label>
+                    <select
+                      required
+                      value={warehouse}
+                      onChange={e => setWarehouse(e.target.value)}
+                      className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                    >
+                      <option value="" disabled>Select warehouse</option>
+                      {WAREHOUSE_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                    <span className="text-[11px] text-gray-500">Staff only see orders handled by their own warehouse.</span>
                   </div>
                 )}
 

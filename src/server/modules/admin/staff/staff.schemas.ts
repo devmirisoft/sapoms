@@ -14,6 +14,11 @@ const salesRegion = z.preprocess((value) => {
   return String(value).trim().toUpperCase();
 }, z.enum(["NORTH_1", "NORTH_2", "SOUTH_1", "SOUTH_2", "WEST_1", "WEST_2", "EAST", "ROM", "CENTRAL"]).optional());
 
+const warehouse = z.preprocess((value) => {
+  if (value === undefined || value === null || String(value).trim() === "") return undefined;
+  return String(value).trim().toUpperCase();
+}, z.enum(["AHMEDABAD", "AMBALA"]).optional());
+
 const text = (max: number) => z.preprocess(
   (value) => (value === undefined || value === null ? undefined : String(value).trim()),
   z.string().max(max).optional(),
@@ -71,6 +76,7 @@ function aliases(body: Record<string, unknown>) {
     emergencyContactNo2: body.emergencyContactNo2 ?? body.emergency_contact_no_2,
     staffRoleType: body.staffRoleType ?? body.staff_roletype,
     salesRegion: body.salesRegion ?? body.region,
+    warehouse: body.warehouse ?? body.warehouse_code,
     parentRsmId: body.parentRsmId ?? body.parent_rsm_id ?? body.rsmId,
     parentAsmId: body.parentAsmId ?? body.parent_asm_id ?? body.asmId,
     assignedStates: body.assignedStates ?? body.assigned_states ?? body.states,
@@ -102,6 +108,7 @@ const baseStaffSchema = {
   emergencyContactNo2: text(30),
   staffRoleType: text(30),
   salesRegion,
+  warehouse,
   parentRsmId: idText,
   parentAsmId: idText,
   assignedStates,
@@ -110,7 +117,7 @@ const baseStaffSchema = {
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
 };
 
-function requireValidRoleRegion<T extends { role?: string; salesRegion?: string; staffRoleType?: string; parentRsmId?: string; parentAsmId?: string; assignedStates?: string[]; assignedCities?: string[]; reportingManagerId?: string }>(value: T) {
+function requireValidRoleRegion<T extends { role?: string; salesRegion?: string; warehouse?: string; staffRoleType?: string; parentRsmId?: string; parentAsmId?: string; assignedStates?: string[]; assignedCities?: string[]; reportingManagerId?: string }>(value: T) {
   if (value.role === "RSM" && !value.salesRegion) throw new AdminRouteError("INVALID_REQUEST", "RSM region is required", { code: "RSM_REGION_REQUIRED" });
   if (value.role && value.role !== "RSM") value.salesRegion = undefined;
   if (value.role === "STAFF" && value.staffRoleType !== "1" && value.staffRoleType !== "2") {
@@ -121,6 +128,9 @@ function requireValidRoleRegion<T extends { role?: string; salesRegion?: string;
   if (value.role === "ASM" && value.assignedStates && !value.assignedStates.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one state", { code: "ASM_STATES_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "1" && value.assignedCities && !value.assignedCities.length) throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must cover at least one city", { code: "EXECUTIVE_CITIES_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "2" && !value.parentRsmId) throw new AdminRouteError("INVALID_REQUEST", "Staff must have a valid RSM parent", { code: "STAFF_RSM_REQUIRED" });
+  // Only a Staff member is pinned to a warehouse; every other role sees both.
+  if (value.role === "STAFF" && value.staffRoleType === "2" && !value.warehouse) throw new AdminRouteError("INVALID_REQUEST", "Warehouse is required", { code: "STAFF_WAREHOUSE_REQUIRED" });
+  if (value.role && !(value.role === "STAFF" && value.staffRoleType === "2")) value.warehouse = undefined;
   if (value.role === "NSM") { value.staffRoleType = undefined; value.parentRsmId = undefined; value.parentAsmId = undefined; value.assignedStates = undefined; }
   if (value.role === "RSM") { value.staffRoleType = "RSM"; value.parentRsmId = undefined; value.parentAsmId = undefined; }
   if (value.role === "ASM") { value.staffRoleType = "ASM"; value.parentAsmId = undefined; }
@@ -171,6 +181,7 @@ const updateSchema = z.preprocess((value) => aliases((value && typeof value === 
   location: text(100),
   staffRoleType: text(30),
   salesRegion,
+  warehouse,
   parentRsmId: idText,
   parentAsmId: idText,
   assignedStates,

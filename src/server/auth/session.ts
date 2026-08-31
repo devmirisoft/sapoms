@@ -25,6 +25,7 @@ export type AuthActor = {
   accountantId?: bigint;
   staffId?: bigint;
   dealerId?: bigint;
+  warehouse?: string;
   email: string;
   displayName: string;
 };
@@ -208,6 +209,7 @@ async function loadUserWithProfiles(userId: bigint) {
           location: true,
           staffRoleType: true,
           salesRegion: true,
+          warehouse: true,
         },
       },
       dealerProfile: true,
@@ -245,6 +247,7 @@ function actorFromUser(sessionId: string, user: NonNullable<UserWithProfiles>): 
     ...(user.role === "ACCOUNTANT" ? { accountantId: profileId } : {}),
     ...(user.role === "STAFF" || user.role === "RSM" || user.role === "ASM" ? { staffId: profileId } : {}),
     ...(user.role === "DEALER" ? { dealerId: profileId } : {}),
+    ...(user.staffProfile?.warehouse ? { warehouse: user.staffProfile.warehouse } : {}),
     email: user.email,
     displayName: String(profile.name ?? profile.staff_name ?? profile.Dealer_Name ?? profile.ADMIN_NAME ?? ""),
   };

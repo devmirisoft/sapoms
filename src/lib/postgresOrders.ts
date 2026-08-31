@@ -1,6 +1,6 @@
 import "server-only";
 
-import { Prisma } from "@prisma/client";
+import { Prisma, type Warehouse } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { buildOrderRegionWhere } from "@/server/auth/sales-scope";
 import type { OrdersActor } from "@/lib/orderPagination";
@@ -21,7 +21,7 @@ const orderInclude = {
       creditDays: true,
     },
   },
-  assignedStaff: { select: { id: true, displayName: true } },
+  assignedStaff: { select: { id: true, displayName: true, warehouse: true } },
   items: { orderBy: { id: "asc" as const }, include: { dispatches: { select: { quantity: true } } } },
   // Bills carry paidAmountPaise, which is what wallet settlement moves. Without
   // them an order settled from advance still reads as fully unpaid.
@@ -195,6 +195,7 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     assignedstaff: order.assignedStaffId?.toString() || "",
     staffid: order.assignedStaffId?.toString() || "",
     staffname: order.assignedStaff?.displayName || "",
+    staffwarehouse: order.assignedStaff?.warehouse || "",
     order_date: order.orderDate.toISOString(),
     orderdata_datetime: order.orderDate.toISOString(),
     order_amount: rupees(order.grossAmountPaise),
@@ -305,6 +306,9 @@ async function actorWhere(actor: OrdersActor, assignedDealerIds: Array<string | 
       .filter((id) => /^\d+$/.test(id))
       .map((id) => BigInt(id));
     const staffScope = {
+      // A warehouse-pinned staff member only sees orders whose assigned staff
+      // sits in the same warehouse; staff with no warehouse keep full scope.
+      ...(actor.warehouse ? { assignedStaff: { warehouse: actor.warehouse as Warehouse } } : {}),
       OR: [
         { assignedStaffId: BigInt(actor.actorId) },
         ...(assignedDealerBigInts.length > 0 ? [{ dealerId: { in: assignedDealerBigInts } }] : []),

@@ -59,6 +59,13 @@ enum SalesRegion {
   CENTRAL
 }
 
+// Dispatch warehouses. A Staff member is pinned to one, and order visibility
+// follows the warehouse of the order's assigned staff.
+enum Warehouse {
+  AHMEDABAD
+  AMBALA
+}
+
 enum UserStatus {
   ACTIVE
   INACTIVE
@@ -277,6 +284,7 @@ model StaffProfile {
   emergencyContactNo2 String? @map("emergency_contact_no_2")
   staffRoleType  String? @map("staff_role_type")
   salesRegion    SalesRegion? @map("sales_region")
+  warehouse      Warehouse?
   assignedStates String[] @default([]) @map("assigned_states")
   assignedCities String[] @default([]) @map("assigned_cities")
   reportingManagerId BigInt? @map("reporting_manager_id")
@@ -296,6 +304,7 @@ model StaffProfile {
   @@index([parentRsmId])
   @@index([parentAsmId])
   @@index([reportingManagerId])
+  @@index([warehouse])
   @@map("staff_profiles")
 }
 

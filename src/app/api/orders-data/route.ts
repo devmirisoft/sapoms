@@ -46,6 +46,7 @@ export async function GET(req: NextRequest) {
         amountMin: amountMin !== null && Number.isFinite(amountMin) ? amountMin : null,
         amountMax: amountMax !== null && Number.isFinite(amountMax) ? amountMax : null,
         targetDealerId: req.nextUrl.searchParams.get("dealer") ?? "",
+        warehouse: req.nextUrl.searchParams.get("warehouse") ?? "",
       },
     });
     const response = NextResponse.json(serializePrismaValue({

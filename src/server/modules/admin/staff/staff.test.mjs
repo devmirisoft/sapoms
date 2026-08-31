@@ -14,6 +14,12 @@ const staffListPage = readFileSync("src/app/dashboard/admin/staff/stafflist/page
 const staffDiagnosticRoute = readFileSync("src/app/api/admin/staff/[staffId]/diagnostic-password/route.ts", "utf8");
 const diagnosticService = readFileSync("src/server/modules/admin/diagnostic-passwords.service.ts", "utf8");
 const authProvider = readFileSync("src/server/auth/providers/postgres-auth.provider.ts", "utf8");
+const session = readFileSync("src/server/auth/session.ts", "utf8");
+const orderScopeServer = readFileSync("src/lib/orderScopeServer.ts", "utf8");
+const postgresOrders = readFileSync("src/lib/postgresOrders.ts", "utf8");
+const orderAccess = readFileSync("src/lib/orderAccess.ts", "utf8");
+const pendingProducts = readFileSync("src/app/api/pending-products/route.ts", "utf8");
+const dashboardSearch = readFileSync("src/app/api/dashboard-search/route.ts", "utf8");
 
 test("admin staff mapper does not expose password fields", () => {
   assert.equal(staffMapper.includes("password"), false);
@@ -187,4 +193,34 @@ test("staff list shows who each staff member reports to instead of a password", 
   assert.doesNotMatch(staffListPage, /password/i);
   assert.match(staffListPage, /Reports To/);
   assert.match(staffListPage, /function reportingManagerOf/);
+});
+
+
+test("Warehouse is asked for on Staff only, and never on the other roles", () => {
+  for (const source of [addStaffPage, editStaffPage]) {
+    assert.match(source, /role === 'FIELD_EXECUTIVE' && \(/);
+    assert.match(source, /warehouse: role === 'FIELD_EXECUTIVE' \? warehouse : undefined/);
+    assert.match(source, /WAREHOUSE_OPTIONS/);
+  }
+  // The server refuses a Staff member with no warehouse and strips it off every other role.
+  assert.match(staffSchemas, /staffRoleType === "2" && !value\.warehouse/);
+  assert.match(staffSchemas, /STAFF_WAREHOUSE_REQUIRED/);
+  assert.match(staffSchemas, /value\.role && !\(value\.role === "STAFF" && value\.staffRoleType === "2"\)\) value\.warehouse = undefined/);
+  assert.match(staffRepo, /warehouse: input\.warehouse \?\? null/);
+});
+
+test("every staff order scope filters on the assigned staff's warehouse", () => {
+  // The warehouse rides the session actor, so each scope builder can reach it.
+  assert.match(session, /warehouse: true/);
+  assert.match(session, /user\.staffProfile\?\.warehouse \? \{ warehouse: user\.staffProfile\.warehouse \}/);
+  assert.match(orderScopeServer, /actor\.warehouse \? \{ warehouse: actor\.warehouse \}/);
+
+  // Every path that hands order rows to a staff member applies the same filter.
+  for (const source of [postgresOrders, pendingProducts, dashboardSearch]) {
+    assert.match(source, /actor\.warehouse/);
+    assert.match(source, /warehouse: actor\.warehouse as Warehouse/);
+  }
+  // Detail lookups guard before any other grant, so a direct order URL cannot bypass the list.
+  assert.match(orderAccess, /options\.actor\.warehouse && safeText\(order\.staffwarehouse\) !== options\.actor\.warehouse\) return false/);
+  assert.match(postgresOrders, /staffwarehouse: order\.assignedStaff\?\.warehouse/);
 });

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import catalogueProducts from "../../../../public/data/omsons_products_from_excel_with_images.json";
 import { prisma } from "@/server/db/prisma";
+import type { Warehouse } from "@prisma/client";
 import { orderActorFromAuth } from "@/lib/orderScopeServer";
 import { requireAuth } from "@/server/auth/session";
 import {
@@ -33,7 +34,7 @@ export const runtime = "nodejs";
 
 const ORDER_SCAN_LIMIT = 5000;
 
-type PendingProductsActor = { role: PendingProductsRole; actorId: string };
+type PendingProductsActor = { role: PendingProductsRole; actorId: string; warehouse?: string };
 
 function safeText(value: unknown, max = 200) {
   return String(value ?? "").trim().slice(0, max);
@@ -67,6 +68,8 @@ async function loadOrders(actor: PendingProductsActor) {
       { assignedStaffId: staffId },
       { dealer: { staffAssignments: { some: { staffId, active: true } } } },
     ];
+    // Same warehouse isolation the order list applies.
+    if (actor.warehouse) where.assignedStaff = { warehouse: actor.warehouse as Warehouse };
   }
 
   return prisma.order.findMany({
@@ -151,6 +154,7 @@ export async function GET(req: NextRequest) {
     const actor: PendingProductsActor = {
       role: scopedActor.role === "accountant" ? "admin" : scopedActor.role,
       actorId: scopedActor.actorId,
+      warehouse: scopedActor.warehouse,
     };
 
     const search = safeText(req.nextUrl.searchParams.get("search"), 240);

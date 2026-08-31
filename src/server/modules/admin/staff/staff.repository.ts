@@ -110,6 +110,7 @@ function buildSyntheticRecord(args: {
     emergencyContactNo2: null,
     staffRoleType: args.staffRoleType,
     salesRegion: args.salesRegion,
+    warehouse: null,
     parentRsmId: null,
     parentAsmId: null,
     assignedStates: [],
@@ -306,6 +307,7 @@ export class PostgresAdminStaffRepository {
           emergencyContactNo2: cleanOptional(input.emergencyContactNo2),
           staffRoleType: input.role === "RSM" ? "RSM" : input.role === "ASM" ? "ASM" : cleanOptional(input.staffRoleType),
           salesRegion: input.role === "RSM" ? input.salesRegion : null,
+          warehouse: input.warehouse ?? null,
           assignedStates,
           assignedCities,
           reportingManagerId,
@@ -341,6 +343,7 @@ export class PostgresAdminStaffRepository {
       if (nextRole === "RSM") {
         staffData.staffRoleType = "RSM";
         staffData.parentRsm = { disconnect: true };
+        staffData.warehouse = null;
         staffData.parentAsm = { disconnect: true };
         staffData.assignedCities = [];
         if (input.salesRegion !== undefined) staffData.salesRegion = input.salesRegion;
@@ -355,6 +358,7 @@ export class PostgresAdminStaffRepository {
         assertSubset(assignedStates, rsm.assignedStates, "ASM_STATES_OUTSIDE_RSM_SCOPE");
         staffData.staffRoleType = "ASM";
         staffData.salesRegion = null;
+        staffData.warehouse = null;
         staffData.parentRsm = { connect: { id: rsm.id } };
         staffData.parentAsm = { disconnect: true };
         staffData.assignedStates = assignedStates;
@@ -368,6 +372,7 @@ export class PostgresAdminStaffRepository {
         assertSubset(assignedCities, citiesForStates(asm.assignedStates), "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities");
         staffData.staffRoleType = "1";
         staffData.salesRegion = null;
+        staffData.warehouse = null;
         staffData.parentAsm = { connect: { id: asm.id } };
         staffData.parentRsm = { connect: { id: asm.parentRsmId } };
         staffData.assignedStates = statesForCities(assignedCities, asm.assignedStates);
@@ -377,6 +382,7 @@ export class PostgresAdminStaffRepository {
         const rsm = await resolveRsm(tx, parseId(input.parentRsmId ?? current.parentRsmId?.toString(), "STAFF_RSM_INVALID"));
         staffData.staffRoleType = "2";
         staffData.salesRegion = null;
+        if (input.warehouse !== undefined) staffData.warehouse = input.warehouse;
         staffData.parentRsm = { connect: { id: rsm.id } };
         staffData.parentAsm = { disconnect: true };
         staffData.assignedStates = [];
@@ -385,6 +391,7 @@ export class PostgresAdminStaffRepository {
       } else if (nextRole === "NSM") {
         staffData.staffRoleType = null;
         staffData.salesRegion = null;
+        staffData.warehouse = null;
         staffData.parentRsm = { disconnect: true };
         staffData.parentAsm = { disconnect: true };
         staffData.assignedStates = [];

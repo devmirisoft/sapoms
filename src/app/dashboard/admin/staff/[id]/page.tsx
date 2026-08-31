@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
 import { STATE_OPTIONS, CITIES_BY_STATE, citiesForStates } from '@/lib/places'
 import { SALES_REGION_OPTIONS } from '@/lib/salesRegions'
+import { WAREHOUSE_OPTIONS } from '@/lib/warehouses'
 
 const ADMIN_STAFF_URL = '/api/admin/staff'
 const STAFF_LIST_ROUTE = '/dashboard/admin/staff/stafflist'
@@ -236,6 +237,7 @@ export default function EditStaffPage() {
 
   const [role, setRole] = useState<StaffFormRole>('')
   const [salesRegion, setSalesRegion] = useState('')
+  const [warehouse, setWarehouse] = useState('')
   const [parentRsmId, setParentRsmId] = useState('')
   const [parentAsmId, setParentAsmId] = useState('')
   const [assignedStates, setAssignedStates] = useState<string[]>([])
@@ -398,6 +400,7 @@ export default function EditStaffPage() {
 
         setRole(toFormRole(data as { role?: string; staff_roletype?: string; staffRoleType?: string }))
         setSalesRegion(String(data.sales_region || data.salesRegion || ''))
+        setWarehouse(String(data.warehouse || ''))
         setParentRsmId(String(data.parentRsmId || data.parent_rsm_id || ''))
         setParentAsmId(String(data.parentAsmId || data.parent_asm_id || ''))
         setAssignedStates(
@@ -509,6 +512,7 @@ export default function EditStaffPage() {
           role: selectedRole.authRole,
           staffRoleType: selectedRole.staffRoleType,
           salesRegion: selectedRole.authRole === 'RSM' ? salesRegion : undefined,
+          warehouse: role === 'FIELD_EXECUTIVE' ? warehouse : undefined,
           parentRsmId: role === 'ASM' || role === 'FIELD_EXECUTIVE' ? parentRsmId : undefined,
           parentAsmId: role === 'EXECUTIVE' ? parentAsmId : undefined,
           assignedStates: role === 'ASM' || role === 'RSM' ? assignedStates : undefined,
@@ -776,6 +780,7 @@ export default function EditStaffPage() {
                       const nextRole = event.target.value as StaffFormRole
                       setRole(nextRole)
                       setSalesRegion(nextRole === 'RSM' ? salesRegion : '')
+                      setWarehouse(nextRole === 'FIELD_EXECUTIVE' ? warehouse : '')
                       resetHierarchy()
                     }}
                     className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
@@ -803,6 +808,26 @@ export default function EditStaffPage() {
                         <option key={option.value} value={option.value}>{option.label}</option>
                       ))}
                     </select>
+                  </div>
+                )}
+
+                {role === 'FIELD_EXECUTIVE' && (
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                      Warehouse<span className="text-orange-500 ml-0.5">*</span>
+                    </label>
+                    <select
+                      required
+                      value={warehouse}
+                      onChange={(event) => setWarehouse(event.target.value)}
+                      className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                    >
+                      <option value="" disabled>Select warehouse</option>
+                      {WAREHOUSE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                    <span className="text-[11px] text-gray-500">Staff only see orders handled by their own warehouse.</span>
                   </div>
                 )}
 

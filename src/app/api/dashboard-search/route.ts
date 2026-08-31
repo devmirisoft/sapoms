@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Warehouse } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
@@ -167,7 +168,11 @@ function buildOrderScope(actor: AuthActor, assignedDealerIds: bigint[]): Prisma.
     const scopes: Prisma.OrderWhereInput[] = [];
     if (actor.staffId) scopes.push({ assignedStaffId: actor.staffId });
     if (assignedDealerIds.length > 0) scopes.push({ dealerId: { in: assignedDealerIds } });
-    return scopes.length > 0 ? { OR: scopes } : null;
+    if (scopes.length === 0) return null;
+    // Same warehouse isolation the order list applies.
+    return actor.warehouse
+      ? { assignedStaff: { warehouse: actor.warehouse as Warehouse }, OR: scopes }
+      : { OR: scopes };
   }
   return null;
 }

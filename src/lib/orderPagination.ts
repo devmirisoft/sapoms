@@ -7,6 +7,7 @@ export type OrdersActor = {
   isRsm?: boolean;
   isAsm?: boolean;
   userId?: string;
+  warehouse?: string;
 };
 
 export type UpstreamOrderPage<T> = {
@@ -26,6 +27,7 @@ export type OrderFilters = {
   amountMin?: number | null;
   amountMax?: number | null;
   targetDealerId?: string;
+  warehouse?: string;
 };
 
 function text(value: unknown) {
@@ -124,9 +126,11 @@ export function applyOrderFilters<T extends Record<string, unknown>>(rows: T[], 
   const query = text(filters.search).toLowerCase();
   const orderId = text(filters.orderId).toLowerCase();
   const targetDealerId = text(filters.targetDealerId);
+  const warehouse = text(filters.warehouse);
 
   return rows.filter((row) => {
     if (targetDealerId && resolveOrderDealerId(row) !== targetDealerId) return false;
+    if (warehouse && text(row.staffwarehouse) !== warehouse) return false;
     if (query && !Object.values(row).some((value) => text(value).toLowerCase().includes(query))) return false;
     const rowOrderId = text(row.order_id ?? row.orderId).toLowerCase();
     if (orderId && !rowOrderId.startsWith(orderId)) return false;

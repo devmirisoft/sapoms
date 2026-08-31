@@ -80,3 +80,17 @@ test("status filters treat legacy numeric and text values as the same statuses",
     ["2"],
   );
 });
+
+test("warehouse filter keeps only orders dispatched from that warehouse", () => {
+  const rows = [
+    order("a", "2026-08-01", "101", { staffwarehouse: "AHMEDABAD" }),
+    order("b", "2026-08-02", "102", { staffwarehouse: "AMBALA" }),
+    order("c", "2026-08-03", "103", { staffwarehouse: "" }),
+  ];
+  const ids = (warehouse) =>
+    pagination.buildOrdersPage({ rows, page: 1, pageSize: 10, filters: { warehouse } }).items.map((row) => row.order_id);
+  assert.deepEqual(ids("AHMEDABAD"), ["a"]);
+  assert.deepEqual(ids("AMBALA"), ["b"]);
+  // "" is the All tab — unpinned orders must stay visible.
+  assert.deepEqual(ids(""), ["a", "b", "c"]);
+});

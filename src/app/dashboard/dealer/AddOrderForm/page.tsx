@@ -484,6 +484,7 @@ function AddOrderPageInner() {
   const [customDiscountScope, setCustomDiscountScope] = useState<CustomDiscountScope>("order");
   const [customDiscountProductKey, setCustomDiscountProductKey] = useState("");
   const [customDiscountSubmitting, setCustomDiscountSubmitting] = useState(false);
+  const [showDiscountConfirm, setShowDiscountConfirm] = useState(false);
   const [customDiscountRequests, setCustomDiscountRequests] = useState<CustomDiscountRequest[]>([]);
   const [reorderRequest, setReorderRequest] = useState<NormalizedCustomDiscountRequest | null>(null);
   const [perProductDiscountInputs, setPerProductDiscountInputs] = useState<Record<string, number>>({});
@@ -1234,6 +1235,23 @@ function AddOrderPageInner() {
   const requestedCustomDiscountAmount = customDiscountBaseSubtotal * (requestedCustomDiscountPercent / 100);
   const requestedCustomFinalPayable = Math.max(0, customDiscountBaseSubtotal - requestedCustomDiscountAmount);
 
+  // ── Unsent custom discount selection → "Request Discount" instead of "Place Order" ──
+  const currentDiscountBaseline = approvedCustomDiscountPercent ?? baseDiscountPayload.baseDiscountPercent;
+  const pendingOrderDiscountSelection = showCustomDiscountEditor
+    && customDiscountScope === "order"
+    && requestedCustomDiscountPercent > baseDiscountPayload.baseDiscountPercent;
+  const hasUnsentDiscountSelection = !isWaitingForApproval
+    && (pendingOrderDiscountSelection || hasRequestedProductDiscounts);
+  const discountSummaryRows = requestedProductDiscountRows.map(({ row, percent }) => ({
+    key: row.key,
+    label: `${row.variantCode || row.productname} - ${row.displayName || "Product"}`,
+    percent,
+    extraPaise: Math.round(rowSubtotalPaise(row) * (percent - currentDiscountBaseline) / 100),
+  }));
+  const discountSummaryExtraPaise = (pendingOrderDiscountSelection
+    ? toPaise(subtotal * (requestedCustomDiscountPercent - currentDiscountBaseline) / 100)
+    : 0) + discountSummaryRows.reduce((acc, r) => acc + r.extraPaise, 0);
+
   // ── Coupon handlers ───────────────────────────────────────────────────────
   const handleApplyCoupon = () => {
     if (orderLockedByPendingApproval) {
@@ -1418,6 +1436,35 @@ function AddOrderPageInner() {
         requestedProductDiscounts,
         targetProduct: customDiscountScope === "product" ? selectedCustomDiscountProduct : null,
       });
+      toast.success("Custom discount request sent to admin.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not request custom discount.");
+    } finally {
+      setCustomDiscountSubmitting(false);
+    }
+  };
+
+  /** Proceed from the discount disclaimer: submits whatever is currently selected. */
+  const handleConfirmDiscountRequest = async () => {
+    if (arr1.every(r => !r.productname)) { toast("Please select at least one product before requesting approval."); return; }
+    const requestedProductDiscounts = buildRequestedProductDiscountMap();
+    if (!pendingOrderDiscountSelection && Object.keys(requestedProductDiscounts).length === 0) {
+      toast("Select at least one discount above the current approved/base discount.");
+      return;
+    }
+    const scope: CustomDiscountScope = pendingOrderDiscountSelection ? "order" : "product";
+
+    setCustomDiscountSubmitting(true);
+    try {
+      await submitCustomDiscountApproval({
+        scope,
+        requestedOrderDiscountPercent: scope === "order" ? requestedCustomDiscountPercent : null,
+        requestedProductDiscounts,
+        targetProduct: scope === "product"
+          ? (requestedProductDiscountRows[0]?.row ?? selectedCustomDiscountProduct)
+          : null,
+      });
+      setShowDiscountConfirm(false);
       toast.success("Custom discount request sent to admin.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not request custom discount.");
@@ -2278,6 +2325,65 @@ const verifySubmittedProductNotes = async (orderId: string) => {
     <>
       <ToastContainer position="top-right" autoClose={5000} />
 
+      {/* ── Discount Request Disclaimer ─────────────────────────────────────── */}
+      {showDiscountConfirm && (
+        <div className="fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[85vh] overflow-y-auto">
+            <h3 className="text-[15px] font-bold text-gray-900 mb-1">Request Custom Discount</h3>
+            <p className="text-[12.5px] text-gray-500 mb-4">
+              This order will not be placed now. It is sent to admin for discount approval and can be placed once approved.
+            </p>
+
+            <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 text-[12.5px]">
+              <div className="flex items-center justify-between px-3 py-2">
+                <span className="text-gray-500">Current discount</span>
+                <span className="font-mono font-bold text-gray-900">{currentDiscountBaseline}%</span>
+              </div>
+              {pendingOrderDiscountSelection && (
+                <div className="flex items-center justify-between px-3 py-2">
+                  <span className="text-gray-500">Requested (entire order)</span>
+                  <span className="font-mono font-bold text-indigo-700">{requestedCustomDiscountPercent}%</span>
+                </div>
+              )}
+              {discountSummaryRows.map((r) => (
+                <div key={r.key} className="flex items-start justify-between gap-3 px-3 py-2">
+                  <span className="text-gray-600 truncate">{r.label}</span>
+                  <span className="shrink-0 text-right">
+                    <span className="block font-mono font-bold text-indigo-700">{r.percent}%</span>
+                    <span className="block font-mono text-[11px] text-emerald-600">−{fmt(r.extraPaise)}</span>
+                  </span>
+                </div>
+              ))}
+              <div className="flex items-center justify-between px-3 py-2 bg-gray-50 rounded-b-xl">
+                <span className="font-semibold text-gray-700">Extra saving if approved</span>
+                <span className="font-mono font-bold text-emerald-700">−{fmt(discountSummaryExtraPaise)}</span>
+              </div>
+            </div>
+
+            <p className="mt-3 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+              Amounts shown are estimates. The final discount is whatever the admin approves, and the order stays locked until then.
+            </p>
+
+            <div className="flex gap-2 mt-4">
+              <button
+                onClick={handleConfirmDiscountRequest}
+                disabled={customDiscountSubmitting}
+                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-[13px] font-semibold transition-colors cursor-pointer border-none"
+              >
+                {customDiscountSubmitting ? "Sending..." : "Proceed"}
+              </button>
+              <button
+                onClick={() => setShowDiscountConfirm(false)}
+                disabled={customDiscountSubmitting}
+                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-[13px] font-medium transition-colors cursor-pointer border-none disabled:opacity-40"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Draft Name Modal ──────────────────────────────────────────────── */}
       {showNameModal && (
         <div className="fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
@@ -2942,14 +3048,14 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   </div>
                 </div>
                 <div className="flex gap-2">
-                  <button
+                  {/* <button
                     type="button"
                     onClick={handleRequestCustomDiscount}
                     disabled={customDiscountSubmitting || (customDiscountScope === "order" ? requestedCustomDiscountPercent <= baseDiscountPayload.baseDiscountPercent : !hasRequestedProductDiscounts)}
                     className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {customDiscountSubmitting ? "Sending..." : "Request Approval"}
-                  </button>
+                  </button> */}
                   <button
                     type="button"
                     onClick={() => refreshCustomDiscountRequests()
@@ -3005,7 +3111,18 @@ const verifySubmittedProductNotes = async (orderId: string) => {
 
             <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
               <div>
-                <h3 className="text-[15px] font-semibold text-gray-900">Product List</h3>
+                <div className="flex items-center gap-2">
+                  <h3 className="text-[18px] font-semibold text-gray-900">Product List</h3>
+                  <tr className="border-t border-dashed border-gray-100">
+                    <td colSpan={10} className="px-6 py-3">
+                      <button onClick={addRow} disabled={orderLockedByPendingApproval}
+                        className="inline-flex items-center gap-2 text-[15px] text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer border-2 border-gray-200 rounded-lg px-3 py-1.5 hover:border-indigo-300 hover:bg-indig-600">
+                        <span className="w-6 h-6 rounded-md border border-gray-200 flex items-center justify-center text-sm hover:border-indigo-300 hover:bg-indigo-50 transition-colors">+</span>
+                        Add another product
+                      </button>
+                    </td>
+                  </tr>
+                </div>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {arr1.filter(r => r.productname).length} product{arr1.filter(r => r.productname).length !== 1 ? "s" : ""} selected
                   {activeDraftId && <span className="ml-2 text-indigo-500 font-medium">· {draftName}</span>}
@@ -3405,8 +3522,8 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   <tr className="border-t border-dashed border-gray-100">
                     <td colSpan={10} className="px-6 py-3">
                       <button onClick={addRow} disabled={orderLockedByPendingApproval}
-                        className="inline-flex items-center gap-2 text-[12px] text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer">
-                        <span className="w-5 h-5 rounded-md border border-gray-200 flex items-center justify-center text-sm hover:border-indigo-300 hover:bg-indigo-50 transition-colors">+</span>
+                        className="inline-flex items-center gap-2 text-[15px] text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer border-2 border-gray-200 rounded-lg px-3 py-1.5 hover:border-indigo-300 hover:bg-indig-600">
+                        <span className="w-6 h-6 rounded-md border border-gray-200 flex items-center justify-center text-sm hover:border-indigo-300 hover:bg-indigo-50 transition-colors">+</span>
                         Add another product
                       </button>
                     </td>
@@ -3541,15 +3658,25 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   </button>
                 </>
               ) : (
-                <button onClick={handleSubmitProductArray} disabled={loading}
-                  title={needsFundRequest ? `Wallet short by ${fmt(toPaise(discountPayload.finalPayableAmount - wallet!.availableBalance))} - request funds to proceed` : undefined}
-                  className={`inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-xl text-[13.5px] font-semibold transition-all shadow-sm hover:shadow-md hover:-translate-y-px cursor-pointer border-none ${needsFundRequest
-                      ? "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-700 hover:to-amber-600"
-                      : hasAnyDiscount
-                        ? "bg-gradient-to-r from-emerald-700 to-emerald-500 hover:from-emerald-800 hover:to-emerald-600"
-                        : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600"
+                <button
+                  onClick={hasUnsentDiscountSelection ? () => setShowDiscountConfirm(true) : handleSubmitProductArray}
+                  disabled={loading || customDiscountSubmitting}
+                  title={hasUnsentDiscountSelection
+                    ? "A custom discount is selected - this order needs approval before it can be placed"
+                    : needsFundRequest ? `Wallet short by ${fmt(toPaise(discountPayload.finalPayableAmount - wallet!.availableBalance))} - request funds to proceed` : undefined}
+                  className={`inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-xl text-[13.5px] font-semibold transition-all shadow-sm hover:shadow-md hover:-translate-y-px cursor-pointer border-none ${hasUnsentDiscountSelection
+                      ? "bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600"
+                      : needsFundRequest
+                        ? "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-700 hover:to-amber-600"
+                        : hasAnyDiscount
+                          ? "bg-gradient-to-r from-emerald-700 to-emerald-500 hover:from-emerald-800 hover:to-emerald-600"
+                          : "bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-700 hover:to-emerald-600"
                     } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0`}>
-                  {needsFundRequest ? (
+                  {hasUnsentDiscountSelection ? (
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                      <path d="M20 12H4M14 6l6 6-6 6" />
+                    </svg>
+                  ) : needsFundRequest ? (
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                       <path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6" />
                     </svg>
@@ -3558,11 +3685,42 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                       <path d="M20 6 9 17l-5-5" />
                     </svg>
                   )}
-                  {needsFundRequest ? "Request Funds" : "Place Order"}
+                  {hasUnsentDiscountSelection ? "Request Discount" : needsFundRequest ? "Request Funds" : "Place Order"}
                 </button>
               )}
 
-              {needsFundRequest && !isWaitingForApproval && (
+              {hasUnsentDiscountSelection && (
+                <div className="flex items-center gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50 px-3.5 py-3">
+  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm ring-1 ring-indigo-100">
+    <svg
+      className="h-4 w-4"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      aria-hidden="true"
+    >
+      <path d="M12 9v4" strokeLinecap="round" />
+      <path d="M12 17h.01" strokeLinecap="round" />
+      <path
+        d="M10.3 3.8 2.7 17a2 2 0 0 0 1.7 3h15.2a2 2 0 0 0 1.7-3L13.7 3.8a2 2 0 0 0-3.4 0Z"
+        strokeLinejoin="round"
+      />
+    </svg>
+  </div>
+
+  <div className="min-w-0">
+    <p className="text-[12px] font-semibold text-indigo-900">
+       approval required
+    </p>
+    <p className="mt-0.5 text-[11.5px] leading-4.5 text-indigo-700">
+      This order uses a custom discount and must be approved before placement.
+    </p>
+  </div>
+</div>
+              )}
+
+              {needsFundRequest && !isWaitingForApproval && !hasUnsentDiscountSelection && (
                 <p className="text-[12.5px] text-amber-700">
                   Wallet balance {fmt(toPaise(wallet!.availableBalance))} is short of {fmt(finalPayablePaise)}.
                   Requesting funds sends this order for approval; it is placed automatically once the funds are added.
@@ -3579,13 +3737,13 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 {activeDraftId ? "Update Draft" : "Save as Draft"}
               </button>
 
-              <button onClick={addRow} disabled={orderLockedByPendingApproval}
+              {/* <button onClick={addRow} disabled={orderLockedByPendingApproval}
                 className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:bg-gray-50 hover:border-gray-300 text-gray-600 rounded-xl text-[13.5px] font-medium transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
                 Add Row
-              </button>
+              </button> */}
             </div>
           </div>
         )}
