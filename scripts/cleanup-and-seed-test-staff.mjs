@@ -13,7 +13,7 @@
  * Usage: node scripts/cleanup-and-seed-test-staff.mjs
  */
 
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from './prisma.mjs';
 import { randomBytes, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 

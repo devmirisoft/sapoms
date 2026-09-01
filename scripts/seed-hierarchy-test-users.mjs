@@ -8,7 +8,7 @@
  *
  * Usage: node scripts/seed-hierarchy-test-users.mjs
  */
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from './prisma.mjs';
 import { randomBytes, scrypt as scryptCallback } from 'node:crypto';
 import { promisify } from 'node:util';
 import { readFileSync } from 'node:fs';

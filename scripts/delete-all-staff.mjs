@@ -9,7 +9,7 @@
  *
  * Usage: node scripts/delete-all-staff.mjs
  */
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from './prisma.mjs';
 
 const prisma = new PrismaClient();
 const ROLES = ['NSM', 'RSM', 'ASM', 'STAFF'];

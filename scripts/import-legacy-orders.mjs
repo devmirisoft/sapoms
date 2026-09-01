@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from './prisma.mjs';
 import { DEFAULT_SOURCES, runImport } from "./legacy-order-importer.mjs";
 
 function argValue(name, fallback = "") {

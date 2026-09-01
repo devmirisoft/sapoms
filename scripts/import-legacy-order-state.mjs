@@ -2,7 +2,8 @@
 import { createHash } from "node:crypto";
 import { writeFile } from "node:fs/promises";
 import { MongoClient, ObjectId } from "mongodb";
-import { PrismaClient, WalletTransactionType } from "@prisma/client";
+import { WalletTransactionType } from "@prisma/client";
+import { PrismaClient } from './prisma.mjs';
 
 const LEGACY_SOURCE = "mongo-order-state";
 const DEFAULT_LIMIT = 100;

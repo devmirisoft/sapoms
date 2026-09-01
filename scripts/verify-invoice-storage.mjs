@@ -1,7 +1,7 @@
 // Deployment check for the Cloudinary invoice/export migration.
 // Verifies the new tables exist, the duplicate-billing guard actually fires,
 // and the foreign keys are wired. Cleans up everything it creates.
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from './prisma.mjs';
 
 const prisma = new PrismaClient();
 const results = [];

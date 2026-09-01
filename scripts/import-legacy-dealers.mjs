@@ -3,7 +3,7 @@ import { randomBytes, scrypt as scryptCallback } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { promisify } from "node:util";
-import { PrismaClient } from "@prisma/client";
+import { PrismaClient } from './prisma.mjs';
 import { parsePossiblyNoisyJson } from "./legacy-order-importer.mjs";
 
 const scrypt = promisify(scryptCallback);
