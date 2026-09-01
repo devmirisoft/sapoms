@@ -4,7 +4,7 @@
  * Re-running deletes and recreates the four accounts.
  *
  * Note: the schema has no "reports to SM" link. A Staff (staffRoleType "2")
- * hangs off an RSM directly, so Test Staff is parented to Test RSM.
+ * hangs off an RSM directly, so Staff Test is parented to RSM Test.
  *
  * Usage: node scripts/seed-hierarchy-test-users.mjs
  */
@@ -36,31 +36,32 @@ const common = {
 
 const people = [
   {
-    email: 'TestRSM@omsonsnsi.com', name: 'Test RSM', designation: 'RSM', role: 'RSM', staffRoleType: 'RSM',
+    email: 'rsmtest@rsmtest.com', name: 'RSM Test', designation: 'RSM', role: 'RSM', staffRoleType: 'RSM',
     mobileNo: '9876501001', alternateNo: '9876502001', gender: 'Male', dob: '1990-05-15', maritalStatus: 'Married',
     emergencyContactNo1: '9876503001', emergencyContactNo2: '9876504001',
-    permanentAddress: `Test RSM, ${common.permanentAddressCity}`, localAddress: 'Ambala Cantt, Haryana',
+    permanentAddress: `RSM Test, ${common.permanentAddressCity}`, localAddress: 'Ambala Cantt, Haryana',
     salesRegion: 'NORTH_1', assignedStates: ['Haryana'],
   },
   {
-    email: 'TestASM@omsonsnsi.com', name: 'Test ASM', designation: 'ASM', role: 'ASM', staffRoleType: 'ASM',
+    email: 'asmtest@asmtest.com', name: 'ASM Test', designation: 'ASM', role: 'ASM', staffRoleType: 'ASM',
     mobileNo: '9876501002', alternateNo: '9876502002', gender: 'Male', dob: '1992-07-20', maritalStatus: 'Single',
     emergencyContactNo1: '9876503002', emergencyContactNo2: '9876504002',
-    permanentAddress: `Test ASM, ${common.permanentAddressCity}`, localAddress: 'Ambala City, Haryana',
+    permanentAddress: `ASM Test, ${common.permanentAddressCity}`, localAddress: 'Ambala City, Haryana',
     assignedStates: ['Haryana'],
   },
   {
-    email: 'TestSM@omsonsnsi.com', name: 'Test SM', designation: 'SM', role: 'STAFF', staffRoleType: '1',
+    email: 'smtest@smtest.com', name: 'SM Test', designation: 'SM', role: 'STAFF', staffRoleType: '1',
     mobileNo: '9876501003', alternateNo: '9876502003', gender: 'Male', dob: '1994-03-10', maritalStatus: 'Single',
     emergencyContactNo1: '9876503003', emergencyContactNo2: '9876504003',
-    permanentAddress: `Test SM, ${common.permanentAddressCity}`, localAddress: 'Ambala Cantt, Haryana',
+    permanentAddress: `SM Test, ${common.permanentAddressCity}`, localAddress: 'Ambala Cantt, Haryana',
     assignedCities: ['Ambala'],
   },
   {
-    email: 'TestStaff@omsonsnsi.com', name: 'Test Staff', designation: 'Staff', role: 'STAFF', staffRoleType: '2',
+    email: 'stest@stest.com', name: 'Staff Test', designation: 'Staff', role: 'STAFF', staffRoleType: '2',
     mobileNo: '9876501004', alternateNo: '9876502004', gender: 'Female', dob: '1996-11-25', maritalStatus: 'Single',
     emergencyContactNo1: '9876503004', emergencyContactNo2: '9876504004',
-    permanentAddress: `Test Staff, ${common.permanentAddressCity}`, localAddress: 'Ambala City, Haryana',
+    permanentAddress: `Staff Test, ${common.permanentAddressCity}`, localAddress: 'Ambala City, Haryana',
+    warehouse: 'AMBALA',
   },
 ];
 
@@ -99,20 +100,41 @@ async function createOne(tx, person, { parentRsmId = null, parentAsmId = null, r
       emergencyContactNo2: person.emergencyContactNo2,
       staffRoleType: person.staffRoleType,
       salesRegion: person.salesRegion ?? null,
+      warehouse: person.warehouse ?? null,
       assignedStates: person.assignedStates ?? [],
       assignedCities: person.assignedCities ?? [],
     },
   });
 }
 
+async function createNsm() {
+  const email = 'nsmtest@nsmtest.com';
+  const user = await prisma.user.upsert({
+    where: { normalizedEmail: email },
+    update: { role: 'NSM', status: 'ACTIVE', deletedAt: null, passwordHash: await hashPassword(email) },
+    create: {
+      email, normalizedEmail: email, username: email, normalizedUsername: email,
+      passwordHash: await hashPassword(email), role: 'NSM', status: 'ACTIVE',
+    },
+  });
+  const profile = await prisma.adminProfile.upsert({
+    where: { userId: user.id },
+    update: { displayName: 'NSM Test' },
+    create: { userId: user.id, displayName: 'NSM Test', phone: '9876501000' },
+    select: { id: true, displayName: true, user: { select: { email: true } } },
+  });
+  console.log(`NSM   ${email} created (no active NSM existed)`);
+  return profile;
+}
+
 async function main() {
   const emails = people.map((p) => p.email.toLowerCase());
 
+  // The RSM must report to an NSM; seed one when the instance has none.
   const nsm = await prisma.adminProfile.findFirst({
     where: { user: { role: 'NSM', status: 'ACTIVE', deletedAt: null } },
     select: { id: true, displayName: true, user: { select: { email: true } } },
-  });
-  if (!nsm) throw new Error('No active NSM found — create one first, the RSM must report to it.');
+  }) ?? await createNsm();
 
   await prisma.$transaction(async (tx) => {
     const existing = await tx.user.findMany({ where: { normalizedEmail: { in: emails } }, select: { id: true } });
