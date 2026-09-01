@@ -135,8 +135,8 @@ function getRoleLabel(rt: string, salesRegion?: string) {
   }
   if (rt === "ASM") return "ASM"
   if (rt === "0") return "Admin"
-  if (rt === "1") return "Staff"
-  if (rt === "2") return "Sales Manager"
+  if (rt === "1") return "Sales Manager"
+  if (rt === "2") return "Staff"
   return "Staff"
 }
 

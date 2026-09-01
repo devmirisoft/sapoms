@@ -2,8 +2,7 @@
 // (User.role) plus their StaffProfile.staffRoleType into a human label.
 //
 // The two fields overlap on purpose: RSM/ASM/NSM are real AuthRoles, while the
-// STAFF role is subdivided by staffRoleType ("2" = Sales Manager, "1" = Staff /
-// Executive). Callers that only have one of the two still get a sensible label.
+// STAFF role is subdivided by staffRoleType ("1" = Sales Manager / Executive, "2" = Staff). Callers that only have one of the two still get a sensible label.
 
 export type StaffRoleKey = "NSM" | "RSM" | "ASM" | "SALES_MANAGER" | "STAFF" | "UNKNOWN";
 
@@ -46,8 +45,8 @@ export function resolveStaffRoleKey(source: StaffRoleSource): StaffRoleKey {
   if (role === "NSM" || roleType === "NSM") return "NSM";
   if (role === "RSM" || roleType === "RSM") return "RSM";
   if (role === "ASM" || roleType === "ASM") return "ASM";
-  if (roleType === "2") return "SALES_MANAGER";
-  if (roleType === "1" || roleType === "EXECUTIVE" || roleType === "STAFF") return "STAFF";
+  if (roleType === "1" || roleType === "EXECUTIVE") return "SALES_MANAGER";
+  if (roleType === "2" || roleType === "STAFF") return "STAFF";
   return role === "STAFF" ? "STAFF" : "UNKNOWN";
 }
 

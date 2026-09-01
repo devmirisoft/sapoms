@@ -83,8 +83,8 @@ function roleBadge(staff: Pick<StaffData, "role" | "staff_roletype" | "sales_reg
   if (authRole === "ASM" || staffRoleType === "ASM") return { bg: "bg-cyan-50", text: "text-cyan-700", label: "ASM" }
 
   switch (staffRoleType) {
-    case "1": return { bg: "bg-indigo-50", text: "text-indigo-700", label: "Staff" }
-    case "2": return { bg: "bg-violet-50", text: "text-violet-700", label: "Sales Manager" }
+    case "1": return { bg: "bg-violet-50", text: "text-violet-700", label: "Sales Manager" }
+    case "2": return { bg: "bg-indigo-50", text: "text-indigo-700", label: "Staff" }
     default:  return { bg: "bg-gray-100",  text: "text-gray-500",   label: "Unknown" }
   }
 }
@@ -575,9 +575,6 @@ export default function StaffListPage() {
   const directReports = useMemo(() => {
     const map = new Map<string, StaffData[]>()
     data.forEach((staff) => {
-      const authRole = String(staff.role ?? "").toUpperCase()
-      const roleType = String(staff.staff_roletype ?? "").toUpperCase()
-      if (authRole === "RSM" || roleType === "RSM" || authRole === "NSM") return
       const managerId = reportingManagerOf(staff)?.id
       if (!managerId) return
       map.set(managerId, [...(map.get(managerId) ?? []), staff])

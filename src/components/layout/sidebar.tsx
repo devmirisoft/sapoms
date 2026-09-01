@@ -101,7 +101,7 @@ function getInitials(name?: string) {
 }
 
 function staffRoleLabel(rt?: string) {
-  return rt === "0" ? "Admin" : rt === "1" ? "Staff" : rt === "2" ? "Sales Manager" : "Staff";
+  return rt === "0" ? "Admin" : rt === "1" ? "Sales Manager" : rt === "2" ? "Staff" : "Staff";
 }
 
 /* Pinned is a per-person preference living in localStorage, so it is read
