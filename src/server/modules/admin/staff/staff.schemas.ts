@@ -6,7 +6,8 @@ import type { AdminStaffListInput } from "./staff.types";
 export function parseAdminStaffListInput(searchParams: URLSearchParams): AdminStaffListInput {
   const base = parseAdminPagination(searchParams);
   const roleParam = String(searchParams.get("role") ?? "").trim().toUpperCase();
-  return { ...base, role: roleParam === "NSM" ? "NSM" : undefined };
+  const includeNsm = ["1", "true", "yes"].includes(String(searchParams.get("includeNsm") ?? "").trim().toLowerCase());
+  return { ...base, role: roleParam === "NSM" ? "NSM" : undefined, includeNsm };
 }
 
 const salesRegion = z.preprocess((value) => {
@@ -124,7 +125,7 @@ function requireValidRoleRegion<T extends { role?: string; salesRegion?: string;
     throw new AdminRouteError("INVALID_REQUEST", "Staff role type is required", { code: "STAFF_ROLE_TYPE_REQUIRED" });
   }
   if (value.role === "ASM" && !value.parentRsmId) throw new AdminRouteError("INVALID_REQUEST", "ASM must have a valid RSM parent", { code: "ASM_RSM_REQUIRED" });
-  if (value.role === "STAFF" && value.staffRoleType === "1" && !value.parentAsmId) throw new AdminRouteError("INVALID_REQUEST", "Executive must have a valid ASM parent", { code: "EXECUTIVE_ASM_REQUIRED" });
+  if (value.role === "STAFF" && value.staffRoleType === "1" && !value.parentAsmId) throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must have a valid ASM parent", { code: "EXECUTIVE_ASM_REQUIRED" });
   if (value.role === "ASM" && value.assignedStates && !value.assignedStates.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one state", { code: "ASM_STATES_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "1" && value.assignedCities && !value.assignedCities.length) throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must cover at least one city", { code: "EXECUTIVE_CITIES_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "2" && !value.parentRsmId) throw new AdminRouteError("INVALID_REQUEST", "Staff must have a valid RSM parent", { code: "STAFF_RSM_REQUIRED" });

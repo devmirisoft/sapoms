@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { showToast } from "@/components/ui/toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -312,19 +313,17 @@ const emptyForm = (): Omit<HotItem, "id"> => ({
 // ─── Toast ────────────────────────────────────────────────────────────────────
 
 function useToast() {
-  const [toast, setToast] = useState<{ msg: string; type: "success" | "error" } | null>(null);
   const show = useCallback((msg: string, type: "success" | "error" = "success") => {
-    setToast({ msg, type });
-    setTimeout(() => setToast(null), 2800);
+    showToast(type, msg);
   }, []);
-  return { toast, show };
+  return { show };
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function AdminHotItemsPage() {
   const router = useRouter();
-  const { toast, show } = useToast();
+  const { show } = useToast();
 
   const [items, setItems] = useState<HotItem[]>([]);
   const [showForm, setShowForm] = useState(false);
@@ -553,19 +552,6 @@ export default function AdminHotItemsPage() {
       `}</style>
 
       {/* ── Toast ── */}
-      {toast && (
-        <div className={`toast-pop fixed top-5 right-5 z-[9999] flex items-center gap-2.5 px-4 py-3 rounded-xl shadow-xl text-sm font-semibold border ${
-          toast.type === "success"
-            ? "bg-emerald-50 border-emerald-200 text-emerald-800"
-            : "bg-red-50 border-red-200 text-red-700"
-        }`}>
-          {toast.type === "success"
-            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12" /></svg>
-            : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4m0 4h.01" /></svg>
-          }
-          {toast.msg}
-        </div>
-      )}
 
       {/* ── Delete Confirm Modal ── */}
       {deleteId && (

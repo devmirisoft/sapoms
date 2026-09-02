@@ -6,6 +6,7 @@ import { Eye, EyeOff } from 'lucide-react'
 import { STATE_OPTIONS, CITIES_BY_STATE, citiesForStates } from '@/lib/places'
 import { SALES_REGION_OPTIONS } from '@/lib/salesRegions'
 import { WAREHOUSE_OPTIONS } from '@/lib/warehouses'
+import { showToast } from "@/components/ui/toast";
 
 const ADMIN_STAFF_URL = '/api/admin/staff'
 const STAFF_LIST_ROUTE = '/dashboard/admin/staff/stafflist'
@@ -31,6 +32,7 @@ type StaffOption = {
   email?: string
   role: string
   staffRoleType: string
+  salesRegion: string
   parentRsmId?: string
   assignedStates: string[]
   assignedCities: string[]
@@ -64,6 +66,7 @@ function mapStaffOption(value: unknown): StaffOption {
     email: String(row.email || row.staff_email || ''),
     role: String(row.role || '').toUpperCase(),
     staffRoleType: String(row.staffRoleType || row.staff_roletype || '').toUpperCase(),
+    salesRegion: String(row.salesRegion || row.sales_region || '').toUpperCase(),
     parentRsmId: String(row.parentRsmId || row.parent_rsm_id || ''),
     assignedStates: Array.isArray(row.assignedStates)
       ? row.assignedStates.map(String)
@@ -209,12 +212,12 @@ export default function EditStaffPage() {
   const router = useRouter()
   const params = useParams()
   const id = String(params.id || '')
+  // "nsm:<id>" addresses the NSM row in admin_profiles; a bare id is staff.
+  const isNsm = id.startsWith('nsm:')
 
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
-  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
 
-  const [staffid, setStaffid] = useState('')
   const [name, setName] = useState('')
   const [designation, setDesignation] = useState('')
   const [location, setLocation] = useState('')
@@ -264,6 +267,11 @@ export default function EditStaffPage() {
     () => staffOptions.filter((staff) => staff.role === 'ASM' || staff.staffRoleType === 'ASM'),
     [staffOptions],
   )
+  // One region, one RSM — every region another RSM already holds is closed off.
+  const rsmByRegion = useMemo(
+    () => new Map(rsmOptions.filter((staff) => staff.salesRegion && staff.id !== id).map((staff) => [staff.salesRegion, staff])),
+    [rsmOptions, id],
+  )
   const selectedRsm = rsmOptions.find((staff) => staff.id === parentRsmId)
   const selectedAsm = asmOptions.find((staff) => staff.id === parentAsmId)
   const selectedAsmRsm = rsmOptions.find((staff) => staff.id === selectedAsm?.parentRsmId) || selectedAsm?.parentRsm || null
@@ -280,11 +288,6 @@ export default function EditStaffPage() {
       .filter((group) => group.cities.length)
   }, [selectedAsm, citiesByState])
 
-  useEffect(() => {
-    if (!toastMsg) return
-    const timeout = setTimeout(() => setToastMsg(null), 3500)
-    return () => clearTimeout(timeout)
-  }, [toastMsg])
 
   useEffect(() => {
     if (!id) return
@@ -298,7 +301,7 @@ export default function EditStaffPage() {
 
   const handleDiagnosticPasswordSave = async () => {
     if (diagnosticPassword.length < 5) {
-      setToastMsg({ text: 'Diagnostic password must be at least 5 characters', type: 'error' })
+      showToast('error', 'Diagnostic password must be at least 5 characters')
       return
     }
     setDiagnosticSaving(true)
@@ -312,9 +315,9 @@ export default function EditStaffPage() {
       const payload = await response.json()
       if (!response.ok || !payload.success) throw new Error(payload.message ?? 'Failed to save diagnostic password')
       setActiveDiagnosticPassword(payload.data || null)
-      setToastMsg({ text: 'Diagnostic password saved', type: 'success' })
+      showToast('success', 'Diagnostic password saved')
     } catch (error) {
-      setToastMsg({ text: error instanceof Error ? error.message : 'Failed to save diagnostic password', type: 'error' })
+      showToast('error', error instanceof Error ? error.message : 'Failed to save diagnostic password')
     } finally {
       setDiagnosticSaving(false)
     }
@@ -327,9 +330,9 @@ export default function EditStaffPage() {
       const payload = await response.json()
       if (!response.ok || !payload.success) throw new Error(payload.message ?? 'Failed to revoke diagnostic password')
       setActiveDiagnosticPassword(null)
-      setToastMsg({ text: 'Diagnostic password revoked', type: 'success' })
+      showToast('success', 'Diagnostic password revoked')
     } catch (error) {
-      setToastMsg({ text: error instanceof Error ? error.message : 'Failed to revoke diagnostic password', type: 'error' })
+      showToast('error', error instanceof Error ? error.message : 'Failed to revoke diagnostic password')
     } finally {
       setDiagnosticRevoking(false)
     }
@@ -338,7 +341,7 @@ export default function EditStaffPage() {
   const copyDiagnosticPassword = async () => {
     if (!diagnosticPassword) return
     await navigator.clipboard?.writeText(diagnosticPassword)
-    setToastMsg({ text: 'Diagnostic password copied', type: 'success' })
+    showToast('success', 'Diagnostic password copied')
   }
 
   useEffect(() => {
@@ -417,12 +420,8 @@ export default function EditStaffPage() {
               ? data.assigned_cities.map(String)
               : [],
         )
-        setStaffid(String(data.staff_id || data.id || ''))
       } catch (error) {
-        setToastMsg({
-          text: error instanceof Error ? error.message : 'Failed to load staff data',
-          type: 'error',
-        })
+        showToast('error', error instanceof Error ? error.message : 'Failed to load staff data')
       } finally {
         setIsLoading(false)
       }
@@ -478,11 +477,13 @@ export default function EditStaffPage() {
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    const resolvedStaffId = staffid || id
+    // The route param is the addressable id ("nsm:<id>" for the NSM, a bare id
+    // for staff); the one echoed back in the payload has lost that prefix.
+    const resolvedStaffId = id
     const selectedRole = getRoleOption(role)
 
     if (!resolvedStaffId) {
-      setToastMsg({ text: 'Missing staff id', type: 'error' })
+      showToast('error', 'Missing staff id')
       return
     }
     if (!selectedRole) return
@@ -525,13 +526,10 @@ export default function EditStaffPage() {
         throw new Error(apiMessage(payload, 'Failed to update staff'))
       }
 
-      setToastMsg({ text: 'Staff updated successfully', type: 'success' })
+      showToast('success', 'Staff updated successfully')
       router.push(STAFF_LIST_ROUTE)
     } catch (error) {
-      setToastMsg({
-        text: error instanceof Error ? error.message : 'Failed to update staff',
-        type: 'error',
-      })
+      showToast('error', error instanceof Error ? error.message : 'Failed to update staff')
     } finally {
       setIsSaving(false)
     }
@@ -550,15 +548,6 @@ export default function EditStaffPage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {toastMsg && (
-        <div
-          className={`fixed top-5 right-5 z-50 text-sm px-4 py-3 rounded-lg shadow-lg transition-all flex items-center gap-2 ${
-            toastMsg.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'
-          }`}
-        >
-          {toastMsg.text}
-        </div>
-      )}
 
       <div className="p-6 admin-page-shell">
         <div className="mb-8">
@@ -776,6 +765,9 @@ export default function EditStaffPage() {
                   <select
                     required
                     value={role}
+                    // The NSM lives in a different table from the rest of the
+                    // staff, so its role is fixed: edit the person, not the seat.
+                    disabled={isNsm}
                     onChange={(event) => {
                       const nextRole = event.target.value as StaffFormRole
                       setRole(nextRole)
@@ -783,7 +775,7 @@ export default function EditStaffPage() {
                       setWarehouse(nextRole === 'FIELD_EXECUTIVE' ? warehouse : '')
                       resetHierarchy()
                     }}
-                    className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                    className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition disabled:bg-gray-50 disabled:text-gray-500"
                   >
                     <option value="" disabled>Select a role</option>
                     {roleOptions.map((option) => (
@@ -804,9 +796,14 @@ export default function EditStaffPage() {
                       className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
                     >
                       <option value="" disabled>Select region</option>
-                      {SALES_REGION_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
+                      {SALES_REGION_OPTIONS.map((option) => {
+                        const taken = rsmByRegion.get(option.value)
+                        return (
+                          <option key={option.value} value={option.value} disabled={!!taken}>
+                            {taken ? `${option.label} — ${taken.name}` : option.label}
+                          </option>
+                        )
+                      })}
                     </select>
                   </div>
                 )}

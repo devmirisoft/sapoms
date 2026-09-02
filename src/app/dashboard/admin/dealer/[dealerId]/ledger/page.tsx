@@ -13,6 +13,7 @@ import PayMoneyModal, { PaymentData } from '@/components/ledger/PayMoneyModal'
 import { InvoiceModal } from '@/components/InvoiceModel'
 import { createIdempotencyKey } from '@/lib/idempotency'
 import { resolveStoredAuth } from '@/lib/roleAccess'
+import { showToast } from "@/components/ui/toast";
 
 const TRANSACTIONS_PAGE_SIZE = 10
 
@@ -122,7 +123,6 @@ export default function DealerLedgerPage() {
   const [walletAdjustNote, setWalletAdjustNote] = useState('')
   const [walletTransactionDate, setWalletTransactionDate] = useState(() => new Date().toISOString().slice(0, 10))
   const [walletAdjustLoading, setWalletAdjustLoading] = useState(false)
-  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const [transactionsPage, setTransactionsPage] = useState(1)
 
   useEffect(() => {
@@ -211,19 +211,13 @@ export default function DealerLedgerPage() {
     }
   }, [searchParams])
 
-  // Toast auto-dismiss
-  useEffect(() => {
-    if (!toast) return
-    const timer = setTimeout(() => setToast(null), 3000)
-    return () => clearTimeout(timer)
-  }, [toast])
 
   const handlePayMoney = async (data: PaymentData) => {
     setPayLoading(true)
     try {
       const response = await axios.post(`/api/ledger/${dealerId}/pay`, data)
       if (response.data.success) {
-        setToast({ text: 'Payment recorded successfully', type: 'success' })
+        showToast('success', 'Payment recorded successfully')
         // Refetch data
         await Promise.all([
           refetchLedger(),
@@ -232,10 +226,7 @@ export default function DealerLedgerPage() {
         ])
       }
     } catch (error: any) {
-      setToast({
-        text: error.response?.data?.message || 'Failed to record payment',
-        type: 'error',
-      })
+      showToast('error', error.response?.data?.message || 'Failed to record payment')
     } finally {
       setPayLoading(false)
     }
@@ -244,19 +235,19 @@ export default function DealerLedgerPage() {
   const handleWalletAdjust = async () => {
     const amount = Number(walletAdjustAmount)
     if (walletAdjustType !== 'disable' && walletAdjustType !== 'activate' && (!Number.isFinite(amount) || amount <= 0)) {
-      setToast({ text: 'Enter a valid wallet amount', type: 'error' })
+      showToast('error', 'Enter a valid wallet amount')
       return
     }
     if (walletAdjustType === 'activate' && walletData?.balance === 0 && (!Number.isFinite(amount) || amount <= 0)) {
-      setToast({ text: 'Enter an opening wallet amount', type: 'error' })
+      showToast('error', 'Enter an opening wallet amount')
       return
     }
     if (!walletAdjustNote.trim() || !walletTransactionDate) {
-      setToast({ text: 'Transaction date and note are required', type: 'error' })
+      showToast('error', 'Transaction date and note are required')
       return
     }
     if (walletAdjustType !== 'disable' && !walletAdjustReference.trim()) {
-      setToast({ text: 'Reference is required', type: 'error' })
+      showToast('error', 'Reference is required')
       return
     }
 
@@ -276,7 +267,7 @@ export default function DealerLedgerPage() {
         'idempotency-key': idempotencyKey,
       } })
       if (response.data.success) {
-        setToast({ text: walletAdjustType === 'disable' ? 'Wallet disabled' : walletAdjustType === 'activate' ? 'Wallet activated' : 'Funds added successfully', type: 'success' })
+        showToast('success', walletAdjustType === 'disable' ? 'Wallet disabled' : walletAdjustType === 'activate' ? 'Wallet activated' : 'Funds added successfully')
         setWalletAdjustOpen(false)
         setWalletAdjustAmount('')
         setWalletAdjustReference('')
@@ -284,10 +275,7 @@ export default function DealerLedgerPage() {
         await Promise.all([refetchWallet(), refetchLedger()])
       }
     } catch (error: any) {
-      setToast({
-        text: error.response?.data?.message || 'Failed to update wallet',
-        type: 'error',
-      })
+      showToast('error', error.response?.data?.message || 'Failed to update wallet')
     } finally {
       setWalletAdjustLoading(false)
     }
@@ -337,25 +325,6 @@ export default function DealerLedgerPage() {
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Toast */}
-      {toast && (
-        <div
-          className={`fixed top-5 right-5 z-50 text-sm px-4 py-3 rounded-lg shadow-lg transition-all flex items-center gap-2 ${
-            toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'
-          }`}
-        >
-          {toast.type === 'success' ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 8v4m0 4h.01" />
-            </svg>
-          )}
-          {toast.text}
-        </div>
-      )}
 
       {/* Pay Money Modal */}
       <PayMoneyModal

@@ -3,10 +3,20 @@
 import { useMemo, useState, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import {
-  Eye, EyeOff, ArrowLeft, User, KeyRound, Wallet,
-  ShieldCheck, Users, FileText, Search, Check, X, Loader2,
+  Eye,
+  EyeOff,
+  ArrowLeft,
+  User,
+  KeyRound,
+  Wallet,
+  ShieldCheck,
+  Users,
+  FileText,
+  Search,
+  Loader2,
 } from 'lucide-react'
 import { normalizeDealerContacts, type DealerContact } from '@/lib/dealerForm'
+import { showToast } from "@/components/ui/toast";
 
 type DealerStatus = "active" | "inactive" | "suspended"
 
@@ -144,7 +154,6 @@ export default function EditDealerPage() {
 
   const [isLoading,  setIsLoading]  = useState(false)
   const [isSaving,   setIsSaving]   = useState(false)
-  const [toastMsg,   setToastMsg]   = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
   const [staffSearch, setStaffSearch] = useState("")
 
@@ -184,12 +193,6 @@ export default function EditDealerPage() {
   const [initialAssignedStaffIds, setInitialAssignedStaffIds] = useState<string[]>([])
   const [existingStaffNames, setExistingStaffNames] = useState("")
 
-  // Toast auto-dismiss
-  useEffect(() => {
-    if (!toastMsg) return
-    const t = setTimeout(() => setToastMsg(null), 3500)
-    return () => clearTimeout(t)
-  }, [toastMsg])
 
   useEffect(() => {
     let active = true
@@ -230,10 +233,10 @@ export default function EditDealerPage() {
           setStatus(normalizeDealerStatus(d.status))
           setWalletStatus(String(d.walletStatus || "").toLowerCase() === "active" ? "active" : "inactive")
         } else {
-          setToastMsg({ text: json.msz || "Failed to load dealer", type: 'error' })
+          showToast('error', json.msz || "Failed to load dealer")
         }
       } catch {
-        if (active) setToastMsg({ text: "Failed to load dealer data", type: 'error' })
+        if (active) showToast('error', "Failed to load dealer data")
       } finally {
         if (active) setIsLoading(false)
       }
@@ -301,16 +304,16 @@ export default function EditDealerPage() {
   const handleDiagnosticPasswordSave = async () => {
     const incompleteContact = additionalContacts.findIndex((contact) => !contact.name.trim() || !contact.phone.trim() || !contact.email.trim())
     if (incompleteContact >= 0) {
-      setToastMsg({ text: `Contact ${incompleteContact + 3} needs a name, phone and email`, type: 'error' })
+      showToast('error', `Contact ${incompleteContact + 3} needs a name, phone and email`)
       return
     }
     const resolvedDealerId = dealerid || dealerId
     if (!resolvedDealerId) {
-      setToastMsg({ text: "Missing dealer id", type: "error" })
+      showToast("error", "Missing dealer id")
       return
     }
     if (diagnosticPassword.length < 5) {
-      setToastMsg({ text: "Diagnostic password must be at least 5 characters", type: "error" })
+      showToast("error", "Diagnostic password must be at least 5 characters")
       return
     }
 
@@ -325,9 +328,9 @@ export default function EditDealerPage() {
       const payload = await response.json()
       if (!response.ok || !payload.success) throw new Error(payload.message ?? "Failed to save diagnostic password")
       setActiveDiagnosticPassword(payload.data || null)
-      setToastMsg({ text: "Diagnostic password saved", type: "success" })
+      showToast("success", "Diagnostic password saved")
     } catch (error) {
-      setToastMsg({ text: error instanceof Error ? error.message : "Failed to save diagnostic password", type: "error" })
+      showToast("error", error instanceof Error ? error.message : "Failed to save diagnostic password")
     } finally {
       setDiagnosticSaving(false)
     }
@@ -345,9 +348,9 @@ export default function EditDealerPage() {
       const payload = await response.json()
       if (!response.ok || !payload.success) throw new Error(payload.message ?? "Failed to revoke diagnostic password")
       setActiveDiagnosticPassword(null)
-      setToastMsg({ text: "Diagnostic password revoked", type: "success" })
+      showToast("success", "Diagnostic password revoked")
     } catch (error) {
-      setToastMsg({ text: error instanceof Error ? error.message : "Failed to revoke diagnostic password", type: "error" })
+      showToast("error", error instanceof Error ? error.message : "Failed to revoke diagnostic password")
     } finally {
       setDiagnosticRevoking(false)
     }
@@ -356,13 +359,13 @@ export default function EditDealerPage() {
   const copyDiagnosticPassword = async () => {
     if (!diagnosticPassword) return
     await navigator.clipboard?.writeText(diagnosticPassword)
-    setToastMsg({ text: "Diagnostic password copied", type: "success" })
+    showToast("success", "Diagnostic password copied")
   }
 
   const handleStatusSave = async () => {
     const resolvedDealerId = dealerid || dealerId
     if (!resolvedDealerId) {
-      setToastMsg({ text: "Missing dealer id", type: 'error' })
+      showToast('error', "Missing dealer id")
       return
     }
 
@@ -376,13 +379,10 @@ export default function EditDealerPage() {
       })
       const payload = await response.json()
       if (!response.ok || !payload.success) throw new Error(payload.message ?? "Failed to update dealer status")
-      setToastMsg({ text: `Dealer marked ${status === "active" ? "active" : "inactive"}`, type: 'success' })
+      showToast('success', `Dealer marked ${status === "active" ? "active" : "inactive"}`)
     } catch (error) {
       console.error("Failed to update dealer status", error)
-      setToastMsg({
-        text: error instanceof Error && error.message ? error.message : "Failed to update dealer status",
-        type: 'error',
-      })
+      showToast('error', error instanceof Error && error.message ? error.message : "Failed to update dealer status")
     } finally {
       setStatusSaving(false)
     }
@@ -396,12 +396,12 @@ export default function EditDealerPage() {
       || normalizedStaffIds.some((id, index) => id !== initialNormalizedStaffIds[index])
 
     if (!normalizedStaffIds.length) {
-      setToastMsg({ text: "Please assign at least one staff member", type: 'error' })
+      showToast('error', "Please assign at least one staff member")
       return
     }
     const resolvedDealerId = dealerid || dealerId
     if (!resolvedDealerId) {
-      setToastMsg({ text: "Missing dealer id", type: 'error' })
+      showToast('error', "Missing dealer id")
       return
     }
     setIsSaving(true)
@@ -460,13 +460,10 @@ export default function EditDealerPage() {
         setExistingStaffNames(getStaffNames())
         setInitialAssignedStaffIds(normalizedStaffIds)
       }
-      setToastMsg({ text: "Dealer updated successfully", type: 'success' })
+      showToast('success', "Dealer updated successfully")
     } catch (error) {
       console.error("Failed to update dealer", error)
-      setToastMsg({
-        text: error instanceof Error && error.message ? error.message : "Failed to update dealer",
-        type: 'error',
-      })
+      showToast('error', error instanceof Error && error.message ? error.message : "Failed to update dealer")
     } finally {
       setIsSaving(false)
     }
@@ -487,17 +484,6 @@ export default function EditDealerPage() {
     <div className="min-h-screen bg-gray-100 pb-28">
 
       {/* Toast */}
-      {toastMsg && (
-        <div className={`fixed top-5 right-5 z-50 text-sm px-4 py-3 rounded-lg shadow-lg transition-all flex items-center gap-2 ${
-          toastMsg.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'
-        }`}>
-          {toastMsg.type === 'success'
-            ? <Check className="w-3.5 h-3.5" strokeWidth={2.5} />
-            : <X className="w-3.5 h-3.5" strokeWidth={2.5} />
-          }
-          {toastMsg.text}
-        </div>
-      )}
 
       <div className="p-6 admin-page-shell">
 

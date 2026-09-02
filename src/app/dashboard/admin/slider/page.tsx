@@ -3,6 +3,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
+import { showToast } from "@/components/ui/toast";
 
 
 type SliderImage = {
@@ -27,16 +28,11 @@ export default function SliderManager({
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [deleting, setDeleting] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ msg: string; ok: boolean } | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [file, setFile] = useState<File | null>(null);
   const [label, setLabel] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const showToast = (msg: string, ok: boolean) => {
-    setToast({ msg, ok });
-    setTimeout(() => setToast(null), 3500);
-  };
 
   const fetchImages = async () => {
     setLoading(true);
@@ -76,11 +72,11 @@ export default function SliderManager({
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || payload?.success === false) throw new Error(payload?.message || "Upload failed.");
 
-      showToast("Image uploaded and live on slider!", true);
+      showToast("success", "Image uploaded and live on slider!");
       clearForm();
       fetchImages();
     } catch (err: any) {
-      showToast(err?.message ?? "Upload failed.", false);
+      showToast("error", err?.message ?? "Upload failed.");
     } finally {
       setUploading(false);
     }
@@ -93,10 +89,10 @@ export default function SliderManager({
       const res = await fetch(`/api/admin/slider/${img.id}`, { method: "DELETE", credentials: "include" });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok || payload?.success === false) throw new Error(payload?.message || "Delete failed.");
-      showToast("Image removed.", true);
+      showToast("success", "Image removed.");
       fetchImages();
     } catch {
-      showToast("Delete failed.", false);
+      showToast("error", "Delete failed.");
     } finally {
       setDeleting(null);
     }
@@ -106,16 +102,6 @@ export default function SliderManager({
     <div className="space-y-5 p-8 mx-auto w-full max-w-[1840px]" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
 
       {/* Toast */}
-      {toast && (
-        <div className={`fixed top-5 right-5 z-50 px-4 py-3 rounded-xl shadow-lg text-[13px] font-semibold flex items-center gap-2 transition-all ${toast.ok ? "bg-emerald-600 text-white" : "bg-red-500 text-white"
-          }`}>
-          {toast.ok
-            ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5" /></svg>
-            : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><circle cx="12" cy="12" r="10" /><path d="M12 8v4m0 4h.01" /></svg>
-          }
-          {toast.msg}
-        </div>
-      )}
 
       {/* Section heading */}
       <div>

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Save, Upload } from "lucide-react";
+import { showToast } from "@/components/ui/toast";
 
 const ADMIN_PROFILE_URL = "/api/admin/profile";
 
@@ -67,7 +68,6 @@ export default function AdminProfilePage() {
   const router = useRouter();
     const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -88,7 +88,7 @@ export default function AdminProfilePage() {
         setPhone(data.ADMIN_PHONE || "");
         setEmail(data.ADMIN_EMAIL || data.email || "");
       } catch {
-        setToast({ text: "Failed to load admin profile", type: "error" });
+        showToast("error", "Failed to load admin profile");
       } finally {
         setIsLoading(false);
       }
@@ -97,11 +97,6 @@ export default function AdminProfilePage() {
     loadAdmin();
   }, [router]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3500);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -129,10 +124,10 @@ export default function AdminProfilePage() {
       localStorage.setItem("UserData", JSON.stringify(updated));
       localStorage.setItem("AdminData", JSON.stringify(updated));
       localStorage.setItem("roletype", "3");
-      setToast({ text: payload?.msg || "Admin profile updated", type: "success" });
+      showToast("success", payload?.msg || "Admin profile updated");
       setTimeout(() => window.location.reload(), 700);
     } catch {
-      setToast({ text: "Failed to update admin profile", type: "error" });
+      showToast("error", "Failed to update admin profile");
     } finally {
       setIsSaving(false);
     }
@@ -151,11 +146,6 @@ export default function AdminProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
-      {toast && (
-        <div className={`fixed right-5 top-5 z-50 rounded-lg px-4 py-3 text-sm shadow-lg ${toast.type === "success" ? "bg-emerald-600 text-white" : "bg-red-500 text-white"}`}>
-          {toast.text}
-        </div>
-      )}
 
       <div className="admin-page-shell">
         <div className="mb-8">

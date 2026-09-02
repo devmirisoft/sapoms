@@ -3,6 +3,11 @@ import "./globals.css";
 
 import ReactQueryProvider from "@/app/providers/ReactQueryproviders";
 import DealerTermsGate from "@/components/terms/DealerTermsGate";
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+import { Toaster } from "@/components/ui/toast";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "Omsons",
@@ -20,11 +25,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="en" className={cn("font-sans", geist.variable)}>
       <body className="antialiased">
         <ReactQueryProvider>
-          <DealerTermsGate />
-          {children}
+          <Toaster>
+            <DealerTermsGate />
+            {children}
+          </Toaster>
         </ReactQueryProvider>
       </body>
     </html>

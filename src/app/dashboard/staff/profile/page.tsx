@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Save } from "lucide-react";
+import { showToast } from "@/components/ui/toast";
 
 type StaffSession = {
   staff_id?: string;
@@ -71,7 +72,6 @@ export default function StaffProfilePage() {
   const [staffId, setStaffId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   const [name, setName] = useState("");
   const [designation, setDesignation] = useState("");
@@ -100,7 +100,7 @@ export default function StaffProfilePage() {
         setSalesRegion(data.sales_region || data.salesRegion || "");
         setPassword(data.staff_password || "");
       } catch {
-        setToast({ text: "Failed to load staff profile", type: "error" });
+        showToast("error", "Failed to load staff profile");
       } finally {
         setIsLoading(false);
       }
@@ -109,11 +109,6 @@ export default function StaffProfilePage() {
     loadStaff();
   }, [router]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3500);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -147,10 +142,10 @@ export default function StaffProfilePage() {
       localStorage.setItem("UserData", JSON.stringify(updated));
       localStorage.setItem("staffData", JSON.stringify(updated));
       localStorage.setItem("roletype", String(updated.staff_roletype || previous.staff_roletype || "1"));
-      setToast({ text: payload?.msg || "Staff profile updated", type: "success" });
+      showToast("success", payload?.msg || "Staff profile updated");
       setTimeout(() => window.location.reload(), 700);
     } catch {
-      setToast({ text: "Failed to update staff profile", type: "error" });
+      showToast("error", "Failed to update staff profile");
     } finally {
       setIsSaving(false);
     }
@@ -169,11 +164,6 @@ export default function StaffProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
-      {toast && (
-        <div className={`fixed right-5 top-5 z-50 rounded-lg px-4 py-3 text-sm shadow-lg ${toast.type === "success" ? "bg-emerald-600 text-white" : "bg-red-500 text-white"}`}>
-          {toast.text}
-        </div>
-      )}
 
       <div className="mx-auto max-w-[1840px]">
         <div className="mb-8">

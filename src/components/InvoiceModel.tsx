@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import moment from "moment";
 import { useInvoiceManager, Invoice } from "@/hooks/useInvoicemanager";
+import { showToast } from "@/components/ui/toast";
 
 interface InvoiceModalProps {
   isOpen:   boolean;
@@ -21,7 +22,6 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [searchQuery,     setSearchQuery    ] = useState("");
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
-  const [toastMsg,        setToastMsg       ] = useState<{ type: "success"|"error"; text: string } | null>(null);
 
   // Collapsed to one stable string so the effect's dependency list keeps a
   // constant size even while the caller's dealer id is still resolving.
@@ -45,10 +45,6 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
     inv.buyerName.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const showToast = (type: "success"|"error", text: string) => {
-    setToastMsg({ type, text });
-    setTimeout(() => setToastMsg(null), 3500);
-  };
 
   const handleDownload = async (inv: Invoice) => {
     const res = await downloadStoredInvoice(inv);
@@ -270,19 +266,6 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
       )}
 
       {/* ── Toast ── */}
-      {toastMsg && (
-        <div className={`fixed bottom-5 right-5 z-[70] flex items-center gap-2 px-4 py-3 rounded-xl text-[13px] font-medium shadow-lg border animate-in fade-in slide-in-from-bottom ${
-          toastMsg.type === "success"
-            ? "bg-emerald-50 text-emerald-800 border-emerald-200"
-            : "bg-red-50 text-red-800 border-red-200"
-        }`}>
-          {toastMsg.type === "success"
-            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          }
-          {toastMsg.text}
-        </div>
-      )}
     </>
   );
 }

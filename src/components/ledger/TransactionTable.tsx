@@ -5,6 +5,7 @@ import moment from 'moment'
 import { Download, Loader2, Receipt } from 'lucide-react'
 import { downloadOrderInvoice } from '@/lib/invoicegenerator'
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay'
+import { showToast } from "@/components/ui/toast";
 
 interface RawOrder {
   order_id: string
@@ -106,19 +107,12 @@ function SkeletonRow() {
 
 function InvoiceButton({ tx }: { tx: Transaction }) {
   const [loading, setLoading] = useState(false)
-  const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
-
-  const showMessage = (type: 'success' | 'error', text: string) => {
-    setMessage({ type, text })
-    setTimeout(() => setMessage(null), 3000)
-  }
-
   const handleInvoice = async () => {
     if (tx.order) {
       setLoading(true)
       const result = await downloadOrderInvoice(tx.order as any)
       setLoading(false)
-      showMessage(
+      showToast(
         result.success ? 'success' : 'error',
         result.success ? 'Invoice downloaded' : result.error || 'Invoice download failed'
       )
@@ -152,17 +146,6 @@ function InvoiceButton({ tx }: { tx: Transaction }) {
         Invoice
       </button>
 
-      {message && (
-        <div
-          className={`fixed bottom-4 right-4 z-50 rounded-xl border px-4 py-2.5 text-[12px] font-medium shadow-lg ${
-            message.type === 'success'
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-              : 'border-red-200 bg-red-50 text-red-800'
-          }`}
-        >
-          {message.text}
-        </div>
-      )}
     </div>
   )
 }

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Mail, Phone, Save, Upload, Users } from "lucide-react";
 import { staffRoleBadge } from "@/lib/staffRoleLabel";
+import { showToast } from "@/components/ui/toast";
 
 type DealerSession = {
   Dealer_Id?: string;
@@ -75,7 +76,6 @@ export default function DealerProfilePage() {
   const [dealerId, setDealerId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -119,7 +119,7 @@ export default function DealerProfilePage() {
         const seen = new Set<string>();
         setContacts(team.filter((entry) => entry?.id && !seen.has(entry.id) && seen.add(entry.id)));
       } catch {
-        setToast({ text: "Failed to load dealer profile", type: "error" });
+        showToast("error", "Failed to load dealer profile");
       } finally {
         setIsLoading(false);
       }
@@ -128,11 +128,6 @@ export default function DealerProfilePage() {
     loadDealer();
   }, [router]);
 
-  useEffect(() => {
-    if (!toast) return;
-    const timer = setTimeout(() => setToast(null), 3500);
-    return () => clearTimeout(timer);
-  }, [toast]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -167,10 +162,10 @@ export default function DealerProfilePage() {
       localStorage.setItem("status", "true");
       localStorage.setItem("UserData", JSON.stringify(updated));
       localStorage.setItem("roletype", "2");
-      setToast({ text: payload?.msg || "Dealer profile updated", type: "success" });
+      showToast("success", payload?.msg || "Dealer profile updated");
       setTimeout(() => window.location.reload(), 700);
     } catch {
-      setToast({ text: "Failed to update dealer profile", type: "error" });
+      showToast("error", "Failed to update dealer profile");
     } finally {
       setIsSaving(false);
     }
@@ -189,11 +184,6 @@ export default function DealerProfilePage() {
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
-      {toast && (
-        <div className={`fixed right-5 top-5 z-50 rounded-lg px-4 py-3 text-sm shadow-lg ${toast.type === "success" ? "bg-emerald-600 text-white" : "bg-red-500 text-white"}`}>
-          {toast.text}
-        </div>
-      )}
 
       <div className="mx-auto max-w-[1840px]">
         <div className="mb-8">

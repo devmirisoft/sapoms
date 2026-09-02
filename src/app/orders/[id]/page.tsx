@@ -41,6 +41,7 @@ import {
 } from "@/lib/orderDispatch";
 import { PenLine, Trash2 } from "lucide-react";
 import { fetchLegacyDealerProfile, fetchLegacyOrderDetail } from "@/lib/legacyOrderDetail";
+import { showToast } from "@/components/ui/toast";
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -944,7 +945,6 @@ export default function ViewOrderDealerPage() {
   const [dispatchSelectedQuantities, setDispatchSelectedQuantities] = useState<Record<string, string>>({});
   const [dispatchSelectedStatus, setDispatchSelectedStatus] = useState<Exclude<DispatchStatus, "pending">>("dispatched");
   const [invoiceLoading, setInvoiceLoading] = useState(false);
-  const [invoiceToast, setInvoiceToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [overlayState, setOverlayState] = useState<EffectiveOrderOverlayState | null>(null);
   const [overlayItems, setOverlayItems] = useState<OrderData[] | null>(null);
   // Revisions of a previously disapproved order: what the dealer changed before
@@ -1540,8 +1540,7 @@ export default function ViewOrderDealerPage() {
 
   const handleDownloadInvoice = async () => {
     if (overlayState?.isCancelled) {
-      setInvoiceToast({ type: "error", text: "Cancelled orders cannot generate an active invoice." });
-      window.setTimeout(() => setInvoiceToast(null), 3000);
+      showToast("error", "Cancelled orders cannot generate an active invoice.");
       return;
     }
     if (displayOrders.length === 0 || invoiceLoading) return;
@@ -1551,11 +1550,7 @@ export default function ViewOrderDealerPage() {
       actorId: currentUser?.id,
     });
     setInvoiceLoading(false);
-    setInvoiceToast({
-      type: result.success ? "success" : "error",
-      text: result.success ? "PDF downloaded" : result.error || "Download failed",
-    });
-    window.setTimeout(() => setInvoiceToast(null), 3000);
+    showToast(result.success ? "success" : "error", result.success ? "PDF downloaded" : result.error || "Download failed");
   };
 
   const openDispatchAllDialog = () => {
@@ -1647,8 +1642,7 @@ export default function ViewOrderDealerPage() {
 
       setSelectedDispatchKeys(new Set());
       setDispatchAllDialogOpen(false);
-      setInvoiceToast({ type: "success", text: `${records.length} selected product${records.length === 1 ? "" : "s"} dispatched.` });
-      window.setTimeout(() => setInvoiceToast(null), 3000);
+      showToast("success", `${records.length} selected product${records.length === 1 ? "" : "s"} dispatched.`);
       window.dispatchEvent(new CustomEvent("orderDispatchUpdated", {
         detail: { orderId: id, bulk: true },
       }));
@@ -1676,6 +1670,15 @@ export default function ViewOrderDealerPage() {
     (phpOrders[0] as Record<string, unknown> | undefined)?.rsmApprovalStatus ?? ""
   ).toUpperCase();
   const canRsmReview = isRsm && !overlayState?.isCancelled && (rsmStatus === "AWAITING" || rsmStatus === "");
+  // Staff acceptance opens only after the RSM has approved, mirroring the
+  // server gate in updatePostgresOrderAcceptance.
+  const canStaffAccept = !isRsm
+    && currentUser?.role === "staff"
+    && currentUser.roletype !== "2"
+    && !overlayState?.isCancelled
+    && orderDeleted === "0"
+    && acceptOrder === "0"
+    && rsmStatus === "ACCEPTED";
 
   const submitRsmReview = async (approve: boolean, note?: string) => {
     if (rsmSaving) return;
@@ -1694,10 +1697,10 @@ export default function ViewOrderDealerPage() {
       if (!response.ok || json?.success === false) throw new Error(json?.message || "Approval update failed.");
       setRsmDeclineOpen(false);
       setRsmDeclineNote("");
-      setInvoiceToast({ type: "success", text: approve ? "Order approved." : "Order disapproved." });
+      showToast("success", approve ? (canRsmReview ? "Order approved." : "Order accepted.") : (canRsmReview ? "Order disapproved." : "Order declined."));
       setReloadKey((k) => k + 1);
     } catch (error) {
-      setInvoiceToast({ type: "error", text: error instanceof Error ? error.message : "Action failed." });
+      showToast("error", error instanceof Error ? error.message : "Action failed.");
     } finally {
       setRsmSaving(false);
     }
@@ -1743,8 +1746,7 @@ export default function ViewOrderDealerPage() {
         eligibility: { canDealerChange: false, reason: "order_already_cancelled" },
       }));
       setCancelDialogOpen(false);
-      setInvoiceToast({ type: "success", text: json.requested ? "Cancellation request sent for approval." : "Order cancelled. The PHP order was preserved." });
-      window.setTimeout(() => setInvoiceToast(null), 3000);
+      showToast("success", json.requested ? "Cancellation request sent for approval." : "Order cancelled. The PHP order was preserved.");
     } finally {
       setCancelSaving(false);
     }
@@ -1783,8 +1785,7 @@ export default function ViewOrderDealerPage() {
           changeRequests: Array.isArray(json.data?.overlay?.changeRequests) ? json.data.overlay.changeRequests : current?.changeRequests ?? [],
         }));
         setEditDialogOpen(false);
-        setInvoiceToast({ type: "success", text: "Edit request sent for approval." });
-        window.setTimeout(() => setInvoiceToast(null), 3000);
+        showToast("success", "Edit request sent for approval.");
         return;
       }
       // The route returns the resolved effective order (effectiveItems/effectiveTotals/changeHistory),
@@ -1812,8 +1813,7 @@ export default function ViewOrderDealerPage() {
         eligibility: saved.eligibility ?? current?.eligibility ?? { canDealerChange: true, reason: "eligible" },
       }));
       setEditDialogOpen(false);
-      setInvoiceToast({ type: "success", text: "Order edit saved. The PHP order was preserved." });
-      window.setTimeout(() => setInvoiceToast(null), 3000);
+      showToast("success", "Order edit saved. The PHP order was preserved.");
     } finally {
       setEditSaving(false);
     }
@@ -1832,8 +1832,7 @@ export default function ViewOrderDealerPage() {
     });
     const json = await response.json().catch(() => null);
     if (!response.ok || !json?.success) {
-      setInvoiceToast({ type: "error", text: json?.message || "Unable to review request." });
-      window.setTimeout(() => setInvoiceToast(null), 3000);
+      showToast("error", json?.message || "Unable to review request.");
       return;
     }
     setOverlayState((current) => ({
@@ -1846,8 +1845,7 @@ export default function ViewOrderDealerPage() {
       changeRequests: Array.isArray(json.data?.overlay?.changeRequests) ? json.data.overlay.changeRequests : current?.changeRequests ?? [],
     }));
     if (Array.isArray(json.data?.effectiveItems)) setOverlayItems(json.data.effectiveItems as OrderData[]);
-    setInvoiceToast({ type: "success", text: action === "approve_change_request" ? "Request approved." : "Request rejected." });
-    window.setTimeout(() => setInvoiceToast(null), 3000);
+    showToast("success", action === "approve_change_request" ? "Request approved." : "Request rejected.");
   };
 
   // Dealer fields to show — in display order, only truthy ones render
@@ -1945,18 +1943,6 @@ export default function ViewOrderDealerPage() {
                   Dispatch Selected ({selectedDispatchLines.length})
                 </button>
               </div>
-            )}
-            {canRsmReview && (
-              <>
-                <button onClick={() => submitRsmReview(true)} disabled={rsmSaving}
-                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[13px] font-semibold rounded-xl transition-colors">
-                  {rsmSaving ? "Saving..." : "Approve Order"}
-                </button>
-                <button onClick={() => { setRsmDeclineNote(""); setRsmDeclineOpen(true); }} disabled={rsmSaving}
-                  className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[13px] font-semibold rounded-xl transition-colors">
-                  Disapprove Order
-                </button>
-              </>
             )}
             {dealerCanChangeOrder && (
               <>
@@ -2353,18 +2339,34 @@ export default function ViewOrderDealerPage() {
               </div>
             </div>
           )}
+
+          {(canRsmReview || canStaffAccept) && (
+            <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-gray-200 bg-white p-5">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-gray-400">
+                  {canRsmReview ? "RSM Approval" : "Order Acceptance"}
+                </p>
+                <p className="mt-1 text-[13px] text-gray-600">
+                  {canRsmReview
+                    ? "Approve to clear this order for staff acceptance, or disapprove with a reason."
+                    : "Accept to confirm this order for dispatch, or decline with a reason."}
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <button onClick={() => submitRsmReview(true)} disabled={rsmSaving}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-[13px] font-semibold rounded-xl transition-colors">
+                  {rsmSaving ? "Saving..." : canRsmReview ? "Approve Order" : "Accept Order"}
+                </button>
+                <button onClick={() => { setRsmDeclineNote(""); setRsmDeclineOpen(true); }} disabled={rsmSaving}
+                  className="flex items-center gap-2 px-4 py-2 bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white text-[13px] font-semibold rounded-xl transition-colors">
+                  {canRsmReview ? "Disapprove Order" : "Decline Order"}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
-      {invoiceToast && (
-        <div className={`fixed bottom-4 right-4 z-50 rounded-xl px-4 py-3 text-[13px] font-semibold shadow-lg border ${
-          invoiceToast.type === "success"
-            ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-            : "bg-red-50 text-red-700 border-red-200"
-        }`}>
-          {invoiceToast.text}
-        </div>
-      )}
 
       <TrackingModal
         isOpen={!!activeDispatchItemId}
@@ -2511,13 +2513,13 @@ export default function ViewOrderDealerPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4"
           onClick={(event) => { if (event.target === event.currentTarget && !rsmSaving) setRsmDeclineOpen(false); }}>
           <div className="w-full max-w-md rounded-2xl border border-gray-200 bg-white p-6 shadow-2xl">
-            <h2 className="text-base font-bold text-gray-900">Disapprove this order?</h2>
+            <h2 className="text-base font-bold text-gray-900">{canRsmReview ? "Disapprove this order?" : "Decline this order?"}</h2>
             <p className="mt-2 text-sm leading-6 text-gray-600">The dealer sees this reason and can revise the order before sending it back.</p>
             <textarea
               value={rsmDeclineNote}
               onChange={(event) => setRsmDeclineNote(event.target.value.slice(0, 1000))}
               disabled={rsmSaving}
-              placeholder="Why is this order being disapproved?"
+              placeholder={canRsmReview ? "Why is this order being disapproved?" : "Why is this order being declined?"}
               className="mt-4 text-gray-900 h-28 w-full resize-none rounded-xl border border-gray-200 p-3 text-sm outline-none focus:border-red-300 focus:ring-2 focus:ring-red-100"
             />
             <div className="mt-5 flex justify-end gap-2">
@@ -2525,7 +2527,7 @@ export default function ViewOrderDealerPage() {
                 className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">Keep Order</button>
               <button type="button" onClick={() => submitRsmReview(false, rsmDeclineNote.trim())} disabled={rsmSaving || !rsmDeclineNote.trim()}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
-                {rsmSaving ? "Disapproving..." : "Disapprove Order"}
+                {rsmSaving ? "Saving..." : canRsmReview ? "Disapprove Order" : "Decline Order"}
               </button>
             </div>
           </div>

@@ -5,6 +5,7 @@ import {
   Gift, Search, RefreshCw, Plus, Minus, Loader2,
   Trophy, Star, Users, X, Check,
 } from "lucide-react";
+import { showToast } from "@/components/ui/toast";
 
 const ADMIN_DEALERS_URL = "/api/admin/dealers";
 
@@ -17,18 +18,6 @@ type Dealer = {
   reward_points?: number;
 };
 
-function Toast({ type, text, onClose }: { type: "success" | "error"; text: string; onClose: () => void }) {
-  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
-  return (
-    <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl text-[12.5px] font-semibold shadow-xl border ${
-      type === "success" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"
-    }`}>
-      {type === "success" ? <Check size={13} strokeWidth={2.5}/> : <X size={13} strokeWidth={2}/>}
-      {text}
-      <button onClick={onClose} className="ml-1 opacity-50 hover:opacity-100"><X size={11}/></button>
-    </div>
-  );
-}
 
 function AdjustModal({
   dealer,
@@ -156,12 +145,10 @@ export default function RewardsPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [search,     setSearch]     = useState("");
   const [adjusting,  setAdjusting]  = useState<Dealer | null>(null);
-  const [toast,      setToast]      = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // Points are stored locally (per session) until a real rewards API is available
   const [pointsMap, setPointsMap] = useState<Record<string, number>>({});
 
-  const showToast = (type: "success" | "error", text: string) => setToast({ type, text });
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
@@ -373,7 +360,6 @@ export default function RewardsPage() {
         />
       )}
 
-      {toast && <Toast type={toast.type} text={toast.text} onClose={() => setToast(null)}/>}
     </div>
   );
 }
