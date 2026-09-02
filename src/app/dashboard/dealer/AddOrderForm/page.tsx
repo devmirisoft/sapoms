@@ -1436,7 +1436,7 @@ function AddOrderPageInner() {
         requestedProductDiscounts,
         targetProduct: customDiscountScope === "product" ? selectedCustomDiscountProduct : null,
       });
-      toast.success("Custom discount request sent to admin.");
+      toast.success("Custom discount request sent to your RSM.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not request custom discount.");
     } finally {
