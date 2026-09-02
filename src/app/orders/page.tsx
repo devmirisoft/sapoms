@@ -20,6 +20,7 @@ import { SegmentedTabs, type SegItem } from "@/components/SegmentedTabs";
 import { WAREHOUSE_OPTIONS } from "@/lib/warehouses";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import type { AppRole } from "@/lib/roleAccess";
+import { showToast } from "@/components/ui/toast";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Order = {
@@ -488,7 +489,6 @@ function RowActionsMenu({
 }) {
   const [loading,  setLoading ] = useState(false);
   const [menuPos,  setMenuPos ] = useState<{ top: number; left: number } | null>(null);
-  const [toast,    setToast   ] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
   // A fixed menu would drift away from its button on scroll/resize, so close it.
   useEffect(() => {
@@ -502,10 +502,6 @@ function RowActionsMenu({
     };
   }, [menuPos]);
 
-  const showToast = (type: "success" | "error", text: string) => {
-    setToast({ type, text });
-    setTimeout(() => setToast(null), 3000);
-  };
 
   const handleDownload = async () => {
     setLoading(true); setMenuPos(null);
@@ -676,17 +672,6 @@ function RowActionsMenu({
         </>
       )}
 
-      {toast && (
-        <div className={`fixed bottom-4 right-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-medium shadow-lg border ${
-          toast.type === "success" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-red-50 text-red-800 border-red-200"
-        }`}>
-          {toast.type === "success"
-            ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-            : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/></svg>
-          }
-          {toast.text}
-        </div>
-      )}
     </>
   );
 }
@@ -702,25 +687,23 @@ interface ExportButtonProps {
 
 function ExportButton({ orders, dealerName, dealerId, isLoading = false, onExportCsv }: ExportButtonProps) {
   const [isExporting, setIsExporting] = useState(false);
-  const [showNotification, setShowNotification] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [showMenu, setShowMenu] = useState(false);
 
   const handleExport = async (uploadToCloud: boolean) => {
-    if (orders.length === 0) { setShowNotification({ type: "error", message: "No orders to export" }); setShowMenu(false); return; }
+    if (orders.length === 0) { showToast("error", "No orders to export"); setShowMenu(false); return; }
     setIsExporting(true); setShowMenu(false);
     try {
       if (uploadToCloud) {
         const result = await exportOrdersToCloud({ orders, dealerName, dealerId, title: `Order History - ${dealerName}`, fileName: `orders_${moment().format("YYYY-MM-DD")}` });
-        setShowNotification({ type: result.success ? "success" : "error", message: result.success ? "PDF saved to cloud storage! 🎉" : (result.error || "Failed") });
+        showToast(result.success ? "success" : "error", result.success ? "PDF saved to cloud storage! 🎉" : (result.error || "Failed"));
       } else {
         const result = await downloadPDFDirectly({ orders, dealerName, title: `Order History - ${dealerName}`, fileName: `orders_${moment().format("YYYY-MM-DD")}.pdf` });
-        setShowNotification({ type: result.success ? "success" : "error", message: result.success ? "PDF downloaded successfully! 📥" : (result.error || "Failed") });
+        showToast(result.success ? "success" : "error", result.success ? "PDF downloaded successfully! 📥" : (result.error || "Failed"));
       }
     } catch (error) {
-      setShowNotification({ type: "error", message: error instanceof Error ? error.message : "Export failed" });
+      showToast("error", error instanceof Error ? error.message : "Export failed");
     } finally {
       setIsExporting(false);
-      setTimeout(() => setShowNotification(null), 4000);
     }
   };
 
@@ -761,17 +744,6 @@ function ExportButton({ orders, dealerName, dealerId, isLoading = false, onExpor
           </>
         )}
       </div>
-      {showNotification && (
-        <div className={`fixed bottom-4 right-4 px-4 py-3 rounded-lg text-[13px] font-medium shadow-lg animate-in fade-in slide-in-from-bottom z-50 flex items-center gap-2 ${
-          showNotification.type === "success" ? "bg-emerald-50 text-emerald-800 border border-emerald-200" : "bg-red-50 text-red-800 border border-red-200"
-        }`}>
-          {showNotification.type === "success"
-            ? <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 6 9 17 4 12"/></svg>
-            : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-          }
-          {showNotification.message}
-        </div>
-      )}
     </>
   );
 }
@@ -1098,7 +1070,6 @@ export default function OrderHistoryPage() {
   const [summaryOverrides, setSummaryOverrides] = useState<Record<string, OrderSummaryOverride>>({});
   const [selectedBillingOrderIds, setSelectedBillingOrderIds] = useState<Set<string>>(new Set());
   const [bulkBilling, setBulkBilling] = useState(false);
-  const [toast, setToast] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [dispatchOrder, setDispatchOrder] = useState<Order | null>(null);
   const [dispatchProducts, setDispatchProducts] = useState<DispatchOrderProduct[]>([]);
   const [dispatchProductsLoading, setDispatchProductsLoading] = useState(false);
@@ -1147,9 +1118,7 @@ export default function OrderHistoryPage() {
     return () => { cancelled = true; };
   }, []);
 
-  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t); }, [toast]);
 
-  const showToast = (type: "success" | "error", text: string) => setToast({ type, text });
 
   const { data, isLoading, isError, error, isFetching, refetch } = useQuery({
     queryKey: ["orders", STAFF_ORDER_SCOPE_VERSION, actorRole, actorId, page, pageSize, query, filters, warehouse],
@@ -2355,13 +2324,6 @@ export default function OrderHistoryPage() {
         </div>
       </div>
 
-      {toast && (
-        <div className={`fixed bottom-4 left-4 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl text-[12px] font-medium shadow-lg border ${
-          toast.type === "success" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-red-50 text-red-800 border-red-200"
-        }`}>
-          {toast.text}
-        </div>
-      )}
       {deleteOrderId && (
         <DeleteModal orderId={deleteOrderId} onConfirm={handleDelete} onClose={() => setDeleteOrderId(null)} />
       )}

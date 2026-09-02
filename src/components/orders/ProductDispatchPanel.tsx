@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   canUserEditDispatch,
   DISPATCH_MUTATION_STATUSES,
@@ -11,6 +11,7 @@ import {
   type DispatchUserSession,
   type OrderDispatchRecord,
 } from "@/lib/orderDispatch";
+import { showToast } from "@/components/ui/toast";
 
 type DispatchPanelItem = {
   orderItemId?: string | null;
@@ -478,7 +479,6 @@ export default function ProductDispatchPanel({
   onClose,
   onRecordSaved,
 }: Props) {
-  const [successText, setSuccessText] = useState("");
 
   const selectedItem = useMemo(
     () => {
@@ -488,27 +488,12 @@ export default function ProductDispatchPanel({
     [items, selectedItemId]
   );
 
-  useEffect(() => {
-    if (!successText) return;
-    const timeout = window.setTimeout(() => setSuccessText(""), 2500);
-    return () => window.clearTimeout(timeout);
-  }, [successText]);
-
   if (!isOpen || !selectedItem) {
-    return successText ? (
-      <div className="fixed bottom-4 right-4 z-[90] rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] font-semibold text-emerald-700 shadow-lg">
-        {successText}
-      </div>
-    ) : null;
+    return null;
   }
 
   return (
     <>
-      {successText && (
-        <div className="fixed bottom-4 right-4 z-[90] rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] font-semibold text-emerald-700 shadow-lg">
-          {successText}
-        </div>
-      )}
 
       <DispatchPanelDialog
         key={selectedItem.orderItemId ?? selectedItem.orderdata_id ?? selectedItem.occurrence}
@@ -521,7 +506,7 @@ export default function ProductDispatchPanel({
         currentUser={currentUser}
         onClose={onClose}
         onRecordSaved={onRecordSaved}
-        onSaved={() => setSuccessText("Dispatch details updated.")}
+        onSaved={() => showToast("success", "Dispatch details updated.")}
       />
     </>
   );

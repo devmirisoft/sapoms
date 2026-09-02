@@ -9,7 +9,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast, ToastContainer } from "react-toastify";
+import { notify as toast } from "@/components/ui/toast";
 import moment from "moment";
 import { ArrowRight, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
 import { type DraftProductRow, type OrderDraft } from "@/lib/drafts";
@@ -345,7 +345,6 @@ export default function DraftsPage() {
 
   return (
     <>
-      <ToastContainer position="top-right" autoClose={4000} />
 
       <div className="min-h-screen bg-gray-50" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
 

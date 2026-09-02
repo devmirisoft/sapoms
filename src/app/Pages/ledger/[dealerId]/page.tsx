@@ -25,6 +25,7 @@ import {
   getPayStatus,
   type PayStatus,
 } from '@/lib/outstandingBalance'
+import { showToast } from "@/components/ui/toast";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const YEAR = new Date().getFullYear()
@@ -384,7 +385,6 @@ export default function DealerLedgerPage() {
   const [payModalOpen, setPayModalOpen] = useState(false)
   const [payLoading, setPayLoading] = useState(false)
   const [invoiceModalOpen, setInvoiceModalOpen] = useState(false)
-  const [toast, setToast] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const [accessDenied, setAccessDenied] = useState(false)
   const [userRole, setUserRole] = useState<Role>('admin')
   const [staffId, setStaffId] = useState<string | undefined>()
@@ -500,11 +500,6 @@ export default function DealerLedgerPage() {
   const ordersSlice = dealerOrders.slice((ordersPage - 1) * ORDERS_PAGE_SIZE, ordersPage * ORDERS_PAGE_SIZE)
 
   // ── Toast auto-dismiss ──
-  useEffect(() => {
-    if (!toast) return
-    const timer = setTimeout(() => setToast(null), 3000)
-    return () => clearTimeout(timer)
-  }, [toast])
 
   // ── Pay money handler ──
   const handlePayMoney = async (data: PaymentData) => {
@@ -512,7 +507,7 @@ export default function DealerLedgerPage() {
     try {
       const response = await axios.post(`/api/ledger/${dealerId}/pay`, data)
       if (response.data.success) {
-        setToast({ text: 'Payment recorded successfully', type: 'success' })
+        showToast('success', 'Payment recorded successfully')
         await Promise.all([
           refetchLedger(),
           refetchWallet(),
@@ -520,10 +515,7 @@ export default function DealerLedgerPage() {
         ])
       }
     } catch (error: any) {
-      setToast({
-        text: error.response?.data?.message || 'Failed to record payment',
-        type: 'error',
-      })
+      showToast('error', error.response?.data?.message || 'Failed to record payment')
     } finally {
       setPayLoading(false)
     }
@@ -590,25 +582,6 @@ export default function DealerLedgerPage() {
   return (
     <div className="min-h-screen bg-gray-100">
       {/* Toast */}
-      {toast && (
-        <div
-          className={`fixed top-5 right-5 z-50 text-sm px-4 py-3 rounded-lg shadow-lg transition-all flex items-center gap-2 ${
-            toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'
-          }`}
-        >
-          {toast.type === 'success' ? (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <path d="M20 6 9 17l-5-5" />
-            </svg>
-          ) : (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <circle cx="12" cy="12" r="10" />
-              <path d="M12 8v4m0 4h.01" />
-            </svg>
-          )}
-          {toast.text}
-        </div>
-      )}
 
       {/* Pay Money Modal */}
       <PayMoneyModal
@@ -658,7 +631,7 @@ export default function DealerLedgerPage() {
             advance order; there is simply no order to place at the end. */}
         {userRole === 'dealer' && (
           <RequestFundsPanel
-            onDone={(text, type) => setToast({ text, type })}
+            onDone={(text, type) => showToast(type, text)}
             onRefresh={() => void refetchWallet()}
           />
         )}

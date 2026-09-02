@@ -6,7 +6,7 @@ import React, { useState, useEffect, useRef, useMemo, Suspense } from "react";
 import axios from "axios";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
-import { toast, ToastContainer } from "react-toastify";
+import { notify as toast } from "@/components/ui/toast";
 import moment from "moment";
 import Select, { components, type FilterOptionOption, type StylesConfig } from "react-select";
 import { useCartStore } from "@/Store/store";
@@ -1436,7 +1436,7 @@ function AddOrderPageInner() {
         requestedProductDiscounts,
         targetProduct: customDiscountScope === "product" ? selectedCustomDiscountProduct : null,
       });
-      toast.success("Custom discount request sent to admin.");
+      toast.success("Custom discount request sent to your RSM.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not request custom discount.");
     } finally {
@@ -2323,7 +2323,6 @@ const verifySubmittedProductNotes = async (orderId: string) => {
 
   return (
     <>
-      <ToastContainer position="top-right" autoClose={5000} />
 
       {/* ── Discount Request Disclaimer ─────────────────────────────────────── */}
       {showDiscountConfirm && (

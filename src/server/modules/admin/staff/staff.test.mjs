@@ -95,7 +95,9 @@ test("staff directory route allows staff-like reads for dealer assignment withou
   assert.match(staffRoute, /const actor = await requireAuth\(\)/);
   assert.match(staffRoute, /isAdminLike\(actor\) \|\| isStaffLike\(actor\)/);
   assert.match(staffRoute, /eventType: "STAFF_DIRECTORY_VIEWED"/);
-  assert.match(staffRoute, /const actor = await requireAdmin\(\)/);
+  // Reads stay open to the NSM and staff-like roles; creating staff is the
+  // admin's alone.
+  assert.match(staffRoute, /const actor = await requireAdminOnly\(\)/);
 });
 
 test("ASM territory is states only, a subset of the parent RSM states, with no cities of its own", () => {
@@ -124,7 +126,7 @@ test("staff subtype 2 keeps no territory of its own", () => {
 });
 
 test("staff creation caps NSM at one and RSM at the number of sales regions", () => {
-  assert.match(staffRepo, /import \{ SALES_REGION_OPTIONS \} from "@\/lib\/salesRegions";/);
+  assert.match(staffRepo, /import \{[^}]*\bSALES_REGION_OPTIONS\b[^}]*\} from "@\/lib\/salesRegions";/);
   assert.match(staffRepo, /existingNsm >= 1.*NSM_LIMIT_REACHED/s);
   assert.match(staffRepo, /existingRsm >= SALES_REGION_OPTIONS\.length.*RSM_LIMIT_REACHED/s);
 });
@@ -157,7 +159,7 @@ test("deactivating staff revokes sessions and bumps the token version", () => {
 });
 
 test("staff status endpoint is admin-only and validates the status value", () => {
-  assert.match(staffStatusRoute, /requireAdmin\(\)/);
+  assert.match(staffStatusRoute, /requireAdminOnly\(\)/);
   assert.match(staffStatusRoute, /parseUpdateStaffStatusInput/);
   assert.match(staffSchemas, /const statusSchema[\s\S]*?z\.enum\(\["ACTIVE", "INACTIVE", "SUSPENDED"\]\)/);
   assert.match(staffSchemas, /export function parseUpdateStaffStatusInput/);

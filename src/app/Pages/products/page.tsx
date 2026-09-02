@@ -10,6 +10,7 @@ import {
   type CatalogueVariant,
 } from '@/lib/catalogue'
 import productSearch from '@/lib/productSearch.js'
+import { showToast } from "@/components/ui/toast";
 
 const { getSearchQueryInfo, normalizeCatalogueNumber, searchProducts } = productSearch
 
@@ -280,15 +281,9 @@ function ProductListContent() {
     unitPrice: "",
     packSize: "",
   })
-  const [toastMsg,      setToastMsg]      = useState<{ text: string; ok: boolean } | null>(null)
   const [modalClosing,  setModalClosing]  = useState(false)
   const searchRef = useRef<HTMLInputElement>(null)
 
-  useEffect(() => {
-    if (!toastMsg) return
-    const t = setTimeout(() => setToastMsg(null), 3200)
-    return () => clearTimeout(t)
-  }, [toastMsg])
 
   useEffect(() => {
     const timeoutId = window.setTimeout(() => {
@@ -400,10 +395,10 @@ function ProductListContent() {
     try {
       const res = await fetch(`/api/admin/products/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "include" })
       if (!res.ok) throw new Error("Delete failed")
-      setToastMsg({ text: "Deleted successfully", ok: true })
+      showToast("success", "Deleted successfully")
       refetch()
     } catch {
-      setToastMsg({ text: "Failed to delete product", ok: false })
+      showToast("error", "Failed to delete product")
     } finally {
       closeDeleteModal()
     }
@@ -505,22 +500,6 @@ function ProductListContent() {
       `}</style>
 
       {/* ── Toast ── */}
-      {toastMsg && (
-        <div
-          className={`motion-toast fixed bottom-6 right-6 z-[100] flex items-center gap-2 px-4 py-3 rounded-2xl text-[13px] font-medium backdrop-blur-xl border ${
-            toastMsg.ok
-              ? "bg-[#f0fdf6]/90 text-[#0d6b3f] border-[#bdf0d3]"
-              : "bg-[#fff1f1]/90 text-[#c02b3a] border-[#f9c9cd]"
-          }`}
-          style={{ animation: "toastIn 320ms cubic-bezier(0.22,1,0.36,1)", boxShadow: '0 8px 30px rgba(0,0,0,0.12)' }}
-        >
-          {toastMsg.ok
-            ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6 9 17l-5-5"/></svg>
-            : <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
-          }
-          {toastMsg.text}
-        </div>
-      )}
 
       {/* ── Delete sheet — dims and pushes the page back, exits along the same path it entered ── */}
       {deleteConfirm && (
@@ -774,7 +753,7 @@ function ProductListContent() {
                         <button
                           onClick={() => product.admin_product_id
                             ? router.push(`/Pages/products/addproducts?id=${encodeURIComponent(product.admin_product_id)}`)
-                            : setToastMsg({ text: 'Only PostgreSQL products can be edited here', ok: false })}
+                            : showToast("error", 'Only PostgreSQL products can be edited here')}
                           className={`${PRESS} inline-flex items-center gap-1 px-[11px] py-1.5 rounded-full text-[12px] font-medium bg-[#fafafc] text-[#3a3a3c] border border-black/[0.06] cursor-pointer hover:bg-[#eef6ff] hover:text-[#0071e3]`}
                         >
                           <Pencil size={12} />
@@ -783,7 +762,7 @@ function ProductListContent() {
                         <button
                           onClick={() => product.admin_product_id
                             ? setDeleteConfirm(product.admin_product_id)
-                            : setToastMsg({ text: 'Only PostgreSQL products can be deleted here', ok: false })}
+                            : showToast("error", 'Only PostgreSQL products can be deleted here')}
                           className={`${PRESS} inline-flex items-center gap-1 px-[11px] py-1.5 rounded-full text-[12px] font-medium bg-white text-[#6e6e73] border border-black/[0.06] cursor-pointer hover:bg-[#fff1f1] hover:text-[#c02b3a]`}
                         >
                           <Trash2 size={12} />

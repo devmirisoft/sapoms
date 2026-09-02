@@ -5,6 +5,8 @@ import Link from 'next/link'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import axios from 'axios'
 import { Pencil, Trash2, Download, Search, Users, UserPlus, MoreVertical, ChevronDown, ChevronLeft, Network, Briefcase, User, X } from 'lucide-react'
+import { showToast } from "@/components/ui/toast";
+import { type FloatingMenuState, isMenuOpen, openFloatingMenu, measureFloatingMenu } from "@/components/ui/floating-menu";
 
 type StaffRelation = { id: string; name: string; email?: string } | null
 
@@ -42,30 +44,6 @@ const getStaffEditRoute = (staffId: string) => `/dashboard/admin/staff/${encodeU
 // on pointer-down, not release"), and prefers-reduced-motion drops the
 // transform/transition entirely rather than losing the feedback outright.
 const pressable = 'transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100'
-
-function getFloatingMenuPosition(button: HTMLElement) {
-  const rect = button.getBoundingClientRect()
-  const menuWidth = 176
-  const gutter = 12
-  return {
-    top: Math.min(rect.bottom + 8, window.innerHeight - gutter),
-    left: Math.max(gutter, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - gutter)),
-  }
-}
-
-function isMenuOpen(openMenu: FloatingMenuState, id: string) {
-  return openMenu?.id === id
-}
-
-function openFloatingMenu(
-  event: React.MouseEvent<HTMLButtonElement>,
-  id: string,
-  setOpenMenu: React.Dispatch<React.SetStateAction<FloatingMenuState>>,
-) {
-  event.stopPropagation()
-  const position = getFloatingMenuPosition(event.currentTarget)
-  setOpenMenu((prev) => prev?.id === id ? null : { id, ...position })
-}
 
 function formatSalesRegion(value?: string) {
   const normalized = String(value ?? "").trim().toUpperCase()
@@ -114,6 +92,31 @@ function reportingManagerOf(staff: StaffData): StaffRelation {
   return staff.parentRsm ?? null
 }
 
+// staff_profiles and admin_profiles (where the NSM lives) are separate id
+// sequences, so a bare id can collide across the two. Every map key, React key
+// and hierarchy link on this page namespaces the id by its table.
+function isNsmRow(staff: Pick<StaffData, "role" | "staff_roletype">) {
+  return String(staff.role ?? "").toUpperCase() === "NSM" || String(staff.staff_roletype ?? "").toUpperCase() === "NSM"
+}
+
+function nodeKey(staff: StaffData) {
+  return `${isNsmRow(staff) ? "nsm" : "staff"}:${staff.staff_id}`
+}
+
+// What /api/admin/staff/[staffId] expects: the NSM is addressed as "nsm:<id>"
+// so it resolves against admin_profiles, a bare id means a staff profile.
+function apiId(staff: StaffData) {
+  return isNsmRow(staff) ? `nsm:${staff.staff_id}` : staff.staff_id
+}
+
+// An RSM reports to an NSM (admin_profiles); everyone else to a staff row.
+function managerKey(staff: StaffData) {
+  const rel = reportingManagerOf(staff)
+  if (!rel) return null
+  const isRsm = String(staff.role ?? "").toUpperCase() === "RSM" || String(staff.staff_roletype ?? "").toUpperCase() === "RSM"
+  return `${isRsm ? "nsm" : "staff"}:${rel.id}`
+}
+
 // A list cell that stays one line: first entry, then "+N".
 function listSummary(values: string[] | undefined, fallback?: string) {
   const items = (values ?? []).filter(Boolean)
@@ -130,7 +133,6 @@ function initials(name: string) {
 }
 
 type AppRole = "admin" | "staff" | "accountant"
-type FloatingMenuState = { id: string; top: number; left: number } | null
 
 function getRole(): AppRole {
   if (typeof window === 'undefined') return 'admin'
@@ -151,17 +153,18 @@ function ancestorsOf(staff: StaffData, byId: Map<string, StaffData>) {
   let current: StaffData | null = staff
   while (current) {
     const rel = reportingManagerOf(current)
-    if (!rel || seen.has(rel.id)) break
-    seen.add(rel.id)
-    const full = byId.get(rel.id)
-    chain.unshift({ id: rel.id, name: rel.name || full?.staff_name || "-", label: full ? roleBadge(full).label : "NSM" })
+    const key = managerKey(current)
+    if (!rel || !key || seen.has(key)) break
+    seen.add(key)
+    const full = byId.get(key)
+    chain.unshift({ id: key, name: rel.name || full?.staff_name || "-", label: full ? roleBadge(full).label : "NSM" })
     current = full ?? null
   }
   return chain
 }
 
 function countTeam(id: string, reports: Map<string, StaffData[]>): number {
-  return (reports.get(id) ?? []).reduce((sum, r) => sum + 1 + countTeam(r.staff_id, reports), 0)
+  return (reports.get(id) ?? []).reduce((sum, r) => sum + 1 + countTeam(nodeKey(r), reports), 0)
 }
 
 type TreeNode = { id: string; name: string; role: string; email?: string; children: TreeNode[]; subject?: boolean; muted?: boolean }
@@ -178,12 +181,12 @@ const ELBOW = 14
 
 function toTreeNode(staff: StaffData, reports: Map<string, StaffData[]>, subject: boolean): TreeNode {
   return {
-    id: staff.staff_id,
+    id: nodeKey(staff),
     name: staff.staff_name || "-",
     role: roleBadge(staff).label,
     email: staff.staff_email,
     subject,
-    children: (reports.get(staff.staff_id) ?? []).map(child => toTreeNode(child, reports, false)),
+    children: (reports.get(nodeKey(staff)) ?? []).map(child => toTreeNode(child, reports, false)),
   }
 }
 
@@ -342,7 +345,7 @@ function HierarchyPanel({ open, onClose, data, reports }: { open: boolean; onClo
   const [query, setQuery] = useState("")
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
-  const byId = useMemo(() => new Map(data.map(s => [s.staff_id, s])), [data])
+  const byId = useMemo(() => new Map(data.map(s => [nodeKey(s), s])), [data])
   const selected = selectedId ? byId.get(selectedId) ?? null : null
 
   const matches = useMemo(() => {
@@ -350,7 +353,7 @@ function HierarchyPanel({ open, onClose, data, reports }: { open: boolean; onClo
     return data
       .filter(s => !needle || `${s.staff_name} ${s.staff_email} ${roleBadge(s).label}`.toLowerCase().includes(needle))
       .sort((a, b) =>
-        countTeam(b.staff_id, reports) - countTeam(a.staff_id, reports) ||
+        countTeam(nodeKey(b), reports) - countTeam(nodeKey(a), reports) ||
         String(a.staff_name ?? "").localeCompare(String(b.staff_name ?? "")))
   }, [data, query, reports])
 
@@ -361,7 +364,7 @@ function HierarchyPanel({ open, onClose, data, reports }: { open: boolean; onClo
     return () => document.removeEventListener("keydown", onKey)
   }, [open, onClose])
 
-  const teamSize = selected ? countTeam(selected.staff_id, reports) : 0
+  const teamSize = selected ? countTeam(nodeKey(selected), reports) : 0
 
   // Managers above the subject form a single-child trunk; everything below is
   // the subject's real team.
@@ -422,11 +425,11 @@ function HierarchyPanel({ open, onClose, data, reports }: { open: boolean; onClo
               {matches.length === 0 && <p className="px-2 py-8 text-center text-sm text-gray-400">No staff found</p>}
               {matches.map((s, i) => {
                 const badge = roleBadge(s)
-                const team = countTeam(s.staff_id, reports)
+                const team = countTeam(nodeKey(s), reports)
                 return (
                   <button
-                    key={s.staff_id}
-                    onClick={() => { setCollapsed(new Set()); setSelectedId(s.staff_id) }}
+                    key={nodeKey(s)}
+                    onClick={() => { setCollapsed(new Set()); setSelectedId(nodeKey(s)) }}
                     style={{ animationDelay: `${Math.min(i, 10) * 25}ms` }}
                     className={`staff-node mb-1.5 flex w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/40 ${pressable}`}
                   >
@@ -481,7 +484,7 @@ export default function StaffListPage() {
   const [searchInput,   setSearchInput]   = useState("")
   const [roleFilter,    setRoleFilter]    = useState("")
   const [emailFilter,   setEmailFilter]   = useState("")
-  const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<StaffData | null>(null)
   const [statusFilter,  setStatusFilter]  = useState<"" | StaffStatus>("")
   const [statusConfirm, setStatusConfirm] = useState<StaffData | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -489,19 +492,12 @@ export default function StaffListPage() {
   // Optimistic per-row status so a toggle shows immediately without refetching
   // the whole (client-paginated) staff list.
   const [statusOverrides, setStatusOverrides] = useState<Record<string, StaffStatus>>({})
-  const [toastMsg,      setToastMsg]      = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const [openMenu, setOpenMenu] = useState<FloatingMenuState>(null)
   const [role, setRole] = useState<AppRole>('admin')
   const [hierarchyOpen, setHierarchyOpen] = useState(false)
 
   const queryClient = useQueryClient()
 
-  // Toast auto-dismiss
-  useEffect(() => {
-    if (!toastMsg) return
-    const t = setTimeout(() => setToastMsg(null), 3000)
-    return () => clearTimeout(t)
-  }, [toastMsg])
 
   useEffect(() => { setRole(getRole()) }, [])
 
@@ -520,19 +516,32 @@ export default function StaffListPage() {
     return () => document.removeEventListener('click', handleDocClick)
   }, [])
 
+  // The menu is positioned `fixed` from the button rect captured at open time,
+  // so scrolling or resizing would leave it stranded away from its row.
+  useEffect(() => {
+    if (!openMenu) return
+    const close = () => setOpenMenu(null)
+    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', close)
+    return () => {
+      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', close)
+    }
+  }, [openMenu])
+
   const { data: response, isLoading, isError, refetch } = useQuery<StaffResponse>({
     queryKey: search ? ['stafflist', page, search] : ['stafflist', 'all'],
     queryFn: async () => {
       // If user is searching, use normal paginated endpoint.
       if (search) {
         const res = await axios.get(
-          `${ADMIN_STAFF_URL}?page=${page}&limit=${ITEMS_PER_PAGE}&search=${encodeURIComponent(search)}`
+          `${ADMIN_STAFF_URL}?page=${page}&limit=${ITEMS_PER_PAGE}&includeNsm=1&search=${encodeURIComponent(search)}`
         )
         return res.data
       }
 
       // No search -> fetch all pages from server and combine results so UI can display full list.
-      const first = await axios.get(`${ADMIN_STAFF_URL}?page=1&limit=${ITEMS_PER_PAGE}&search=`, { withCredentials: true })
+      const first = await axios.get(`${ADMIN_STAFF_URL}?page=1&limit=${ITEMS_PER_PAGE}&includeNsm=1&search=`, { withCredentials: true })
       const firstRaw = first.data || {}
       const firstData: StaffResponse = {
         data: firstRaw.data || [],
@@ -549,7 +558,7 @@ export default function StaffListPage() {
       if (lastPage > 1) {
         const requests: Promise<any>[] = []
         for (let p = 2; p <= lastPage; p++) {
-          requests.push(axios.get(`${ADMIN_STAFF_URL}?page=${p}&limit=${ITEMS_PER_PAGE}&search=`, { withCredentials: true }))
+          requests.push(axios.get(`${ADMIN_STAFF_URL}?page=${p}&limit=${ITEMS_PER_PAGE}&includeNsm=1&search=`, { withCredentials: true }))
         }
         const pages = await Promise.all(requests)
         for (const r of pages) {
@@ -565,7 +574,7 @@ export default function StaffListPage() {
   })
 
   const data: StaffData[] = useMemo(
-    () => (response?.data || []).map((staff) => ({ ...staff, status: statusOverrides[staff.staff_id] ?? normalizeStaffStatus(staff.status) })),
+    () => (response?.data || []).map((staff) => ({ ...staff, status: statusOverrides[nodeKey(staff)] ?? normalizeStaffStatus(staff.status) })),
     [response?.data, statusOverrides],
   )
 
@@ -575,9 +584,9 @@ export default function StaffListPage() {
   const directReports = useMemo(() => {
     const map = new Map<string, StaffData[]>()
     data.forEach((staff) => {
-      const managerId = reportingManagerOf(staff)?.id
-      if (!managerId) return
-      map.set(managerId, [...(map.get(managerId) ?? []), staff])
+      const key = managerKey(staff)
+      if (!key) return
+      map.set(key, [...(map.get(key) ?? []), staff])
     })
     return map
   }, [data])
@@ -631,7 +640,7 @@ export default function StaffListPage() {
       queryKey: ['stafflist', page + 1, search],
       queryFn: async () => {
         const res = await axios.get(
-          `${ADMIN_STAFF_URL}?page=${page + 1}&limit=${ITEMS_PER_PAGE}&search=${encodeURIComponent(search)}`
+          `${ADMIN_STAFF_URL}?page=${page + 1}&limit=${ITEMS_PER_PAGE}&includeNsm=1&search=${encodeURIComponent(search)}`
         )
         return res.data
       },
@@ -647,14 +656,14 @@ export default function StaffListPage() {
     return () => clearTimeout(timer)
   }, [searchInput])
 
-  const handleDelete = async (id: string) => {
-    setDeletingId(id)
+  const handleDelete = async (staff: StaffData) => {
+    setDeletingId(staff.staff_id)
     try {
-      await axios.delete(`${ADMIN_STAFF_URL}/${encodeURIComponent(id)}`, { withCredentials: true })
-      setToastMsg({ text: "Staff member deleted", type: 'success' })
+      await axios.delete(`${ADMIN_STAFF_URL}/${encodeURIComponent(apiId(staff))}`, { withCredentials: true })
+      showToast('success', "Staff member deleted")
       await refetch()
     } catch (error: any) {
-      setToastMsg({ text: error?.response?.data?.message || "Failed to delete staff", type: 'error' })
+      showToast('error', error?.response?.data?.message || "Failed to delete staff")
     } finally {
       setDeletingId(null)
       setDeleteConfirm(null)
@@ -665,20 +674,17 @@ export default function StaffListPage() {
     setStatusUpdatingId(staff.staff_id)
     try {
       const res = await axios.patch(
-        `${ADMIN_STAFF_URL}/${encodeURIComponent(staff.staff_id)}/status`,
+        `${ADMIN_STAFF_URL}/${encodeURIComponent(apiId(staff))}/status`,
         { status: nextStatus },
         { withCredentials: true },
       )
       const applied = normalizeStaffStatus(res.data?.data?.status ?? nextStatus)
-      setStatusOverrides((prev) => ({ ...prev, [staff.staff_id]: applied }))
-      setToastMsg({
-        text: applied === "ACTIVE"
+      setStatusOverrides((prev) => ({ ...prev, [nodeKey(staff)]: applied }))
+      showToast('success', applied === "ACTIVE"
           ? `${staff.staff_name || "Staff member"} can now log in.`
-          : `${staff.staff_name || "Staff member"} is deactivated and blocked from logging in.`,
-        type: 'success',
-      })
+          : `${staff.staff_name || "Staff member"} is deactivated and blocked from logging in.`)
     } catch (error: any) {
-      setToastMsg({ text: error?.response?.data?.message || "Failed to update staff status", type: 'error' })
+      showToast('error', error?.response?.data?.message || "Failed to update staff status")
     } finally {
       setStatusUpdatingId(null)
       setStatusConfirm(null)
@@ -696,7 +702,7 @@ export default function StaffListPage() {
       (s.assigned_cities ?? []).join(" | ") || s.staff_location || "-",
       (s.assigned_states ?? []).join(" | ") || "-",
       s.gender || "-",
-      (directReports.get(s.staff_id) ?? []).map(r => `${r.staff_name} (${roleBadge(r).label})`).join(" | ") || "-",
+      (directReports.get(nodeKey(s)) ?? []).map(r => `${r.staff_name} (${roleBadge(r).label})`).join(" | ") || "-",
       statusBadge(normalizeStaffStatus(s.status)).label,
       reportingManagerOf(s)?.name ?? "-",
     ])
@@ -737,9 +743,20 @@ export default function StaffListPage() {
     <div className="min-h-screen bg-gray-100">
       <style>{`
         @keyframes staff-toast-in { from { opacity: 0; transform: translateY(-8px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes staff-menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes staff-menu-in { from { opacity: 0; transform: translateY(-6px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes staff-menu-in-up { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes staff-menu-item-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
         .staff-toast { animation: staff-toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
-        .staff-menu { animation: staff-menu-in 140ms cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top right; }
+        .staff-menu { animation: staff-menu-in 160ms cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top right; }
+        .staff-menu.flip { animation-name: staff-menu-in-up; transform-origin: bottom right; }
+        /* Items fade in one after another so the list reads top-to-bottom
+           instead of appearing as a single block. */
+        .staff-menu > * { animation: staff-menu-item-in 180ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+        .staff-menu > *:nth-child(1) { animation-delay: 40ms; }
+        .staff-menu > *:nth-child(2) { animation-delay: 70ms; }
+        .staff-menu > *:nth-child(3) { animation-delay: 100ms; }
+        .staff-menu > *:nth-child(4) { animation-delay: 130ms; }
+        .staff-menu > *:nth-child(n+5) { animation-delay: 160ms; }
         @keyframes staff-node-in { from { opacity: 0; transform: translateX(8px); } to { opacity: 1; transform: translateX(0); } }
         .staff-node { animation: staff-node-in 300ms cubic-bezier(0.16, 1, 0.3, 1) both; }
         @keyframes staff-card-in { from { opacity: 0; transform: translateY(12px) scale(0.96); } to { opacity: 1; transform: none; } }
@@ -747,18 +764,11 @@ export default function StaffListPage() {
         .staff-card { animation: staff-card-in 380ms cubic-bezier(0.16, 1, 0.3, 1) both; }
         .staff-edge { animation: staff-edge-in 380ms ease both; }
         @media (prefers-reduced-motion: reduce) {
-          .staff-toast, .staff-menu, .staff-node, .staff-card, .staff-edge { animation: none; }
+          .staff-toast, .staff-menu, .staff-menu > *, .staff-node, .staff-card, .staff-edge { animation: none; }
         }
       `}</style>
 
       {/* Toast */}
-      {toastMsg && (
-        <div className={`staff-toast fixed top-5 right-5 z-50 text-sm px-4 py-3 rounded-lg shadow-lg ${
-          toastMsg.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'
-        }`}>
-          {toastMsg.text}
-        </div>
-      )}
 
       {/* Delete Confirm Modal */}
       {deleteConfirm && (
@@ -768,10 +778,11 @@ export default function StaffListPage() {
               <div className="w-9 h-9 rounded-full bg-red-50 flex items-center justify-center">
                 <Trash2 className="w-4 h-4 text-red-500" />
               </div>
-              <h3 className="font-semibold text-gray-900">Delete Staff</h3>
+              <h3 className="font-semibold text-gray-900">Delete {isNsmRow(deleteConfirm) ? "NSM" : "Staff"}</h3>
             </div>
             <p className="text-sm text-gray-500 mb-5">
-              This permanently removes the staff member and their login from the database. This action cannot be undone.
+              This permanently removes {deleteConfirm.staff_name || "the staff member"} and their login from the database.
+              {isNsmRow(deleteConfirm) ? " Any RSM reporting to this NSM must be reassigned first." : ""} This action cannot be undone.
             </p>
             <div className="flex gap-2 justify-end">
               <button
@@ -782,10 +793,10 @@ export default function StaffListPage() {
               </button>
               <button
                 onClick={() => void handleDelete(deleteConfirm)}
-                disabled={deletingId === deleteConfirm}
+                disabled={deletingId === deleteConfirm.staff_id}
                 className={`px-4 py-2 text-sm bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium disabled:opacity-60 ${pressable}`}
               >
-                {deletingId === deleteConfirm ? "Deleting..." : "Delete"}
+                {deletingId === deleteConfirm.staff_id ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>
@@ -1053,7 +1064,7 @@ export default function StaffListPage() {
                 {!isLoading && displayedData.map((staff, i) => {
                   const badge = roleBadge(staff)
                   return (
-                    <tr key={staff.staff_id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={nodeKey(staff)} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-4 text-gray-400 text-xs">{startIndex + i}</td>
 
                       <td className="px-4 py-4">
@@ -1085,12 +1096,12 @@ export default function StaffListPage() {
 
                       <td className="px-4 py-4">
                         {(() => {
-                          const team = directReports.get(staff.staff_id) ?? []
+                          const team = directReports.get(nodeKey(staff)) ?? []
                           if (!team.length) return <span className="text-gray-300 text-xs">-</span>
                           return (
                             <div className="flex flex-col gap-0.5" title={team.map(m => `${m.staff_name} (${roleBadge(m).label})`).join(", ")}>
                               {team.slice(0, 2).map(m => (
-                                <span key={m.staff_id} className="text-gray-700 text-xs whitespace-nowrap">
+                                <span key={nodeKey(m)} className="text-gray-700 text-xs whitespace-nowrap">
                                   {m.staff_name} <span className="text-gray-400">· {roleBadge(m).label}</span>
                                 </span>
                               ))}
@@ -1128,20 +1139,26 @@ export default function StaffListPage() {
                         <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                           <div className="relative">
                             <button
-                              onClick={(e) => openFloatingMenu(e, staff.staff_id, setOpenMenu)}
-                              data-menu-id={staff.staff_id}
+                              onClick={(e) => openFloatingMenu(e, nodeKey(staff), setOpenMenu)}
+                              data-menu-id={nodeKey(staff)}
                               className={`p-2 rounded-md text-gray-600 hover:bg-gray-50 ${pressable}`}
                               aria-label="Open actions"
                             >
                               <MoreVertical className="w-4 h-4" />
                             </button>
-                            {isMenuOpen(openMenu, staff.staff_id) && (
-                              <div onClick={(e) => e.stopPropagation()} data-menu-id={staff.staff_id} style={{ top: openMenu?.top ?? 0, left: openMenu?.left ?? 0 }} className="staff-menu fixed w-44 bg-white border border-gray-200 rounded-md shadow-2xl z-[9999] py-1">
-                                <Link href={getStaffEditRoute(staff.staff_id)} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Edit</Link>
+                            {isMenuOpen(openMenu, nodeKey(staff)) && (
+                              <div
+                                ref={measureFloatingMenu(nodeKey(staff), setOpenMenu)}
+                                onClick={(e) => e.stopPropagation()}
+                                data-menu-id={nodeKey(staff)}
+                                style={{ top: openMenu?.top ?? 0, left: openMenu?.left ?? 0 }}
+                                className={`staff-menu${openMenu?.flip ? " flip" : ""} fixed w-44 bg-white border border-gray-200 rounded-md shadow-lg ring-1 ring-black/5 z-[9999] py-1 overflow-hidden`}
+                              >
+                                <Link href={getStaffEditRoute(apiId(staff))} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Edit</Link>
                                 <button onClick={(e) => { e.stopPropagation(); setStatusConfirm(staff); setOpenMenu(null) }} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                   {normalizeStaffStatus(staff.status) === "ACTIVE" ? "Deactivate" : "Activate"}
                                 </button>
-                                <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(staff.staff_id); setOpenMenu(null) }} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50">Delete</button>
+                                <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(staff); setOpenMenu(null) }} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50">Delete</button>
                               </div>
                             )}
                           </div>

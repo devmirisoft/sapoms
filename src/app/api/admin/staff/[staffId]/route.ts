@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminErrorResponse } from "@/server/admin/admin-errors";
-import { auditAdminAction, parseBigIntRouteParam, requireAdmin, requestIdFrom } from "@/server/admin/admin-route";
+import { auditAdminAction, parseStaffTarget, requireAdmin, requireAdminOnly, requestIdFrom } from "@/server/admin/admin-route";
 import { parseUpdateAdminStaffInput } from "@/server/modules/admin/staff/staff.schemas";
 import { deleteAdminStaff, getAdminStaff, updateAdminStaff } from "@/server/modules/admin/staff/staff.service";
 
@@ -11,8 +11,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sta
     const actor = await requireAdmin();
     const requestId = requestIdFrom(request);
     const { staffId } = await context.params;
-    const id = parseBigIntRouteParam(staffId, "staff id");
-    const item = await getAdminStaff(id);
+    const item = await getAdminStaff(parseStaffTarget(staffId));
     await auditAdminAction({ actor, request, eventType: "ADMIN_STAFF_DETAIL_VIEWED", route: "/api/admin/staff/[staffId]", requestId, targetId: staffId });
     return NextResponse.json({ success: true, data: item }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
@@ -23,12 +22,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ sta
 
 export async function PATCH(request: NextRequest, context: { params: Promise<{ staffId: string }> }) {
   try {
-    const actor = await requireAdmin();
+    const actor = await requireAdminOnly();
     const requestId = requestIdFrom(request);
     const { staffId } = await context.params;
-    const id = parseBigIntRouteParam(staffId, "staff id");
     const input = parseUpdateAdminStaffInput(await request.json());
-    const item = await updateAdminStaff(id, input, actor);
+    const item = await updateAdminStaff(parseStaffTarget(staffId), input, actor);
     await auditAdminAction({ actor, request, eventType: "ADMIN_STAFF_UPDATED", route: "/api/admin/staff/[staffId]", requestId, targetId: staffId });
     return NextResponse.json({ success: true, data: item });
   } catch (error) {
@@ -39,11 +37,10 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ s
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ staffId: string }> }) {
   try {
-    const actor = await requireAdmin();
+    const actor = await requireAdminOnly();
     const requestId = requestIdFrom(request);
     const { staffId } = await context.params;
-    const id = parseBigIntRouteParam(staffId, "staff id");
-    await deleteAdminStaff(id, actor);
+    await deleteAdminStaff(parseStaffTarget(staffId), actor);
     await auditAdminAction({ actor, request, eventType: "ADMIN_STAFF_DELETED", route: "/api/admin/staff/[staffId]", requestId, targetId: staffId });
     return NextResponse.json({ success: true, message: "Staff member deleted successfully" }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

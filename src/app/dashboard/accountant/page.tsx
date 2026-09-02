@@ -9,18 +9,31 @@ import {
   useQueries,
 } from "@tanstack/react-query";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  ResponsiveContainer,
+  CartesianGrid,
 } from "recharts";
 import moment from "moment";
 import {
-  DollarSign, ShoppingCart, Clock, AlertCircle,
-  TrendingUp, Receipt, FileSpreadsheet, Download,
-  ChevronDown, X,
+  DollarSign,
+  ShoppingCart,
+  Clock,
+  AlertCircle,
+  TrendingUp,
+  Receipt,
+  FileSpreadsheet,
+  Download,
+  ChevronDown,
 } from "lucide-react";
 import { isAuthenticated, clearAccountantSession } from "@/lib/accountantauth";
 import { downloadOrderInvoice } from "@/lib/invoicegenerator";
 import { OrderAmountSource, withDisplayOrderAmounts } from "@/lib/orderAmounts";
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { showToast } from "@/components/ui/toast";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const YEAR = new Date().getFullYear();
@@ -112,31 +125,16 @@ function pendingToRows(orders: PendingOrder[]) {
 }
 
 // ─── Toast ────────────────────────────────────────────────────────────────────
-function Toast({ type, text, onClose }: { type: "success"|"error"; text: string; onClose: () => void }) {
-  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
-  return (
-    <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl text-[12.5px] font-semibold shadow-xl border ${
-      type === "success" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"
-    }`}>
-      {type === "success"
-        ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
-        : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/></svg>}
-      {text}
-      <button onClick={onClose}><X size={11} className="opacity-50 hover:opacity-100" /></button>
-    </div>
-  );
-}
 
 // ─── Row Invoice Button ───────────────────────────────────────────────────────
 function InvoiceBtn({ order }: { order: Order | PendingOrder }) {
   const [loading, setLoading] = useState(false);
-  const [toast,   setToast]   = useState<{type:"success"|"error"; text:string}|null>(null);
 
   const handle = async () => {
     setLoading(true);
     const res = await downloadOrderInvoice(order as any);
     setLoading(false);
-    setToast({ type: res.success ? "success" : "error", text: res.success ? "Invoice downloaded" : res.error || "Failed" });
+    showToast(res.success ? "success" : "error", res.success ? "Invoice downloaded" : res.error || "Failed");
   };
 
   return (
@@ -148,7 +146,6 @@ function InvoiceBtn({ order }: { order: Order | PendingOrder }) {
           : <Receipt size={10}/>}
         PDF
       </button>
-      {toast && <Toast type={toast.type} text={toast.text} onClose={() => setToast(null)}/>}
     </div>
   );
 }
@@ -161,13 +158,12 @@ function ExportMenu({
 }) {
   const [open,  setOpen]  = useState(false);
   const [busy,  setBusy]  = useState(false);
-  const [toast, setToast] = useState<{type:"success"|"error"; text:string}|null>(null);
 
   const handleCSV = () => {
     setOpen(false);
     if (type === "orders" && orders)           downloadCSV(ordersToRows(orders),  `orders_${moment().format("YYYY-MM-DD")}`);
     else if (type === "pending" && pendingOrders) downloadCSV(pendingToRows(pendingOrders), `pending_${moment().format("YYYY-MM-DD")}`);
-    setToast({ type: "success", text: "CSV downloaded" });
+    showToast("success", "CSV downloaded");
   };
 
   const handleAllPDF = async () => {
@@ -178,7 +174,7 @@ function ExportMenu({
       await new Promise(r => setTimeout(r, 400));
     }
     setBusy(false);
-    setToast({ type: "success", text: `${Math.min(list.length, 10)} invoices downloaded` });
+    showToast("success", `${Math.min(list.length, 10)} invoices downloaded`);
   };
 
   return (
@@ -207,7 +203,6 @@ function ExportMenu({
           </div>
         </>
       )}
-      {toast && <Toast type={toast.type} text={toast.text} onClose={() => setToast(null)}/>}
     </div>
   );
 }

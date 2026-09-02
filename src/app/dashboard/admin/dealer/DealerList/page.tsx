@@ -5,6 +5,8 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import { CheckCircle2, Search, Trash2, Eye, EyeOff, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, X, UserPlus, Inbox } from 'lucide-react'
 import { confirmAlert } from 'react-confirm-alert'
 import { staffRoleBadge } from '@/lib/staffRoleLabel'
+import { showToast } from "@/components/ui/toast";
+import { type FloatingMenuState, isMenuOpen, openFloatingMenu, measureFloatingMenu } from "@/components/ui/floating-menu";
 type DealerStatus = "active" | "inactive" | "suspended"
 type DealerStatusFilter = "" | "ACTIVE" | "INACTIVE" | "SUSPENDED"
 type WalletFilter = "" | "active" | "inactive"
@@ -96,7 +98,6 @@ type DealerSummaryCounts = {
 }
 
 type AppRole = "admin" | "staff" | "accountant"
-type FloatingMenuState = { id: string; top: number; left: number } | null
 
 const SHIMMER = "animate-pulse bg-gray-200 rounded"
 const ADMIN_DEALERS_URL = "/api/admin/dealers"
@@ -111,30 +112,6 @@ const getStaffDealerRoute = (dealerId: string) => `/dashboard/staff/dealer/${enc
 // on pointer-down, not release"), and prefers-reduced-motion drops the
 // transform/transition entirely rather than losing the feedback outright.
 const pressable = 'transition-transform duration-100 active:scale-[0.97] motion-reduce:transition-none motion-reduce:active:scale-100'
-
-function getFloatingMenuPosition(button: HTMLElement) {
-  const rect = button.getBoundingClientRect()
-  const menuWidth = 192
-  const gutter = 12
-  return {
-    top: Math.min(rect.bottom + 8, window.innerHeight - gutter),
-    left: Math.max(gutter, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - gutter)),
-  }
-}
-
-function isMenuOpen(openMenu: FloatingMenuState, id: string) {
-  return openMenu?.id === id
-}
-
-function openFloatingMenu(
-  event: React.MouseEvent<HTMLButtonElement>,
-  id: string,
-  setOpenMenu: React.Dispatch<React.SetStateAction<FloatingMenuState>>,
-) {
-  event.stopPropagation()
-  const position = getFloatingMenuPosition(event.currentTarget)
-  setOpenMenu((prev) => prev?.id === id ? null : { id, ...position })
-}
 
 function statusBadge(s: string) {
   return dealerStatusBadge(normalizeDealerStatus(s))
@@ -313,7 +290,6 @@ export default function DealerListPage() {
   const [phoneSearchInput, setPhoneSearchInput] = useState("")
   const [phoneSearch, setPhoneSearch] = useState("")
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-  const [toastMsg, setToastMsg] = useState<{ text: string; type: 'success' | 'error' } | null>(null)
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(() => new Set())
   const [openMenu, setOpenMenu] = useState<FloatingMenuState>(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
@@ -323,12 +299,6 @@ export default function DealerListPage() {
 
   const queryClient = useQueryClient()
 
-  // Toast auto-dismiss
-  useEffect(() => {
-    if (!toastMsg) return
-    const t = setTimeout(() => setToastMsg(null), 3000)
-    return () => clearTimeout(t)
-  }, [toastMsg])
 
   useEffect(() => {
     const handleDocClick = (e: MouseEvent) => {
@@ -480,12 +450,12 @@ export default function DealerListPage() {
       })
       const payload = await response.json()
       if (!response.ok || !payload.success) throw new Error(payload.message ?? "Failed to delete dealer")
-      setToastMsg({ text: "Dealer deleted successfully", type: 'success' })
+      showToast('success', "Dealer deleted successfully")
       setOpenMenu(null)
       void refetch()
       void queryClient.invalidateQueries({ queryKey: ["adminDealerSummaryCounts"] })
     } catch (error) {
-      setToastMsg({ text: error instanceof Error ? error.message : "Failed to delete dealer", type: 'error' })
+      showToast('error', error instanceof Error ? error.message : "Failed to delete dealer")
     } finally {
       setDeleteConfirm(null)
     }
@@ -539,7 +509,7 @@ export default function DealerListPage() {
       const dealerIds = await fetchAllDealerIds()
 
       if (dealerIds.length === 0) {
-        setToastMsg({ text: "No dealers found to activate.", type: "error" })
+        showToast("error", "No dealers found to activate.")
         return
       }
 
@@ -561,15 +531,12 @@ export default function DealerListPage() {
         return next
       })
 
-      setToastMsg({ text: `Activated ${dealerIds.length} dealers successfully.`, type: "success" })
+      showToast("success", `Activated ${dealerIds.length} dealers successfully.`)
       void refetch()
       void queryClient.invalidateQueries({ queryKey: ["adminDealerSummaryCounts"] })
     } catch (error) {
       console.error("Failed to activate all dealers", error)
-      setToastMsg({
-        text: error instanceof Error ? error.message : "Failed to activate all dealers",
-        type: "error",
-      })
+      showToast("error", error instanceof Error ? error.message : "Failed to activate all dealers")
     } finally {
       setBulkActivating(false)
     }
@@ -638,20 +605,14 @@ export default function DealerListPage() {
         [normalizedDealerId]: normalizedStatus,
       }))
 
-      setToastMsg({
-        text: normalizedStatus === "active"
+      showToast('success', normalizedStatus === "active"
           ? "Dealer activated successfully."
-          : "Dealer deactivated successfully.",
-        type: 'success',
-      })
+          : "Dealer deactivated successfully.")
       setOpenMenu(null)
       void queryClient.invalidateQueries({ queryKey: ["adminDealerSummaryCounts"] })
     } catch (error) {
       console.error("Failed to update dealer status", error)
-      setToastMsg({
-        text: error instanceof Error ? error.message : "Failed to update dealer status",
-        type: 'error',
-      })
+      showToast('error', error instanceof Error ? error.message : "Failed to update dealer status")
     } finally {
       setStatusUpdatingId(null)
     }
@@ -787,27 +748,26 @@ export default function DealerListPage() {
     <div className="min-h-screen bg-white">
       <style>{`
         @keyframes dealer-toast-in { from { opacity: 0; transform: translateY(-8px) scale(0.97); } to { opacity: 1; transform: translateY(0) scale(1); } }
-        @keyframes dealer-menu-in { from { opacity: 0; transform: translateY(-4px) scale(0.98); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes dealer-menu-in { from { opacity: 0; transform: translateY(-6px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes dealer-menu-in-up { from { opacity: 0; transform: translateY(6px) scale(0.96); } to { opacity: 1; transform: translateY(0) scale(1); } }
+        @keyframes dealer-menu-item-in { from { opacity: 0; transform: translateX(-6px); } to { opacity: 1; transform: translateX(0); } }
         .dealer-toast { animation: dealer-toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1); }
-        .dealer-menu { animation: dealer-menu-in 140ms cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top right; }
+        .dealer-menu { animation: dealer-menu-in 160ms cubic-bezier(0.16, 1, 0.3, 1); transform-origin: top right; }
+        .dealer-menu.flip { animation-name: dealer-menu-in-up; transform-origin: bottom right; }
+        /* Items fade in one after another so the list reads top-to-bottom
+           instead of appearing as a single block. */
+        .dealer-menu > * { animation: dealer-menu-item-in 180ms cubic-bezier(0.16, 1, 0.3, 1) backwards; }
+        .dealer-menu > *:nth-child(1) { animation-delay: 40ms; }
+        .dealer-menu > *:nth-child(2) { animation-delay: 70ms; }
+        .dealer-menu > *:nth-child(3) { animation-delay: 100ms; }
+        .dealer-menu > *:nth-child(4) { animation-delay: 130ms; }
+        .dealer-menu > *:nth-child(n+5) { animation-delay: 160ms; }
         @media (prefers-reduced-motion: reduce) {
-          .dealer-toast, .dealer-menu { animation: none; }
+          .dealer-toast, .dealer-menu, .dealer-menu > * { animation: none; }
         }
       `}</style>
 
       {/* Toast */}
-      {toastMsg && (
-        <div className={`dealer-toast fixed top-5 right-5 z-50 text-sm font-medium px-4 py-3 rounded-xl shadow-lg backdrop-blur-md border flex items-center gap-2 ${toastMsg.type === 'success'
-            ? 'bg-emerald-600/90 border-emerald-400/40 text-white shadow-emerald-900/10'
-            : 'bg-red-500/90 border-red-300/40 text-white shadow-red-900/10'
-          }`}>
-          {toastMsg.type === 'success'
-            ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6 9 17l-5-5" /></svg>
-            : <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><path d="M12 8v4m0 4h.01" /></svg>
-          }
-          {toastMsg.text}
-        </div>
-      )}
 
       {/* Delete Confirm Modal */}
       {deleteConfirm && (
@@ -1270,10 +1230,11 @@ export default function DealerListPage() {
                             </button>
                             {isMenuOpen(openMenu, dealer.Dealer_Id) && (
                               <div
+                                ref={measureFloatingMenu(dealer.Dealer_Id, setOpenMenu)}
                                 onClick={(e) => e.stopPropagation()}
                                 data-menu-id={dealer.Dealer_Id}
                                 style={{ top: openMenu?.top ?? 0, left: openMenu?.left ?? 0 }}
-                                className="dealer-menu fixed w-48 bg-white border border-gray-200 rounded-lg shadow-2xl z-[9999] py-1"
+                                className={`dealer-menu${openMenu?.flip ? " flip" : ""} fixed w-48 bg-white border border-gray-200 rounded-lg shadow-lg ring-1 ring-black/5 z-[9999] py-1 overflow-hidden`}
                               >
                                 <Link href={getDealerViewRoute(dealer.Dealer_Id)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                   <Eye className="h-3.5 w-3.5 text-gray-400" /> View

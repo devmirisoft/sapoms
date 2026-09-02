@@ -1,14 +1,15 @@
 import "server-only";
 
-import { Prisma, type UserStatus } from "@prisma/client";
+import { Prisma, type SalesRegion, type UserStatus } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { paginationToPrisma } from "@/server/admin/admin-pagination";
 import { AdminRouteError } from "@/server/admin/admin-errors";
 import { normalizeEmail } from "@/server/auth/providers/postgres-auth.provider";
 import { hashPassword } from "@/server/auth/password";
 import { citiesForStates, statesForCities } from "@/lib/places";
-import { SALES_REGION_OPTIONS } from "@/lib/salesRegions";
+import { formatSalesRegionLabel, SALES_REGION_OPTIONS } from "@/lib/salesRegions";
 import type { AdminStaffListInput, AdminStaffRecord, CreateAdminStaffInput, UpdateAdminStaffInput, UpdateStaffStatusInput } from "./staff.types";
+import { staffPageWindow } from "./staff.paging";
 import type { AuthActor } from "@/server/auth/session";
 
 function buildWhere(input: AdminStaffListInput): Prisma.StaffProfileWhereInput {
@@ -174,44 +175,82 @@ async function resolveNsm(tx: Prisma.TransactionClient, id: bigint | null) {
   return nsm;
 }
 
+// One region, one RSM. Status is ignored on purpose: a deactivated RSM still
+// holds its region, so reactivating can never produce two RSMs for one region.
+async function assertRegionFree(tx: Prisma.TransactionClient, salesRegion: SalesRegion | null, exceptStaffId: bigint | null) {
+  if (!salesRegion) throw invalid("RSM region is required", "RSM_REGION_REQUIRED");
+  const taken = await tx.staffProfile.findFirst({
+    where: {
+      salesRegion,
+      ...(exceptStaffId ? { id: { not: exceptStaffId } } : {}),
+      user: { role: "RSM", deletedAt: null },
+    },
+    select: { displayName: true },
+  });
+  if (!taken) return;
+  throw conflict(`${formatSalesRegionLabel(salesRegion)} already has an RSM (${taken.displayName})`, "RSM_REGION_TAKEN");
+}
+
 export class PostgresAdminStaffRepository {
+  // The NSM lives in admin_profiles, so it is fetched whole (create() caps it at
+  // one) rather than paged.
+  private async findNsmRecords(input: AdminStaffListInput): Promise<AdminStaffRecord[]> {
+    const profiles = await prisma.adminProfile.findMany({
+      where: buildNsmWhere(input),
+      include: { user: { select: { id: true, email: true, username: true, status: true, role: true } } },
+      orderBy: { id: "desc" },
+      take: 50,
+    });
+    return profiles.map((profile) => buildSyntheticRecord({
+      id: profile.id,
+      displayName: profile.displayName,
+      designation: "NSM",
+      location: null,
+      staffRoleType: "NSM",
+      salesRegion: null,
+      user: profile.user,
+    }));
+  }
+
   async list(input: AdminStaffListInput): Promise<{ items: AdminStaffRecord[]; total: number }> {
     const { skip, take } = paginationToPrisma(input);
 
     if (input.role === "NSM") {
-      const where = buildNsmWhere(input);
-      const [profiles, total] = await prisma.$transaction([
-        prisma.adminProfile.findMany({
-          where,
-          include: { user: { select: { id: true, email: true, username: true, status: true, role: true } } },
-          orderBy: { id: "desc" },
-          skip,
-          take,
-        }),
-        prisma.adminProfile.count({ where }),
-      ]);
-      const items = profiles.map((profile) => buildSyntheticRecord({
-        id: profile.id,
-        displayName: profile.displayName,
-        designation: "NSM",
-        location: null,
-        staffRoleType: "NSM",
-        salesRegion: null,
-        user: profile.user,
-      }));
-      return { items, total };
+      const nsmItems = await this.findNsmRecords(input);
+      return { items: nsmItems.slice(skip, skip + take), total: nsmItems.length };
     }
 
+    // includeNsm puts the NSM rows at the head of the combined list, so the
+    // staff query is offset by however many of them this page already used.
+    const nsmItems = input.includeNsm ? await this.findNsmRecords(input) : [];
     const where = buildWhere(input);
-    const [items, total] = await prisma.$transaction([
-      prisma.staffProfile.findMany({ where, include, orderBy: { id: "desc" }, skip, take }),
+    const staffWindow = staffPageWindow(nsmItems.length, skip, take);
+    const [staff, total] = await prisma.$transaction([
+      prisma.staffProfile.findMany({ where, include, orderBy: { id: "desc" }, skip: staffWindow.skip, take: staffWindow.take }),
       prisma.staffProfile.count({ where }),
     ]);
-    return { items, total };
+    return { items: [...nsmItems.slice(skip, skip + take), ...staff], total: total + nsmItems.length };
   }
 
   async findById(staffId: bigint): Promise<AdminStaffRecord | null> {
     return prisma.staffProfile.findUnique({ where: { id: staffId }, include });
+  }
+
+  async findNsmById(nsmId: bigint): Promise<AdminStaffRecord | null> {
+    const profile = await prisma.adminProfile.findFirst({
+      where: { id: nsmId, user: { role: "NSM", deletedAt: null } },
+      include: { user: { select: { id: true, email: true, username: true, status: true, role: true } } },
+    });
+    if (!profile) return null;
+    return buildSyntheticRecord({
+      id: profile.id,
+      displayName: profile.displayName,
+      designation: "NSM",
+      location: null,
+      staffRoleType: "NSM",
+      salesRegion: null,
+      user: profile.user,
+    });
   }
 
   async create(input: CreateAdminStaffInput, actor: AuthActor): Promise<AdminStaffRecord> {
@@ -223,6 +262,7 @@ export class PostgresAdminStaffRepository {
       if (input.role === "RSM") {
         const existingRsm = await tx.staffProfile.count({ where: { user: { role: "RSM", status: "ACTIVE", deletedAt: null } } });
         if (existingRsm >= SALES_REGION_OPTIONS.length) throw conflict("All regions already have an RSM assigned", "RSM_LIMIT_REACHED");
+        await assertRegionFree(tx, input.salesRegion ?? null, null);
       }
 
       const normalizedEmail = await ensureUniqueEmail(tx, input.email);
@@ -346,7 +386,14 @@ export class PostgresAdminStaffRepository {
         staffData.warehouse = null;
         staffData.parentAsm = { disconnect: true };
         staffData.assignedCities = [];
-        if (input.salesRegion !== undefined) staffData.salesRegion = input.salesRegion;
+        if (input.salesRegion !== undefined) {
+          await assertRegionFree(tx, input.salesRegion, staffId);
+          staffData.salesRegion = input.salesRegion;
+        } else if (current.user.role !== "RSM") {
+          // Promoted into RSM without naming a region: the row would land with
+          // no region at all, so refuse rather than create a regionless RSM.
+          await assertRegionFree(tx, current.salesRegion, staffId);
+        }
         if (input.assignedStates !== undefined) staffData.assignedStates = uniqueStrings(input.assignedStates);
         if (input.reportingManagerId !== undefined) {
           const nsm = await resolveNsm(tx, parseId(input.reportingManagerId, "RSM_NSM_INVALID"));
@@ -403,6 +450,69 @@ export class PostgresAdminStaffRepository {
       if (Object.keys(staffData).length) await tx.staffProfile.update({ where: { id: staffId }, data: staffData });
       await audit(tx, actor, "ADMIN_STAFF_UPDATED", { staffId: staffId.toString(), role: nextRole });
       return tx.staffProfile.findUniqueOrThrow({ where: { id: staffId }, include });
+    });
+  }
+
+  // The NSM row lives in admin_profiles and holds no territory, hierarchy or
+  // staff-only fields, so an edit is just its name, login and status.
+  async updateNsm(nsmId: bigint, input: UpdateAdminStaffInput, actor: AuthActor): Promise<AdminStaffRecord> {
+    return prisma.$transaction(async (tx) => {
+      const current = await tx.adminProfile.findFirst({ where: { id: nsmId, user: { role: "NSM", deletedAt: null } }, include: { user: true } });
+      if (!current) throw notFound("Staff member not found", "STAFF_NOT_FOUND");
+      // Moving an NSM into a staff role would have to move the row between
+      // tables; nothing needs that, so refuse rather than half-do it.
+      if (input.role !== undefined && input.role !== "NSM") throw invalid("An NSM cannot be changed into another role", "NSM_ROLE_IMMUTABLE");
+
+      const userData: Prisma.UserUpdateInput = {};
+      if (input.email !== undefined) {
+        const normalizedEmail = await ensureUniqueEmail(tx, input.email, current.userId);
+        userData.email = normalizedEmail;
+        userData.normalizedEmail = normalizedEmail;
+        userData.username = normalizedEmail;
+        userData.normalizedUsername = normalizedEmail;
+      }
+      if (Object.keys(userData).length) await tx.user.update({ where: { id: current.userId }, data: userData });
+      if (input.status !== undefined) await applyUserStatus(tx, current.userId, input.status);
+      if (input.name !== undefined) await tx.adminProfile.update({ where: { id: nsmId }, data: { displayName: input.name } });
+      await audit(tx, actor, "ADMIN_NSM_UPDATED", { nsmId: nsmId.toString() });
+
+      const updated = await tx.adminProfile.findUniqueOrThrow({
+        where: { id: nsmId },
+        include: { user: { select: { id: true, email: true, username: true, status: true, role: true } } },
+      });
+      return buildSyntheticRecord({ id: updated.id, displayName: updated.displayName, designation: "NSM", location: null, staffRoleType: "NSM", salesRegion: null, user: updated.user });
+    });
+  }
+
+  async updateNsmStatus(nsmId: bigint, input: UpdateStaffStatusInput, actor: AuthActor): Promise<AdminStaffRecord> {
+    return prisma.$transaction(async (tx) => {
+      const current = await tx.adminProfile.findFirst({ where: { id: nsmId, user: { role: "NSM", deletedAt: null } }, include: { user: true } });
+      if (!current) throw notFound("Staff member not found", "STAFF_NOT_FOUND");
+      await applyUserStatus(tx, current.userId, input.status);
+      await audit(tx, actor, "ADMIN_NSM_STATUS_CHANGED", { nsmId: nsmId.toString(), oldStatus: current.user.status, newStatus: input.status, reason: input.reason });
+
+      const updated = await tx.adminProfile.findUniqueOrThrow({
+        where: { id: nsmId },
+        include: { user: { select: { id: true, email: true, username: true, status: true, role: true } } },
+      });
+      return buildSyntheticRecord({ id: updated.id, displayName: updated.displayName, designation: "NSM", location: null, staffRoleType: "NSM", salesRegion: null, user: updated.user });
+    });
+  }
+
+  // Same hard delete as staff, but the RSMs reporting to this NSM block it.
+  // reportingManagerId is SetNull, so without this check the delete would
+  // quietly leave every RSM without a reporting manager instead of failing.
+  async hardDeleteNsm(nsmId: bigint, actor: AuthActor): Promise<void> {
+    await prisma.$transaction(async (tx) => {
+      const nsm = await tx.adminProfile.findFirst({ where: { id: nsmId, user: { role: "NSM", deletedAt: null } }, include: { user: { select: { id: true, email: true, role: true } } } });
+      if (!nsm) throw notFound("Staff member not found", "STAFF_NOT_FOUND");
+
+      const reports = await tx.staffProfile.count({ where: { reportingManagerId: nsmId } });
+      if (reports) throw conflict("Reassign the RSMs reporting to this NSM before deleting", "STAFF_HAS_REPORTS");
+
+      await tx.adminProfile.delete({ where: { id: nsmId } });
+      await tx.user.delete({ where: { id: nsm.userId } });
+      await audit(tx, actor, "ADMIN_NSM_DELETED", { nsmId: nsmId.toString(), email: nsm.user.email, role: nsm.user.role });
     });
   }
 

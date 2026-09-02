@@ -7,6 +7,7 @@ import DealerFormCard from "@/components/dealers/DealerFormCard";
 import { getSelectedDealerContact, type DealerFormSnapshot } from "@/lib/dealerForm";
 import { buildDealerRequestHeaders, type PublicDealerRequest } from "@/lib/dealerRequests";
 import { readDashboardActor, type DashboardActor } from "@/lib/dealerRequestClient";
+import { showToast } from "@/components/ui/toast";
 
 type RequestMode = "admin-create" | "staff-submit" | "admin-review" | "staff-resubmit";
 
@@ -72,7 +73,6 @@ function AddDealerPageContent() {
   const [requestData, setRequestData] = useState<PublicDealerRequest | null>(null);
   const [loading, setLoading] = useState(() => !!requestId);
   const [activeAction, setActiveAction] = useState<"submit" | "reject" | null>(null);
-  const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [formKey, setFormKey] = useState(0);
   const hasAccess = actor?.role === "admin" || actor?.role === "staff";
 
@@ -89,7 +89,6 @@ function AddDealerPageContent() {
     queueMicrotask(() => {
       if (!active) return;
       setLoading(true);
-      setMessage(null);
 
       fetch(`/api/dealer-requests/${encodeURIComponent(requestId)}`, {
         headers: buildDealerRequestHeaders(actor),
@@ -108,7 +107,7 @@ function AddDealerPageContent() {
         })
         .catch((error) => {
           if (!active) return;
-          setMessage({ text: error instanceof Error ? error.message : "Failed to load dealer request", type: "error" });
+          showToast("error", error instanceof Error ? error.message : "Failed to load dealer request");
           setRequestData(null);
         })
         .finally(() => {
@@ -132,7 +131,6 @@ function AddDealerPageContent() {
     if (!actor || !mode) return;
 
     setActiveAction("submit");
-    setMessage(null);
 
     try {
       if (mode === "admin-create") {
@@ -146,7 +144,7 @@ function AddDealerPageContent() {
         if (!response.ok || !payload.success) {
           throw new Error(payload.message ?? "Failed to create dealer");
         }
-        setMessage({ text: "Dealer created successfully.", type: "success" });
+        showToast("success", "Dealer created successfully.");
         router.push(DEALER_LIST_ROUTE);
         return;
       }
@@ -164,7 +162,7 @@ function AddDealerPageContent() {
         if (!response.ok || !payload.success) {
           throw new Error(payload.message ?? "Failed to submit dealer request");
         }
-        setMessage({ text: "Dealer request sent for approval.", type: "success" });
+        showToast("success", "Dealer request sent for approval.");
         router.push(STAFF_REQUESTS_ROUTE);
         return;
       }
@@ -187,16 +185,13 @@ function AddDealerPageContent() {
         throw new Error(payload.message ?? "Failed to update dealer request");
       }
 
-      setMessage({
-        text: mode === "admin-review"
+      showToast("success", mode === "admin-review"
           ? "Dealer request accepted and dealer created."
-          : "Dealer request resubmitted for approval.",
-        type: "success",
-      });
+          : "Dealer request resubmitted for approval.");
 
       router.push(mode === "admin-review" ? ADMIN_REQUESTS_ROUTE : STAFF_REQUESTS_ROUTE);
     } catch (error) {
-      setMessage({ text: error instanceof Error ? error.message : "Something went wrong. Please try again.", type: "error" });
+      showToast("error", error instanceof Error ? error.message : "Something went wrong. Please try again.");
     } finally {
       setActiveAction(null);
     }
@@ -207,12 +202,11 @@ function AddDealerPageContent() {
 
     const rejectionReason = window.prompt("Enter a rejection reason");
     if (!rejectionReason || !rejectionReason.trim()) {
-      setMessage({ text: "Rejection reason is required.", type: "error" });
+      showToast("error", "Rejection reason is required.");
       return;
     }
 
     setActiveAction("reject");
-    setMessage(null);
 
     try {
       const response = await fetch(`/api/dealer-requests/${encodeURIComponent(requestData.id)}`, {
@@ -232,10 +226,10 @@ function AddDealerPageContent() {
         throw new Error(payload.message ?? "Failed to reject dealer request");
       }
 
-      setMessage({ text: "Dealer request rejected.", type: "success" });
+      showToast("success", "Dealer request rejected.");
       router.push(ADMIN_REQUESTS_ROUTE);
     } catch (error) {
-      setMessage({ text: error instanceof Error ? error.message : "Failed to reject dealer request", type: "error" });
+      showToast("error", error instanceof Error ? error.message : "Failed to reject dealer request");
     } finally {
       setActiveAction(null);
     }
@@ -245,7 +239,7 @@ function AddDealerPageContent() {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gray-50">
         <div className="flex flex-col items-center gap-3">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-700 border-t-transparent" />
           <p className="text-sm text-gray-500">Loading dealer form...</p>
         </div>
       </div>
@@ -258,12 +252,12 @@ function AddDealerPageContent() {
         <div className="w-full max-w-lg rounded-xl border border-red-200 bg-white p-6 text-center shadow-sm">
           <h1 className="text-lg font-semibold text-gray-900">Dealer form is unavailable</h1>
           <p className="mt-2 text-sm text-gray-500">
-            {message?.text || (actor ? "Only admin and staff can access dealer creation." : "This dealer request can no longer be edited in the current context.")}
+            {actor ? "Only admin and staff can access dealer creation." : "This dealer request can no longer be edited in the current context."}
           </p>
           <button
             type="button"
             onClick={() => router.push(cancelRoute)}
-            className="mt-4 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700"
+            className="mt-4 rounded-lg bg-blue-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800"
           >
             Go Back
           </button>
@@ -274,18 +268,6 @@ function AddDealerPageContent() {
 
   return (
     <>
-      {message ? (
-        <div
-          className={`fixed right-6 top-6 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${
-            message.type === "success"
-              ? "border border-green-200 bg-green-50 text-green-800"
-              : "border border-red-200 bg-red-50 text-red-800"
-          }`}
-        >
-          {message.text}
-        </div>
-      ) : null}
-
       <DealerFormCard
         key={`${mode}-${formKey}-${requestData?.id ?? "create"}`}
         mode={mode}
@@ -316,7 +298,7 @@ export default function AddDealerPage() {
       fallback={(
         <div className="flex min-h-screen items-center justify-center bg-gray-50">
           <div className="flex flex-col items-center gap-3">
-            <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-600 border-t-transparent" />
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-blue-700 border-t-transparent" />
             <p className="text-sm text-gray-500">Loading dealer form...</p>
           </div>
         </div>

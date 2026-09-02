@@ -360,7 +360,7 @@ export default function DealerFormCard({
     <div className="min-h-screen bg-[#f4f6fa] px-4 py-7 text-[#344155]">
       <div className="mx-auto w-full max-w-[1840px] min-w-0">
         <form onSubmit={handleSubmit} className="border border-[#dfe3ec] bg-white shadow-sm">
-          <div className="flex items-end border-b-2 border-[#5d7df0] px-5 pt-4">
+          <div className="flex items-end border-b-2 border-[#1d4ed8] px-5 pt-4">
             {/* <button
               type="button"
               onClick={resetForm}
@@ -437,7 +437,7 @@ export default function DealerFormCard({
                     <input name="secondaryContactEmail" type="email" value={formData.secondaryContactEmail} onChange={handleInputChange} placeholder="Second email" />
                   </Field>
                   <Field label="Priority Person" required hint="Contact used for calls">
-                    <select name="priorityPerson" value={formData.priorityPerson} onChange={handleInputChange} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff]">
+                    <select name="priorityPerson" value={formData.priorityPerson} onChange={handleInputChange} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]">
                       <option value="primary">Contact 1</option>
                       <option value="secondary">Contact 2</option>
                     </select>
@@ -474,7 +474,7 @@ export default function DealerFormCard({
                 <button
                   type="button"
                   onClick={handleAddContact}
-                  className="mt-5 rounded border border-[#5d7df0] px-4 py-2 text-[12px] font-semibold text-[#5d7df0] transition hover:bg-[#eef2ff]"
+                  className="mt-5 rounded border border-[#1d4ed8] px-4 py-2 text-[12px] font-semibold text-[#1d4ed8] transition hover:bg-[#eef2ff]"
                 >
                   + Add Contact
                 </button>
@@ -528,7 +528,7 @@ export default function DealerFormCard({
                         <input name="city" type="text" value={formData.city} onChange={handleInputChange} placeholder="City" required />
                       </Field>
                       <Field label="State" required>
-                        <select name="state" value={formData.state} onChange={handleInputChange} required className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff]">
+                        <select name="state" value={formData.state} onChange={handleInputChange} required className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]">
                           <option value="">Select state</option>
                           {STATE_OPTIONS.map((state) => (
                             <option key={state} value={state}>{state}</option>
@@ -576,7 +576,7 @@ export default function DealerFormCard({
                       <input name="discount" type="number" value={formData.discount} onChange={handleInputChange} min={0} max={100} required />
                     </Field>
                     <Field label="Credit Days" required={!isAdvanceDealer} hint={isAdvanceDealer ? "Not applicable for advance dealers." : undefined}>
-                      <select name="creditDays" value={formData.creditDays} onChange={handlePaymentTermsChange} disabled={isAdvanceDealer} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff] disabled:cursor-not-allowed disabled:bg-[#f1f3f7] disabled:text-[#9aa5b5]">
+                      <select name="creditDays" value={formData.creditDays} onChange={handlePaymentTermsChange} disabled={isAdvanceDealer} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff] disabled:cursor-not-allowed disabled:bg-[#f1f3f7] disabled:text-[#9aa5b5]">
                         <option value="">{isAdvanceDealer ? "Not applicable" : "Select credit days"}</option>
                         <option value="30">Net 30</option>
                         <option value="45">Net 45</option>
@@ -590,7 +590,7 @@ export default function DealerFormCard({
                       <input name="currentLimit" type="number" value={formData.currentLimit} onChange={handleInputChange} placeholder="Credit limit in Rs" required />
                     </Field>
                     <Field label="Payment Type" required hint={formData.paymentType === "advance" ? "Dealer wallet will be activated on creation." : "Dealer wallet stays inactive until activated later."}>
-                      <select name="paymentType" value={formData.paymentType} onChange={handlePaymentTypeChange} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff]">
+                      <select name="paymentType" value={formData.paymentType} onChange={handlePaymentTypeChange} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]">
                         <option value="credit">Credit dealer (wallet inactive)</option>
                         <option value="advance">Advance dealer (activate wallet)</option>
                       </select>
@@ -605,7 +605,7 @@ export default function DealerFormCard({
                       value={formData.notes}
                       onChange={handleInputChange}
                       rows={6}
-                      className="w-full resize-none rounded border border-[#d6dbe4] bg-white px-3 py-2 text-sm text-[#344155] outline-none placeholder:text-[#9aa5b5] focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff]"
+                      className="w-full resize-none rounded border border-[#d6dbe4] bg-white px-3 py-2 text-sm text-[#344155] outline-none placeholder:text-[#9aa5b5] focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]"
                       placeholder="Add dealer notes or payment remarks"
                     />
                   </Field>
@@ -648,7 +648,7 @@ function PriorityBadge() {
   return (
     <span
       title="Priority person — used for calls"
-      className="mt-1 block w-fit rounded-full bg-[#5d7df0] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+      className="mt-1 block w-fit rounded-full bg-[#1d4ed8] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
     >
       Priority
     </span>
@@ -686,9 +686,12 @@ function RoleAssignmentPanel({
     return { ...field, staffId, staff };
   });
   const selectedSalesManager = findStaffByAnyId(roleAssignments.salesManager, roleOptions.salesManager);
-  const selectedSalesManagerAsmId = String(selectedSalesManager?.parentAsmId ?? selectedSalesManager?.parent_asm_id ?? selectedSalesManager?.asmId ?? "").trim();
-  const staffOptions = selectedSalesManagerAsmId
-    ? roleOptions.executive.filter((staff) => String(staff.parentAsmId ?? staff.parent_asm_id ?? staff.asmId ?? "").trim() === selectedSalesManagerAsmId)
+  // Staff (staffRoleType "2") hang off an RSM and have no ASM of their own, so
+  // the shared parent with a Sales Manager is the RSM at the top of its chain.
+  const selectedAsm = findStaffByAnyId(roleAssignments.asm, roleOptions.asm);
+  const selectedSalesManagerRsmId = getStaffRsmId(selectedSalesManager) || getStaffRsmId(selectedAsm);
+  const staffOptions = selectedSalesManagerRsmId
+    ? roleOptions.executive.filter((staff) => getStaffRsmId(staff) === selectedSalesManagerRsmId)
     : roleOptions.executive;
 
   return (
@@ -756,7 +759,7 @@ function AssignmentSelect({
         value={value}
         disabled={loading || disabled}
         onChange={(event) => onChange(roleKey, event.target.value)}
-        className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#344155] outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff] disabled:cursor-not-allowed disabled:bg-[#f1f3f7] disabled:text-[#9aa5b5]"
+        className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#344155] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff] disabled:cursor-not-allowed disabled:bg-[#f1f3f7] disabled:text-[#9aa5b5]"
       >
         <option value="">{loading ? "Loading..." : placeholder}</option>
         {!loading && !options.length ? <option value="" disabled>No active {label} found</option> : null}
@@ -790,8 +793,8 @@ function normalizeStaffRole(staff: StaffMember): AssignmentRoleKey | null {
 
   if (role === "RSM") return "rsm";
   if (role === "ASM") return "asm";
-  if (role === "STAFF" && roleType === "2") return "salesManager";
-  if (role === "STAFF" && (roleType === "1" || roleType === "EXECUTIVE" || roleType === "STAFF")) return "executive";
+  if (role === "STAFF" && (roleType === "1" || roleType === "EXECUTIVE")) return "salesManager";
+  if (role === "STAFF" && (roleType === "2" || roleType === "STAFF")) return "executive";
 
   return null;
 }
@@ -817,6 +820,10 @@ function findStaffByAnyId(id: string, staffList: StaffMember[]) {
   const normalized = String(id).trim();
   if (!normalized) return null;
   return staffList.find((staff) => [staff.staff_id, staff.id, staff.userId].some((value) => String(value ?? "").trim() === normalized)) ?? null;
+}
+
+function getStaffRsmId(staff: StaffMember | null) {
+  return String(staff?.parentRsmId ?? staff?.parent_rsm_id ?? staff?.rsmId ?? "").trim();
 }
 
 function getStaffLocation(staff: StaffMember | null) {
@@ -921,7 +928,7 @@ function Field({
         {label}
         {required ? <span className="ml-0.5 text-[#e25959]">*</span> : null}
       </label>
-      <div className="[&_input]:h-9 [&_input]:w-full [&_input]:rounded [&_input]:border [&_input]:border-[#d6dbe4] [&_input]:bg-white [&_input]:px-3 [&_input]:text-sm [&_input]:text-[#344155] [&_input]:outline-none [&_input]:placeholder:text-[#9aa5b5] [&_input]:focus:border-[#5d7df0] [&_input]:focus:ring-2 [&_input]:focus:ring-[#dfe6ff] [&_input:disabled]:bg-[#f1f3f7]">
+      <div className="[&_input]:h-9 [&_input]:w-full [&_input]:rounded [&_input]:border [&_input]:border-[#d6dbe4] [&_input]:bg-white [&_input]:px-3 [&_input]:text-sm [&_input]:text-[#344155] [&_input]:outline-none [&_input]:placeholder:text-[#9aa5b5] [&_input]:focus:border-[#1d4ed8] [&_input]:focus:ring-2 [&_input]:focus:ring-[#dfe6ff] [&_input:disabled]:bg-[#f1f3f7]">
         {children}
       </div>
       {hint ? <p className="mt-1 text-[11px] text-[#6c7a8d]">{hint}</p> : null}

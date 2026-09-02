@@ -20,6 +20,7 @@ import {
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay'
 import { resolveOrderAmounts } from '@/lib/orderAmounts'
 import { resolveStoredAuth } from '@/lib/roleAccess'
+import { showToast } from "@/components/ui/toast";
 
 type AccountBook = {
   bookedCount?: number
@@ -80,11 +81,6 @@ type Bill = {
   pdfFiles?: BillPdf[]
   paidAmount: number
   lastPaymentDate?: string
-}
-
-type Toast = {
-  type: 'success' | 'error'
-  text: string
 }
 
 type DealerTerms = 'credit' | 'advance'
@@ -264,7 +260,6 @@ export default function DealerLedgerShellPage() {
   const [isSavingBill, setIsSavingBill] = useState(false)
   const [isUploadingPdfs, setIsUploadingPdfs] = useState(false)
   const [isSavingPayment, setIsSavingPayment] = useState(false)
-  const [toast, setToast] = useState<Toast | null>(null)
   const objectUrls = useRef<string[]>([])
 
   useEffect(() => {
@@ -293,12 +288,6 @@ export default function DealerLedgerShellPage() {
 
     return () => clearTimeout(timer)
   }, [searchInput])
-
-  useEffect(() => {
-    if (!toast) return
-    const timer = setTimeout(() => setToast(null), 2800)
-    return () => clearTimeout(timer)
-  }, [toast])
 
   useEffect(() => {
     return () => {
@@ -332,7 +321,6 @@ export default function DealerLedgerShellPage() {
   const startIndex = dealers.length === 0 ? 0 : (page - 1) * ITEMS_PER_PAGE + 1
   const endIndex = Math.min(page * ITEMS_PER_PAGE, dealers.length)
 
-  const showToast = (nextToast: Toast) => setToast(nextToast)
 
   const ensureDealerDetails = useCallback(
     async (dealer: Dealer) => {
@@ -353,7 +341,7 @@ export default function DealerLedgerShellPage() {
         console.error('[ledger dealer detail]', detailError)
         const fallback = { dealer, orders: [], bills: [] }
         setDealerDetails((prev) => ({ ...prev, [dealer.Dealer_Id]: fallback }))
-        showToast({ type: 'error', text: 'Could not load orders for this dealer' })
+        showToast('error', 'Could not load orders for this dealer')
         return fallback
       } finally {
         setLoadingDealerId(null)
@@ -392,7 +380,7 @@ export default function DealerLedgerShellPage() {
 
     const invalidFile = selectedFiles.find((file) => file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf'))
     if (invalidFile) {
-      showToast({ type: 'error', text: 'Please upload a PDF bill' })
+      showToast('error', 'Please upload a PDF bill')
       return
     }
 
@@ -424,7 +412,7 @@ export default function DealerLedgerShellPage() {
     const gst = Number(billForm.gstPercent)
 
     if (billForm.orderNumbers.length === 0 || amount <= 0 || gst < 0 || !billForm.billDate) {
-      showToast({ type: 'error', text: 'Fill all bill fields before saving' })
+      showToast('error', 'Fill all bill fields before saving')
       return
     }
 
@@ -449,7 +437,7 @@ export default function DealerLedgerShellPage() {
           const message = axios.isAxiosError(uploadError)
             ? uploadError.response?.data?.message || 'Could not upload the bill PDFs'
             : 'Could not upload the bill PDFs'
-          showToast({ type: 'error', text: message })
+          showToast('error', message)
           return
         } finally {
           setIsUploadingPdfs(false)
@@ -474,10 +462,10 @@ export default function DealerLedgerShellPage() {
       }))
       setExpandedDealerId(billDealer.Dealer_Id)
       closeBillModal()
-      showToast({ type: 'success', text: 'Bill saved' })
+      showToast('success', 'Bill saved')
     } catch (billError) {
       console.error('[ledger bill]', billError)
-      showToast({ type: 'error', text: 'Could not save bill to backend' })
+      showToast('error', 'Could not save bill to backend')
     } finally {
       setIsSavingBill(false)
     }
@@ -502,7 +490,7 @@ export default function DealerLedgerShellPage() {
 
     const amount = Number(paymentForm.amount)
     if (amount <= 0 || !paymentForm.paymentDate) {
-      showToast({ type: 'error', text: 'Enter a valid payment amount and date' })
+      showToast('error', 'Enter a valid payment amount and date')
       return
     }
 
@@ -537,10 +525,10 @@ export default function DealerLedgerShellPage() {
       }))
 
       closePaymentModal()
-      showToast({ type: 'success', text: 'Payment recorded' })
+      showToast('success', 'Payment recorded')
     } catch (paymentError) {
       console.error('[ledger payment]', paymentError)
-      showToast({ type: 'error', text: 'Could not record payment in backend' })
+      showToast('error', 'Could not record payment in backend')
     } finally {
       setIsSavingPayment(false)
     }
@@ -571,16 +559,6 @@ export default function DealerLedgerShellPage() {
 
   return (
     <div className="min-h-screen bg-gray-100">
-      {toast && (
-        <div
-          className={`fixed right-5 top-5 z-50 rounded-lg px-4 py-3 text-sm font-medium shadow-lg ${
-            toast.type === 'success' ? 'bg-emerald-600 text-white' : 'bg-red-500 text-white'
-          }`}
-        >
-          {toast.text}
-        </div>
-      )}
-
       <div className="admin-page-shell p-6">
         <div className="mb-7 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div>

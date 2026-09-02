@@ -1250,9 +1250,9 @@ export default function AddProductPage() {
               <section className="panel details-panel">
                 <div className="category-picker">
                   <div className="section-title">Product Category</div>
-                  <div className="badge-row" style={{ marginTop: 9 }}>
+                  {/* <div className="badge-row" style={{ marginTop: 9 }}>
                     {visibleCategoryBadges.map((item, index) => <button key={`${item}-${index}`} className={`category-badge ${item === effectiveCategory ? 'primary' : ''}`} type="button" onClick={() => { setCategory(item); setCustomCategory('') }} disabled={loading}>{item}</button>)}
-                  </div>
+                  </div> */}
                   <div className="category-custom">
                     <select className="field-input" value={category} onChange={(event) => { setCategory(event.target.value); setCustomCategory('') }} disabled={loading}>
                       {categoryOptions.map((item) => <option key={item} value={item}>{item}</option>)}

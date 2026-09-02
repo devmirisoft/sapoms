@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminListResponse } from "@/server/admin/admin-response";
 import { adminErrorResponse } from "@/server/admin/admin-errors";
-import { auditAdminAction, requireAdmin, requestIdFrom } from "@/server/admin/admin-route";
+import { auditAdminAction, requireAdminOnly, requestIdFrom } from "@/server/admin/admin-route";
 import { requireAuth, writeAuthAuditLog } from "@/server/auth/session";
 import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
 import { parseAdminStaffListInput, parseCreateAdminStaffInput } from "@/server/modules/admin/staff/staff.schemas";
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 }
 export async function POST(request: NextRequest) {
   try {
-    const actor = await requireAdmin();
+    const actor = await requireAdminOnly();
     const requestId = requestIdFrom(request);
     const input = parseCreateAdminStaffInput(await request.json());
     const item = await createAdminStaff(input, actor);

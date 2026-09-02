@@ -22,7 +22,9 @@ test("new admin API routes use the shared admin guard", () => {
   const routeFiles = walk(apiAdminRoot).filter((file) => file.endsWith("route.ts"));
   for (const file of routeFiles) {
     const source = readFileSync(file, "utf8");
-    assert.match(source, /requireAdmin\(/, file);
+    // requireAdminOnly is requireAdmin plus the ADMIN-only check, so either
+    // one means the route is guarded.
+    assert.match(source, /requireAdmin\(|requireAdminOnly\(/, file);
   }
 });
 

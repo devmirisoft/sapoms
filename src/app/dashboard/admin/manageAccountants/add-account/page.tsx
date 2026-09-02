@@ -5,6 +5,7 @@ import {
   UserPlus, Pencil, Trash2, X, Check, Eye, EyeOff,
   Users, Mail, Phone, ShieldCheck, Loader2, RefreshCw,
 } from "lucide-react";
+import { showToast } from "@/components/ui/toast";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Accountant = {
@@ -44,18 +45,6 @@ const api = {
 };
 
 // ─── Toast ───────────────────────────────────────────────────────────────────
-function Toast({ type, text, onClose }: { type: "success" | "error"; text: string; onClose: () => void }) {
-  useEffect(() => { const t = setTimeout(onClose, 3500); return () => clearTimeout(t); }, [onClose]);
-  return (
-    <div className={`fixed bottom-5 right-5 z-50 flex items-center gap-2.5 px-4 py-3 rounded-2xl text-[12.5px] font-semibold shadow-xl border ${
-      type === "success" ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-red-50 text-red-700 border-red-200"
-    }`}>
-      {type === "success" ? <Check size={13} strokeWidth={2.5}/> : <X size={13} strokeWidth={2}/>}
-      {text}
-      <button onClick={onClose} className="ml-1 opacity-50 hover:opacity-100"><X size={11}/></button>
-    </div>
-  );
-}
 
 // ─── Field ───────────────────────────────────────────────────────────────────
 function Field({
@@ -247,9 +236,7 @@ export default function ManageAccountantsPage() {
   const [editing,     setEditing]     = useState<Accountant | null>(null);
   const [deleting,    setDeleting]    = useState<Accountant | null>(null);
   const [busy,        setBusy]        = useState(false);
-  const [toast,       setToast]       = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const showToast = (type: "success" | "error", text: string) => setToast({ type, text });
 
   const load = useCallback(async (silent = false) => {
     if (!silent) setLoading(true); else setRefreshing(true);
@@ -482,7 +469,6 @@ export default function ManageAccountantsPage() {
         />
       )}
 
-      {toast && <Toast type={toast.type} text={toast.text} onClose={() => setToast(null)}/>}
     </div>
   );
 }

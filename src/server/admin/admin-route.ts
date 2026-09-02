@@ -12,6 +12,15 @@ export async function requireAdmin(): Promise<AdminActor> {
   return actor as AdminActor;
 }
 
+// The NSM reads everything an admin reads, but only the ADMIN acts: staff (the
+// NSM included) may be created, edited, deactivated or deleted by the admin
+// alone, so mutating routes gate on this instead of requireAdmin.
+export async function requireAdminOnly(): Promise<AdminActor> {
+  const actor = await requireAdmin();
+  if (actor.role !== "ADMIN") throw new Error("Forbidden");
+  return actor;
+}
+
 export function requireRole(actor: AuthActor, roles: AuthRole[]) {
   if (!roles.includes(actor.role)) {
     throw new Error("Forbidden");
@@ -49,5 +58,15 @@ export function parseBigIntRouteParam(value: string, label: string) {
     throw new AdminRouteError("INVALID_REQUEST", `Invalid ${label}`);
   }
   return BigInt(value);
+}
+
+/**
+ * staff_profiles and admin_profiles (where the NSM lives) are separate id
+ * sequences, so a bare id is ambiguous across the two. The NSM is addressed as
+ * "nsm:<id>"; a bare id always means a staff profile.
+ */
+export function parseStaffTarget(value: string): { kind: "staff" | "nsm"; id: bigint } {
+  const nsm = value.startsWith("nsm:");
+  return { kind: nsm ? "nsm" : "staff", id: parseBigIntRouteParam(nsm ? value.slice(4) : value, "staff id") };
 }
 
