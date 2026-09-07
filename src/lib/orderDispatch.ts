@@ -83,11 +83,12 @@ export const DISPATCH_STATUS_LABELS: Record<DispatchStatus, string> = {
 export const BULK_DISPATCH_STATUS: DispatchStatus = "dispatched";
 
 // ── Dispatch tracking information (order level) ──────────────────────────────
-// Controlled courier list. No courier enum existed before this, so the list
-// lives here next to the rest of the shared dispatch vocabulary.
+// Couriers are admin-managed rows (see the Courier model) fetched from
+// /api/couriers, so the dropdown is data-driven. These stay only as the seed
+// for that table and as the fallback the picker shows if the fetch fails.
 export const DISPATCH_PARTNERS = ["BlueDart", "DTDC", "Delhivery"] as const;
 
-export type DispatchPartner = (typeof DISPATCH_PARTNERS)[number];
+export const DISPATCH_PARTNER_LIMIT = 60;
 
 export const TRACKING_NUMBER_LIMIT = 120;
 export const TRACKING_LINK_LIMIT = 2048;
@@ -119,17 +120,13 @@ export function normalizeDock(value: unknown): string | null {
   return trackingText(value, DOCK_LIMIT);
 }
 
-// Matches a known partner case-insensitively and returns the canonical label.
+// Couriers are admin-managed rows, so this only trims and length-caps. It must
+// not check membership of a fixed list: an order saved with a courier that is
+// later renamed or deactivated still has to read its name back.
 export function normalizeDispatchPartner(value: unknown): string | null {
-  const text = trackingText(value, 60);
-  if (!text) return null;
-  return DISPATCH_PARTNERS.find((partner) => partner.toLowerCase() === text.toLowerCase()) ?? null;
+  return trackingText(value, DISPATCH_PARTNER_LIMIT);
 }
 
-export function isValidDispatchPartner(value: unknown): boolean {
-  const text = trackingText(value, 60);
-  return !text || normalizeDispatchPartner(text) !== null;
-}
 
 export function normalizeTrackingLink(value: unknown): string | null {
   const text = trackingText(value, TRACKING_LINK_LIMIT);
@@ -155,9 +152,6 @@ export function normalizeDispatchTrackingInput(input: {
   trackingLink?: unknown;
   dock?: unknown;
 }): DispatchTrackingValidation {
-  if (!isValidDispatchPartner(input.dispatchPartner)) {
-    return { ok: false, message: `Dispatched By must be one of: ${DISPATCH_PARTNERS.join(", ")}.` };
-  }
   if (!isValidTrackingLink(input.trackingLink)) {
     return { ok: false, message: "Tracking Link must be a valid http(s) URL." };
   }

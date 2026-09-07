@@ -19,6 +19,9 @@ const orderInclude = {
       gstin: true,
       discountPercent: true,
       creditDays: true,
+      // The admin warehouse tab matches any staff linked to the order, not just
+      // the one stamped on it at creation time.
+      staffAssignments: { where: { active: true }, select: { staff: { select: { warehouse: true } } } },
     },
   },
   assignedStaff: { select: { id: true, displayName: true, warehouse: true } },
@@ -196,6 +199,10 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     staffid: order.assignedStaffId?.toString() || "",
     staffname: order.assignedStaff?.displayName || "",
     staffwarehouse: order.assignedStaff?.warehouse || "",
+    staffwarehouses: Array.from(new Set([
+      order.assignedStaff?.warehouse,
+      ...order.dealer.staffAssignments.map((assignment) => assignment.staff.warehouse),
+    ].filter(Boolean))),
     order_date: order.orderDate.toISOString(),
     orderdata_datetime: order.orderDate.toISOString(),
     order_amount: rupees(order.grossAmountPaise),

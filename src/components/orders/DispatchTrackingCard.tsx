@@ -29,6 +29,32 @@ type FormState = {
 
 const EMPTY = "—";
 
+// Couriers are admin-managed (/dashboard/admin/couriers). The hardcoded list
+// stays only as the fallback when that fetch fails, so dispatch is never
+// blocked by an unreachable courier list.
+function useCourierOptions(enabled: boolean) {
+  const [couriers, setCouriers] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+
+    fetch("/api/couriers", { credentials: "include", cache: "no-store" })
+      .then((response) => response.json())
+      .then((json) => {
+        if (!active || !json?.success || !Array.isArray(json.data)) return;
+        setCouriers(json.data.map((row: { name: string }) => row.name));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [enabled]);
+
+  return couriers.length ? couriers : [...DISPATCH_PARTNERS];
+}
+
 function toFormState(value: DispatchTrackingInfo): FormState {
   return {
     dispatchPartner: value.dispatchPartner ?? "",
@@ -88,6 +114,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
   }, [savedText]);
 
   const editable = canEdit && editingSupported;
+  const courierOptions = useCourierOptions(editable);
 
   const handleChange = (field: keyof FormState, next: string) => {
     setForm((previous) => ({ ...previous, [field]: next }));
@@ -180,7 +207,12 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
               >
                 <option value="">Select dispatch partner</option>
-                {DISPATCH_PARTNERS.map((partner) => (
+                {/* A courier saved earlier but since removed still shows, so
+                    editing another field cannot silently blank it. */}
+                {(form.dispatchPartner && !courierOptions.includes(form.dispatchPartner)
+                  ? [form.dispatchPartner, ...courierOptions]
+                  : courierOptions
+                ).map((partner) => (
                   <option key={partner} value={partner}>{partner}</option>
                 ))}
               </select>

@@ -6,7 +6,7 @@ import {
   LayoutDashboard, UserRoundPlus, Users, SquareUser,
   Plus, ClipboardList, Home, LogOut, Package, Images,
   ShieldCheck, Gift, Receipt, TrendingUp, BookOpen, FileText,
-  Wallet, MapPinned, ChevronRight,
+  Wallet, MapPinned, ChevronRight, Truck,
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { clearAuthStorage, type AppRole, type StoredUser } from "@/lib/roleAccess";
@@ -46,6 +46,7 @@ const NAV: Record<AppRole, NavItem[]> = {
     {                         label: "Pending Orders",      href: "/Pages/Ordermanagement/outstandingorders",         icon: <ClipboardList size={15} />, badgeKey: "pendingOrders" },
     {                         label: "Pending Products",    href: "/dashboard/admin/pending-products",                icon: <Package size={15} />         },
     {                         label: "Discount Approvals",  href: "/dashboard/admin/custom-discount-approvals",       icon: <Receipt size={15} />, badgeKey: "discountRequests" },
+    {                         label: "Courier Services",    href: "/dashboard/admin/couriers",                        icon: <Truck size={15} />           },
     { section: "Content",     label: "Slider Images",      href: "/dashboard/admin/slider",                          icon: <Images size={15} />          },
     {                         label: "Hot Items",           href: "/dashboard/admin/hot-items",                       icon: <Images size={15} />          },
     { section: "Forms",       label: "Filter Requirement Forms", href: "/dashboard/admin/forms",                    icon: <FileText size={15} />        },

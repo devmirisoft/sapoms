@@ -16,7 +16,7 @@ import {
   getCustomDiscountProgressKeyForOrder,
   type CustomDiscountProgress,
 } from "@/lib/customDiscountProgress";
-import { SegmentedTabs, type SegItem } from "@/components/SegmentedTabs";
+import { SegmentedTabs, SegmentedDropdown, type SegItem } from "@/components/SegmentedTabs";
 import { WAREHOUSE_OPTIONS } from "@/lib/warehouses";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import type { AppRole } from "@/lib/roleAccess";
@@ -598,7 +598,7 @@ function RowActionsMenu({
               </button>
             )}
 
-            {showAccept && rsmMode && (
+            {/* {showAccept && rsmMode && (
               <>
                 <button role="menuitem" onClick={() => { setMenuPos(null); onAccept(); }} className={itemCls("hover:bg-emerald-50", "text-emerald-700")}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5" /></svg>
@@ -615,7 +615,7 @@ function RowActionsMenu({
                   </div>
                 </button>
               </>
-            )}
+            )} */}
 
             {showAccept && !rsmMode && order.accept_order === "1" && (
               <button role="menuitem" onClick={() => { setMenuPos(null); onDecline(); }} className={itemCls("hover:bg-rose-50", "text-rose-700")}>
@@ -1766,7 +1766,7 @@ export default function OrderHistoryPage() {
             />
 
             {actorRole === "admin" && section === "active" && (
-              <SegmentedTabs
+              <SegmentedDropdown
                 label="Warehouse"
                 value={warehouse}
                 onChange={next => { setWarehouse(next); setPage(1); }}

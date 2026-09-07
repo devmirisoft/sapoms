@@ -33,6 +33,7 @@ const orderInclude = {
       gstin: true,
       discountPercent: true,
       creditDays: true,
+      staffAssignments: { where: { active: true }, select: { staff: { select: { warehouse: true } } } },
       user: { select: { email: true, status: true } },
     },
   },
