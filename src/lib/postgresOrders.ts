@@ -6,7 +6,7 @@ import { buildOrderRegionWhere } from "@/server/auth/sales-scope";
 import type { OrdersActor } from "@/lib/orderPagination";
 import { summarizeOrderSettlement } from "@/lib/orderSettlement";
 
-const orderInclude = {
+export const orderInclude = {
   dealer: {
     select: {
       id: true,

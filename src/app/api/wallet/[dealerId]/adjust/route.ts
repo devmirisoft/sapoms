@@ -31,7 +31,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ dea
     const reference = text(body.reference, 200);
     const idempotencyKey = text(req.headers.get("idempotency-key") || body.idempotencyKey, 240);
     if (!idempotencyKey) return NextResponse.json({ success: false, message: "Idempotency key is required." }, { status: 400 });
-    if (!note) return NextResponse.json({ success: false, message: "A note is required." }, { status: 400 });
     if (!reference && action !== "disable" && action !== "deactivate") return NextResponse.json({ success: false, message: "A reference is required." }, { status: 400 });
 
     const result = await prisma.$transaction(async (tx) => {

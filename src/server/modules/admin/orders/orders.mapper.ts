@@ -6,7 +6,7 @@ function money(value: bigint) {
 }
 
 function mapOrderItem(item: AdminOrderItemRecord, record?: AdminOrderRecord) {
-  const legacy = record ? mapPostgresOrderItemToLegacy(item as any, record as any) : {};
+  const legacy = record ? mapPostgresOrderItemToLegacy(item, record) : {};
   return {
     ...legacy,
     id: item.id.toString(),
@@ -30,7 +30,7 @@ function mapOrderItem(item: AdminOrderItemRecord, record?: AdminOrderRecord) {
 }
 
 export function mapAdminOrderListItem(record: AdminOrderRecord) {
-  const legacy = mapPostgresOrderToLegacy(record as any);
+  const legacy = mapPostgresOrderToLegacy(record);
   return {
     ...legacy,
     id: record.id.toString(),

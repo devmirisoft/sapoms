@@ -327,7 +327,11 @@ async function fetchAllDistributors(): Promise<DealerPaginationResponse> {
 
 async function parseJsonResponse<T>(res: Response): Promise<T> {
   const text = await res.text();
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  if (!res.ok) {
+    // The admin error mapper puts the real cause in error.detail outside prod.
+    const detail = (() => { try { return JSON.parse(text)?.error?.detail || JSON.parse(text)?.message; } catch { return null; } })();
+    throw new Error(detail ? `HTTP ${res.status}: ${detail}` : `HTTP ${res.status}`);
+  }
   if (/^\s*</.test(text)) throw new Error("Expected JSON but received HTML");
   try {
     return JSON.parse(text) as T;
