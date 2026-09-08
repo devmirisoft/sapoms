@@ -211,7 +211,8 @@ function SelectField({
 export default function EditStaffPage() {
   const router = useRouter()
   const params = useParams()
-  const id = String(params.id || '')
+  // useParams hands back the raw segment, so "nsm%3A<id>" arrives encoded.
+  const id = decodeURIComponent(String(params.id || ''))
   // "nsm:<id>" addresses the NSM row in admin_profiles; a bare id is staff.
   const isNsm = id.startsWith('nsm:')
 
@@ -290,14 +291,15 @@ export default function EditStaffPage() {
 
 
   useEffect(() => {
-    if (!id) return
+    // Diagnostic passwords hang off staff_profiles; the NSM has no row there.
+    if (!id || isNsm) return
     let active = true
     fetch(diagnosticPasswordUrl, { credentials: 'include' })
       .then((response) => (response.ok ? response.json() : null))
       .then((json) => { if (active) setActiveDiagnosticPassword(json?.data || null) })
       .catch(() => { if (active) setActiveDiagnosticPassword(null) })
     return () => { active = false }
-  }, [id, diagnosticPasswordUrl])
+  }, [id, isNsm, diagnosticPasswordUrl])
 
   const handleDiagnosticPasswordSave = async () => {
     if (diagnosticPassword.length < 5) {
@@ -702,61 +704,63 @@ export default function EditStaffPage() {
                   disabled
                 />
 
-                <div className="flex flex-col gap-1.5 md:col-span-2 rounded-lg border border-gray-100 bg-gray-50/60 p-4">
-                  <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-                    Diagnostic Password
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
-                    <div className="relative">
-                      <input
-                        type={showDiagnosticPassword ? 'text' : 'password'}
-                        value={diagnosticPassword}
-                        onChange={(event) => setDiagnosticPassword(event.target.value)}
-                        placeholder="Temporary testing password"
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowDiagnosticPassword((value) => !value)}
-                        className="absolute inset-y-0 right-2 flex items-center rounded-md px-2 text-gray-400 transition hover:text-indigo-600"
-                        aria-label={showDiagnosticPassword ? 'Hide diagnostic password' : 'Show diagnostic password'}
-                      >
-                        {showDiagnosticPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                {!isNsm && (
+                  <div className="flex flex-col gap-1.5 md:col-span-2 rounded-lg border border-gray-100 bg-gray-50/60 p-4">
+                    <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                      Diagnostic Password
+                    </label>
+                    <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-3 items-start">
+                      <div className="relative">
+                        <input
+                          type={showDiagnosticPassword ? 'text' : 'password'}
+                          value={diagnosticPassword}
+                          onChange={(event) => setDiagnosticPassword(event.target.value)}
+                          placeholder="Temporary testing password"
+                          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowDiagnosticPassword((value) => !value)}
+                          className="absolute inset-y-0 right-2 flex items-center rounded-md px-2 text-gray-400 transition hover:text-indigo-600"
+                          aria-label={showDiagnosticPassword ? 'Hide diagnostic password' : 'Show diagnostic password'}
+                        >
+                          {showDiagnosticPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="1"
+                          max="2160"
+                          value={diagnosticExpiryHours}
+                          onChange={(event) => setDiagnosticExpiryHours(event.target.value)}
+                          aria-label="Diagnostic password expiry in hours"
+                          className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-2.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <span className="text-[11px] text-gray-400 whitespace-nowrap">hrs</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1">
+                      <button type="button" onClick={copyDiagnosticPassword} disabled={!diagnosticPassword} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
+                        Copy
+                      </button>
+                      <button type="button" onClick={handleDiagnosticPasswordSave} disabled={diagnosticSaving || diagnosticPassword.length < 5} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
+                        {diagnosticSaving ? 'Saving...' : 'Save Password'}
                       </button>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="number"
-                        min="1"
-                        max="2160"
-                        value={diagnosticExpiryHours}
-                        onChange={(event) => setDiagnosticExpiryHours(event.target.value)}
-                        aria-label="Diagnostic password expiry in hours"
-                        className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-2.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                      <span className="text-[11px] text-gray-400 whitespace-nowrap">hrs</span>
-                    </div>
+                    {activeDiagnosticPassword ? (
+                      <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 mt-1">
+                        Active until {new Date(activeDiagnosticPassword.expiresAt).toLocaleString()}.
+                        {activeDiagnosticPassword.lastUsedAt ? ` Last used ${new Date(activeDiagnosticPassword.lastUsedAt).toLocaleString()}.` : ' Not used yet.'}
+                        <button type="button" onClick={handleDiagnosticPasswordRevoke} disabled={diagnosticRevoking} className="ml-2 font-semibold text-emerald-800 underline disabled:opacity-50">
+                          {diagnosticRevoking ? 'Revoking...' : 'Revoke'}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-gray-400 mt-1">Staff member&apos;s original password remains unchanged. Expiry is in hours, from 1 to 2160.</p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2 mt-1">
-                    <button type="button" onClick={copyDiagnosticPassword} disabled={!diagnosticPassword} className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-50">
-                      Copy
-                    </button>
-                    <button type="button" onClick={handleDiagnosticPasswordSave} disabled={diagnosticSaving || diagnosticPassword.length < 5} className="rounded-lg bg-slate-900 px-3 py-2 text-xs font-medium text-white hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50">
-                      {diagnosticSaving ? 'Saving...' : 'Save Password'}
-                    </button>
-                  </div>
-                  {activeDiagnosticPassword ? (
-                    <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-700 mt-1">
-                      Active until {new Date(activeDiagnosticPassword.expiresAt).toLocaleString()}.
-                      {activeDiagnosticPassword.lastUsedAt ? ` Last used ${new Date(activeDiagnosticPassword.lastUsedAt).toLocaleString()}.` : ' Not used yet.'}
-                      <button type="button" onClick={handleDiagnosticPasswordRevoke} disabled={diagnosticRevoking} className="ml-2 font-semibold text-emerald-800 underline disabled:opacity-50">
-                        {diagnosticRevoking ? 'Revoking...' : 'Revoke'}
-                      </button>
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-gray-400 mt-1">Staff member&apos;s original password remains unchanged. Expiry is in hours, from 1 to 2160.</p>
-                  )}
-                </div>
+                )}
 
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
