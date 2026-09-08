@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import {
+  DISPATCH_PARTNER_LIMIT,
   DISPATCH_PARTNERS,
-  DOCK_LIMIT,
   TRACKING_LINK_LIMIT,
   TRACKING_NUMBER_LIMIT,
   normalizeDispatchTrackingInput,
@@ -24,17 +24,45 @@ type FormState = {
   dispatchPartner: string;
   trackingNumber: string;
   trackingLink: string;
-  dock: string;
 };
 
 const EMPTY = "—";
+const ADD_COURIER = "__add_courier__";
+
+// Couriers are admin-managed (/dashboard/admin/couriers). The hardcoded list
+// stays only as the fallback when that fetch fails, so dispatch is never
+// blocked by an unreachable courier list.
+function useCourierOptions(enabled: boolean) {
+  const [couriers, setCouriers] = useState<string[]>(() => [...DISPATCH_PARTNERS]);
+
+  useEffect(() => {
+    if (!enabled) return;
+    let active = true;
+
+    fetch("/api/couriers", { credentials: "include", cache: "no-store" })
+      .then((response) => response.json())
+      .then((json) => {
+        if (!active || !json?.success || !Array.isArray(json.data) || !json.data.length) return;
+        setCouriers(json.data.map((row: { name: string }) => row.name));
+      })
+      .catch(() => undefined);
+
+    return () => {
+      active = false;
+    };
+  }, [enabled]);
+
+  const addCourier = (name: string) =>
+    setCouriers((previous) => (previous.includes(name) ? previous : [...previous, name]));
+
+  return [couriers, addCourier] as const;
+}
 
 function toFormState(value: DispatchTrackingInfo): FormState {
   return {
     dispatchPartner: value.dispatchPartner ?? "",
     trackingNumber: value.trackingNumber ?? "",
     trackingLink: value.trackingLink ?? "",
-    dock: value.dock ?? "",
   };
 }
 
@@ -88,6 +116,41 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
   }, [savedText]);
 
   const editable = canEdit && editingSupported;
+  const [courierOptions, addCourierOption] = useCourierOptions(editable);
+  // null = not adding; a string = the name being typed in the inline field.
+  const [newCourier, setNewCourier] = useState<string | null>(null);
+  const [addingCourier, setAddingCourier] = useState(false);
+
+  const handleAddCourier = async () => {
+    const name = (newCourier ?? "").trim();
+    if (!name) {
+      setError("Courier name is required.");
+      return;
+    }
+
+    setAddingCourier(true);
+    setError("");
+    try {
+      const response = await fetch("/api/couriers", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name }),
+      });
+      const json = await response.json().catch(() => null);
+      if (!response.ok || !json?.success) {
+        setError(json?.message || "Failed to add courier.");
+        return;
+      }
+      const saved = String(json.data?.name || name);
+      addCourierOption(saved);
+      setForm((previous) => ({ ...previous, dispatchPartner: saved }));
+      setNewCourier(null);
+    } catch {
+      setError("Failed to add courier.");
+    } finally {
+      setAddingCourier(false);
+    }
+  };
 
   const handleChange = (field: keyof FormState, next: string) => {
     setForm((previous) => ({ ...previous, [field]: next }));
@@ -169,21 +232,70 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
 
       {editing ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             <div>
               <label htmlFor="dispatch-partner" className="mb-1.5 block text-[12px] font-semibold text-gray-700">Dispatched By</label>
               <select
                 id="dispatch-partner"
                 value={form.dispatchPartner}
-                onChange={(event) => handleChange("dispatchPartner", event.target.value)}
+                onChange={(event) => {
+                  if (event.target.value === ADD_COURIER) {
+                    setNewCourier("");
+                    return;
+                  }
+                  handleChange("dispatchPartner", event.target.value);
+                }}
                 disabled={saving}
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
               >
                 <option value="">Select dispatch partner</option>
-                {DISPATCH_PARTNERS.map((partner) => (
+                {/* A courier saved earlier but since removed still shows, so
+                    editing another field cannot silently blank it. */}
+                {(form.dispatchPartner && !courierOptions.includes(form.dispatchPartner)
+                  ? [form.dispatchPartner, ...courierOptions]
+                  : courierOptions
+                ).map((partner) => (
                   <option key={partner} value={partner}>{partner}</option>
                 ))}
+                <option value={ADD_COURIER}>+ Add dispatch partner...</option>
               </select>
+              {newCourier !== null && (
+                <div className="mt-2 flex items-center gap-2">
+                  <input
+                    type="text"
+                    autoFocus
+                    maxLength={DISPATCH_PARTNER_LIMIT}
+                    value={newCourier}
+                    onChange={(event) => setNewCourier(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void handleAddCourier();
+                      }
+                      if (event.key === "Escape") setNewCourier(null);
+                    }}
+                    disabled={addingCourier || saving}
+                    placeholder="New partner name"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddCourier}
+                    disabled={addingCourier || saving}
+                    className="rounded-xl bg-indigo-600 px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {addingCourier ? "Adding..." : "Add"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setNewCourier(null)}
+                    disabled={addingCourier}
+                    className="rounded-xl border border-gray-200 px-3 py-2 text-[12px] font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              )}
             </div>
             <div>
               <label htmlFor="tracking-number" className="mb-1.5 block text-[12px] font-semibold text-gray-700">Tracking Number</label>
@@ -208,19 +320,6 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                 onChange={(event) => handleChange("trackingLink", event.target.value)}
                 disabled={saving}
                 placeholder="https://..."
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
-              />
-            </div>
-            <div>
-              <label htmlFor="dispatch-dock" className="mb-1.5 block text-[12px] font-semibold text-gray-700">Dock</label>
-              <input
-                id="dispatch-dock"
-                type="text"
-                maxLength={DOCK_LIMIT}
-                value={form.dock}
-                onChange={(event) => handleChange("dock", event.target.value)}
-                disabled={saving}
-                placeholder="Dock 04"
                 className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
               />
             </div>
@@ -254,7 +353,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-x-8 gap-y-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-8 gap-y-4">
           <ReadOnlyField label="Dispatched By">{value.dispatchPartner || EMPTY}</ReadOnlyField>
           <ReadOnlyField label="Tracking Number">
             <TrackingNumberValue trackingNumber={value.trackingNumber} />
@@ -273,7 +372,6 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
               EMPTY
             )}
           </ReadOnlyField>
-          <ReadOnlyField label="Dock">{value.dock || EMPTY}</ReadOnlyField>
         </div>
       )}
     </div>

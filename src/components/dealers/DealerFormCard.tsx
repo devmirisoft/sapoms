@@ -14,7 +14,7 @@ import {
   type DealerFormValues,
   type StaffMember,
 } from "@/lib/dealerForm";
-import { STATE_OPTIONS } from "@/lib/places";
+import { CITIES_BY_STATE, STATE_OPTIONS } from "@/lib/places";
 
 const ADMIN_STAFF_URL = "/api/admin/staff";
 const DEALER_CODE_PREFIX = "OM-";
@@ -275,6 +275,19 @@ export default function DealerFormCard({
     setFormData((prev) => ({ ...prev, dealerCode: typed }));
   };
 
+  // City list depends on the state, so a state change drops a now-invalid city.
+  const handleStateChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
+    const state = event.target.value;
+    setInlineError("");
+    setFormData((prev) => ({
+      ...prev,
+      state,
+      city: (CITIES_BY_STATE[state] ?? []).includes(prev.city) ? prev.city : "",
+    }));
+  };
+
+  const cityOptions = CITIES_BY_STATE[formData.state] ?? [];
+
   const handleAdditionalContactChange = (index: number, field: keyof DealerContact, value: string) => {
     setInlineError("");
     setFormData((prev) => ({
@@ -330,7 +343,9 @@ export default function DealerFormCard({
     event.preventDefault();
     const staffNames = getAssignedStaffNames(assignedStaffIds, staffList) || initialSnapshot?.staffNames || "";
     const snapshot = toDealerFormSnapshot(formData, assignedStaffIds, staffNames, selectedRsmUserId);
-    const validationError = validateDealerFormSnapshot(snapshot);
+    const validationError = !roleAssignments.executive
+      ? "Select a Staff / Executive for this dealer."
+      : validateDealerFormSnapshot(snapshot);
 
     if (validationError) {
       setInlineError(validationError);
@@ -345,7 +360,9 @@ export default function DealerFormCard({
     if (!secondaryAction) return;
     const staffNames = getAssignedStaffNames(assignedStaffIds, staffList) || initialSnapshot?.staffNames || "";
     const snapshot = toDealerFormSnapshot(formData, assignedStaffIds, staffNames, selectedRsmUserId);
-    const validationError = validateDealerFormSnapshot(snapshot);
+    const validationError = !roleAssignments.executive
+      ? "Select a Staff / Executive for this dealer."
+      : validateDealerFormSnapshot(snapshot);
 
     if (validationError) {
       setInlineError(validationError);
@@ -524,14 +541,19 @@ export default function DealerFormCard({
                       <Field label="Pin Code" required>
                         <input name="pincode" type="number" value={formData.pincode} onChange={handleInputChange} required />
                       </Field>
-                      <Field label="City" required>
-                        <input name="city" type="text" value={formData.city} onChange={handleInputChange} placeholder="City" required />
-                      </Field>
                       <Field label="State" required>
-                        <select name="state" value={formData.state} onChange={handleInputChange} required className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]">
+                        <select name="state" value={formData.state} onChange={handleStateChange} required className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]">
                           <option value="">Select state</option>
                           {STATE_OPTIONS.map((state) => (
                             <option key={state} value={state}>{state}</option>
+                          ))}
+                        </select>
+                      </Field>
+                      <Field label="City" required>
+                        <select name="city" value={formData.city} onChange={handleInputChange} required disabled={!formData.state} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff] disabled:cursor-not-allowed disabled:bg-[#f1f3f7] disabled:text-[#9aa5b5]">
+                          <option value="">{formData.state ? "Select city" : "Select state first"}</option>
+                          {cityOptions.map((city) => (
+                            <option key={city} value={city}>{city}</option>
                           ))}
                         </select>
                       </Field>
@@ -711,6 +733,7 @@ function RoleAssignmentPanel({
         />
         <AssignmentSelect
           label="Staff / Executive"
+          required
           roleKey="executive"
           value={roleAssignments.executive}
           options={staffOptions}
@@ -735,6 +758,7 @@ function RoleAssignmentPanel({
 
 function AssignmentSelect({
   label,
+  required = false,
   roleKey,
   value,
   options,
@@ -744,6 +768,7 @@ function AssignmentSelect({
   onChange,
 }: {
   label: string;
+  required?: boolean;
   roleKey: AssignmentRoleKey;
   value: string;
   options: StaffMember[];
@@ -754,7 +779,10 @@ function AssignmentSelect({
 }) {
   return (
     <div className="min-w-0">
-      <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-[#6c7a8d]">{label}</div>
+      <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-[#6c7a8d]">
+        {label}
+        {required ? <span className="ml-0.5 text-[#e25959]">*</span> : null}
+      </div>
       <select
         value={value}
         disabled={loading || disabled}
@@ -890,9 +918,10 @@ function resolveNextRoleAssignments(
     return resolveParentAssignments(next, roleOptions, findStaffByAnyId(staffId, roleOptions.salesManager));
   }
 
+  // Staff hangs off the RSM the Sales Manager already resolved, so picking one
+  // is a leaf choice: it never rewrites asm/rsm.
   if (roleKey === "executive") {
-    const staff = findStaffByAnyId(staffId, roleOptions.executive);
-    return resolveParentAssignments(next, roleOptions, staff ?? findStaffByAnyId(next.salesManager, roleOptions.salesManager));
+    return next;
   }
 
   return resolveParentAssignments(next, roleOptions, findStaffByAnyId(next.salesManager, roleOptions.salesManager));

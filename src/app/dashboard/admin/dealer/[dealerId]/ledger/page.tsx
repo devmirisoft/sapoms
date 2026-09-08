@@ -242,8 +242,8 @@ export default function DealerLedgerPage() {
       showToast('error', 'Enter an opening wallet amount')
       return
     }
-    if (!walletAdjustNote.trim() || !walletTransactionDate) {
-      showToast('error', 'Transaction date and note are required')
+    if (!walletTransactionDate) {
+      showToast('error', 'Transaction date is required')
       return
     }
     if (walletAdjustType !== 'disable' && !walletAdjustReference.trim()) {
@@ -389,7 +389,7 @@ export default function DealerLedgerPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">Note</span>
+                <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">Note (optional)</span>
                 <textarea
                   value={walletAdjustNote}
                   onChange={(e) => setWalletAdjustNote(e.target.value)}

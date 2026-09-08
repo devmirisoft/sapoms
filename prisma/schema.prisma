@@ -1310,3 +1310,18 @@ model DealerFundRequest {
   @@index([staffId, status])
   @@map("dealer_fund_requests")
 }
+
+// Admin-managed courier list behind the order "Dispatched By" dropdown. It
+// replaces the hardcoded DISPATCH_PARTNERS constant, so validation of that
+// field is now "any non-empty name" rather than a fixed allowlist.
+model Courier {
+  id        BigInt   @id @default(autoincrement())
+  name      String   @unique
+  isActive  Boolean  @default(true) @map("is_active")
+  position  Int      @default(0)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@index([isActive, position])
+  @@map("couriers")
+}

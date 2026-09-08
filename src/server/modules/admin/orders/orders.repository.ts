@@ -3,6 +3,7 @@ import "server-only";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { paginationToPrisma } from "@/server/admin/admin-pagination";
+import { orderInclude } from "@/lib/postgresOrders";
 import type { AdminOrderListInput, AdminOrderRecord } from "./orders.types";
 
 function buildWhere(input: AdminOrderListInput): Prisma.OrderWhereInput {
@@ -41,18 +42,10 @@ function buildWhere(input: AdminOrderListInput): Prisma.OrderWhereInput {
   return and.length ? { AND: and } : {};
 }
 
-const listInclude = {
-  dealer: { select: { id: true, businessName: true, dealerCode: true } },
-  assignedStaff: { select: { id: true, displayName: true } },
-  ledgerBills: { orderBy: { billDate: "desc" as const } },
-} satisfies Prisma.OrderInclude;
-
-const detailInclude = {
-  ...listInclude,
-  items: { orderBy: { id: "asc" as const } },
-  // Carries the settled-from-wallet position onto the admin order view.
-  ledgerBills: { orderBy: { billDate: "desc" as const } },
-} satisfies Prisma.OrderInclude;
+// The admin mappers spread mapPostgresOrderToLegacy, which reads dealer
+// staffAssignments and the discount columns. Fetch exactly what it needs.
+const listInclude = orderInclude;
+const detailInclude = orderInclude;
 
 export class PostgresAdminOrderRepository {
   async list(input: AdminOrderListInput): Promise<{ items: AdminOrderRecord[]; total: number }> {

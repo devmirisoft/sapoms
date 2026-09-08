@@ -122,6 +122,11 @@ export async function scanScopedOrders<T extends Record<string, unknown>>(input:
   return { rows, pageCalls, truncated, totalIsExact: !truncated };
 }
 
+function rowWarehouses(row: Record<string, unknown>) {
+  const list = Array.isArray(row.staffwarehouses) ? row.staffwarehouses : [row.staffwarehouse];
+  return list.map(text).filter(Boolean);
+}
+
 export function applyOrderFilters<T extends Record<string, unknown>>(rows: T[], filters: OrderFilters = {}) {
   const query = text(filters.search).toLowerCase();
   const orderId = text(filters.orderId).toLowerCase();
@@ -130,7 +135,7 @@ export function applyOrderFilters<T extends Record<string, unknown>>(rows: T[], 
 
   return rows.filter((row) => {
     if (targetDealerId && resolveOrderDealerId(row) !== targetDealerId) return false;
-    if (warehouse && text(row.staffwarehouse) !== warehouse) return false;
+    if (warehouse && !rowWarehouses(row).includes(warehouse)) return false;
     if (query && !Object.values(row).some((value) => text(value).toLowerCase().includes(query))) return false;
     const rowOrderId = text(row.order_id ?? row.orderId).toLowerCase();
     if (orderId && !rowOrderId.startsWith(orderId)) return false;

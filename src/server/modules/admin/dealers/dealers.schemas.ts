@@ -163,7 +163,7 @@ const createSchema = z.preprocess((value) => aliases((value && typeof value === 
   additionalContacts,
   imageUrl: text(1000),
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
-  assignedStaffIds: staffIds.default([]),
+  assignedStaffIds: staffIds.default([]).refine((value) => value.length > 0, "Assign at least one staff member"),
   rsmUserId: optionalBigIntString,
   walletActive: optionalBoolean,
 }));

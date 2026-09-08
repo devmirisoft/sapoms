@@ -551,15 +551,18 @@ test("acceptance mirror writes PostgreSQL order overlay history", async () => {
   assert.doesNotMatch(statusSource, /getOrderOverlayCollection|order_acceptance/);
 });
 
-test("Dispatch partner accepts only the controlled courier list", () => {
-  assert.deepEqual([...dispatch.DISPATCH_PARTNERS], ["BlueDart", "DTDC", "Delhivery"]);
-  assert.equal(dispatch.normalizeDispatchPartner("bluedart"), "BlueDart");
+test("Dispatch partner accepts any admin-managed courier name", () => {
+  // Couriers are rows now, so an order keeps its courier name even after the
+  // row is renamed or deactivated.
   assert.equal(dispatch.normalizeDispatchPartner("  DTDC "), "DTDC");
+  assert.equal(dispatch.normalizeDispatchPartner("Some Other Courier"), "Some Other Courier");
   assert.equal(dispatch.normalizeDispatchPartner(""), null);
-  assert.equal(dispatch.normalizeDispatchPartner("Some Other Courier"), null);
-  assert.equal(dispatch.isValidDispatchPartner("Delhivery"), true);
-  assert.equal(dispatch.isValidDispatchPartner(""), true);
-  assert.equal(dispatch.isValidDispatchPartner("Some Other Courier"), false);
+  assert.equal(dispatch.normalizeDispatchPartner("   "), null);
+  assert.equal(
+    dispatch.normalizeDispatchPartner("x".repeat(dispatch.DISPATCH_PARTNER_LIMIT + 10)),
+    "x".repeat(dispatch.DISPATCH_PARTNER_LIMIT),
+  );
+  assert.equal(dispatch.normalizeDispatchTrackingInput({ dispatchPartner: "New Courier" }).ok, true);
 });
 
 test("Tracking link must be an http(s) URL or empty", () => {
@@ -580,7 +583,7 @@ test("Tracking number and dock are trimmed strings with no format assumption", (
 
 test("Dispatch tracking input validates the four fields together", () => {
   const valid = dispatch.normalizeDispatchTrackingInput({
-    dispatchPartner: "bluedart",
+    dispatchPartner: " BlueDart ",
     trackingNumber: " AWB123456789 ",
     trackingLink: "https://track.example.com/AWB123456789",
     dock: " Dock 04 ",
@@ -597,7 +600,8 @@ test("Dispatch tracking input validates the four fields together", () => {
   assert.equal(empty.ok, true);
   assert.deepEqual(empty.value, { dispatchPartner: null, trackingNumber: null, trackingLink: null, dock: null });
 
-  assert.equal(dispatch.normalizeDispatchTrackingInput({ dispatchPartner: "Unknown Courier" }).ok, false);
+  // Courier names come from an admin-managed table, so any name is accepted.
+  assert.equal(dispatch.normalizeDispatchTrackingInput({ dispatchPartner: "Unknown Courier" }).ok, true);
   assert.equal(dispatch.normalizeDispatchTrackingInput({ trackingLink: "ftp://x" }).ok, false);
 });
 

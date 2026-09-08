@@ -94,3 +94,14 @@ test("warehouse filter keeps only orders dispatched from that warehouse", () => 
   // "" is the All tab — unpinned orders must stay visible.
   assert.deepEqual(ids(""), ["a", "b", "c"]);
 });
+
+test("warehouse filter matches any staff linked to the order, not just the stamped one", () => {
+  const rows = [
+    order("d", "2026-08-04", "104", { staffwarehouse: "", staffwarehouses: ["AMBALA"] }),
+    order("e", "2026-08-05", "105", { staffwarehouse: "AHMEDABAD", staffwarehouses: ["AHMEDABAD", "AMBALA"] }),
+  ];
+  const ids = (warehouse) =>
+    pagination.buildOrdersPage({ rows, page: 1, pageSize: 10, filters: { warehouse } }).items.map((row) => row.order_id);
+  assert.deepEqual(ids("AMBALA"), ["d", "e"]);
+  assert.deepEqual(ids("AHMEDABAD"), ["e"]);
+});
