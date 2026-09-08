@@ -5,6 +5,8 @@ import { prisma } from "@/server/db/prisma";
 import { buildOrderRegionWhere } from "@/server/auth/sales-scope";
 import type { OrdersActor } from "@/lib/orderPagination";
 import { summarizeOrderSettlement } from "@/lib/orderSettlement";
+import { normalizeSku } from "@/lib/orderProductNotes.mjs";
+import { normalizeDispatchStatus, type DispatchStatus, type OrderDispatchRecord } from "@/lib/orderDispatch";
 
 export const orderInclude = {
   dealer: {
@@ -90,18 +92,52 @@ function legacyFulfilment(order: { items?: Array<{ quantityPacks: number; dispat
   return dispatched >= ordered ? "Completed" : "Partial";
 }
 
-function legacyDispatchStatus(status: string) {
-  if (status === "DISPATCHED" || status === "COMPLETED") return "dispatched";
-  if (status === "READY" || status === "PARTIALLY_READY" || status === "IN_PROCESS") return "packing";
-  return "pending";
-}
-
 function orderIdentity(order: PostgresOrderRecord) {
   return order.legacyPhpId || order.id.toString();
 }
 
 export function postgresOrderDedupeIds(order: PostgresOrderRecord) {
   return [order.id.toString(), order.orderNumber, order.legacyPhpId].map(text).filter(Boolean);
+}
+
+// One record per order line, aggregating its dispatch rows. Clients merge these
+// onto the line items to show dispatched/left quantities and the line status, so
+// every payload that carries dispatchRecords must use this shape.
+type DispatchRowLike = { id?: bigint; quantity: number; remark?: string | null; status?: string; actorUserId?: bigint | null; actorRole?: string | null; createdAt?: Date };
+
+export function mapPostgresOrderDispatchRecords(order: PostgresOrderLike): OrderDispatchRecord[] {
+  const orderId = orderIdentity(order);
+  return (order.items ?? []).map((item) => {
+    const dispatches = (item.dispatches ?? []) as DispatchRowLike[];
+    const dispatchedQuantity = dispatches.reduce((sum, dispatch) => sum + dispatch.quantity, 0);
+    // List queries select quantities only; the history is available on detail reads.
+    const updates = dispatches.filter((dispatch) => dispatch.id !== undefined).map((dispatch) => ({
+      id: dispatch.id!.toString(),
+      quantity: dispatch.quantity,
+      remark: dispatch.remark || "",
+      status: normalizeDispatchStatus(dispatch.status),
+      actorId: dispatch.actorUserId?.toString() || "",
+      actorRole: dispatch.actorRole === "ADMIN" || dispatch.actorRole === "NSM" ? "admin" as const : "staff" as const,
+      createdAt: dispatch.createdAt as Date,
+    }));
+    const currentStatus: DispatchStatus = dispatchedQuantity >= item.quantityPacks ? "successful" : dispatchedQuantity > 0 ? "dispatched" : "pending";
+    return {
+      id: `pg:${item.id.toString()}`,
+      orderId,
+      orderItemId: item.legacyPhpOrderItemId || item.id.toString(),
+      sku: item.catalogueNumberSnapshot,
+      normalizedSku: normalizeSku(item.catalogueNumberSnapshot),
+      occurrence: 1,
+      dealerId: order.dealerId.toString(),
+      assignedStaffId: order.assignedStaffId?.toString() || null,
+      orderedQuantity: item.quantityPacks,
+      dispatchedQuantity,
+      currentStatus,
+      updates,
+      createdAt: item.createdAt,
+      updatedAt: updates.at(-1)?.createdAt ?? item.updatedAt,
+    };
+  });
 }
 
 export function mapPostgresOrderItemToLegacy(item: PostgresOrderLike["items"][number], order: PostgresOrderLike) {
@@ -279,17 +315,7 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
       netPayableAmount: rupees(override.finalPayableAmountPaise),
     })),
     overlays: ("overlays" in order ? order.overlays : []).map((overlay) => ({ ...overlay, id: overlay.id.toString(), orderId: overlay.orderId.toString() })),
-    dispatchRecords: ("dispatches" in order ? order.dispatches : []).map((dispatch) => ({
-      id: dispatch.id.toString(),
-      orderId: dispatch.orderId.toString(),
-      orderItemId: dispatch.orderItemId.toString(),
-      quantity: dispatch.quantity,
-      status: legacyDispatchStatus(dispatch.status),
-      remark: dispatch.remark || "",
-      actorId: dispatch.actorUserId?.toString() || "",
-      actorRole: (dispatch.actorRole || "").toString().toLowerCase(),
-      createdAt: dispatch.createdAt.toISOString(),
-    })),
+    dispatchRecords: mapPostgresOrderDispatchRecords(order),
     walletTransactions: ("walletTransactions" in order ? order.walletTransactions : []).map((transaction) => ({
       ...transaction,
       id: transaction.id.toString(),

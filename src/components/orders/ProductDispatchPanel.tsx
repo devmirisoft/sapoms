@@ -50,7 +50,7 @@ type Props = {
   currentUser: DispatchUserSession | null;
   selectedItemId: string | null;
   onClose: () => void;
-  onRecordSaved: (record: OrderDispatchRecord) => void;
+  onRecordSaved: (records: OrderDispatchRecord[]) => void;
 };
 
 type FormState = {
@@ -114,7 +114,7 @@ function DispatchPanelDialog({
   selectedItem: ResolvedDispatchPanelItem;
   currentUser: DispatchUserSession | null;
   onClose: () => void;
-  onRecordSaved: (record: OrderDispatchRecord) => void;
+  onRecordSaved: (records: OrderDispatchRecord[]) => void;
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<FormState>({
@@ -208,7 +208,8 @@ function DispatchPanelDialog({
         return;
       }
 
-      onRecordSaved(json.data as OrderDispatchRecord);
+      // The API answers with every dispatch record on the order, not just the saved line.
+      onRecordSaved(Array.isArray(json.data) ? json.data as OrderDispatchRecord[] : [json.data as OrderDispatchRecord]);
       onSaved();
       window.dispatchEvent(new CustomEvent("orderDispatchUpdated", {
         detail: {

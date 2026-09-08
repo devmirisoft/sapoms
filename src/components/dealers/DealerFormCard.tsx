@@ -386,6 +386,7 @@ export default function DealerFormCard({
             >
               Reset
             </button> */}
+            <div className="text-lg font-bold text-[30px]" >Add dealer</div>
           </div>
 
           <div className="px-5 pb-5 pt-5">
@@ -412,7 +413,7 @@ export default function DealerFormCard({
             ) : null}
 
             <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-[210px_1fr]">
-              <div className="pt-1 text-[16px] font-semibold text-[#405064]">Point of Contact</div>
+              <div className="pt-1 text-[36px] font-semibold text-[#405064]"></div>
               <div className="border-t border-[#e5e7eb] pt-7">
                 <div className="grid grid-cols-1 gap-5 xl:grid-cols-[34px_1fr_1.2fr_1.8fr_1.8fr] xl:items-end">
                   <div className="hidden pb-3 text-sm font-semibold text-[#405064] xl:block">
@@ -608,7 +609,7 @@ export default function DealerFormCard({
                     <Field label="Annual Target" required>
                       <input name="annualTarget" type="number" value={formData.annualTarget} onChange={handleInputChange} placeholder="Amount in Rs" required />
                     </Field>
-                    <Field label="Current Limit" required>
+                    <Field label="Credit Limit" required>
                       <input name="currentLimit" type="number" value={formData.currentLimit} onChange={handleInputChange} placeholder="Credit limit in Rs" required />
                     </Field>
                     <Field label="Payment Type" required hint={formData.paymentType === "advance" ? "Dealer wallet will be activated on creation." : "Dealer wallet stays inactive until activated later."}>
