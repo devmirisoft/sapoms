@@ -5,7 +5,7 @@ import { prisma } from "@/server/db/prisma";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
 import { isStaffLike } from "@/server/auth/sales-scope";
 import dashboardSearch from "@/lib/dashboardSearch.js";
-import { mapPostgresOrderToLegacy, type PostgresOrderRecord } from "@/lib/postgresOrders";
+import { mapPostgresOrderToLegacy, orderInclude, type PostgresOrderRecord } from "@/lib/postgresOrders";
 
 export const runtime = "nodejs";
 
@@ -33,23 +33,6 @@ type StaffWithUser = Prisma.StaffProfileGetPayload<{
   include: { user: true };
 }>;
 
-const orderInclude = {
-  dealer: {
-    select: {
-      id: true,
-      businessName: true,
-      dealerCode: true,
-      phone: true,
-      city: true,
-      address: true,
-      pincode: true,
-      gstin: true,
-      discountPercent: true,
-    },
-  },
-  assignedStaff: { select: { id: true, displayName: true } },
-  items: { orderBy: { id: "asc" as const } },
-} satisfies Prisma.OrderInclude;
 
 type OrderWithRelations = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 

@@ -580,7 +580,7 @@ function TrackingModal({
   currentUser: DispatchUserSession | null;
   selectedItemId: string | null;
   onClose: () => void;
-  onRecordSaved: (record: OrderDispatchRecord) => void;
+  onRecordSaved: (records: OrderDispatchRecord[]) => void;
 }) {
   return (
     <ProductDispatchPanel
@@ -1296,10 +1296,6 @@ export default function ViewOrderDealerPage() {
 
       return copy;
     });
-  };
-
-  const handleDispatchRecordSaved = (record: OrderDispatchRecord) => {
-    handleDispatchRecordsSaved([record]);
   };
 
   const handleExport = () => {
@@ -2379,7 +2375,7 @@ export default function ViewOrderDealerPage() {
         currentUser={currentUser}
         selectedItemId={activeDispatchItemId}
         onClose={() => setActiveDispatchItemId(null)}
-        onRecordSaved={handleDispatchRecordSaved}
+        onRecordSaved={handleDispatchRecordsSaved}
       />
       {dispatchAllDialogOpen && (
         <div

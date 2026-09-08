@@ -7,16 +7,17 @@ import type { AuthActor } from "@/server/auth/session";
 import { isStaffLike } from "@/server/auth/sales-scope";
 import { normalizeSku } from "@/lib/orderProductNotes.mjs";
 import { PostgresOrderStatusError, findPostgresStatusOrder } from "@/lib/postgresOrderStatus";
-import { mapPostgresOrderItemToLegacy, mapPostgresOrderToLegacy, type PostgresOrderRecord } from "@/lib/postgresOrders";
+import { mapPostgresOrderDispatchRecords, mapPostgresOrderItemToLegacy, mapPostgresOrderToLegacy, orderInclude, type PostgresOrderRecord } from "@/lib/postgresOrders";
 import { normalizeDispatchOrderItemId, normalizeDispatchRemark, normalizeDispatchStatus, normalizeDispatchTrackingInput, safeDispatchInteger, type DispatchStatus, type DispatchTrackingInfo, type OrderDispatchRecord } from "@/lib/orderDispatch";
 
+// Callers of the dispatch API keep importing the record mapper from here.
+export { mapPostgresOrderDispatchRecords };
+
+// The dispatch response re-maps the order through mapPostgresOrderToLegacy, so
+// it must carry everything that mapper reads; only the item dispatches differ.
 const postgresDispatchOrderInclude = {
-  dealer: { select: { id: true, businessName: true, dealerCode: true, phone: true, city: true, address: true, pincode: true, gstin: true, discountPercent: true } },
-  assignedStaff: { select: { id: true, displayName: true } },
+  ...orderInclude,
   items: { orderBy: { id: "asc" as const }, include: { dispatches: { orderBy: { createdAt: "asc" as const } } } },
-  // The dispatch response re-maps the order through mapPostgresOrderToLegacy,
-  // which reads bills to report the settled position.
-  ledgerBills: { orderBy: { billDate: "desc" as const } },
 } satisfies Prisma.OrderInclude;
 
 type PostgresDispatchOrder = Prisma.OrderGetPayload<{ include: typeof postgresDispatchOrderInclude }>;
@@ -165,39 +166,6 @@ export async function getPostgresPendingProductParts(orders: Array<Record<string
   }
 
   return { orderItemsByOrderId, dispatchRecordsByOrderId };
-}
-
-export function mapPostgresOrderDispatchRecords(order: PostgresDispatchOrder): OrderDispatchRecord[] {
-  const orderId = legacyOrderId(order);
-  return order.items.map((item) => {
-    const dispatchedQuantity = item.dispatches.reduce((sum, dispatch) => sum + dispatch.quantity, 0);
-    const updates = item.dispatches.map((dispatch) => ({
-      id: dispatch.id.toString(),
-      quantity: dispatch.quantity,
-      remark: dispatch.remark || "",
-      status: normalizeDispatchStatus(dispatch.status),
-      actorId: dispatch.actorUserId?.toString() || "",
-      actorRole: dispatch.actorRole === "ADMIN" || dispatch.actorRole === "NSM" ? "admin" as const : "staff" as const,
-      createdAt: dispatch.createdAt,
-    }));
-    const currentStatus: DispatchStatus = dispatchedQuantity >= item.quantityPacks ? "successful" : dispatchedQuantity > 0 ? "dispatched" : "pending";
-    return {
-      id: `pg:${item.id.toString()}`,
-      orderId,
-      orderItemId: legacyItemId(item),
-      sku: item.catalogueNumberSnapshot,
-      normalizedSku: normalizeSku(item.catalogueNumberSnapshot),
-      occurrence: 1,
-      dealerId: order.dealerId.toString(),
-      assignedStaffId: order.assignedStaffId?.toString() || null,
-      orderedQuantity: item.quantityPacks,
-      dispatchedQuantity,
-      currentStatus,
-      updates,
-      createdAt: item.createdAt,
-      updatedAt: updates.at(-1)?.createdAt ?? item.updatedAt,
-    };
-  });
 }
 
 export function mapPostgresDispatchRecordForResponse(record: OrderDispatchRecord) {

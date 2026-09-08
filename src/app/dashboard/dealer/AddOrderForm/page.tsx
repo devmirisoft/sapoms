@@ -3112,15 +3112,6 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               <div>
                 <div className="flex items-center gap-2">
                   <h3 className="text-[18px] font-semibold text-gray-900">Product List</h3>
-                  <tr className="border-t border-dashed border-gray-100">
-                    <td colSpan={10} className="px-6 py-3">
-                      <button onClick={addRow} disabled={orderLockedByPendingApproval}
-                        className="inline-flex items-center gap-2 text-[15px] text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer border-2 border-gray-200 rounded-lg px-3 py-1.5 hover:border-indigo-300 hover:bg-indig-600">
-                        <span className="w-6 h-6 rounded-md border border-gray-200 flex items-center justify-center text-sm hover:border-indigo-300 hover:bg-indigo-50 transition-colors">+</span>
-                        Add another product
-                      </button>
-                    </td>
-                  </tr>
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {arr1.filter(r => r.productname).length} product{arr1.filter(r => r.productname).length !== 1 ? "s" : ""} selected
