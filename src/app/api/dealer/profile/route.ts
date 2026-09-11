@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth } from "@/server/auth/session";
-import { hashPassword } from "@/server/auth/password";
 import { mapDealerProfileAliases } from "@/server/modules/profiles/profile-aliases";
 import { staffRoleLabel, resolveStaffRoleKey } from "@/lib/staffRoleLabel";
 
@@ -127,7 +126,8 @@ export async function PATCH(request: NextRequest) {
     if (actor.role !== "DEALER" || !actor.dealerId) return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
     const body = await request.json().catch(() => ({}));
     const input = body && typeof body === "object" ? body as Record<string, unknown> : {};
-    const password = bodyText(input, ["Dealer_Password", "password"], 200);
+    // Password changes go through POST /api/dealer/password only - it validates,
+    // requires the current password, and revokes the dealer's other sessions.
     await prisma.$transaction(async (tx) => {
       await tx.dealerProfile.update({
         where: { id: actor.dealerId },
@@ -139,11 +139,8 @@ export async function PATCH(request: NextRequest) {
           pincode: bodyText(input, ["Dealer_Pincode", "pincode"], 40) || null,
         },
       });
-      const userData: { email?: string; passwordHash?: string } = {};
       const email = bodyText(input, ["Dealer_Email", "email"], 300);
-      if (email) userData.email = email;
-      if (password) userData.passwordHash = await hashPassword(password);
-      if (Object.keys(userData).length) await tx.user.update({ where: { id: actor.userId }, data: userData });
+      if (email) await tx.user.update({ where: { id: actor.userId }, data: { email } });
     });
     const dealer = await loadDealer(actor.dealerId);
     return NextResponse.json({ success: true, status: true, msg: "Dealer profile updated", data: dealer ? mapDealerProfileAliases(dealer) : null }, { headers: { "Cache-Control": "no-store" } });

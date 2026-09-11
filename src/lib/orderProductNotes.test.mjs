@@ -208,6 +208,42 @@ test("Two different products receive different Product Notes", () => {
   );
 });
 
+test("An item carrying its own Product Note keeps it when there are no note records", () => {
+  const merged = mergeProductNotesIntoInvoiceItems(
+    [
+      {
+        orderdata_id: "A1",
+        orderdata_orderid: "910",
+        orderdata_cat_no: "50/8",
+        product_name: "Measuring Cylinder",
+        productNote: "Pack separately",
+      },
+    ],
+    []
+  );
+
+  assert.equal(merged[0].productNote, "Pack separately");
+});
+
+test("A matched note record still wins over the note carried on the item", () => {
+  const merged = mergeProductNotesIntoInvoiceItems(
+    [
+      {
+        orderdata_id: "A1",
+        orderdata_orderid: "910",
+        orderdata_cat_no: "50/8",
+        product_name: "Measuring Cylinder",
+        productNote: "Stale inline note",
+      },
+    ],
+    [
+      { orderId: "910", orderItemId: "A1", normalizedSku: "50/8", occurrence: 1, note: "Pack separately" },
+    ]
+  );
+
+  assert.equal(merged[0].productNote, "Pack separately");
+});
+
 test("orderItemId matching takes precedence over SKU matching", () => {
   const merged = mergeProductNotesIntoInvoiceItems(
     [

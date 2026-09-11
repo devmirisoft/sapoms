@@ -226,3 +226,31 @@ test("every staff order scope filters on the assigned staff's warehouse", () => 
   assert.match(orderAccess, /options\.actor\.warehouse && safeText\(order\.staffwarehouse\) !== options\.actor\.warehouse\) return false/);
   assert.match(postgresOrders, /staffwarehouse: order\.assignedStaff\?\.warehouse/);
 });
+
+test("an admin can set a staff member's login password from Edit Staff", () => {
+  // Blank means "leave it alone", so the field can ride along on every save.
+  assert.match(editStaffPage, /password: newPassword \|\| undefined/);
+  assert.match(editStaffPage, /Leave blank to keep current password/);
+  assert.match(editStaffPage, /newPassword && newPassword\.length < 10/);
+
+  // Same minimum the create path enforces, and blank never reaches the hasher.
+  assert.match(staffSchemas, /password: z\.preprocess\([^\n]*z\.string\(\)\.min\(10\)\.max\(200\)\.optional\(\)\)/);
+
+  // Both the staff row and the NSM row route through the one reset helper.
+  assert.match(staffRepo, /async function applyPasswordReset/);
+  assert.match(staffRepo, /passwordHash: await hashPassword\(password\)/);
+  assert.equal(staffRepo.match(/if \(input\.password !== undefined\) \{/g).length, 2);
+  assert.match(staffRepo, /ADMIN_STAFF_PASSWORD_CHANGED/);
+  assert.match(staffRepo, /ADMIN_NSM_PASSWORD_CHANGED/);
+});
+
+test("an admin password reset cuts every session the old password opened", () => {
+  const reset = staffRepo.slice(staffRepo.indexOf("async function applyPasswordReset"));
+  assert.match(reset.slice(0, 500), /tokenVersion: \{ increment: 1 \}/);
+  assert.match(reset.slice(0, 500), /authSession\.updateMany\(\{ where: \{ userId, revokedAt: null \}, data: \{ revokedAt: new Date\(\) \} \}\)/);
+});
+
+test("only an admin may reach the staff update route", () => {
+  const staffDetailRoute = readFileSync("src/app/api/admin/staff/[staffId]/route.ts", "utf8");
+  assert.match(staffDetailRoute, /export async function PATCH[\s\S]*?requireAdminOnly\(\)/);
+});

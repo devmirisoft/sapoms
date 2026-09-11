@@ -2,9 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { showToast } from "@/components/ui/toast";
-import { DISPATCH_PARTNER_LIMIT } from "@/lib/orderDispatch";
+import { DISPATCH_PARTNER_LIMIT, TRACKING_LINK_LIMIT } from "@/lib/orderDispatch";
 
-type Courier = { id: string; name: string; isActive: boolean; position: number };
+type Courier = {
+  id: string;
+  name: string;
+  trackingUrlPrefix: string | null;
+  isActive: boolean;
+  position: number;
+};
 
 const API = "/api/admin/couriers";
 
@@ -12,6 +18,7 @@ export default function CouriersPage() {
   const [couriers, setCouriers] = useState<Courier[]>([]);
   const [loading, setLoading] = useState(true);
   const [name, setName] = useState("");
+  const [prefix, setPrefix] = useState("");
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {
@@ -60,16 +67,36 @@ export default function CouriersPage() {
     event.preventDefault();
     if (!name.trim()) return;
     const added = await mutate(
-      { method: "POST", body: JSON.stringify({ name: name.trim(), position: couriers.length }) },
+      {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim(), trackingUrlPrefix: prefix.trim(), position: couriers.length }),
+      },
       "Courier added.",
     );
-    if (added) setName("");
+    if (added) {
+      setName("");
+      setPrefix("");
+    }
   };
 
   const handleRename = async (courier: Courier) => {
     const next = window.prompt("Courier name", courier.name);
     if (next === null || !next.trim() || next.trim() === courier.name) return;
     await mutate({ method: "PATCH", body: JSON.stringify({ id: courier.id, name: next.trim() }) }, "Courier renamed.");
+  };
+
+  // The tracking number is appended to this, so the order form can build the
+  // full link once staff type the number.
+  const handleEditPrefix = async (courier: Courier) => {
+    const next = window.prompt(
+      `Tracking link prefix for ${courier.name} (the tracking number is appended to it). Leave blank to clear.`,
+      courier.trackingUrlPrefix ?? "",
+    );
+    if (next === null || next.trim() === (courier.trackingUrlPrefix ?? "")) return;
+    await mutate(
+      { method: "PATCH", body: JSON.stringify({ id: courier.id, trackingUrlPrefix: next.trim() }) },
+      "Tracking link prefix saved.",
+    );
   };
 
   const handleToggle = (courier: Courier) =>
@@ -91,14 +118,22 @@ export default function CouriersPage() {
           These couriers fill the &quot;Dispatched By&quot; dropdown on the order details page.
         </p>
 
-        <form onSubmit={handleAdd} className="mt-5 flex gap-3">
+        <form onSubmit={handleAdd} className="mt-5 flex flex-wrap gap-3">
           <input
             type="text"
             value={name}
             onChange={(event) => setName(event.target.value)}
             maxLength={DISPATCH_PARTNER_LIMIT}
             placeholder="Courier name"
-            className="h-10 flex-1 rounded-lg border border-[#d6dbe4] bg-white px-3 text-sm outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]"
+            className="h-10 w-48 rounded-lg border border-[#d6dbe4] bg-white px-3 text-sm outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]"
+          />
+          <input
+            type="url"
+            value={prefix}
+            onChange={(event) => setPrefix(event.target.value)}
+            maxLength={TRACKING_LINK_LIMIT}
+            placeholder="Tracking link prefix, e.g. https://www.delhivery.com/track-v2/package/"
+            className="h-10 min-w-[16rem] flex-1 rounded-lg border border-[#d6dbe4] bg-white px-3 text-sm outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]"
           />
           <button
             type="submit"
@@ -117,7 +152,12 @@ export default function CouriersPage() {
           ) : (
             couriers.map((courier) => (
               <div key={courier.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                <span className="flex-1 text-sm font-medium text-gray-900">{courier.name}</span>
+                <span className="min-w-[8rem] flex-1 text-sm font-medium text-gray-900">
+                  {courier.name}
+                  <span className="mt-0.5 block truncate text-[11px] font-normal text-gray-500">
+                    {courier.trackingUrlPrefix ?? "No tracking link prefix"}
+                  </span>
+                </span>
                 <span
                   className={courier.isActive
                     ? "rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700"
@@ -127,6 +167,9 @@ export default function CouriersPage() {
                 </span>
                 <button type="button" onClick={() => handleRename(courier)} disabled={saving} className="text-[12px] font-semibold text-[#1d4ed8] hover:underline disabled:opacity-50">
                   Rename
+                </button>
+                <button type="button" onClick={() => handleEditPrefix(courier)} disabled={saving} className="text-[12px] font-semibold text-[#1d4ed8] hover:underline disabled:opacity-50">
+                  Tracking Prefix
                 </button>
                 <button type="button" onClick={() => handleToggle(courier)} disabled={saving} className="text-[12px] font-semibold text-[#405064] hover:underline disabled:opacity-50">
                   {courier.isActive ? "Hide" : "Show"}

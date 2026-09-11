@@ -13,9 +13,13 @@ import { staffPageWindow } from "./staff.paging";
 import type { AuthActor } from "@/server/auth/session";
 
 function buildWhere(input: AdminStaffListInput): Prisma.StaffProfileWhereInput {
+  const role: Prisma.StaffProfileWhereInput = input.role === "ASM"
+    ? { user: { role: "ASM" }, ...(input.salesRegion ? { parentRsm: { salesRegion: input.salesRegion } } : {}) }
+    : {};
   const search = input.search.trim();
-  if (!search) return {};
+  if (!search) return role;
   return {
+    ...role,
     OR: [
       { displayName: { contains: search, mode: "insensitive" } },
       { designation: { contains: search, mode: "insensitive" } },
@@ -136,6 +140,13 @@ async function applyUserStatus(tx: Prisma.TransactionClient, userId: bigint, sta
   const disable = status !== "ACTIVE";
   await tx.user.update({ where: { id: userId }, data: { status, ...(disable ? { tokenVersion: { increment: 1 } } : {}) } });
   if (disable) await tx.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
+}
+
+// An admin-set password logs the staff member out everywhere: the old
+// credential is gone, so every session and token minted under it must die too.
+async function applyPasswordReset(tx: Prisma.TransactionClient, userId: bigint, password: string) {
+  await tx.user.update({ where: { id: userId }, data: { passwordHash: await hashPassword(password), tokenVersion: { increment: 1 } } });
+  await tx.authSession.updateMany({ where: { userId, revokedAt: null }, data: { revokedAt: new Date() } });
 }
 
 async function ensureUniqueEmail(tx: Prisma.TransactionClient, email: string, currentUserId?: bigint) {
@@ -447,6 +458,10 @@ export class PostgresAdminStaffRepository {
       }
       if (Object.keys(userData).length) await tx.user.update({ where: { id: current.userId }, data: userData });
       if (input.status !== undefined) await applyUserStatus(tx, current.userId, input.status);
+      if (input.password !== undefined) {
+        await applyPasswordReset(tx, current.userId, input.password);
+        await audit(tx, actor, "ADMIN_STAFF_PASSWORD_CHANGED", { staffId: staffId.toString() });
+      }
       if (Object.keys(staffData).length) await tx.staffProfile.update({ where: { id: staffId }, data: staffData });
       await audit(tx, actor, "ADMIN_STAFF_UPDATED", { staffId: staffId.toString(), role: nextRole });
       return tx.staffProfile.findUniqueOrThrow({ where: { id: staffId }, include });
@@ -473,6 +488,10 @@ export class PostgresAdminStaffRepository {
       }
       if (Object.keys(userData).length) await tx.user.update({ where: { id: current.userId }, data: userData });
       if (input.status !== undefined) await applyUserStatus(tx, current.userId, input.status);
+      if (input.password !== undefined) {
+        await applyPasswordReset(tx, current.userId, input.password);
+        await audit(tx, actor, "ADMIN_NSM_PASSWORD_CHANGED", { nsmId: nsmId.toString() });
+      }
       if (input.name !== undefined) await tx.adminProfile.update({ where: { id: nsmId }, data: { displayName: input.name } });
       await audit(tx, actor, "ADMIN_NSM_UPDATED", { nsmId: nsmId.toString() });
 

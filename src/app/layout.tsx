@@ -3,6 +3,7 @@ import "./globals.css";
 
 import ReactQueryProvider from "@/app/providers/ReactQueryproviders";
 import DealerTermsGate from "@/components/terms/DealerTermsGate";
+import DealerPasswordGate from "@/components/password/DealerPasswordGate";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toast";
@@ -30,6 +31,7 @@ export default function RootLayout({
         <ReactQueryProvider>
           <Toaster>
             <DealerTermsGate />
+            <DealerPasswordGate />
             {children}
           </Toaster>
         </ReactQueryProvider>

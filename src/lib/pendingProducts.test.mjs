@@ -588,3 +588,39 @@ test("club-view rows carry a unit, stay JSON-safe, and collapse to nothing when 
   assert.deepEqual(pendingProducts.aggregatePendingProducts([]), []);
   assert.deepEqual(pendingProducts.buildPendingProductDrilldown([], "sku:50/8"), { aggregate: null, orders: [] });
 });
+
+test("dealer code rides the order row onto every pending line for the Customer Code column", () => {
+  const lines = pendingProducts.buildPendingProductLines({
+    orders: [
+      { order_id: "SO-1", order_number: "OM/26-27/DMS-1505", order_date: "2026-08-25", order_dealer: "101", Dealer_Name: "Third Eye Life Care", Dealer_Code: "1042", accept_order: "1", del_status: "0" },
+      { order_id: "SO-2", order_date: "2026-08-24", order_dealer: "202", Dealer_Name: "Saj Enterprises", accept_order: "1", del_status: "0" },
+    ],
+    orderItemsByOrderId: {
+      "SO-1": [{ orderdata_id: "i1", orderdata_orderid: "SO-1", orderdata_cat_no: "50/8", product_name: "Volumetric Flask", orderdata_item_quantity: "20" }],
+      "SO-2": [{ orderdata_id: "i2", orderdata_orderid: "SO-2", orderdata_cat_no: "50/8", product_name: "Volumetric Flask", orderdata_item_quantity: "20" }],
+    },
+    catalogueProducts: [],
+  });
+
+  assert.equal(lines.find((line) => line.orderId === "SO-1").dealerCode, "1042");
+  // Missing code stays an empty string, so the sheet cell is blank rather than "undefined".
+  assert.equal(lines.find((line) => line.orderId === "SO-2").dealerCode, "");
+});
+
+test("the stored order number reaches the line instead of being re-derived from the id", () => {
+  const lines = pendingProducts.buildPendingProductLines({
+    orders: [
+      { order_id: "1505", order_number: "OM/26-27/DMS-1505", order_date: "2026-08-25", order_dealer: "101", Dealer_Name: "Third Eye Life Care", accept_order: "1", del_status: "0" },
+      { order_id: "1494", order_date: "2026-08-24", order_dealer: "101", Dealer_Name: "Third Eye Life Care", accept_order: "1", del_status: "0" },
+    ],
+    orderItemsByOrderId: {
+      "1505": [{ orderdata_id: "i1", orderdata_orderid: "1505", orderdata_cat_no: "50/8", product_name: "Volumetric Flask", orderdata_item_quantity: "20" }],
+      "1494": [{ orderdata_id: "i2", orderdata_orderid: "1494", orderdata_cat_no: "50/8", product_name: "Volumetric Flask", orderdata_item_quantity: "65" }],
+    },
+    catalogueProducts: [],
+  });
+
+  assert.equal(lines.find((line) => line.orderId === "1505").orderNumber, "OM/26-27/DMS-1505");
+  // Legacy rows without a stored number fall back to the display formatter in the sheet.
+  assert.equal(lines.find((line) => line.orderId === "1494").orderNumber, "");
+});

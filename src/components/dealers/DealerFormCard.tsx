@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 import {
-  emptyDealerForm,
   getAssignedStaffNames,
   normalizeDealerFormSnapshot,
   toDealerFormSnapshot,
@@ -98,32 +97,10 @@ function getModeCopy(mode: DealerFormMode) {
   }
 }
 
+// Snapshots come straight from the API and may be missing keys, so normalize before
+// they reach the inputs — an undefined value silently flips an input to uncontrolled.
 function toFormValues(snapshot?: DealerFormSnapshot | null): DealerFormValues {
-  if (!snapshot) return { ...emptyDealerForm };
-  return {
-    name: snapshot.name,
-    email: snapshot.email,
-    whatsapp: snapshot.whatsapp,
-    priorityPerson: snapshot.priorityPerson,
-    secondaryContactName: snapshot.secondaryContactName,
-    secondaryContactPhone: snapshot.secondaryContactPhone,
-    secondaryContactEmail: snapshot.secondaryContactEmail,
-    additionalContacts: snapshot.additionalContacts.map((contact) => ({ ...contact })),
-    city: snapshot.city,
-    state: snapshot.state,
-    address: snapshot.address,
-    pincode: snapshot.pincode,
-    dealerCode: snapshot.dealerCode,
-    username: snapshot.username,
-    password: snapshot.password,
-    gstNo: snapshot.gstNo,
-    discount: snapshot.discount,
-    creditDays: snapshot.creditDays,
-    annualTarget: snapshot.annualTarget,
-    currentLimit: snapshot.currentLimit,
-    notes: snapshot.notes,
-    paymentType: snapshot.paymentType,
-  };
+  return normalizeDealerFormSnapshot(snapshot ?? null);
 }
 
 export default function DealerFormCard({
@@ -141,7 +118,7 @@ export default function DealerFormCard({
   const [staffError, setStaffError] = useState("");
   const [inlineError, setInlineError] = useState("");
   const [formData, setFormData] = useState<DealerFormValues>(() => toFormValues(initialSnapshot));
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(true);
   const [roleAssignments, setRoleAssignments] = useState<RoleAssignments>(() => ({ ...EMPTY_ROLE_ASSIGNMENTS }));
   const [activeDetailsTab, setActiveDetailsTab] = useState<DealerDetailsTab>("company");
   const [dealerCodeLoading, setDealerCodeLoading] = useState(false);
@@ -415,16 +392,10 @@ export default function DealerFormCard({
             <div className="mt-8 grid grid-cols-1 gap-5 lg:grid-cols-[210px_1fr]">
               <div className="pt-1 text-[36px] font-semibold text-[#405064]"></div>
               <div className="border-t border-[#e5e7eb] pt-7">
-                <div className="grid grid-cols-1 gap-5 xl:grid-cols-[34px_1fr_1.2fr_1.8fr_1.8fr] xl:items-end">
-                  <div className="hidden pb-3 text-sm font-semibold text-[#405064] xl:block">
-                    1.
-                    {formData.priorityPerson === "primary" ? <PriorityBadge /> : null}
-                  </div>
-                  <Field label="Username" required>
-                    <input name="username" type="text" value={formData.username} onChange={handleInputChange} placeholder="Login username" required />
-                  </Field>
+                <div className="grid grid-cols-1 gap-5 xl:grid-cols-[112px_1.2fr_1.8fr_1.8fr] xl:items-end">
+                  <PriorityRadio number={1} value="primary" selected={formData.priorityPerson} onChange={handleInputChange} />
                   <Field label="Person Name" required>
-                    <input name="name" type="text" value={formData.name} onChange={handleInputChange} placeholder="Person name" required />
+                    <input name="contactName" type="text" value={formData.contactName} onChange={handleInputChange} placeholder="Person name" required />
                   </Field>
                   <Field label="Phone No." required>
                     <div className="flex gap-3">
@@ -437,11 +408,8 @@ export default function DealerFormCard({
                   </Field>
                 </div>
 
-                <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[34px_1.2fr_1.8fr_1.8fr_1.2fr] xl:items-end">
-                  <div className="hidden pb-3 text-sm font-semibold text-[#405064] xl:block">
-                    2.
-                    {formData.priorityPerson === "secondary" ? <PriorityBadge /> : null}
-                  </div>
+                <div className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[112px_1.2fr_1.8fr_1.8fr] xl:items-end">
+                  <PriorityRadio number={2} value="secondary" selected={formData.priorityPerson} onChange={handleInputChange} />
                   <Field label="Second Person Name">
                     <input name="secondaryContactName" type="text" value={formData.secondaryContactName} onChange={handleInputChange} placeholder="Second contact name" />
                   </Field>
@@ -454,17 +422,11 @@ export default function DealerFormCard({
                   <Field label="Second Email">
                     <input name="secondaryContactEmail" type="email" value={formData.secondaryContactEmail} onChange={handleInputChange} placeholder="Second email" />
                   </Field>
-                  <Field label="Priority Person" required hint="Contact used for calls">
-                    <select name="priorityPerson" value={formData.priorityPerson} onChange={handleInputChange} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]">
-                      <option value="primary">Contact 1</option>
-                      <option value="secondary">Contact 2</option>
-                    </select>
-                  </Field>
                 </div>
 
                 {formData.additionalContacts.map((contact, index) => (
-                  <div key={index} className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[34px_1.2fr_1.8fr_1.8fr_1.2fr] xl:items-end">
-                    <div className="hidden pb-3 text-sm font-semibold text-[#405064] xl:block">{index + 3}.</div>
+                  <div key={index} className="mt-5 grid grid-cols-1 gap-5 xl:grid-cols-[112px_1.2fr_1.8fr_1.8fr_1.2fr] xl:items-end">
+                    <div className="hidden h-9 items-center text-sm font-semibold text-[#405064] xl:flex">{index + 3}.</div>
                     <Field label="Person Name" required>
                       <input type="text" value={contact.name} onChange={(event) => handleAdditionalContactChange(index, "name", event.target.value)} placeholder="Contact name" required />
                     </Field>
@@ -558,6 +520,9 @@ export default function DealerFormCard({
                           ))}
                         </select>
                       </Field>
+                      <Field label="Username" required>
+                        <input name="username" type="text" value={formData.username} onChange={handleInputChange} onBlur={(event) => setFormData((prev) => ({ ...prev, username: event.target.value.replace(/\s+/g, "") }))} placeholder="Login username" required />
+                      </Field>
                       <Field label="Password" required>
                         <div className="relative">
                           <input
@@ -593,7 +558,7 @@ export default function DealerFormCard({
                 {activeDetailsTab === "alternate" ? (
                   <div className="grid grid-cols-1 gap-x-8 gap-y-4 lg:grid-cols-2 2xl:grid-cols-4">
                     <Field label="GST Number" required>
-                      <input name="gstNo" type="text" value={formData.gstNo} onChange={handleInputChange} required />
+                      <input name="gstNo" type="text" value={formData.gstNo} onChange={handleInputChange} maxLength={15} required />
                     </Field>
                     <Field label="Discount %" required>
                       <input name="discount" type="number" value={formData.discount} onChange={handleInputChange} min={0} max={100} required />
@@ -612,8 +577,9 @@ export default function DealerFormCard({
                     <Field label="Credit Limit" required>
                       <input name="currentLimit" type="number" value={formData.currentLimit} onChange={handleInputChange} placeholder="Credit limit in Rs" required />
                     </Field>
-                    <Field label="Payment Type" required hint={formData.paymentType === "advance" ? "Dealer wallet will be activated on creation." : "Dealer wallet stays inactive until activated later."}>
-                      <select name="paymentType" value={formData.paymentType} onChange={handlePaymentTypeChange} className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]">
+                    <Field label="Payment Type" required hint={formData.paymentType === "advance" ? "Dealer wallet will be activated on creation." : formData.paymentType === "credit" ? "Dealer wallet stays inactive until activated later." : undefined}>
+                      <select name="paymentType" value={formData.paymentType} onChange={handlePaymentTypeChange} required className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#59677a] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff]">
+                        <option value="" disabled>-Select-</option>
                         <option value="credit">Credit dealer (wallet inactive)</option>
                         <option value="advance">Advance dealer (activate wallet)</option>
                       </select>
@@ -667,14 +633,40 @@ export default function DealerFormCard({
   );
 }
 
-function PriorityBadge() {
+function PriorityRadio({
+  number,
+  value,
+  selected,
+  onChange,
+}: {
+  number: number;
+  value: "primary" | "secondary";
+  selected: "primary" | "secondary";
+  onChange: (event: React.ChangeEvent<HTMLInputElement>) => void;
+}) {
+  const isSelected = selected === value;
   return (
-    <span
-      title="Priority person — used for calls"
-      className="mt-1 block w-fit rounded-full bg-[#1d4ed8] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
-    >
-      Priority
-    </span>
+    <div className="flex h-9 items-center gap-2">
+      <span className="text-sm font-semibold text-[#405064]">{number}.</span>
+      <label
+        title="Priority person — used for calls"
+        className={`flex cursor-pointer items-center gap-1.5 rounded-full border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide transition ${
+          isSelected
+            ? "border-[#1d4ed8] bg-[#1d4ed8] text-white"
+            : "border-[#d6dbe4] bg-white text-[#8b97a8] hover:border-[#1d4ed8] hover:text-[#1d4ed8]"
+        }`}
+      >
+        <input
+          type="radio"
+          name="priorityPerson"
+          value={value}
+          checked={isSelected}
+          onChange={onChange}
+          className="h-3 w-3 accent-[#1d4ed8]"
+        />
+        Priority
+      </label>
+    </div>
   );
 }
 

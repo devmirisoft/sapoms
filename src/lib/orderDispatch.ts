@@ -139,6 +139,16 @@ export function normalizeTrackingLink(value: unknown): string | null {
   }
 }
 
+// A courier's saved prefix plus the typed tracking number. Concatenation only
+// — ponytail: every courier tracker so far takes the number last; if one needs
+// it mid-URL, support a "{}" placeholder here.
+export function buildTrackingLink(prefix: unknown, trackingNumber: unknown): string | null {
+  const base = trackingText(prefix, TRACKING_LINK_LIMIT);
+  const number = normalizeTrackingNumber(trackingNumber);
+  if (!base || !number) return null;
+  return normalizeTrackingLink(base + encodeURIComponent(number));
+}
+
 export function isValidTrackingLink(value: unknown): boolean {
   const text = trackingText(value, TRACKING_LINK_LIMIT);
   return !text || normalizeTrackingLink(text) !== null;

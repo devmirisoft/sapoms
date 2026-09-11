@@ -51,6 +51,7 @@ export function mapAdminDealer(record: AdminDealerRecord) {
   const annualTarget = moneyToString(record.annualTargetPaise);
   const notes = record.notes || "";
   const priorityContact = record.priorityContact === "secondary" ? "secondary" : "primary";
+  const contactName = record.contactName || "";
   const secondaryContactName = record.secondaryContactName || "";
   const secondaryContactPhone = record.secondaryContactPhone || "";
   const secondaryContactEmail = record.secondaryContactEmail || "";
@@ -94,6 +95,7 @@ export function mapAdminDealer(record: AdminDealerRecord) {
     notes,
     priorityContact,
     priorityPerson: priorityContact,
+    contactName,
     secondaryContactName,
     secondaryContactPhone,
     secondaryContactEmail,
@@ -119,6 +121,7 @@ export function mapAdminDealer(record: AdminDealerRecord) {
     Dealer_Image: record.imageUrl || "",
     Dealer_Notes: notes,
     Dealer_Contact_Person: priorityContact,
+    Dealer_Contact_Name: contactName,
     Dealer_Secondary_Contact_Name: secondaryContactName,
     Dealer_Secondary_Contact_Phone: secondaryContactPhone,
     Dealer_Secondary_Contact_Email: secondaryContactEmail,

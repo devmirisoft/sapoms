@@ -164,7 +164,7 @@ export function validateFormSubmissionBody(body: unknown): FormSubmissionInput {
 
   const customerDetails = sanitizeSection("customerDetails", input.customerDetails);
   if (!toText(customerDetails.companyName)) {
-    throw new Error("Company Name is required");
+    throw new Error(" Name is required");
   }
   trimHiddenOther(customerDetails, "industryType", "industryTypeOther");
 

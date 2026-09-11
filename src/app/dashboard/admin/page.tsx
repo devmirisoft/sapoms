@@ -12,6 +12,7 @@ import {
   keepPreviousData,
   useQuery,
   useQueries,
+  useInfiniteQuery,
 } from "@tanstack/react-query";
 import {
   BarChart,
@@ -27,6 +28,7 @@ import {
 import { fetchDealerStatusOverrides, normalizeDealerStatus, type DealerStatusDocument } from "@/lib/dealerStatus";
 import PendingProductsPreview from "@/components/dashboard/PendingProductsPreview";
 import { clearAuthStorage } from "@/lib/roleAccess";
+import { SegmentedDropdown, type SegItem } from "@/components/SegmentedTabs";
 
 
 const year = new Date().getFullYear();
@@ -101,6 +103,8 @@ type DealerSummary = {
   Dealer_Id: string;
   Dealer_Name: string;
   Dealer_City: string;
+  Dealer_Region?: string;
+  state?: string;
   Dealer_Number?: string;
   Dealer_Dealercode?: string;
   status: string;
@@ -118,13 +122,6 @@ type DealerPaginationResponse = {
 
 type StaffSummary = {
   staff_roletype: string;
-};
-
-type LedgerSummary = {
-  Dealer_Id: string;
-  Dealer_Name: string;
-  netBalance: number;
-  walletBalance: number;
 };
 
 type DiscountApproval = {
@@ -209,6 +206,29 @@ function createEmptyRegionalDistributorMap(): Record<SalesRegionKey, RegionalDis
     acc[region] = [];
     return acc;
   }, {} as Record<SalesRegionKey, RegionalDistributor[]>);
+}
+
+type AsmOption = { id: string; name: string; assigned_states?: string[]; role?: string };
+
+/** Sales filters cascade: an ASM belongs to a region, a city to an ASM's states. */
+
+type SaleSummaryResponse = {
+  data: {
+    /** Oldest accepted order in the current scope, or null when there is none. */
+    earliest: string | null;
+    from: string | null;
+    to: string | null;
+    granularity: SalesGranularity;
+    orderCount: number;
+    total: number;
+    series: Array<{ period: string; total: number }>;
+  };
+};
+
+const ASM_PAGE_SIZE = 20;
+
+function toDateInput(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
 const logoImage = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSpEaVwAg53quyQVTj-mv49IsltHY8yDluFOPemDksHkQ&s=10";
@@ -371,6 +391,12 @@ function AdminDashboardInner() {
   const [distributorPage, setDistributorPage] = useState(1);
   const [distributorSearchInput, setDistributorSearchInput] = useState("");
   const [distributorSearch, setDistributorSearch] = useState("");
+  const [saleFrom, setSaleFrom] = useState("");
+  const [saleTo, setSaleTo] = useState("");
+  const today = useMemo(() => toDateInput(new Date()), []);
+  const [saleRegion, setSaleRegion] = useState("");
+  const [saleAsm, setSaleAsm] = useState("");
+  const [saleCity, setSaleCity] = useState("");
 
   // Load admin user from localStorage
   useEffect(() => {
@@ -479,7 +505,6 @@ function AdminDashboardInner() {
   const [
     outstandingOrdersQ,
     discountApprovalsQ,
-    ledgerQ,
     dealersQ,
     staffQ,
   ] = useQueries({
@@ -494,10 +519,6 @@ function AdminDashboardInner() {
       {
         queryKey: ["adminSidebarSummary", "discountApprovals"],
         queryFn: () => fetchJson<{ data: DiscountApproval[] }>("/api/custom-discount-requests?limit=200"),
-      },
-      {
-        queryKey: ["adminSidebarSummary", "ledger"],
-        queryFn: () => fetchJson<{ data: LedgerSummary[] }>("/api/ledger"),
       },
       {
         queryKey: ["adminSidebarSummary", "dealers"],
@@ -516,12 +537,11 @@ function AdminDashboardInner() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const summaryLoading = [outstandingOrdersQ, discountApprovalsQ, ledgerQ, dealersQ, staffQ].some(q => q.isLoading);
-  const summaryError = [outstandingOrdersQ, discountApprovalsQ, ledgerQ, dealersQ, staffQ].find(q => q.isError);
+  const summaryLoading = [outstandingOrdersQ, discountApprovalsQ, dealersQ, staffQ].some(q => q.isLoading);
+  const summaryError = [outstandingOrdersQ, discountApprovalsQ, dealersQ, staffQ].find(q => q.isError);
   const retrySummary = () => {
     outstandingOrdersQ.refetch();
     discountApprovalsQ.refetch();
-    ledgerQ.refetch();
     dealersQ.refetch();
     staffQ.refetch();
   };
@@ -536,6 +556,59 @@ function AdminDashboardInner() {
     placeholderData: keepPreviousData,
     staleTime: 5 * 60 * 1000,
   });
+
+  // ASMs are paged into the dropdown as it scrolls rather than fetched all at once.
+  const asmQ = useInfiniteQuery({
+    queryKey: ["adminDashboardAsms", saleRegion],
+    initialPageParam: 1,
+    queryFn: ({ pageParam }) => fetchJson<{ data: AsmOption[]; total?: number }>(`/api/admin/staff?role=ASM&region=${saleRegion}&page=${pageParam}&limit=${ASM_PAGE_SIZE}&search=`),
+    getNextPageParam: (lastPage, pages) => (pages.flatMap((page) => page.data ?? []).length < (lastPage.total ?? 0) ? pages.length + 1 : undefined),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const asmOptions = useMemo(() => (asmQ.data?.pages ?? []).flatMap((page) => page.data ?? []), [asmQ.data]);
+  const asmStates = useMemo(
+    () => asmOptions.find((asm) => asm.id === saleAsm)?.assigned_states ?? [],
+    [asmOptions, saleAsm],
+  );
+
+  const saleQuery = `from=${saleFrom}&to=${saleTo}&region=${saleRegion}&asm=${saleAsm}&city=${encodeURIComponent(saleCity)}`;
+
+  const saleSummaryQ = useQuery<SaleSummaryResponse>({
+    queryKey: ["adminSaleSummary", saleQuery],
+    queryFn: () => fetchJson<SaleSummaryResponse>(`/api/admin/sales-summary?${saleQuery}`),
+    placeholderData: keepPreviousData,
+  });
+
+  // The oldest accepted order in the current scope: how far back the calendar goes.
+  const saleEarliest = saleSummaryQ.data?.data.earliest ?? undefined;
+
+  const saleSeries = useMemo(() => {
+    const granularity = saleSummaryQ.data?.data.granularity ?? "day";
+    return (saleSummaryQ.data?.data.series ?? []).map((point) => ({
+      label: formatPeriodLabel(point.period, granularity),
+      total: point.total,
+    }));
+  }, [saleSummaryQ.data]);
+
+  const saleRegionItems: SegItem[] = useMemo(() => [
+    { value: "", label: "All regions", tone: "neutral" as const },
+    ...SALES_REGIONS.map((region) => ({ value: region, label: formatRegionLabel(region), tone: "emerald" as const })),
+  ], []);
+
+  const asmItems: SegItem[] = useMemo(() => [
+    { value: "", label: "All ASMs", tone: "neutral" as const },
+    ...asmOptions.map((asm) => {
+      const states = (asm.assigned_states ?? []).join(", ");
+      return {
+        value: asm.id,
+        label: asm.name || `ASM ${asm.id}`,
+        sublabel: states || "No states assigned",
+        tone: "amber" as const,
+        title: states,
+      };
+    }),
+  ], [asmOptions]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -555,6 +628,24 @@ function AdminDashboardInner() {
     ...dealer,
     status: statusMap.get(String(dealer.Dealer_Id)) ?? normalizeDealerStatus(dealer.status),
   })), [dealersQ.data?.data, statusMap]);
+
+  // Cities come from the dealers already loaded for the tiles, narrowed to whichever
+  // region and ASM territory is selected.
+  const saleCityOptions = useMemo(() => {
+    const inScope = dealerRows.filter((dealer) => {
+      if (saleRegion && dealer.Dealer_Region !== saleRegion) return false;
+      if (saleAsm && !asmStates.some((state) => state.toLowerCase() === String(dealer.state ?? "").toLowerCase())) return false;
+      return true;
+    });
+    return [...new Set(inScope.map((dealer) => (dealer.Dealer_City ?? "").trim()).filter(Boolean))]
+      .sort((left, right) => left.localeCompare(right));
+  }, [dealerRows, saleRegion, saleAsm, asmStates]);
+
+  const saleCityItems: SegItem[] = useMemo(() => [
+    { value: "", label: "All cities", tone: "neutral" as const },
+    ...saleCityOptions.map((city) => ({ value: city, label: city, tone: "emerald" as const })),
+  ], [saleCityOptions]);
+
   const activeDealers = dealerRows.filter(d => normalizeDealerStatus(d.status) === "active").length;
   const inactiveDealers = dealerRows.filter(d => normalizeDealerStatus(d.status) !== "active").length;
   const staffRows = staffQ.data?.data ?? [];
@@ -562,11 +653,6 @@ function AdminDashboardInner() {
     acc[s.staff_roletype || "unknown"] = (acc[s.staff_roletype || "unknown"] ?? 0) + 1;
     return acc;
   }, {} as Record<string, number>);
-  const ledgerRows = ledgerQ.data?.data ?? [];
-  const outstandingExposure = dealerRows.reduce((sum, row) => sum + Math.max(0, Number(row.currentlimit) || 0), 0);
-  const highExposureDealers = [...dealerRows]
-    .sort((a, b) => (Number(b.currentlimit) || 0) - (Number(a.currentlimit) || 0))
-    .slice(0, 5);
   const totalDistributors = adminData.dealerCount || dealersQ.data?.total || dealerRows.length;
   const distributorRows = useMemo(() => (distributorResponse?.data ?? []).map((dealer) => ({
     ...dealer,
@@ -876,32 +962,62 @@ function AdminDashboardInner() {
         .metric-link:hover { text-decoration: underline; text-underline-offset: 2px; }
         .metric-card .metric-link::after { content: ""; position: absolute; inset: 0; }
 
-        .exposure-card {
-          display: flex;
-          flex-direction: column;
-          min-height: 158px;
-        }
-
-        .exposure-list {
-          display: flex;
-          flex-direction: column;
-          margin-top: 12px;
-          min-width: 0;
-        }
-
-        .exposure-row {
+        .metrics-left {
+          grid-column: span 6;
           display: grid;
-          grid-template-columns: minmax(0, 1fr) auto;
-          align-items: center;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
           gap: 14px;
-          min-height: 29px;
-          border-top: 1px solid var(--apple-line);
-          color: var(--apple-text);
-          font-size: 11.5px;
         }
-        .exposure-row:first-child { border-top: 0; }
-        .exposure-row span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--apple-secondary); }
-        .exposure-row strong { font-weight: 650; font-variant-numeric: tabular-nums; }
+        .metrics-left .metric-card { grid-column: auto; }
+
+        .sale-panel {
+          grid-column: span 6;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+        }
+        .sale-range { display: flex; flex-wrap: wrap; gap: 10px; }
+        .sale-field { display: flex; align-items: center; gap: 8px; color: var(--apple-secondary); font-size: 12px; font-weight: 600; }
+        .sale-all-time {
+          padding: 6px 12px;
+          border: 1px solid rgba(60, 60, 67, .14);
+          border-radius: 10px;
+          background: var(--apple-surface);
+          color: var(--apple-secondary);
+          font-size: 12px;
+          font-weight: 650;
+          cursor: pointer;
+        }
+        .sale-all-time:hover:not(:disabled) { color: var(--apple-text); }
+        .sale-all-time:disabled { opacity: .45; cursor: default; }
+
+        .sale-report {
+          margin-left: auto;
+          align-self: center;
+          padding: 6px 12px;
+          border-radius: 10px;
+          background: #0071e3;
+          color: #fff;
+          font-size: 12px;
+          font-weight: 650;
+          text-decoration: none;
+        }
+        .sale-report:hover { background: #0077ed; }
+
+        .sale-field input {
+          padding: 6px 10px;
+          border: 1px solid rgba(60, 60, 67, .14);
+          border-radius: 10px;
+          background: var(--apple-surface);
+          color: var(--apple-text);
+          font: inherit;
+          font-weight: 600;
+        }
+        .sale-total-label { color: var(--apple-secondary); font-size: 12px; font-weight: 600; }
+        .sale-total { font-size: 30px; font-weight: 700; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
+        .sale-total-meta { margin-top: -4px; color: var(--apple-tertiary); font-size: 11.5px; }
+        .sale-filters { display: flex; flex-wrap: wrap; gap: 10px; }
+        .sale-chart { flex: 1; min-height: 220px; }
 
         .analytics-grid {
           display: grid;
@@ -1091,6 +1207,7 @@ function AdminDashboardInner() {
         @media (max-width: 1180px) {
           .metric-card { grid-column: span 4; }
           .metric-card.wide { grid-column: span 8; }
+          .metrics-left, .sale-panel { grid-column: span 12; }
           .analytics-grid { grid-template-columns: 1fr; }
         }
 
@@ -1101,6 +1218,7 @@ function AdminDashboardInner() {
           .profile-chip { padding-right: 7px; }
           .metric-card { grid-column: span 6; }
           .metric-card.wide { grid-column: span 12; }
+          .metrics-left, .sale-panel { grid-column: span 12; }
           .charts-grid, .reports-grid { grid-template-columns: 1fr; }
           .legend { max-width: 100%; justify-content: flex-start; }
           .panel-header { flex-direction: column; }
@@ -1114,6 +1232,7 @@ function AdminDashboardInner() {
           .profile-chip { display: none; }
           .metrics-grid { gap: 10px; }
           .metric-card, .metric-card.wide { grid-column: span 12; min-height: 140px; padding: 18px; border-radius: 20px; }
+          .metrics-left { grid-template-columns: 1fr; }
           .panel { padding: 18px; border-radius: 20px; }
           .chart-canvas { height: 250px; }
           .chart-canvas.compact { height: 230px; }
@@ -1149,14 +1268,7 @@ function AdminDashboardInner() {
           )}
 
           <section className="metrics-grid" aria-label="Dashboard summary">
-            <article className="metric-card">
-              <div className="metric-label">Today&apos;s Sale</div>
-              <div className="metric-value">₹0</div>
-              <div className="metric-meta">
-                <span className="status-inline"><span className="status-dot green" />Today</span>
-              </div>
-            </article>
-
+            <div className="metrics-left">
             <article className="metric-card">
               <div className="metric-label">Pending Orders</div>
               <div className="metric-value">{summaryLoading ? "—" : totalPendingOrders}</div>
@@ -1195,27 +1307,84 @@ function AdminDashboardInner() {
               </div>
             </article>
 
-            <article className="metric-card">
-              <div className="metric-label">Credit Exposure</div>
-              <div className="metric-value">{summaryLoading ? "—" : `₹${outstandingExposure.toLocaleString("en-IN")}`}</div>
-              <div className="metric-meta">
-                <span>{ledgerRows.length} ledgers</span>
-                <Link href="/dashboard/admin/ledger" className="metric-link">Ledger →</Link>
-              </div>
-            </article>
+          </div>
 
-            <article className="metric-card wide exposure-card">
-              <div className="metric-label">Highest Credit Exposure</div>
-              <div className="exposure-list">
-                {summaryLoading ? (
-                  <div className="report-loading">Loading exposure…</div>
-                ) : highExposureDealers.length > 0 ? highExposureDealers.map((dealer) => (
-                  <div className="exposure-row" key={dealer.Dealer_Id}>
-                    <span>{dealer.Dealer_Name}</span>
-                    <strong>₹{Number(dealer.currentlimit || 0).toLocaleString("en-IN")}</strong>
-                  </div>
-                )) : (
-                  <div className="report-loading">No exposure recorded.</div>
+            <article className="panel sale-panel">
+              <div className="panel-title">Sale Chart</div>
+              <div className="sale-range">
+                <label className="sale-field">
+                  <span>From</span>
+                  <input type="date" value={saleFrom} min={saleEarliest} max={saleTo} onChange={(event) => setSaleFrom(event.target.value)} />
+                </label>
+                <label className="sale-field">
+                  <span>To</span>
+                  <input type="date" value={saleTo} min={saleFrom} max={today} onChange={(event) => setSaleTo(event.target.value)} />
+                </label>
+                <button
+                  type="button"
+                  className="sale-all-time"
+                  disabled={!saleFrom && !saleTo}
+                  onClick={() => { setSaleFrom(""); setSaleTo(""); }}
+                >
+                  All time
+                </button>
+                <a className="sale-report" href={`/api/admin/sales-summary?${saleQuery}&format=csv`}>
+                  Download report
+                </a>
+              </div>
+
+              <div className="sale-total-label">Total Sale</div>
+              <div className="sale-total">{saleSummaryQ.isPending ? "—" : `₹${(saleSummaryQ.data?.data.total ?? 0).toLocaleString("en-IN")}`}</div>
+              <div className="sale-total-meta">
+                {saleSummaryQ.isError
+                  ? "Sales summary failed to load."
+                  : `${saleSummaryQ.data?.data.orderCount ?? 0} accepted orders · ${saleFrom || saleTo ? `${saleFrom || "start"} to ${saleTo || "today"}` : "all time"}${saleAsm ? ` · ${asmStates.join(", ") || "no states assigned"}` : ""}${saleCity ? ` · ${saleCity}` : ""}`}
+              </div>
+
+              <div className="sale-filters">
+                <SegmentedDropdown
+                  label="Region"
+                  value={saleRegion}
+                  onChange={(next) => { setSaleRegion(next); setSaleAsm(""); setSaleCity(""); }}
+                  items={saleRegionItems}
+                />
+                <SegmentedDropdown
+                  label="ASM"
+                  value={saleAsm}
+                  onChange={(next) => { setSaleAsm(next); setSaleCity(""); }}
+                  items={asmItems}
+                  onLoadMore={() => { if (asmQ.hasNextPage && !asmQ.isFetchingNextPage) asmQ.fetchNextPage(); }}
+                  loadingMore={asmQ.isFetchingNextPage}
+                />
+                <SegmentedDropdown
+                  label="City"
+                  value={saleCity}
+                  onChange={setSaleCity}
+                  items={saleCityItems}
+                  disabled={saleCityOptions.length === 0}
+                />
+              </div>
+
+              <div className="sale-chart">
+                {saleSummaryQ.isPending ? (
+                  <div className="empty-state">Loading sales…</div>
+                ) : saleSeries.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={saleSeries} margin={{ top: 8, right: 8, left: -8, bottom: 0 }}>
+                      <CartesianGrid stroke="rgba(60,60,67,.10)" vertical={false} />
+                      <XAxis dataKey="label" tick={{ fontSize: 10.5, fill: "#8e8e93" }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 10.5, fill: "#8e8e93" }} axisLine={false} tickLine={false} width={52} />
+                      <Tooltip
+                        cursor={{ stroke: "rgba(60,60,67,.12)", strokeWidth: 1 }}
+                        contentStyle={{ backgroundColor: "rgba(255,255,255,.96)", border: "1px solid rgba(60,60,67,.12)", borderRadius: "14px", boxShadow: "0 10px 30px rgba(0,0,0,.10)", color: "#1d1d1f", fontSize: "11px" }}
+                        labelStyle={{ color: "#6e6e73", marginBottom: "5px" }}
+                        formatter={(value) => [`₹${Number(value ?? 0).toLocaleString("en-IN")}`, "Net sale"]}
+                      />
+                      <Line type="monotone" dataKey="total" stroke="#0071e3" strokeWidth={2.25} dot={false} activeDot={{ r: 4, fill: "#ffffff", stroke: "#0071e3", strokeWidth: 2 }} />
+                    </LineChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="empty-state">No accepted sales in this range.</div>
                 )}
               </div>
             </article>

@@ -574,6 +574,19 @@ test("Tracking link must be an http(s) URL or empty", () => {
   assert.equal(dispatch.isValidTrackingLink(null), true);
 });
 
+test("Courier tracking link prefix plus tracking number builds the tracking link", () => {
+  assert.equal(
+    dispatch.buildTrackingLink("https://www.delhivery.com/track-v2/package/", "50xx50xx66xx04"),
+    "https://www.delhivery.com/track-v2/package/50xx50xx66xx04",
+  );
+  // A courier with no prefix, or an order with no number yet, builds nothing so
+  // a hand-typed link is never clobbered.
+  assert.equal(dispatch.buildTrackingLink(null, "AWB1"), null);
+  assert.equal(dispatch.buildTrackingLink("https://track.example.com/", ""), null);
+  assert.equal(dispatch.buildTrackingLink("javascript:alert(1)", "AWB1"), null);
+  assert.equal(dispatch.buildTrackingLink("https://track.example.com/", " AWB 1 "), "https://track.example.com/AWB%201");
+});
+
 test("Tracking number and dock are trimmed strings with no format assumption", () => {
   assert.equal(dispatch.normalizeTrackingNumber("  AWB-123 456/789  "), "AWB-123 456/789");
   assert.equal(dispatch.normalizeTrackingNumber("   "), null);

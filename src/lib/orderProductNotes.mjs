@@ -376,7 +376,9 @@ export function mergeProductNotesIntoInvoiceItems(items, fallbackNotes) {
       ? byOrderItemId.get(orderItemId)
       : bySkuOccurrence.get(buildFallbackLookupKey(orderId, normalizedSku, occurrence)) ?? "";
     const legacyNote = extractLegacyProductNote(getCombinedRemarkText(item));
-    const productNote = mongoNote || legacyNote;
+    // A Postgres order carries its note on the item itself and has no note
+    // records to match against, so keep it when nothing better is found.
+    const productNote = mongoNote || legacyNote || normalizeProductNote(item?.productNote);
 
     return {
       ...item,

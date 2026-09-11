@@ -1,5 +1,6 @@
 import "server-only";
 
+import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { mapPostgresUserToLegacyProfile, getProfileId } from "@/server/auth/legacy-auth.mapper";
 import { verifyPassword } from "@/server/auth/password";
@@ -28,9 +29,39 @@ export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
-function normalizeLoginIdentifier(value: string): string {
+export function normalizeLoginIdentifier(value: string): string {
   return value.trim().toLowerCase();
 }
+
+// Dealers sign in with an email, a username, a dealer code, or a legacy PHP id;
+// every lookup goes through this so OTP and password login accept the same set.
+function loginIdentifierWhere(identifier: string): Prisma.UserWhereInput {
+  const normalized = normalizeLoginIdentifier(identifier);
+  return {
+    OR: [
+      { normalizedEmail: normalized },
+      { normalizedUsername: normalized },
+      { dealerProfile: { dealerCode: identifier.trim() } },
+      { dealerProfile: { legacyPhpId: identifier.trim() } },
+    ],
+  };
+}
+
+const authUserInclude = {
+  adminProfile: true,
+  accountantProfile: true,
+  staffProfile: {
+    select: {
+      id: true,
+      displayName: true,
+      designation: true,
+      location: true,
+      staffRoleType: true,
+      salesRegion: true,
+    },
+  },
+  dealerProfile: true,
+} satisfies Prisma.UserInclude;
 
 function displayNameFromProfile(profile: Record<string, unknown>, role: AuthRole) {
   const keys = role === "DEALER" ? ["Dealer_Name", "name"] : ["name", "staff_name", "ADMIN_NAME"];
@@ -42,7 +73,7 @@ function displayNameFromProfile(profile: Record<string, unknown>, role: AuthRole
 }
 
 function toAuthenticatedPostgresUser(
-  user: NonNullable<Awaited<ReturnType<typeof findPostgresUserByEmail>>>,
+  user: NonNullable<Awaited<ReturnType<typeof findPostgresUserByLoginIdentifier>>>,
   diagnosticPasswordId?: bigint,
 ): AuthenticatedPostgresUser {
   const profile = mapPostgresUserToLegacyProfile(user);
@@ -60,68 +91,24 @@ function toAuthenticatedPostgresUser(
   };
 }
 
-function findPostgresUserByEmail(email: string) {
-  return prisma.user.findFirst({
-    where: { normalizedEmail: normalizeEmail(email) },
-    include: {
-      adminProfile: true,
-      accountantProfile: true,
-      staffProfile: {
-        select: {
-          id: true,
-          displayName: true,
-          designation: true,
-          location: true,
-          staffRoleType: true,
-          salesRegion: true,
-        },
-      },
-      dealerProfile: true,
-    },
-  });
+function findPostgresUserByLoginIdentifier(identifier: string) {
+  return prisma.user.findFirst({ where: loginIdentifierWhere(identifier), include: authUserInclude });
 }
 
-export async function findActivePostgresUserByEmail(email: string): Promise<AuthenticatedPostgresUser> {
-  const normalizedEmail = normalizeEmail(email);
-  if (!normalizedEmail) throw new Error("Invalid credentials");
+export async function findActivePostgresUserByLoginIdentifier(identifier: string): Promise<AuthenticatedPostgresUser> {
+  if (!normalizeLoginIdentifier(identifier)) throw new Error("Invalid credentials");
 
-  const user = await findPostgresUserByEmail(normalizedEmail);
+  const user = await findPostgresUserByLoginIdentifier(identifier);
   if (!user || user.deletedAt || user.status !== "ACTIVE") throw new Error("Invalid credentials");
 
   return toAuthenticatedPostgresUser(user);
 }
 export class PrismaPostgresAuthenticationProvider implements PostgresAuthenticationProvider {
   async authenticate(input: { email: string; password: string; roleType?: string }): Promise<AuthenticatedPostgresUser> {
-    const loginIdentifier = normalizeLoginIdentifier(input.email);
-    const normalizedEmail = normalizeEmail(input.email);
     const expectedRole = input.roleType ? LEGACY_ROLE_MAP[input.roleType as LegacyRoleType] : undefined;
-    if (!loginIdentifier || (input.roleType && !expectedRole)) throw new Error("Invalid credentials");
+    if (!normalizeLoginIdentifier(input.email) || (input.roleType && !expectedRole)) throw new Error("Invalid credentials");
 
-    const user = await prisma.user.findFirst({
-      where: {
-        OR: [
-          { normalizedEmail },
-          { normalizedUsername: loginIdentifier },
-          { dealerProfile: { dealerCode: input.email.trim() } },
-          { dealerProfile: { legacyPhpId: input.email.trim() } },
-        ],
-      },
-      include: {
-        adminProfile: true,
-        accountantProfile: true,
-        staffProfile: {
-          select: {
-            id: true,
-            displayName: true,
-            designation: true,
-            location: true,
-            staffRoleType: true,
-            salesRegion: true,
-          },
-        },
-        dealerProfile: true,
-      },
-    });
+    const user = await findPostgresUserByLoginIdentifier(input.email);
 
     if (!user || user.deletedAt || user.status !== "ACTIVE") throw new Error("Invalid credentials");
     if (expectedRole && user.role !== expectedRole) throw new Error("Invalid credentials");

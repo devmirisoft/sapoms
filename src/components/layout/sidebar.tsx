@@ -34,14 +34,14 @@ const NAV: Record<AppRole, NavItem[]> = {
     {                         label: "Profile",            href: "/dashboard/admin/profile",                         icon: <SquareUser size={15} />      },
     { section: "Dealers",     label: "Dealer List",        href: "/dashboard/admin/dealer/DealerList",               icon: <Users size={15} />           },
     {                         label: "Dealer Ledger",       href: "/dashboard/admin/ledger",                          icon: <BookOpen size={15} />        },
-    {                         label: "Add Dealer",          href: "/dashboard/admin/dealer/AddDealerForm",            icon: <UserRoundPlus size={15} />   },
+    // {                         label: "Add Dealer",          href: "/dashboard/admin/dealer/AddDealerForm",            icon: <UserRoundPlus size={15} />   },
     {                         label: "Dealer Requests",     href: "/dashboard/admin/dealer/requests",                 icon: <Receipt size={15} />, badgeKey: "dealerRequests" },
     {                         label: "Terms Acceptance",    href: "/dashboard/admin/terms-acceptance",                icon: <FileText size={15} />        },
     { section: "Staff",       label: "Staff List",         href: "/dashboard/admin/staff/stafflist",                 icon: <Users size={15} />           },
     {                         label: "Manage Regions",     href: "/dashboard/admin/manage-regions",                 icon: <MapPinned size={15} />       },
-    {                         label: "Add Staff",           href: "/dashboard/admin/staff/addstaff",                  icon: <SquareUser size={15} />      },
+   // {                         label: "Add Staff",           href: "/dashboard/admin/staff/addstaff",                  icon: <SquareUser size={15} />      },
     { section: "Products",    label: "Products",           href: "/Pages/products",                                  icon: <Package size={15} />         },
-    {                         label: "Add Product",         href: "/Pages/products/addproducts",                      icon: <Plus size={15} />            },
+   // {                         label: "Add Product",         href: "/Pages/products/addproducts",                      icon: <Plus size={15} />            },
     { section: "Orders",      label: "Order List",         href: "/orders",                           icon: <ClipboardList size={15} />   },
     {                         label: "Pending Orders",      href: "/Pages/Ordermanagement/outstandingorders",         icon: <ClipboardList size={15} />, badgeKey: "pendingOrders" },
     {                         label: "Pending Products",    href: "/dashboard/admin/pending-products",                icon: <Package size={15} />         },
@@ -197,6 +197,8 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   }, [pinned]);
 
   const togglePin = () => writePin(!pinned);
+  // Accordion: at most one section open, and nothing open until clicked.
+  const [openSection, setOpenSection] = useState<string | null>(null);
 
   const name =
     role === "dealer"     ? user?.Dealer_Name :
@@ -240,11 +242,6 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     }
   });
 
-  const activeSections = new Set(
-    grouped
-      .filter((group) => group.section && group.items.some((item) => pathname === item.href || (item.href.length > 1 && pathname.startsWith(item.href))))
-      .map((group) => group.section as string),
-  );
 
   return (
     <>
@@ -328,7 +325,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           border: 0;
           background: transparent;
           color: #8b98ab;
-          cursor: default;
+          cursor: pointer;
           font-family: inherit;
           user-select: none;
           font-size: 10px;
@@ -340,7 +337,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           text-align: left;
           text-transform: uppercase;
         }
-        .sb-group:hover .sb-section, .sb-group.open .sb-section { color: #ffffff; }
+        .sb-group.open .sb-section { color: #ffffff; }
         .sb-section {
           background-repeat: no-repeat;
           background-position: center;
@@ -350,15 +347,29 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         }
         .sb-section > * { transition: opacity .18s ease .12s; }
         .sb-section-icon { width: 13px; height: 13px; transition: transform .3s cubic-bezier(.32,.72,0,1); }
-        .sb-group:hover .sb-section-icon, .sb-group.open .sb-section-icon { transform: rotate(90deg); }
-        /* Closed is the resting state; hover (or holding the current page)
-           opens the group. The 0fr/1fr grid keeps the height animatable. */
-        .sb-group-items { display: grid; grid-template-rows: 0fr; overflow: hidden; transition: grid-template-rows .3s cubic-bezier(.32,.72,0,1); }
-        .sb-group:hover > .sb-group-items,
+        .sb-group.open .sb-section-icon { transform: rotate(90deg); }
+        /* Closed is the resting state; a click opens one group at a time.
+           The 0fr/1fr grid keeps the height animatable. */
+        .sb-group-items {
+          display: grid; grid-template-rows: 0fr; overflow: hidden;
+          transition: grid-template-rows .34s cubic-bezier(.4,0,.2,1);
+        }
         .sb-group.open > .sb-group-items { grid-template-rows: 1fr; }
         /* A group with no section header (the leading items) is never collapsible. */
         .sb-group.bare > .sb-group-items { grid-template-rows: 1fr; }
-        .sb-group-inner { min-height: 0; }
+        /* The rows animate the box; the content fades and slides with it, so the
+           links don't appear pre-drawn behind a sliding edge. Closing runs the
+           fade first (no delay), opening waits for the box to be underway. */
+        .sb-group-inner {
+          min-height: 0;
+          opacity: 0; transform: translateY(-4px);
+          transition: opacity .16s ease, transform .16s ease;
+        }
+        .sb-group.open > .sb-group-items > .sb-group-inner,
+        .sb-group.bare > .sb-group-items > .sb-group-inner {
+          opacity: 1; transform: none;
+          transition: opacity .22s ease .08s, transform .26s cubic-bezier(.4,0,.2,1) .08s;
+        }
 
         /* The rail hairline is painted by .sb-section itself, so this stays out of flow */
         .sb-rule { display: none; }
@@ -476,6 +487,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-nav { margin-top: 12px; }
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-nav::-webkit-scrollbar { width: 0; }
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-group-items { grid-template-rows: 1fr; }
+          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-group-inner { opacity: 1; transform: none; }
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-logout { border-color: transparent; }
 
           /* Section headers keep their box in the rail: the label fades out and
@@ -534,7 +546,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         @media (prefers-reduced-motion: reduce) {
           .sb-panel, .sb-head, .sb-user, .sb-nav, .sb-link, .sb-logout,
           .sb-label, .sb-headtext, .sb-usertext, .sb-link-dot,
-          .sb-section, .sb-section-icon, .sb-group-items, .dl-shell,
+          .sb-section, .sb-section-icon, .sb-group-items, .sb-group-inner, .dl-shell,
           .dl-burger span, .dl-hamburger, .sb-railstrip::after {
             transition-duration: .01ms !important;
             transition-delay: 0s !important;
@@ -600,17 +612,20 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         {/* Nav */}
         <nav className="sb-nav">
           {grouped.map((group, gi) => {
-            // A section holding the current page stays open without hover, so
-            // the nav always shows where you are; the rest open on hover only.
-            const pinnedOpen = !!group.section && activeSections.has(group.section);
+            const isOpen = !!group.section && openSection === group.section;
             return (
-            <div key={gi} className={`sb-group${pinnedOpen ? " open" : ""}${group.section ? "" : " bare"}`}>
+            <div key={gi} className={`sb-group${isOpen ? " open" : ""}${group.section ? "" : " bare"}`}>
               {group.section ? (
                 <>
-                  <div className="sb-section" aria-hidden="true">
+                  <button
+                    type="button"
+                    className="sb-section"
+                    aria-expanded={isOpen}
+                    onClick={() => setOpenSection(isOpen ? null : group.section!)}
+                  >
                     <span>{group.section}</span>
                     <ChevronRight className="sb-section-icon" />
-                  </div>
+                  </button>
                   {gi > 0 && <span className="sb-rule" aria-hidden="true" />}
                 </>
               ) : null}

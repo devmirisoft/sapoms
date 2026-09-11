@@ -2,7 +2,7 @@ import type { AdminProfile, AccountantProfile, DealerProfile, StaffProfile, User
 import { sanitizeLegacyProfile, withClientRole } from "@/server/auth/sanitize-profile";
 import type { AuthRole } from "@/server/auth/providers/types";
 
-type UserLike = Pick<User, "email" | "role">;
+type UserLike = Pick<User, "email" | "role"> & Partial<Pick<User, "passwordUpdatedAt">>;
 
 function valueOrEmpty(value: unknown) {
   return value === null || value === undefined ? "" : String(value);
@@ -65,6 +65,7 @@ export function mapDealerProfile(user: UserLike, profile: DealerProfile) {
     gst: valueOrEmpty(profile.gstin),
     creditdays: valueOrZero(profile.creditDays),
     termsAcceptedAt: profile.termsAcceptedAt?.toISOString() ?? "",
+    passwordUpdatedAt: user.passwordUpdatedAt?.toISOString() ?? "",
     role: "dealer",
   });
 }

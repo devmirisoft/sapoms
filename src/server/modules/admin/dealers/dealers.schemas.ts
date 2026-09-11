@@ -71,6 +71,12 @@ const optionalPriorityContact = z.preprocess((value) => {
   return String(value).trim().toLowerCase() === "secondary" ? "secondary" : "primary";
 }, z.enum(["primary", "secondary"]).optional());
 
+// Dealers sign in with either their email or this username, so it is stored and matched lower-cased.
+const optionalUsername = z.preprocess(
+  (value) => (value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim().toLowerCase()),
+  z.string().min(3).max(200).regex(/^[a-z0-9._@-]+$/, "Username may only contain letters, numbers, and . _ - @").optional(),
+);
+
 const optionalEmail = z.preprocess(
   (value) => (value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim().toLowerCase()),
   z.string().email().max(200).optional(),
@@ -113,6 +119,7 @@ function aliases(body: Record<string, unknown>) {
   return {
     businessName: body.businessName ?? body.Dealer_Name ?? body.name,
     email: body.email ?? body.Dealer_Email,
+    username: body.username ?? body.Dealer_Username,
     password: body.password ?? body.Dealer_Password,
     phone: body.phone ?? body.Dealer_Number ?? body.whatsapp,
     dealerCode: body.dealerCode ?? body.Dealer_Dealercode,
@@ -128,6 +135,7 @@ function aliases(body: Record<string, unknown>) {
     notes: body.notes ?? body.Dealer_Notes,
     // `contactPerson` is the legacy key kept for payloads built before the rename to `priorityPerson`.
     priorityContact: body.priorityContact ?? body.priorityPerson ?? body.contactPerson ?? body.Dealer_Contact_Person,
+    contactName: body.contactName ?? body.Dealer_Contact_Name,
     secondaryContactName: body.secondaryContactName ?? body.Dealer_Secondary_Contact_Name,
     secondaryContactPhone: body.secondaryContactPhone ?? body.Dealer_Secondary_Contact_Phone,
     secondaryContactEmail: body.secondaryContactEmail ?? body.Dealer_Secondary_Contact_Email,
@@ -143,6 +151,7 @@ function aliases(body: Record<string, unknown>) {
 const createSchema = z.preprocess((value) => aliases((value && typeof value === "object" ? value : {}) as Record<string, unknown>), z.object({
   businessName: requiredText(200),
   email: z.preprocess((value) => String(value ?? "").trim().toLowerCase(), z.string().email()),
+  username: optionalUsername,
   password: z.string().min(10).max(200),
   phone: text(30),
   dealerCode: text(50),
@@ -150,13 +159,14 @@ const createSchema = z.preprocess((value) => aliases((value && typeof value === 
   city: text(100),
   state: text(100),
   pincode: text(20),
-  gstin: text(30),
+  gstin: text(15),
   discountPercent: optionalDecimalPercent,
   creditDays: optionalInteger(3650),
   creditLimitPaise: optionalBigIntString,
   annualTargetPaise: optionalBigIntString,
   notes: text(2000),
   priorityContact: optionalPriorityContact,
+  contactName: text(200),
   secondaryContactName: text(200),
   secondaryContactPhone: text(30),
   secondaryContactEmail: optionalEmail,
@@ -171,19 +181,21 @@ const createSchema = z.preprocess((value) => aliases((value && typeof value === 
 const updateSchema = z.preprocess((value) => aliases((value && typeof value === "object" ? value : {}) as Record<string, unknown>), z.object({
   businessName: text(200),
   email: z.preprocess((value) => value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim().toLowerCase(), z.string().email().optional()),
+  username: optionalUsername,
   phone: text(30),
   dealerCode: text(50),
   address: text(500),
   city: text(100),
   state: text(100),
   pincode: text(20),
-  gstin: text(30),
+  gstin: text(15),
   discountPercent: optionalDecimalPercent,
   creditDays: optionalInteger(3650),
   creditLimitPaise: optionalBigIntString,
   annualTargetPaise: optionalBigIntString,
   notes: text(2000),
   priorityContact: optionalPriorityContact,
+  contactName: text(200),
   secondaryContactName: text(200),
   secondaryContactPhone: text(30),
   secondaryContactEmail: optionalEmail,

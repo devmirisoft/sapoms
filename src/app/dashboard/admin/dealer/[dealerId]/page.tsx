@@ -174,6 +174,7 @@ export default function EditDealerPage() {
   const [currentlimit,   setCurrentlimit]   = useState("")
   const [notes,          setNotes]          = useState("")
   const [priorityPerson, setPriorityPerson] = useState<"primary" | "secondary">("primary")
+  const [contactName,     setContactName]     = useState("")
   const [secondaryContactName,  setSecondaryContactName]  = useState("")
   const [secondaryContactPhone, setSecondaryContactPhone] = useState("")
   const [secondaryContactEmail, setSecondaryContactEmail] = useState("")
@@ -222,6 +223,7 @@ export default function EditDealerPage() {
           setAnnualtarget(d.annualtarget || "")
           setCurrentlimit(d.currentlimit || "")
           setPriorityPerson(d.priorityContact === "secondary" ? "secondary" : "primary")
+          setContactName(d.contactName || d.Dealer_Name || "")
           setSecondaryContactName(d.secondaryContactName || "")
           setSecondaryContactPhone(d.secondaryContactPhone || "")
           setSecondaryContactEmail(d.secondaryContactEmail || "")
@@ -419,6 +421,7 @@ export default function EditDealerPage() {
         annualTargetPaise: annualtarget,
         notes,
         priorityContact: priorityPerson,
+        contactName,
         secondaryContactName,
         secondaryContactPhone,
         secondaryContactEmail,
@@ -511,7 +514,7 @@ export default function EditDealerPage() {
             {/* Basic Info */}
             <SectionCard title="Basic Information" icon={<User className="w-4 h-4" />}>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <InputField label="Name"             value={name}    onChange={setName}    placeholder="Full name" />
+                <InputField label="Company Name"     value={name}    onChange={setName}    placeholder="Company name" />
                 <InputField label="Email Address"    value={email}   onChange={setEmail}   type="email" placeholder="dealer@email.com" />
                 <InputField label="WhatsApp Number"  value={number}  onChange={setNumber}  type="number" placeholder="10-digit number" />
                 <InputField label="City"             value={city}    onChange={setCity}    placeholder="City / Location" />
@@ -529,7 +532,7 @@ export default function EditDealerPage() {
                     {priorityPerson === "primary" && <PriorityPill />}
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-                    <InputField label="Person Name" value={name}   onChange={setName}   placeholder="Person name" />
+                    <InputField label="Person Name" value={contactName} onChange={setContactName} placeholder="Person name" />
                     <InputField label="Phone No."   value={number}  onChange={setNumber} type="number" placeholder="10-digit number" />
                     <InputField label="Email"       value={email}   onChange={setEmail}  type="email" placeholder="dealer@email.com" />
                   </div>

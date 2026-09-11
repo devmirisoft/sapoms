@@ -1,16 +1,37 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireAdmin } from "@/server/admin/admin-route";
-import { DISPATCH_PARTNER_LIMIT } from "@/lib/orderDispatch";
+import { DISPATCH_PARTNER_LIMIT, normalizeTrackingLink } from "@/lib/orderDispatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-type CourierRow = { id: bigint; name: string; isActive: boolean; position: number };
+type CourierRow = {
+  id: bigint;
+  name: string;
+  trackingUrlPrefix: string | null;
+  isActive: boolean;
+  position: number;
+};
 
 function toDto(row: CourierRow) {
-  return { id: row.id.toString(), name: row.name, isActive: row.isActive, position: row.position };
+  return {
+    id: row.id.toString(),
+    name: row.name,
+    trackingUrlPrefix: row.trackingUrlPrefix,
+    isActive: row.isActive,
+    position: row.position,
+  };
+}
+
+// Empty string clears the prefix; anything that is not an http(s) URL is a
+// typo worth reporting rather than silently dropping.
+function courierPrefix(value: unknown) {
+  if (typeof value === "string" && !value.trim()) return null;
+  const prefix = normalizeTrackingLink(value);
+  if (!prefix) throw Object.assign(new Error("Tracking link prefix must be a valid http(s) URL."), { status: 400 });
+  return prefix;
 }
 
 function courierName(value: unknown) {
@@ -48,7 +69,11 @@ export async function POST(request: NextRequest) {
     await requireAdmin();
     const body = await request.json().catch(() => ({}));
     const row = await prisma.courier.create({
-      data: { name: courierName(body.name), position: Number.isFinite(Number(body.position)) ? Number(body.position) : 0 },
+      data: {
+        name: courierName(body.name),
+        trackingUrlPrefix: body.trackingUrlPrefix === undefined ? null : courierPrefix(body.trackingUrlPrefix),
+        position: Number.isFinite(Number(body.position)) ? Number(body.position) : 0,
+      },
     });
     return NextResponse.json({ success: true, data: toDto(row) }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
@@ -68,6 +93,7 @@ export async function PATCH(request: NextRequest) {
       where: { id: BigInt(id) },
       data: {
         ...(body.name === undefined ? {} : { name: courierName(body.name) }),
+        ...(body.trackingUrlPrefix === undefined ? {} : { trackingUrlPrefix: courierPrefix(body.trackingUrlPrefix) }),
         ...(body.isActive === undefined ? {} : { isActive: Boolean(body.isActive) }),
         ...(body.position === undefined ? {} : { position: Number(body.position) || 0 }),
       },

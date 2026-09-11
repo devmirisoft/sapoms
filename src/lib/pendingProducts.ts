@@ -21,10 +21,12 @@ export type PendingProductsOrderRow = {
   orderId?: string | number;
   order_date?: string;
   orderDate?: string;
+  order_number?: string;
   order_dealer?: string | number;
   orderdata_dealerid?: string | number;
   Dealer_Id?: string | number;
   Dealer_Name?: string;
+  Dealer_Code?: string;
   accept_order?: string | number;
   del_status?: string | number;
   order_status?: string | number;
@@ -75,10 +77,14 @@ export type PendingProductLine = {
   category: string;
   image: string;
   orderId: string;
+  // The stored, canonical order number (OM/26-27/DMS-001). orderId stays the
+  // internal join key; this is what a human-facing sheet must print.
+  orderNumber: string;
   orderDate: string;
   orderDateMs: number | null;
   dealerId: string;
   dealerName: string;
+  dealerCode: string;
   assignedStaffIds: string[];
   assignedStaffNames: string[];
   orderItemId: string | null;
@@ -513,10 +519,12 @@ export function buildPendingProductLines(input: {
       lines.push({
         ...identity,
         orderId,
+        orderNumber: safeText(order.order_number),
         orderDate,
         orderDateMs,
         dealerId,
         dealerName: firstNonEmpty(order.Dealer_Name, dealerDirectory?.Dealer_Name, "Dealer"),
+        dealerCode: safeText(order.Dealer_Code),
         assignedStaffIds,
         assignedStaffNames,
         orderItemId: firstNonEmpty(item.orderItemId, item.orderdata_id) || null,

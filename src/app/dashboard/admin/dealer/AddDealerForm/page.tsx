@@ -35,6 +35,7 @@ function dealerPayloadFromSnapshot(snapshot: DealerFormSnapshot) {
     annualTargetPaise: snapshot.annualTarget,
     notes: snapshot.notes,
     priorityContact: snapshot.priorityPerson,
+    contactName: snapshot.contactName,
     secondaryContactName: snapshot.secondaryContactName,
     secondaryContactPhone: snapshot.secondaryContactPhone,
     secondaryContactEmail: snapshot.secondaryContactEmail,

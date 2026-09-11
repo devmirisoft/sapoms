@@ -248,6 +248,10 @@ export default function EditStaffPage() {
   const [assignedCities, setAssignedCities] = useState<string[]>([])
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
 
+  // Blank means "leave the login password alone"; anything else is a reset.
+  const [newPassword, setNewPassword] = useState('')
+  const [showNewPassword, setShowNewPassword] = useState(false)
+
   const [diagnosticPassword, setDiagnosticPassword] = useState('')
   const [showDiagnosticPassword, setShowDiagnosticPassword] = useState(false)
   const [diagnosticExpiryHours, setDiagnosticExpiryHours] = useState('24')
@@ -489,6 +493,10 @@ export default function EditStaffPage() {
       return
     }
     if (!selectedRole) return
+    if (newPassword && newPassword.length < 10) {
+      showToast('error', 'Password must be at least 10 characters')
+      return
+    }
 
     setIsSaving(true)
     try {
@@ -499,6 +507,7 @@ export default function EditStaffPage() {
         body: JSON.stringify({
           name,
           email,
+          password: newPassword || undefined,
           designation,
           location,
           mobileNo,
@@ -528,7 +537,8 @@ export default function EditStaffPage() {
         throw new Error(apiMessage(payload, 'Failed to update staff'))
       }
 
-      showToast('success', 'Staff updated successfully')
+      setNewPassword('')
+      showToast('success', newPassword ? 'Staff updated, password changed' : 'Staff updated successfully')
       router.push(STAFF_LIST_ROUTE)
     } catch (error) {
       showToast('error', error instanceof Error ? error.message : 'Failed to update staff')
@@ -703,6 +713,32 @@ export default function EditStaffPage() {
                   required={false}
                   disabled
                 />
+
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
+                    Login Password
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={newPassword}
+                      onChange={(event) => setNewPassword(event.target.value)}
+                      placeholder="Leave blank to keep current password"
+                      autoComplete="new-password"
+                      minLength={10}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword((value) => !value)}
+                      className="absolute inset-y-0 right-2 flex items-center rounded-md px-2 text-gray-400 transition hover:text-indigo-600"
+                      aria-label={showNewPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-gray-400">Minimum 10 characters. Changing it signs the staff member out of every device.</p>
+                </div>
 
                 {!isNsm && (
                   <div className="flex flex-col gap-1.5 md:col-span-2 rounded-lg border border-gray-100 bg-gray-50/60 p-4">
