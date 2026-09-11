@@ -7,11 +7,6 @@ import { useParams, useRouter } from 'next/navigation'
 const ADMIN_DEALERS_URL = "/api/admin/dealers"
 const DEALER_LIST_ROUTE = "/dashboard/admin/dealer/DealerList"
 
-function splitCsv(value: unknown) {
-  if (Array.isArray(value)) return value.map(String).map(s => s.trim()).filter(Boolean)
-  return String(value || "").split(",").map(s => s.trim()).filter(Boolean)
-}
-
 function formatAmount(value: unknown) {
   const raw = String(value ?? "").trim()
   if (!raw) return '-'
@@ -96,7 +91,7 @@ export default function DealerViewPage() {
     <div className="min-h-screen bg-gray-100 p-6">No dealer found</div>
   )
 
-  const assigned = splitCsv(dealer.assignedstaff)
+  const assignedStaff: any[] = Array.isArray(dealer.assignedStaff) ? dealer.assignedStaff : []
   const priorityPerson = dealer.priorityContact === "secondary" ? "secondary" : "primary"
   const isWalletActive = String(dealer.walletStatus || "").toLowerCase() === "active"
 
@@ -149,7 +144,7 @@ export default function DealerViewPage() {
               <ContactCard
                 heading="Contact 1"
                 isPriority={priorityPerson === "primary"}
-                name={dealer.Dealer_Name}
+                name={dealer.contactName || dealer.Dealer_Name}
                 phone={dealer.Dealer_Number}
                 email={dealer.Dealer_Email}
               />
@@ -224,7 +219,22 @@ export default function DealerViewPage() {
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
             <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Staff Assignment</h2>
-            <div className="text-sm text-gray-800">{assigned.length > 0 ? assigned.join(', ') : (dealer.staffname || '—')}</div>
+            {assignedStaff.length > 0 ? (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {assignedStaff.map((staff) => (
+                  <ContactCard
+                    key={staff.assignmentId || staff.staffId}
+                    heading={staff.roleLabel || staff.designation || 'Staff'}
+                    isPriority={false}
+                    name={staff.name}
+                    phone={staff.phone}
+                    email={staff.email}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-sm text-gray-800">{dealer.staffname || '—'}</div>
+            )}
           </div>
 
           <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">

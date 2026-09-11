@@ -6,6 +6,7 @@ import {
   DISPATCH_PARTNERS,
   TRACKING_LINK_LIMIT,
   TRACKING_NUMBER_LIMIT,
+  buildTrackingLink,
   normalizeDispatchTrackingInput,
   type DispatchTrackingInfo,
 } from "@/lib/orderDispatch";
@@ -29,11 +30,15 @@ type FormState = {
 const EMPTY = "—";
 const ADD_COURIER = "__add_courier__";
 
+type CourierOption = { name: string; trackingUrlPrefix: string | null };
+
 // Couriers are admin-managed (/dashboard/admin/couriers). The hardcoded list
 // stays only as the fallback when that fetch fails, so dispatch is never
 // blocked by an unreachable courier list.
 function useCourierOptions(enabled: boolean) {
-  const [couriers, setCouriers] = useState<string[]>(() => [...DISPATCH_PARTNERS]);
+  const [couriers, setCouriers] = useState<CourierOption[]>(() =>
+    DISPATCH_PARTNERS.map((name) => ({ name, trackingUrlPrefix: null })),
+  );
 
   useEffect(() => {
     if (!enabled) return;
@@ -43,7 +48,10 @@ function useCourierOptions(enabled: boolean) {
       .then((response) => response.json())
       .then((json) => {
         if (!active || !json?.success || !Array.isArray(json.data) || !json.data.length) return;
-        setCouriers(json.data.map((row: { name: string }) => row.name));
+        setCouriers(json.data.map((row: CourierOption) => ({
+          name: row.name,
+          trackingUrlPrefix: row.trackingUrlPrefix ?? null,
+        })));
       })
       .catch(() => undefined);
 
@@ -52,8 +60,9 @@ function useCourierOptions(enabled: boolean) {
     };
   }, [enabled]);
 
-  const addCourier = (name: string) =>
-    setCouriers((previous) => (previous.includes(name) ? previous : [...previous, name]));
+  const addCourier = (courier: CourierOption) =>
+    setCouriers((previous) =>
+      previous.some((option) => option.name === courier.name) ? previous : [...previous, courier]);
 
   return [couriers, addCourier] as const;
 }
@@ -117,12 +126,32 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
 
   const editable = canEdit && editingSupported;
   const [courierOptions, addCourierOption] = useCourierOptions(editable);
-  // null = not adding; a string = the name being typed in the inline field.
-  const [newCourier, setNewCourier] = useState<string | null>(null);
+  // null = not adding; an object = the name/prefix being typed inline.
+  const [newCourier, setNewCourier] = useState<CourierOption | null>(null);
   const [addingCourier, setAddingCourier] = useState(false);
 
+  const prefixFor = (partner: string) =>
+    courierOptions.find((option) => option.name === partner)?.trackingUrlPrefix ?? null;
+
+  // Joining the courier's saved prefix to the tracking number is the whole
+  // point of storing the prefix, so it rewrites the link whenever either side
+  // changes. Selecting a courier shows its bare prefix until a number is typed;
+  // a courier with no prefix leaves a hand-typed link alone.
+  const linkFor = (prefix: string | null, trackingNumber: string) =>
+    buildTrackingLink(prefix, trackingNumber) ?? prefix;
+
+  const applyPartner = (partner: string, prefix?: string | null) => {
+    setForm((previous) => {
+      const next = { ...previous, dispatchPartner: partner };
+      const link = linkFor(prefix === undefined ? prefixFor(partner) : prefix, next.trackingNumber);
+      return link ? { ...next, trackingLink: link } : next;
+    });
+    setError("");
+  };
+
   const handleAddCourier = async () => {
-    const name = (newCourier ?? "").trim();
+    const name = (newCourier?.name ?? "").trim();
+    const trackingUrlPrefix = (newCourier?.trackingUrlPrefix ?? "").trim() || null;
     if (!name) {
       setError("Courier name is required.");
       return;
@@ -134,16 +163,19 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
       const response = await fetch("/api/couriers", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name }),
+        body: JSON.stringify({ name, trackingUrlPrefix }),
       });
       const json = await response.json().catch(() => null);
       if (!response.ok || !json?.success) {
         setError(json?.message || "Failed to add courier.");
         return;
       }
-      const saved = String(json.data?.name || name);
+      const saved: CourierOption = {
+        name: String(json.data?.name || name),
+        trackingUrlPrefix: json.data?.trackingUrlPrefix ?? trackingUrlPrefix,
+      };
       addCourierOption(saved);
-      setForm((previous) => ({ ...previous, dispatchPartner: saved }));
+      applyPartner(saved.name, saved.trackingUrlPrefix);
       setNewCourier(null);
     } catch {
       setError("Failed to add courier.");
@@ -153,7 +185,12 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
   };
 
   const handleChange = (field: keyof FormState, next: string) => {
-    setForm((previous) => ({ ...previous, [field]: next }));
+    setForm((previous) => {
+      if (field === "trackingLink") return { ...previous, trackingLink: next };
+      const updated = { ...previous, [field]: next };
+      const link = linkFor(prefixFor(updated.dispatchPartner), updated.trackingNumber);
+      return link ? { ...updated, trackingLink: link } : updated;
+    });
     setError("");
   };
 
@@ -240,10 +277,10 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                 value={form.dispatchPartner}
                 onChange={(event) => {
                   if (event.target.value === ADD_COURIER) {
-                    setNewCourier("");
+                    setNewCourier({ name: "", trackingUrlPrefix: "" });
                     return;
                   }
-                  handleChange("dispatchPartner", event.target.value);
+                  applyPartner(event.target.value);
                 }}
                 disabled={saving}
                 className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
@@ -251,22 +288,22 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                 <option value="">Select dispatch partner</option>
                 {/* A courier saved earlier but since removed still shows, so
                     editing another field cannot silently blank it. */}
-                {(form.dispatchPartner && !courierOptions.includes(form.dispatchPartner)
-                  ? [form.dispatchPartner, ...courierOptions]
+                {(form.dispatchPartner && !courierOptions.some((option) => option.name === form.dispatchPartner)
+                  ? [{ name: form.dispatchPartner, trackingUrlPrefix: null }, ...courierOptions]
                   : courierOptions
-                ).map((partner) => (
-                  <option key={partner} value={partner}>{partner}</option>
+                ).map((option) => (
+                  <option key={option.name} value={option.name}>{option.name}</option>
                 ))}
                 <option value={ADD_COURIER}>+ Add dispatch partner...</option>
               </select>
               {newCourier !== null && (
-                <div className="mt-2 flex items-center gap-2">
+                <div className="mt-2 space-y-2">
                   <input
                     type="text"
                     autoFocus
                     maxLength={DISPATCH_PARTNER_LIMIT}
-                    value={newCourier}
-                    onChange={(event) => setNewCourier(event.target.value)}
+                    value={newCourier.name}
+                    onChange={(event) => setNewCourier({ ...newCourier, name: event.target.value })}
                     onKeyDown={(event) => {
                       if (event.key === "Enter") {
                         event.preventDefault();
@@ -278,6 +315,23 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                     placeholder="New partner name"
                     className="w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
                   />
+                  <input
+                    type="url"
+                    maxLength={TRACKING_LINK_LIMIT}
+                    value={newCourier.trackingUrlPrefix ?? ""}
+                    onChange={(event) => setNewCourier({ ...newCourier, trackingUrlPrefix: event.target.value })}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void handleAddCourier();
+                      }
+                      if (event.key === "Escape") setNewCourier(null);
+                    }}
+                    disabled={addingCourier || saving}
+                    placeholder="Tracking link prefix, e.g. https://www.delhivery.com/track-v2/package/"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
+                  />
+                  <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={handleAddCourier}
@@ -294,6 +348,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                   >
                     Cancel
                   </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -322,6 +377,11 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                 placeholder="https://..."
                 className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
               />
+              {prefixFor(form.dispatchPartner) && (
+                <p className="mt-1 text-[11px] text-gray-500">
+                  Built from the tracking link prefix saved for {form.dispatchPartner}.
+                </p>
+              )}
             </div>
           </div>
 

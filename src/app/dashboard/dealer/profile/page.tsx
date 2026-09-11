@@ -14,7 +14,6 @@ type DealerSession = {
   Dealer_City?: string;
   Dealer_Address?: string;
   Dealer_Pincode?: string;
-  Dealer_Password?: string;
   Dealer_Image?: string;
   image?: string;
   name?: string;
@@ -41,6 +40,73 @@ function readDealerSession(): DealerSession | null {
   } catch {
     return null;
   }
+}
+
+const MIN_PASSWORD_LENGTH = 10;
+
+function ChangePasswordSection() {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (newPassword.length < MIN_PASSWORD_LENGTH) {
+      showToast("error", `Password must be at least ${MIN_PASSWORD_LENGTH} characters`);
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      showToast("error", "Passwords do not match");
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const response = await fetch("/api/dealer/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.success) throw new Error(payload?.msg || payload?.message || "Update failed");
+      // The change bumps tokenVersion, so refresh before the stale access token 401s.
+      await fetch("/api/auth/refresh", { method: "POST", credentials: "include" }).catch(() => undefined);
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      showToast("success", "Password updated");
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Failed to update password");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <form onSubmit={handleSubmit} className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <h2 className="mb-5 border-b border-gray-100 pb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">
+        Change Password
+      </h2>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+        <Field label="Current Password" value={currentPassword} onChange={setCurrentPassword} type="password" />
+        <Field label="New Password" value={newPassword} onChange={setNewPassword} type="password" />
+        <Field label="Confirm New Password" value={confirmPassword} onChange={setConfirmPassword} type="password" />
+      </div>
+      <p className="mt-3 text-xs text-gray-500">At least {MIN_PASSWORD_LENGTH} characters. Your other devices will be signed out.</p>
+      <div className="mt-5 flex justify-end">
+        <button
+          type="submit"
+          disabled={isSaving}
+          className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+        >
+          <Save className="h-4 w-4" />
+          {isSaving ? "Updating..." : "Update Password"}
+        </button>
+      </div>
+    </form>
+  );
 }
 
 function Field({
@@ -83,7 +149,6 @@ export default function DealerProfilePage() {
   const [city, setCity] = useState("");
   const [address, setAddress] = useState("");
   const [pincode, setPincode] = useState("");
-  const [password, setPassword] = useState("");
   const [image, setImage] = useState<File | null>(null);
   const [contacts, setContacts] = useState<DealerContact[]>([]);
 
@@ -108,7 +173,6 @@ export default function DealerProfilePage() {
         setCity(data.Dealer_City || "");
         setAddress(data.Dealer_Address || "");
         setPincode(data.Dealer_Pincode || "");
-        setPassword(data.Dealer_Password || "");
         // Assigned staff first, then the ASM and RSM they roll up to; the API
         // already excludes anyone listed twice across those three fields.
         const team: DealerContact[] = [
@@ -138,7 +202,7 @@ export default function DealerProfilePage() {
       const response = await fetch("/api/dealer/profile", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ Dealer_Name: name, Dealer_Email: email, Dealer_Number: number, Dealer_City: city, Dealer_Address: address, Dealer_Pincode: pincode, Dealer_Password: password }),
+        body: JSON.stringify({ Dealer_Name: name, Dealer_Email: email, Dealer_Number: number, Dealer_City: city, Dealer_Address: address, Dealer_Pincode: pincode }),
       });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.message || "Update failed");
@@ -154,7 +218,6 @@ export default function DealerProfilePage() {
         Dealer_City: city,
         Dealer_Address: address,
         Dealer_Pincode: pincode,
-        Dealer_Password: password,
         name: payloadData.name || previous.name || name,
         email: payloadData.email || previous.email || email,
         image: payloadData.Dealer_Image || payloadData.image || previous.image || undefined,
@@ -203,7 +266,6 @@ export default function DealerProfilePage() {
               <Field label="City" value={city} onChange={setCity} />
               <Field label="Address" value={address} onChange={setAddress} />
               <Field label="Pin Code" value={pincode} onChange={setPincode} type="number" />
-              <Field label="Password" value={password} onChange={setPassword} type="password" />
             </div>
           </section>
 
@@ -276,6 +338,10 @@ export default function DealerProfilePage() {
             </button>
           </div>
         </form>
+
+        <div className="pb-6">
+          <ChangePasswordSection />
+        </div>
       </div>
     </div>
   );

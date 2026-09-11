@@ -251,7 +251,10 @@ function RequestCard({
         </summary>
         <div className="max-h-72 divide-y divide-gray-100 overflow-y-auto">
           {request.orderSnapshot.products.map((product, index) => (
-            <div key={`${request.id}-${product.productKey || product.sku}-${index}`} className="px-3 py-2">
+            <div
+              key={`${request.id}-${product.productKey || product.sku}-${index}`}
+              className={`px-3 py-2 ${product.usesCustomDiscount ? "bg-indigo-50" : ""}`}
+            >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-mono text-[11px] font-bold text-amber-700">{product.catalogueNumber || product.sku || "-"}</p>
@@ -670,7 +673,8 @@ export default function CustomDiscountApprovalsPage() {
 
                     <details className="overflow-hidden rounded-xl border border-gray-200" open>
                       <summary className="cursor-pointer list-none bg-gray-50 px-4 py-3 text-[12px] font-bold text-gray-700">
-                        Complete Product List
+                        Complete Product List &middot; {request.orderSnapshot.products.length} products &middot;{" "}
+                        {request.orderSnapshot.products.filter((p) => p.usesCustomDiscount).length} with requested discount
                       </summary>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
@@ -685,7 +689,10 @@ export default function CustomDiscountApprovalsPage() {
                           </thead>
                           <tbody className="divide-y divide-gray-100">
                             {request.orderSnapshot.products.map((product, index) => (
-                              <tr key={`${request.id}-${product.productKey || product.sku}-${index}`}>
+                              <tr
+                                key={`${request.id}-${product.productKey || product.sku}-${index}`}
+                                className={product.usesCustomDiscount ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200" : ""}
+                              >
                                 <td className="px-3 py-3 font-mono text-[12px] font-bold text-amber-700">{product.catalogueNumber || product.sku || "-"}</td>
                                 <td className="px-3 py-3">
                                   <p className="text-[12px] font-semibold text-gray-900">{product.productName || "-"}</p>

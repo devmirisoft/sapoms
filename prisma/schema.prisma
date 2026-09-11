@@ -81,6 +81,7 @@ model User {
   role               UserRole
   status             UserStatus @default(ACTIVE)
   tokenVersion       Int        @default(1) @map("token_version")
+  passwordUpdatedAt  DateTime?  @map("password_updated_at")
   lastLoginAt        DateTime?  @map("last_login_at")
   createdAt          DateTime   @default(now()) @map("created_at")
   updatedAt          DateTime   @updatedAt @map("updated_at")
@@ -325,6 +326,7 @@ model DealerProfile {
   annualTargetPaise BigInt?  @map("annual_target_paise")
   notes            String?
   priorityContact  String    @default("primary") @map("priority_contact")
+  contactName           String? @map("contact_name")
   secondaryContactName  String? @map("secondary_contact_name")
   secondaryContactPhone String? @map("secondary_contact_phone")
   secondaryContactEmail String? @map("secondary_contact_email")
@@ -1317,6 +1319,10 @@ model DealerFundRequest {
 model Courier {
   id        BigInt   @id @default(autoincrement())
   name      String   @unique
+  // Tracking URL the courier's number is appended to, e.g.
+  // "https://www.delhivery.com/track-v2/package/". Optional: couriers without
+  // one leave the order's tracking link to be typed by hand.
+  trackingUrlPrefix String? @map("tracking_url_prefix") @db.Text
   isActive  Boolean  @default(true) @map("is_active")
   position  Int      @default(0)
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)

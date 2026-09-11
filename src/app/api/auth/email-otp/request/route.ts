@@ -1,36 +1,38 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { compatibilitySuccess } from "@/server/http/compat-response";
-import { findActivePostgresUserByEmail, normalizeEmail } from "@/server/auth/providers/postgres-auth.provider";
+import { findActivePostgresUserByLoginIdentifier, normalizeLoginIdentifier } from "@/server/auth/providers/postgres-auth.provider";
 import { createEmailOtpForUser, invalidateEmailOtp, isEmailOtpEnabled } from "@/server/auth/email-otp";
 import { sendLoginOtp } from "@/server/auth/email";
 import { writeAuthAuditLog } from "@/server/auth/session";
 
 const requestSchema = z.object({
-  email: z.string().email(),
+  email: z.string().trim().min(1),
 });
 
-const genericMessage = "If an active account exists for this email, a verification code has been sent.";
+const genericMessage = "If an active account exists, a verification code has been sent to its email address.";
 
 export async function POST(request: NextRequest) {
   if (!isEmailOtpEnabled()) return NextResponse.json({ message: "Not found" }, { status: 404 });
 
-  let normalizedEmail: string | undefined;
+  let loginIdentifier: string | undefined;
 
   try {
     const parsed = requestSchema.safeParse(await request.json());
     if (!parsed.success) return NextResponse.json(compatibilitySuccess({}, genericMessage));
 
-    normalizedEmail = normalizeEmail(parsed.data.email);
+    loginIdentifier = normalizeLoginIdentifier(parsed.data.email);
 
     let actor;
     try {
-      actor = await findActivePostgresUserByEmail(normalizedEmail);
+      actor = await findActivePostgresUserByLoginIdentifier(loginIdentifier);
+      // Only dealers use email codes; every other role signs in with a password.
+      if (actor.role !== "DEALER") throw new Error("Invalid credentials");
     } catch {
       await writeAuthAuditLog({
         eventType: "EMAIL_OTP_REQUEST_IGNORED",
         request,
-        metadata: { normalizedEmail },
+        metadata: { loginIdentifier },
       });
       return NextResponse.json(compatibilitySuccess({}, genericMessage));
     }
@@ -45,7 +47,7 @@ export async function POST(request: NextRequest) {
         role: actor.role,
         eventType: "EMAIL_OTP_SEND_FAILED",
         request,
-        metadata: { normalizedEmail },
+        metadata: { loginIdentifier },
       });
       throw error;
     }
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
       role: actor.role,
       eventType: "EMAIL_OTP_REQUESTED",
       request,
-      metadata: { normalizedEmail },
+      metadata: { loginIdentifier },
     });
 
     return NextResponse.json(compatibilitySuccess({}, genericMessage));
@@ -64,7 +66,7 @@ export async function POST(request: NextRequest) {
     await writeAuthAuditLog({
       eventType: "EMAIL_OTP_REQUEST_FAILED",
       request,
-      metadata: { normalizedEmail, status },
+      metadata: { loginIdentifier, status },
     });
     return NextResponse.json(compatibilitySuccess({}, genericMessage), { status: status === 429 ? 200 : 500 });
   }

@@ -1,27 +1,36 @@
 "use client"
 
-import { useEffect, useState, type FormEvent } from "react"
+import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, Mail, RotateCcw } from "lucide-react"
+import { Eye, EyeOff, RotateCcw } from "lucide-react"
 import { persistAuthenticatedSession, type StoredUser } from "@/lib/roleAccess"
+import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
+import { cn } from "@/lib/utils"
 
 
 const LOGO_SRC = "/omsons_logo.jpeg"
 
 export default function Login() {
   const router = useRouter()
-  const emailOtpEnabled = process.env.NEXT_PUBLIC_ENABLE_EMAIL_OTP === "true"
 
   const [showNotice, setShowNotice] = useState(true)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPw, setShowPw] = useState(false)
-  const [otpMode, setOtpMode] = useState(false)
-  const [otpRequested, setOtpRequested] = useState(false)
+  const [otpRequired, setOtpRequired] = useState(false)
+  const [notice, setNotice] = useState("")
   const [otpCode, setOtpCode] = useState("")
   const [otpLoading, setOtpLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+
+  // Only the server opens the code panel, and only for a dealer whose password already checked out.
+  const showOtp = otpRequired
+  const otpInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (showOtp) otpInputRef.current?.focus()
+  }, [showOtp])
 
   useEffect(() => {
     if (!showNotice) {
@@ -54,8 +63,8 @@ export default function Login() {
     setEmail("")
     setPassword("")
     setOtpCode("")
-    setOtpMode(false)
-    setOtpRequested(false)
+    setOtpRequired(false)
+    setNotice("")
 
     if (clientRole === "staff") router.push("/dashboard/staff")
     else if (clientRole === "dealer") router.push("/home")
@@ -63,12 +72,22 @@ export default function Login() {
     else if (clientRole === "accountant") router.push("/dashboard/accountant")
   }
 
+  const resetOtp = () => {
+    setOtpRequired(false)
+    setOtpCode("")
+    setNotice("")
+    setError("")
+  }
+
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError("")
 
+    // Once the panel is open the same button verifies the code.
+    if (showOtp) return handleVerifyOtp()
+
     if (!email || !password) {
-      setError("Email and password are required")
+      setError("Email or username and password are required")
       return
     }
 
@@ -85,12 +104,19 @@ export default function Login() {
         credentials: "include",
       })
       const data = await res.json()
-      const failureMessage = typeof data?.message === "string" ? data.message : "Invalid credentials"
+      const responseMessage = typeof data?.message === "string" ? data.message : "Invalid credentials"
 
       if (res.ok && data?.status) {
+        // Dealers need a second factor; staff and admins already hold a session here.
+        if (data?.data?.otpRequired) {
+          setOtpRequired(true)
+          setOtpCode("")
+          setNotice(responseMessage)
+          return
+        }
         completeLogin(data.data || { email })
       } else {
-        setError(failureMessage)
+        setError(responseMessage)
       }
     } catch (err: unknown) {
       console.error("Login error:", err)
@@ -104,7 +130,7 @@ export default function Login() {
   const handleRequestOtp = async () => {
     setError("")
     if (!email) {
-      setError("Email is required")
+      setError("Email or username is required")
       return
     }
 
@@ -119,10 +145,7 @@ export default function Login() {
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
         setError(typeof data?.message === "string" ? data.message : "Unable to send verification code")
-        return
       }
-      setOtpMode(true)
-      setOtpRequested(true)
     } catch (err: unknown) {
       console.error("OTP request error:", err)
       setError("Server error")
@@ -131,10 +154,11 @@ export default function Login() {
     }
   }
 
-  const handleVerifyOtp = async () => {
+  // The code arrives as an argument from onComplete, where `otpCode` state is still a render behind.
+  const handleVerifyOtp = async (code: string = otpCode) => {
     setError("")
-    if (!email || !otpCode) {
-      setError("Email and verification code are required")
+    if (!email || !code) {
+      setError("Email or username and verification code are required")
       return
     }
 
@@ -143,7 +167,7 @@ export default function Login() {
       const res = await fetch("/api/auth/email-otp/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, otp: otpCode }),
+        body: JSON.stringify({ email, otp: code }),
         credentials: "include",
       })
       const data = await res.json().catch(() => ({}))
@@ -198,12 +222,13 @@ export default function Login() {
               {/* Fields */}
               <div className="space-y-3">
                 <label className="block">
-                  <span className="mb-1.5 block text-[12px] font-semibold text-slate-700">Email</span>
+                  <span className="mb-1.5 block text-[12px] font-semibold text-slate-700">Email or Username</span>
                   <input
                     type="text"
-                    placeholder="Enter your email"
+                    placeholder="Enter your email or username"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="username"
                     className="h-10 w-full rounded-full border border-slate-200 bg-white px-5 text-[13px] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-300 focus:border-[#5b3ff2] focus:ring-4 focus:ring-[#5b3ff2]/10"
                   />
                 </label>
@@ -232,6 +257,58 @@ export default function Login() {
                 </label>
               </div>
 
+              {/* Dealer second factor: slides open only after the password check passes. */}
+              <div
+                className={cn(
+                  "grid transition-all duration-300 ease-out",
+                  showOtp ? "mt-3 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+                )}
+              >
+                  <div className="overflow-hidden">
+                    <span className="mb-1.5 block text-[12px] font-semibold text-slate-700">Verification Code</span>
+                    <InputOTP
+                      maxLength={6}
+                      value={otpCode}
+                      onChange={setOtpCode}
+                      onComplete={handleVerifyOtp}
+                      disabled={!showOtp || otpLoading}
+                      containerClassName="w-full"
+                      ref={otpInputRef}
+                    >
+                      <InputOTPGroup className="w-full justify-between gap-1.5">
+                        {[0, 1, 2, 3, 4, 5].map((slot) => (
+                          <InputOTPSlot
+                            key={slot}
+                            index={slot}
+                            className="h-10 w-9 rounded-xl border border-slate-200 bg-white text-[15px] font-bold text-slate-900 shadow-sm first:rounded-xl last:rounded-xl data-[active=true]:border-[#5b3ff2] data-[active=true]:ring-4 data-[active=true]:ring-[#5b3ff2]/10"
+                          />
+                        ))}
+                      </InputOTPGroup>
+                    </InputOTP>
+
+                    {notice && <p className="mt-2 text-[11px] text-slate-500">{notice}</p>}
+
+                    <div className="mt-2 flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={resetOtp}
+                        className="text-[11px] font-semibold text-slate-500 hover:text-slate-800"
+                      >
+                        Use Password
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRequestOtp}
+                        disabled={otpLoading}
+                        className="flex items-center gap-1.5 text-[11px] font-semibold text-[#4f35dc] hover:text-[#321fbd] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <RotateCcw size={12} />
+                        Resend Code
+                      </button>
+                    </div>
+                  </div>
+              </div>
+
               {/* Forgot password */}
               <div className="mt-2 flex justify-end">
                 <button
@@ -252,79 +329,11 @@ export default function Login() {
               {/* Submit */}
               <button
                 type="submit"
-                disabled={loading}
+                disabled={loading || otpLoading}
                 className="mt-4 h-10 w-full rounded-full bg-[#593df4] px-4 text-[13px] font-bold text-white shadow-[0_14px_28px_rgba(89,61,244,0.28)] transition hover:-translate-y-0.5 hover:bg-[#4b31de] active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {loading ? "Signing in..." : "Login"}
+                {showOtp ? (otpLoading ? "Verifying..." : "Verify & Login") : loading ? "Signing in..." : "Login"}
               </button>
-
-              {emailOtpEnabled && (
-                <div className="mt-4 space-y-3">
-                  <div className="flex items-center gap-3 text-[11px] font-semibold uppercase tracking-[0.12em] text-slate-300">
-                    <span className="h-px flex-1 bg-slate-100" />
-                    <span>OR</span>
-                    <span className="h-px flex-1 bg-slate-100" />
-                  </div>
-
-                  {!otpMode && (
-                    <button
-                      type="button"
-                      onClick={handleRequestOtp}
-                      disabled={otpLoading}
-                      className="flex h-10 w-full items-center justify-center gap-2 rounded-full border border-slate-200 bg-white px-4 text-[13px] font-bold text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-[#593df4] hover:text-[#4b31de] active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
-                    >
-                      <Mail size={15} />
-                      {otpLoading ? "Sending code..." : "Login with Email OTP"}
-                    </button>
-                  )}
-
-                  {otpMode && (
-                    <div className="space-y-3">
-                      <label className="block">
-                        <span className="mb-1.5 block text-[12px] font-semibold text-slate-700">Verification Code</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          pattern="[0-9]{6}"
-                          maxLength={6}
-                          placeholder="000000"
-                          value={otpCode}
-                          onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
-                          className="h-10 w-full rounded-full border border-slate-200 bg-white px-5 text-center text-[15px] font-bold tracking-[0.18em] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-300 focus:border-[#5b3ff2] focus:ring-4 focus:ring-[#5b3ff2]/10"
-                        />
-                      </label>
-
-                      <button
-                        type="button"
-                        onClick={handleVerifyOtp}
-                        disabled={otpLoading || !otpRequested}
-                        className="h-10 w-full rounded-full bg-[#593df4] px-4 text-[13px] font-bold text-white shadow-[0_14px_28px_rgba(89,61,244,0.28)] transition hover:-translate-y-0.5 hover:bg-[#4b31de] active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
-                      >
-                        {otpLoading ? "Verifying..." : "Verify & Login"}
-                      </button>
-
-                      <div className="flex items-center justify-between">
-                        <button
-                          type="button"
-                          onClick={() => { setOtpMode(false); setOtpCode(""); setError("") }}
-                          className="text-[11px] font-semibold text-slate-500 hover:text-slate-800"
-                        >
-                          Use Password
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleRequestOtp}
-                          disabled={otpLoading}
-                          className="flex items-center gap-1.5 text-[11px] font-semibold text-[#4f35dc] hover:text-[#321fbd] disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                          <RotateCcw size={12} />
-                          Resend Code
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
 
 {/* Footer */}
               <p className="mt-4 text-center text-[11px] text-slate-300">

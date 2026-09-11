@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth, requireRole } from "@/server/auth/session";
-import { DISPATCH_PARTNER_LIMIT } from "@/lib/orderDispatch";
+import { DISPATCH_PARTNER_LIMIT, normalizeTrackingLink } from "@/lib/orderDispatch";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,10 +15,17 @@ export async function GET() {
     const rows = await prisma.courier.findMany({
       where: { isActive: true },
       orderBy: [{ position: "asc" }, { name: "asc" }],
-      select: { id: true, name: true },
+      select: { id: true, name: true, trackingUrlPrefix: true },
     });
     return NextResponse.json(
-      { success: true, data: rows.map((row) => ({ id: row.id.toString(), name: row.name })) },
+      {
+        success: true,
+        data: rows.map((row) => ({
+          id: row.id.toString(),
+          name: row.name,
+          trackingUrlPrefix: row.trackingUrlPrefix,
+        })),
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
@@ -36,16 +43,22 @@ export async function POST(request: NextRequest) {
     const body = await request.json().catch(() => ({}));
     const name = typeof body.name === "string" ? body.name.trim().slice(0, DISPATCH_PARTNER_LIMIT) : "";
     if (!name) return NextResponse.json({ success: false, message: "Courier name is required" }, { status: 400 });
+    // Optional: a blank/invalid prefix just leaves the tracking link manual.
+    const trackingUrlPrefix = normalizeTrackingLink(body.trackingUrlPrefix);
 
     // An existing (possibly deactivated) courier is reused, so adding a name
     // twice selects it instead of failing on the unique index.
     const existing = await prisma.courier.findFirst({ where: { name } });
     const row = existing
-      ? await prisma.courier.update({ where: { id: existing.id }, data: { isActive: true } })
-      : await prisma.courier.create({ data: { name, position: 0 } });
+      ? await prisma.courier.update({
+          where: { id: existing.id },
+          // Keep the prefix already on file when the caller sent none.
+          data: { isActive: true, ...(trackingUrlPrefix ? { trackingUrlPrefix } : {}) },
+        })
+      : await prisma.courier.create({ data: { name, trackingUrlPrefix, position: 0 } });
 
     return NextResponse.json(
-      { success: true, data: { id: row.id.toString(), name: row.name } },
+      { success: true, data: { id: row.id.toString(), name: row.name, trackingUrlPrefix: row.trackingUrlPrefix } },
       { status: existing ? 200 : 201, headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

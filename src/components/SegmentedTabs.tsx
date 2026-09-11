@@ -11,10 +11,15 @@ export type SegItem = {
   icon?: ReactNode;
   /** Colour the pill takes while this tab is selected. Defaults to neutral. */
   tone?: SegTone;
+  /** Muted second line, menu rows only — the trigger stays single-line. */
+  sublabel?: string;
   /** Omit or pass null to render no badge (not the same as a count of 0). */
   count?: number | null;
   title?: string;
 };
+
+/** Grace period before a hovered-open dropdown closes once the pointer leaves it. */
+const CLOSE_DELAY_MS = 600;
 
 const THUMB: Record<SegTone, string> = {
   neutral: "bg-white border-gray-200",
@@ -130,21 +135,27 @@ export function SegmentedTabs({ items, value, onChange, label, disabled = false,
  * so it keeps the tone/badge styling; the menu carries its own thumb that
  * slides vertically between options with the same easing as the tab rail.
  *
- * It opens on hover and stays open until the pointer leaves the whole control
- * (trigger + menu), so the menu has to sit inside the hover target.
+ * It opens on hover and stays open for a moment after the pointer leaves the
+ * whole control (trigger + menu), so a slip on the way to an option, or past the
+ * gap between trigger and menu, does not close it. The menu sits inside the
+ * hover target for the same reason.
  */
-export function SegmentedDropdown({ items, value, onChange, label, disabled = false, className = "" }: {
+export function SegmentedDropdown({ items, value, onChange, label, disabled = false, className = "", onLoadMore, loadingMore = false }: {
   items: SegItem[];
   value: string;
   onChange: (value: string) => void;
   label: string;
   disabled?: boolean;
   className?: string;
+  /** Called when the menu is scrolled near its end, for lists paged in on demand. */
+  onLoadMore?: () => void;
+  loadingMore?: boolean;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [thumb, setThumb] = useState<{ top: number; height: number } | null>(null);
+  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const selected = items.find(item => item.value === value) ?? items[0];
   const tone = selected?.tone ?? "neutral";
 
@@ -165,6 +176,12 @@ export function SegmentedDropdown({ items, value, onChange, label, disabled = fa
     return () => observer.disconnect();
   }, [value, signature, open]);
 
+  const cancelClose = () => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = null;
+  };
+  useEffect(() => cancelClose, []);
+
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
@@ -182,8 +199,8 @@ export function SegmentedDropdown({ items, value, onChange, label, disabled = fa
   return (
     <div
       ref={rootRef}
-      onPointerEnter={() => { if (!disabled) setOpen(true); }}
-      onPointerLeave={() => setOpen(false)}
+      onPointerEnter={() => { cancelClose(); if (!disabled) setOpen(true); }}
+      onPointerLeave={() => { cancelClose(); closeTimer.current = setTimeout(() => setOpen(false), CLOSE_DELAY_MS); }}
       className={`relative inline-block ${className}`}
     >
       <div className={`inline-flex max-w-full items-center rounded-xl border border-gray-200 bg-gray-50 p-1 ${disabled ? "opacity-60" : ""}`}>
@@ -215,7 +232,11 @@ export function SegmentedDropdown({ items, value, onChange, label, disabled = fa
         ref={menuRef}
         role="listbox"
         aria-label={label}
-        className={`absolute left-0 top-full z-30 mt-1 min-w-full origin-top rounded-xl border border-gray-200 bg-white p-1 shadow-lg transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none ${
+        onScroll={onLoadMore ? event => {
+          const menu = event.currentTarget;
+          if (menu.scrollHeight - menu.scrollTop - menu.clientHeight < 48) onLoadMore();
+        } : undefined}
+        className={`absolute left-0 top-full z-30 mt-1 max-h-72 min-w-full origin-top overflow-y-auto rounded-xl border border-gray-200 bg-white p-1 shadow-lg transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.32,0.72,0,1)] motion-reduce:transition-none ${
           open ? "opacity-100 scale-100" : "pointer-events-none opacity-0 scale-95"
         }`}
       >
@@ -243,7 +264,12 @@ export function SegmentedDropdown({ items, value, onChange, label, disabled = fa
               }`}
             >
               {item.icon}
-              {item.label}
+              {item.sublabel ? (
+                <span className="flex min-w-0 flex-col">
+                  <span>{item.label}</span>
+                  <span className="max-w-[220px] truncate text-[11px] font-medium text-gray-400">{item.sublabel}</span>
+                </span>
+              ) : item.label}
               {item.count != null && (
                 <span className={`ml-auto inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[11px] font-bold tabular-nums transition-colors duration-300 motion-reduce:transition-none ${
                   active ? BADGE[itemTone] : "bg-gray-200 text-gray-600"
@@ -254,6 +280,9 @@ export function SegmentedDropdown({ items, value, onChange, label, disabled = fa
             </button>
           );
         })}
+        {loadingMore && (
+          <div className="px-3 py-1.5 text-[12px] font-semibold text-gray-400">Loading…</div>
+        )}
       </div>
     </div>
   );

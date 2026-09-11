@@ -29,3 +29,19 @@ test("admin dealer repository applies dealer list column filters on the server",
   assert.match(repo, /user: \{ email: \{ contains: input\.email, mode: "insensitive" \} \}/);
   assert.match(repo, /phone: \{ contains: input\.phone, mode: "insensitive" \}/);
 });
+
+test("dealers can sign in with either their username or their email", () => {
+  const schemas = readFileSync(new URL("./dealers.schemas.ts", import.meta.url), "utf8");
+  const repo = readFileSync(new URL("./dealers.repository.ts", import.meta.url), "utf8");
+  const provider = readFileSync(new URL("../../../auth/providers/postgres-auth.provider.ts", import.meta.url), "utf8");
+
+  // The admin form's Dealer_Username reaches the user row instead of being replaced by the email.
+  assert.match(schemas, /username: body\.username \?\? body\.Dealer_Username/);
+  assert.match(repo, /const username = input\.username \|\| normalizedEmail;/);
+  assert.match(repo, /username, normalizedUsername: username/);
+  // A custom username survives an email change.
+  assert.match(repo, /if \(current\.user\.normalizedUsername === current\.user\.normalizedEmail\)/);
+  // Both identifiers are accepted at login.
+  assert.match(provider, /\{ normalizedEmail: normalized \}/);
+  assert.match(provider, /\{ normalizedUsername: normalized \}/);
+});

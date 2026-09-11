@@ -43,6 +43,7 @@ export type AdminDealerRecord = {
   annualTargetPaise?: bigint | null;
   notes?: string | null;
   priorityContact?: string | null;
+  contactName?: string | null;
   secondaryContactName?: string | null;
   secondaryContactPhone?: string | null;
   secondaryContactEmail?: string | null;
@@ -60,6 +61,7 @@ export type AdminDealerRecord = {
 export type CreateAdminDealerInput = {
   businessName: string;
   email: string;
+  username?: string;
   password: string;
   phone?: string;
   dealerCode?: string;
@@ -74,6 +76,7 @@ export type CreateAdminDealerInput = {
   annualTargetPaise?: string;
   notes?: string;
   priorityContact?: "primary" | "secondary";
+  contactName?: string;
   secondaryContactName?: string;
   secondaryContactPhone?: string;
   secondaryContactEmail?: string;

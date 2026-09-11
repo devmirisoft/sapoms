@@ -1,13 +1,18 @@
 import { z } from "zod";
 import { AdminRouteError } from "@/server/admin/admin-errors";
 import { parseAdminPagination } from "@/server/admin/admin-pagination";
+import { SALES_REGION_OPTIONS } from "@/lib/salesRegions";
 import type { AdminStaffListInput } from "./staff.types";
 
 export function parseAdminStaffListInput(searchParams: URLSearchParams): AdminStaffListInput {
   const base = parseAdminPagination(searchParams);
   const roleParam = String(searchParams.get("role") ?? "").trim().toUpperCase();
   const includeNsm = ["1", "true", "yes"].includes(String(searchParams.get("includeNsm") ?? "").trim().toLowerCase());
-  return { ...base, role: roleParam === "NSM" ? "NSM" : undefined, includeNsm };
+  const role = roleParam === "NSM" || roleParam === "ASM" ? roleParam : undefined;
+  // An ASM has no region of its own; it inherits the one its parent RSM holds.
+  const regionParam = String(searchParams.get("region") ?? "").trim().toUpperCase();
+  const salesRegion = SALES_REGION_OPTIONS.find((option) => option.value === regionParam)?.value;
+  return { ...base, role, salesRegion, includeNsm };
 }
 
 const salesRegion = z.preprocess((value) => {
@@ -176,6 +181,8 @@ const createSchema = z.preprocess((value) => aliases((value && typeof value === 
 
 const updateSchema = z.preprocess((value) => aliases((value && typeof value === "object" ? value : {}) as Record<string, unknown>), z.object({
   name: text(200),
+  // An admin resetting a login password: omitted or blank leaves it alone.
+  password: z.preprocess((value) => (value === undefined || value === null || String(value) === "" ? undefined : value), z.string().min(10).max(200).optional()),
   email: z.preprocess((value) => value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim().toLowerCase(), z.string().email().optional()),
   role: z.preprocess((value) => value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim().toUpperCase(), updateRole.optional()),
   designation: text(100),

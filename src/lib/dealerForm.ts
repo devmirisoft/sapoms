@@ -30,6 +30,7 @@ export type DealerFormValues = {
   email: string;
   whatsapp: string;
   priorityPerson: "primary" | "secondary";
+  contactName: string;
   secondaryContactName: string;
   secondaryContactPhone: string;
   secondaryContactEmail: string;
@@ -47,7 +48,7 @@ export type DealerFormValues = {
   annualTarget: string;
   currentLimit: string;
   notes: string;
-  paymentType: "advance" | "credit";
+  paymentType: "" | "advance" | "credit";
 };
 
 export type DealerFormSnapshot = DealerFormValues & {
@@ -61,6 +62,7 @@ export const emptyDealerForm: DealerFormValues = {
   email: "",
   whatsapp: "",
   priorityPerson: "primary",
+  contactName: "",
   secondaryContactName: "",
   secondaryContactPhone: "",
   secondaryContactEmail: "",
@@ -78,7 +80,7 @@ export const emptyDealerForm: DealerFormValues = {
   annualTarget: "",
   currentLimit: "",
   notes: "",
-  paymentType: "credit",
+  paymentType: "",
 };
 
 function cleanText(value: unknown) {
@@ -132,6 +134,7 @@ export function normalizeDealerFormSnapshot(value: unknown): DealerFormSnapshot 
     whatsapp: cleanText(source.whatsapp),
     // `contactPerson` is the legacy key kept for snapshots stored before the rename to `priorityPerson`.
     priorityPerson: cleanText(source.priorityPerson ?? source.contactPerson) === "secondary" ? "secondary" : "primary",
+    contactName: cleanText(source.contactName),
     secondaryContactName: cleanText(source.secondaryContactName),
     secondaryContactPhone: cleanText(source.secondaryContactPhone),
     secondaryContactEmail: cleanText(source.secondaryContactEmail),
@@ -149,7 +152,7 @@ export function normalizeDealerFormSnapshot(value: unknown): DealerFormSnapshot 
     annualTarget: cleanText(source.annualTarget),
     currentLimit: cleanText(source.currentLimit),
     notes: cleanText(source.notes),
-    paymentType: source.paymentType === "advance" ? "advance" : "credit",
+    paymentType: source.paymentType === "advance" || source.paymentType === "credit" ? source.paymentType : "",
     assignedStaffIds: normalizeStaffIds(source.assignedStaffIds),
     staffNames: cleanText(source.staffNames),
     rsmUserId: cleanText(source.rsmUserId),
@@ -169,6 +172,7 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
     { key: "username", label: "Username" },
     { key: "password", label: "Password" },
     { key: "gstNo", label: "GST number" },
+    { key: "paymentType", label: "Payment type" },
     { key: "discount", label: "Discount %" },
     { key: "annualTarget", label: "Annual target" },
     { key: "currentLimit", label: "Current limit" },
@@ -178,6 +182,10 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
     if (!cleanText(snapshot[field.key])) {
       return `${field.label} is required`;
     }
+  }
+
+  if (cleanText(snapshot.gstNo).length !== 15) {
+    return "GST number must be 15 characters";
   }
 
   // Advance dealers pay upfront, so credit days do not apply to them.
@@ -227,7 +235,7 @@ export function getSelectedDealerContact(snapshot: DealerFormSnapshot) {
   }
 
   return {
-    name: snapshot.name,
+    name: snapshot.contactName || snapshot.name,
     email: snapshot.email,
     phone: snapshot.whatsapp,
   };
@@ -249,6 +257,7 @@ export function buildDealerPhpFormData(snapshot: DealerFormSnapshot): FormData {
   formData.append("Dealer_Email", snapshot.email);
   formData.append("Dealer_Number", snapshot.whatsapp);
   formData.append("Dealer_Contact_Person", snapshot.priorityPerson);
+  formData.append("Dealer_Contact_Name", snapshot.contactName);
   formData.append("Dealer_Secondary_Contact_Name", snapshot.secondaryContactName);
   formData.append("Dealer_Secondary_Contact_Phone", snapshot.secondaryContactPhone);
   formData.append("Dealer_Secondary_Contact_Email", snapshot.secondaryContactEmail);

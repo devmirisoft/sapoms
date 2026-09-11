@@ -31,12 +31,17 @@ type DealerUser = {
 };
 
 type DraftFilters = {
+  orderId: string;
   dateFrom: string;
   dateTo: string;
+  amountMin: string;
+  amountMax: string;
   status: string;
 };
 
-const EMPTY_FILTERS: DraftFilters = { dateFrom: "", dateTo: "", status: "" };
+const EMPTY_FILTERS: DraftFilters = {
+  orderId: "", dateFrom: "", dateTo: "", amountMin: "", amountMax: "", status: "",
+};
 
 async function fetchLatestOrderIdForDealer(dealerId: string | undefined) {
   if (!dealerId) return "";
@@ -85,6 +90,10 @@ function draftTotal(draft: OrderDraft): number {
   }, 0);
   const discountedRupees = Math.max(0, subtotalRupees - subtotalRupees * (disc / 100));
   return Math.round(discountedRupees * 100);
+}
+
+function draftOrderNumber(draft: OrderDraft, provisional?: string) {
+  return draft.source_order_number || draft.refno || provisional || String(draft.id).slice(0, 8);
 }
 
 function draftSearchText(draft: OrderDraft, provisionalRef?: string) {
@@ -251,6 +260,10 @@ export default function DraftsPage() {
 
     const filtered = drafts.filter((draft) => {
       if (q && !draftSearchText(draft, provisionals[draft.id]).includes(q)) return false;
+      if (filters.orderId && !draftOrderNumber(draft, provisionals[draft.id]).toLowerCase().includes(filters.orderId.trim().toLowerCase())) return false;
+      const rupees = draftTotal(draft) / 100;
+      if (filters.amountMin && rupees < Number(filters.amountMin)) return false;
+      if (filters.amountMax && rupees > Number(filters.amountMax)) return false;
       const status = draftStatus(draft);
       const tabStatuses: readonly string[] = TABS.find((entry) => entry.id === tab)?.statuses ?? [];
       if (tabStatuses.length > 0 && !tabStatuses.includes(status)) return false;
@@ -413,10 +426,17 @@ export default function DraftsPage() {
           {filtersActive && (
             <div className="mb-3 flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Filters</span>
+              {filters.orderId && <FilterTag label={`Order: ${filters.orderId}`} onRemove={() => setFilter("orderId", "")} />}
               {(filters.dateFrom || filters.dateTo) && (
                 <FilterTag
                   label={`${filters.dateFrom || "start"} → ${filters.dateTo || "now"}`}
                   onRemove={() => { setFilters((prev) => ({ ...prev, dateFrom: "", dateTo: "" })); setPage(1); }}
+                />
+              )}
+              {(filters.amountMin || filters.amountMax) && (
+                <FilterTag
+                  label={`₹${filters.amountMin || "0"}–₹${filters.amountMax || "∞"}`}
+                  onRemove={() => { setFilters((prev) => ({ ...prev, amountMin: "", amountMax: "" })); setPage(1); }}
                 />
               )}
               {filters.status && (
@@ -433,9 +453,22 @@ export default function DraftsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="bg-gray-50 border-b border-gray-200 align-top">
-                    {["#", "Draft", "Order No."].map((h) => (
+                    {["#", "Draft"].map((h) => (
                       <th key={h} className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">{h}</th>
                     ))}
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">
+                      Order No.
+                      <input
+                        type="text"
+                        value={filters.orderId}
+                        onChange={(e) => setFilter("orderId", e.target.value)}
+                        placeholder="e.g. 45…"
+                        maxLength={20}
+                        autoComplete="off"
+                        aria-label="Filter by order number"
+                        className={`w-[96px] ${filterInputCls(!!filters.orderId)}`}
+                      />
+                    </th>
                     <th className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">
                       Last Edited
                       <div className="flex gap-1">
@@ -455,9 +488,30 @@ export default function DraftsPage() {
                         />
                       </div>
                     </th>
-                    {["Products", "Discount", "Total"].map((h) => (
+                    {["Products", "Discount"].map((h) => (
                       <th key={h} className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">{h}</th>
                     ))}
+                    <th className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">
+                      Total
+                      <div className="flex gap-1">
+                        <input
+                          type="number"
+                          value={filters.amountMin}
+                          onChange={(e) => setFilter("amountMin", e.target.value)}
+                          placeholder="Min"
+                          aria-label="Filter by minimum draft total"
+                          className={`w-[64px] ${filterInputCls(!!filters.amountMin)}`}
+                        />
+                        <input
+                          type="number"
+                          value={filters.amountMax}
+                          onChange={(e) => setFilter("amountMax", e.target.value)}
+                          placeholder="Max"
+                          aria-label="Filter by maximum draft total"
+                          className={`w-[64px] ${filterInputCls(!!filters.amountMax)}`}
+                        />
+                      </div>
+                    </th>
                     <th className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">
                       Status
                       <select
@@ -512,7 +566,7 @@ export default function DraftsPage() {
                         const total = draftTotal(draft);
                         const isDeleting = deleteMutation.isPending && deleteMutation.variables?.id === draft.id;
                         const isRenaming = renamingId === draft.id;
-                        const orderNumber = draft.refno || provisionals[draft.id] || String(draft.id).slice(0, 8);
+                        const orderNumber = draftOrderNumber(draft, provisionals[draft.id]);
                         // Older rejection drafts predate rejection_notes and carry the
                         // reason only inside order_note, so fall back to the badge alone.
                         const rejectionNote = draft.rejection_notes?.reason ? draft.rejection_notes : null;

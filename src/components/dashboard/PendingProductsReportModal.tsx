@@ -43,9 +43,11 @@ type ReportLine = {
   specification: string;
   category: string;
   orderId: string;
+  orderNumber: string;
   orderDate: string;
   dealerId: string;
   dealerName: string;
+  dealerCode: string;
   assignedStaffNames: string[];
   orderedQuantity: number;
   dispatchedQuantity: number;
@@ -94,6 +96,13 @@ function withColumnWidths(sheet: XLSX.WorkSheet, widths: number[]) {
   return sheet;
 }
 
+/** Header-row filter dropdowns + frozen header, so the sheet opens ready to filter. */
+function withHeaderFilter(sheet: XLSX.WorkSheet) {
+  if (sheet["!ref"]) sheet["!autofilter"] = { ref: sheet["!ref"] };
+  sheet["!freeze"] = { xSplit: "0", ySplit: "1" };
+  return sheet;
+}
+
 function productSheetRows(products: ReportProduct[]) {
   return products.map((product, index) => ({
     "S.No.": index + 1,
@@ -112,28 +121,32 @@ function productSheetRows(products: ReportProduct[]) {
 }
 
 function lineSheetRows(lines: ReportLine[]) {
-  return lines.map((line, index) => ({
-    "S.No.": index + 1,
-    "Catalogue No.": line.catalogueNumber,
-    "Product": line.productName,
-    "Category": line.category,
-    "Order No.": formatDisplayOrderNumber(line.orderId),
-    "Order Date": isoDay(line.orderDate),
-    "Dealer": line.dealerName,
-    "Dealer ID": line.dealerId,
-    "Assigned Staff": (line.assignedStaffNames ?? []).join(", "),
-    "Ordered Qty": line.orderedQuantity,
-    "Dispatched Qty": line.dispatchedQuantity,
-    "Pending Qty": line.pendingQuantity,
-    "Unit": line.productUnit,
-    "Pack Size": line.packSize,
-    "Dispatch Status": line.dispatchStatus,
-    "Order Status": line.mtstatus,
-  }));
+  return [...lines]
+    .sort((a, b) => (b.orderDate || "").localeCompare(a.orderDate || ""))
+    .map((line) => ({
+      // The stored order number is authoritative; the formatter is only a
+      // fallback for legacy rows that never got one, and it needs the order
+      // date or it derives the financial year from today.
+      "SO No.": line.orderNumber || formatDisplayOrderNumber(line.orderId, line.orderDate),
+      "SO Date": isoDay(line.orderDate),
+      // ponytail: no expected-dispatch date exists in the schema, so this column
+      // is structurally present but always blank. Fill it from a real
+      // Order.expectedDispatchDate once dispatch planning captures one.
+      "Expected Dispatch": "",
+      "Customer Code": line.dealerCode || "",
+      "Customer Name": line.dealerName,
+      "Catalog No.": line.catalogueNumber,
+      "Item Name": line.productName,
+      "Description": line.specification,
+      "UOM": line.productUnit,
+      "Order Qty": line.orderedQuantity,
+      "Dispatch Qty": line.dispatchedQuantity,
+      "Balance Qty": line.pendingQuantity,
+    }));
 }
 
 const PRODUCT_WIDTHS = [6, 16, 34, 26, 18, 12, 14, 12, 11, 14, 16, 14];
-const LINE_WIDTHS = [6, 16, 34, 18, 14, 12, 26, 10, 22, 12, 14, 12, 10, 10, 16, 14];
+const LINE_WIDTHS = [20, 12, 17, 22, 30, 12, 40, 46, 8, 11, 12, 12];
 
 export function PendingProductsReportModal({
   open,
@@ -194,13 +207,13 @@ export function PendingProductsReportModal({
       }
       XLSX.utils.book_append_sheet(
         workbook,
-        withColumnWidths(XLSX.utils.json_to_sheet(productSheetRows(payload.products)), PRODUCT_WIDTHS),
+        withHeaderFilter(withColumnWidths(XLSX.utils.json_to_sheet(lineSheetRows(payload.lines)), LINE_WIDTHS)),
         "Pending Products"
       );
       XLSX.utils.book_append_sheet(
         workbook,
-        withColumnWidths(XLSX.utils.json_to_sheet(lineSheetRows(payload.lines)), LINE_WIDTHS),
-        "Order Breakdown"
+        withHeaderFilter(withColumnWidths(XLSX.utils.json_to_sheet(productSheetRows(payload.products)), PRODUCT_WIDTHS)),
+        "Product Summary"
       );
       XLSX.writeFile(workbook, `pending-products_${periodLabel}_${today}.xlsx`);
       onClose();
@@ -218,7 +231,7 @@ export function PendingProductsReportModal({
     }
     XLSX.utils.book_append_sheet(
       workbook,
-      withColumnWidths(XLSX.utils.json_to_sheet(lineSheetRows(productLines)), LINE_WIDTHS),
+      withHeaderFilter(withColumnWidths(XLSX.utils.json_to_sheet(lineSheetRows(productLines)), LINE_WIDTHS)),
       "Orders"
     );
     XLSX.writeFile(

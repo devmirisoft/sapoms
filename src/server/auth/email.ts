@@ -1,12 +1,24 @@
-import { Resend } from "resend";
+import nodemailer, { type Transporter } from "nodemailer";
+
+let transporter: Transporter | null = null;
+
+function getTransporter() {
+  const host = process.env.SMTP_HOST?.trim();
+  const user = process.env.SMTP_USER?.trim();
+  const pass = process.env.SMTP_PASSWORD?.trim();
+  if (!host || !user || !pass) throw new Error("Email delivery is not configured");
+
+  const port = Number(process.env.SMTP_PORT ?? 587);
+  const secure = process.env.SMTP_SECURE?.trim() === "true" || port === 465;
+  transporter ??= nodemailer.createTransport({ host, port, secure, auth: { user, pass } });
+  return transporter;
+}
 
 export async function sendLoginOtp(email: string, otp: string) {
-  const apiKey = process.env.RESEND_API_KEY?.trim();
   const from = process.env.EMAIL_FROM?.trim();
-  if (!apiKey || !from) throw new Error("Email delivery is not configured");
+  if (!from) throw new Error("Email delivery is not configured");
 
-  const resend = new Resend(apiKey);
-  return resend.emails.send({
+  return getTransporter().sendMail({
     from,
     to: email,
     subject: "Your SAPOMS login code",

@@ -141,6 +141,7 @@ async function audit(tx: Prisma.TransactionClient, actor: AuthActor, eventType: 
 function mapUniqueError(error: unknown): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
     const target = Array.isArray(error.meta?.target) ? error.meta.target.join(",") : String(error.meta?.target ?? "");
+    if (target.includes("normalized_username")) throw conflict("Username already exists", "USERNAME_CONFLICT");
     if (target.includes("normalized_email")) throw conflict("Email already exists", "EMAIL_CONFLICT");
     if (target.includes("dealer_code")) throw conflict("Dealer code already exists", "DEALER_CODE_CONFLICT");
     if (target.includes("gstin")) throw conflict("GSTIN already exists", "GSTIN_CONFLICT");
@@ -172,10 +173,12 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
     const normalizedEmail = normalizeEmail(input.email);
     if (await tx.user.findUnique({ where: { normalizedEmail }, select: { id: true } })) throw conflict("Email already exists", "EMAIL_CONFLICT");
     if (await tx.dealerProfile.findUnique({ where: { dealerCode: input.dealerCode }, select: { id: true } })) throw conflict("Dealer code already exists", "DEALER_CODE_CONFLICT");
+    const username = input.username || normalizedEmail;
+    if (await tx.user.findUnique({ where: { normalizedUsername: username }, select: { id: true } })) throw conflict("Username already exists", "USERNAME_CONFLICT");
     await ensureStaff(tx, staffIds);
     const rsm = await resolveRsm(tx, input.rsmUserId ? BigInt(input.rsmUserId) : undefined);
 
-    const user = await tx.user.create({ data: { email: normalizedEmail, normalizedEmail, username: normalizedEmail, normalizedUsername: normalizedEmail, passwordHash, role: "DEALER", status: input.status ?? "ACTIVE" } });
+    const user = await tx.user.create({ data: { email: normalizedEmail, normalizedEmail, username, normalizedUsername: username, passwordHash, role: "DEALER", status: input.status ?? "ACTIVE" } });
     const dealer = await tx.dealerProfile.create({ data: {
       userId: user.id,
       dealerCode: input.dealerCode,
@@ -192,6 +195,7 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
       annualTargetPaise: bigintValue(input.annualTargetPaise),
       notes: cleanOptional(input.notes),
       priorityContact: input.priorityContact ?? "primary",
+      contactName: cleanOptional(input.contactName),
       secondaryContactName: cleanOptional(input.secondaryContactName),
       secondaryContactPhone: cleanOptional(input.secondaryContactPhone),
       secondaryContactEmail: cleanOptional(input.secondaryContactEmail),
@@ -240,9 +244,19 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
           if (normalizedEmail !== current.user.normalizedEmail) {
             const duplicate = await tx.user.findUnique({ where: { normalizedEmail }, select: { id: true } });
             if (duplicate && duplicate.id !== current.userId) throw conflict("Email already exists", "EMAIL_CONFLICT");
-            Object.assign(userData, { email: normalizedEmail, normalizedEmail, username: normalizedEmail, normalizedUsername: normalizedEmail });
+            Object.assign(userData, { email: normalizedEmail, normalizedEmail });
+            // Only follow the email if the username was never customised away from it.
+            if (current.user.normalizedUsername === current.user.normalizedEmail) {
+              Object.assign(userData, { username: normalizedEmail, normalizedUsername: normalizedEmail });
+            }
             changedFields.push("email");
           }
+        }
+        if (input.username !== undefined && input.username !== current.user.normalizedUsername) {
+          const duplicate = await tx.user.findUnique({ where: { normalizedUsername: input.username }, select: { id: true } });
+          if (duplicate && duplicate.id !== current.userId) throw conflict("Username already exists", "USERNAME_CONFLICT");
+          Object.assign(userData, { username: input.username, normalizedUsername: input.username });
+          changedFields.push("username");
         }
         if (input.dealerCode !== undefined && input.dealerCode !== current.dealerCode) {
           const duplicate = await tx.dealerProfile.findUnique({ where: { dealerCode: input.dealerCode }, select: { id: true } });
@@ -254,6 +268,7 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
           ["businessName", "businessName", input.businessName], ["phone", "phone", input.phone], ["city", "city", input.city], ["state", "state", input.state],
           ["address", "address", input.address], ["pincode", "pincode", input.pincode], ["gstin", "gstin", input.gstin], ["imageUrl", "imageUrl", input.imageUrl], ["creditDays", "creditDays", input.creditDays],
           ["notes", "notes", input.notes], ["priorityContact", "priorityContact", input.priorityContact],
+          ["contactName", "contactName", input.contactName],
           ["secondaryContactName", "secondaryContactName", input.secondaryContactName],
           ["secondaryContactPhone", "secondaryContactPhone", input.secondaryContactPhone],
           ["secondaryContactEmail", "secondaryContactEmail", input.secondaryContactEmail],

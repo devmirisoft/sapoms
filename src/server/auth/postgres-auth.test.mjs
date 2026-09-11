@@ -60,8 +60,8 @@ test("create auth user script never prints password or hash fields", async () =>
 test("PostgreSQL provider accepts legacy username and dealer-code login identifiers", async () => {
   const source = await read("src/server/auth/providers/postgres-auth.provider.ts");
   assert.match(source, /findFirst/);
-  assert.match(source, /normalizedUsername: loginIdentifier/);
-  assert.match(source, /dealerProfile: \{ dealerCode: input\.email\.trim\(\) \}/);
-  assert.match(source, /dealerProfile: \{ legacyPhpId: input\.email\.trim\(\) \}/);
+  assert.match(source, /\{ normalizedUsername: normalized \}/);
+  assert.match(source, /dealerProfile: \{ dealerCode: identifier\.trim\(\) \}/);
+  assert.match(source, /dealerProfile: \{ legacyPhpId: identifier\.trim\(\) \}/);
   assert.match(source, /verifyPassword\(input\.password, user\.passwordHash\)/);
 });
