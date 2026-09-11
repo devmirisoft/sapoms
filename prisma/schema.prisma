@@ -32,7 +32,28 @@ model AuthAuditLog {
   metadata      Json?
   createdAt     DateTime  @default(now()) @map("created_at")
 
+  // The admin audit trail. Every column is nullable: the ~40 event types written
+  // before this existed carry only eventType/metadata, and must keep writing
+  // unchanged. action/entity stay free strings for the same reason — eventType
+  // never was an enum, and a new event should not need a migration.
+  actorId    BigInt? @map("actor_id")
+  actorName  String? @map("actor_name")
+  actorEmail String? @map("actor_email")
+  action     String?
+  entity     String?
+  entityId   String? @map("entity_id")
+  oldValues  Json?   @map("old_values")
+  newValues  Json?   @map("new_values")
+  requestId  String? @map("request_id")
+
   @@index([legacyActorId, createdAt])
+  @@index([actorId])
+  @@index([role])
+  @@index([action])
+  @@index([entity])
+  @@index([entity, entityId])
+  @@index([requestId])
+  @@index([createdAt])
   @@map("auth_audit_logs")
 }
 
