@@ -8,6 +8,8 @@ import { normalizeEmail } from "@/server/auth/providers/postgres-auth.provider";
 import { hashPassword } from "@/server/auth/password";
 import { citiesForStates, statesForCities } from "@/lib/places";
 import { formatSalesRegionLabel, SALES_REGION_OPTIONS } from "@/lib/salesRegions";
+import { AUDIT_ACTION, AUDIT_ENTITY, type AuditAction } from "@/lib/auditActions";
+import { createAuditLog } from "@/server/audit/audit-log";
 import type { AdminStaffListInput, AdminStaffRecord, CreateAdminStaffInput, UpdateAdminStaffInput, UpdateStaffStatusInput } from "./staff.types";
 import { staffPageWindow } from "./staff.paging";
 import type { AuthActor } from "@/server/auth/session";
@@ -128,9 +130,30 @@ function buildSyntheticRecord(args: {
   };
 }
 
-async function audit(tx: Prisma.TransactionClient, actor: AuthActor, eventType: string, metadata: Record<string, unknown>) {
-  await tx.authAuditLog.create({
-    data: { sessionId: actor.sessionId, role: actor.role, eventType, metadata: { ...metadata, userId: actor.userId.toString() } },
+// Writes through the shared audit service so these rows carry action/entity and
+// before/after alongside the metadata they always had. Still inside the caller's
+// transaction, so the record and the change it describes commit together.
+async function audit(
+  tx: Prisma.TransactionClient,
+  actor: AuthActor,
+  eventType: string,
+  metadata: Record<string, unknown>,
+  trail?: { action: AuditAction; oldValues?: Record<string, unknown> | null; newValues?: Record<string, unknown> | null },
+) {
+  // Staff profiles and the NSM's admin profile are separate id sequences, so the
+  // record is addressed by whichever key the caller passed.
+  const entityId = (metadata.staffId ?? metadata.nsmId ?? metadata.userId) as string | undefined;
+
+  await createAuditLog({
+    tx,
+    actor,
+    eventType,
+    action: trail?.action ?? AUDIT_ACTION.UPDATE,
+    entity: AUDIT_ENTITY.STAFF,
+    entityId,
+    oldValues: trail?.oldValues ?? null,
+    newValues: trail?.newValues ?? null,
+    metadata,
   });
 }
 
@@ -325,7 +348,10 @@ export class PostgresAdminStaffRepository {
 
       if (input.role === "NSM") {
         const profile = await tx.adminProfile.create({ data: { userId: user.id, displayName: input.name } });
-        await audit(tx, actor, "ADMIN_NSM_CREATED", { userId: user.id.toString() });
+        await audit(tx, actor, "ADMIN_NSM_CREATED", { userId: user.id.toString() }, {
+          action: AUDIT_ACTION.CREATE,
+          newValues: { name: input.name, email: input.email, role: "NSM" },
+        });
         return buildSyntheticRecord({
           id: profile.id,
           displayName: profile.displayName,
@@ -365,7 +391,10 @@ export class PostgresAdminStaffRepository {
         },
         include,
       });
-      await audit(tx, actor, input.role === "RSM" ? "ADMIN_RSM_CREATED" : "ADMIN_STAFF_CREATED", { staffId: staff.id.toString(), region: staff.salesRegion, parentRsmId: staff.parentRsmId?.toString(), parentAsmId: staff.parentAsmId?.toString(), reportingManagerId: staff.reportingManagerId?.toString() });
+      await audit(tx, actor, input.role === "RSM" ? "ADMIN_RSM_CREATED" : "ADMIN_STAFF_CREATED", { staffId: staff.id.toString(), region: staff.salesRegion, parentRsmId: staff.parentRsmId?.toString(), parentAsmId: staff.parentAsmId?.toString(), reportingManagerId: staff.reportingManagerId?.toString() }, {
+        action: AUDIT_ACTION.CREATE,
+        newValues: { name: input.name, email: input.email, role: input.role, salesRegion: staff.salesRegion },
+      });
       return staff;
     });
   }
@@ -459,11 +488,16 @@ export class PostgresAdminStaffRepository {
       if (Object.keys(userData).length) await tx.user.update({ where: { id: current.userId }, data: userData });
       if (input.status !== undefined) await applyUserStatus(tx, current.userId, input.status);
       if (input.password !== undefined) {
+        // Records that the password changed; the value itself is never captured.
         await applyPasswordReset(tx, current.userId, input.password);
-        await audit(tx, actor, "ADMIN_STAFF_PASSWORD_CHANGED", { staffId: staffId.toString() });
+        await audit(tx, actor, "ADMIN_STAFF_PASSWORD_CHANGED", { staffId: staffId.toString() }, { action: AUDIT_ACTION.UPDATE });
       }
       if (Object.keys(staffData).length) await tx.staffProfile.update({ where: { id: staffId }, data: staffData });
-      await audit(tx, actor, "ADMIN_STAFF_UPDATED", { staffId: staffId.toString(), role: nextRole });
+      const roleChanged = current.user.role !== nextRole;
+      await audit(tx, actor, "ADMIN_STAFF_UPDATED", { staffId: staffId.toString(), role: nextRole }, {
+        action: roleChanged ? AUDIT_ACTION.ROLE_CHANGE : AUDIT_ACTION.UPDATE,
+        ...(roleChanged ? { oldValues: { role: current.user.role }, newValues: { role: nextRole } } : {}),
+      });
       return tx.staffProfile.findUniqueOrThrow({ where: { id: staffId }, include });
     });
   }
@@ -490,10 +524,11 @@ export class PostgresAdminStaffRepository {
       if (input.status !== undefined) await applyUserStatus(tx, current.userId, input.status);
       if (input.password !== undefined) {
         await applyPasswordReset(tx, current.userId, input.password);
-        await audit(tx, actor, "ADMIN_NSM_PASSWORD_CHANGED", { nsmId: nsmId.toString() });
+        // Records that the password changed; the value itself is never captured.
+        await audit(tx, actor, "ADMIN_NSM_PASSWORD_CHANGED", { nsmId: nsmId.toString() }, { action: AUDIT_ACTION.UPDATE });
       }
       if (input.name !== undefined) await tx.adminProfile.update({ where: { id: nsmId }, data: { displayName: input.name } });
-      await audit(tx, actor, "ADMIN_NSM_UPDATED", { nsmId: nsmId.toString() });
+      await audit(tx, actor, "ADMIN_NSM_UPDATED", { nsmId: nsmId.toString() }, { action: AUDIT_ACTION.UPDATE });
 
       const updated = await tx.adminProfile.findUniqueOrThrow({
         where: { id: nsmId },
@@ -508,7 +543,11 @@ export class PostgresAdminStaffRepository {
       const current = await tx.adminProfile.findFirst({ where: { id: nsmId, user: { role: "NSM", deletedAt: null } }, include: { user: true } });
       if (!current) throw notFound("Staff member not found", "STAFF_NOT_FOUND");
       await applyUserStatus(tx, current.userId, input.status);
-      await audit(tx, actor, "ADMIN_NSM_STATUS_CHANGED", { nsmId: nsmId.toString(), oldStatus: current.user.status, newStatus: input.status, reason: input.reason });
+      await audit(tx, actor, "ADMIN_NSM_STATUS_CHANGED", { nsmId: nsmId.toString(), oldStatus: current.user.status, newStatus: input.status, reason: input.reason }, {
+        action: AUDIT_ACTION.STATUS_CHANGE,
+        oldValues: { status: current.user.status },
+        newValues: { status: input.status, ...(input.reason ? { reason: input.reason } : {}) },
+      });
 
       const updated = await tx.adminProfile.findUniqueOrThrow({
         where: { id: nsmId },
@@ -531,7 +570,10 @@ export class PostgresAdminStaffRepository {
 
       await tx.adminProfile.delete({ where: { id: nsmId } });
       await tx.user.delete({ where: { id: nsm.userId } });
-      await audit(tx, actor, "ADMIN_NSM_DELETED", { nsmId: nsmId.toString(), email: nsm.user.email, role: nsm.user.role });
+      await audit(tx, actor, "ADMIN_NSM_DELETED", { nsmId: nsmId.toString(), email: nsm.user.email, role: nsm.user.role }, {
+        action: AUDIT_ACTION.DELETE,
+        oldValues: { email: nsm.user.email, role: nsm.user.role },
+      });
     });
   }
 
@@ -553,7 +595,10 @@ export class PostgresAdminStaffRepository {
       await tx.dealerStaffAssignment.deleteMany({ where: { staffId } });
       await tx.staffProfile.delete({ where: { id: staffId } });
       await tx.user.delete({ where: { id: staff.userId } });
-      await audit(tx, actor, "ADMIN_STAFF_DELETED", { staffId: staffId.toString(), email: staff.user.email, role: staff.user.role });
+      await audit(tx, actor, "ADMIN_STAFF_DELETED", { staffId: staffId.toString(), email: staff.user.email, role: staff.user.role }, {
+        action: AUDIT_ACTION.DELETE,
+        oldValues: { email: staff.user.email, role: staff.user.role },
+      });
     });
   }
 
@@ -562,7 +607,11 @@ export class PostgresAdminStaffRepository {
       const staff = await tx.staffProfile.findFirst({ where: { id: staffId, user: { deletedAt: null } }, include: { user: true } });
       if (!staff) throw notFound("Staff member not found", "STAFF_NOT_FOUND");
       await applyUserStatus(tx, staff.userId, input.status);
-      await audit(tx, actor, "ADMIN_STAFF_STATUS_CHANGED", { staffId: staffId.toString(), oldStatus: staff.user.status, newStatus: input.status, reason: input.reason });
+      await audit(tx, actor, "ADMIN_STAFF_STATUS_CHANGED", { staffId: staffId.toString(), oldStatus: staff.user.status, newStatus: input.status, reason: input.reason }, {
+        action: AUDIT_ACTION.STATUS_CHANGE,
+        oldValues: { status: staff.user.status },
+        newValues: { status: input.status, ...(input.reason ? { reason: input.reason } : {}) },
+      });
       return tx.staffProfile.findUniqueOrThrow({ where: { id: staffId }, include });
     });
   }

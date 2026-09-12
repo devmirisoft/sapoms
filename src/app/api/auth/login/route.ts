@@ -118,7 +118,11 @@ export async function POST(request: NextRequest) {
     console.error("[POST /api/auth/login]", error);
     await writeAuthAuditLog({
       eventType: "LOGIN_FAILED",
+      action: "LOGIN_FAILED",
+      entity: "USER",
       request,
+      // Identity is unresolved at this point, so there is no actor to record.
+      // Only the identifier that was tried is kept — never the submitted password.
       metadata: {
         loginIdentifier,
         requestedRole,

@@ -1,4 +1,4 @@
-import { AdminRouteError } from "./admin-errors";
+import { AdminRouteError } from "./admin-route-error";
 import type { AdminListInput } from "./admin.types";
 
 function parsePositiveInteger(value: string | null, fallback: number, maximum?: number) {

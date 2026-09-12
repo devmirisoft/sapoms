@@ -6,7 +6,7 @@ import {
   LayoutDashboard, UserRoundPlus, Users, SquareUser,
   Plus, ClipboardList, Home, LogOut, Package, Images,
   ShieldCheck, Gift, Receipt, TrendingUp, BookOpen, FileText,
-  Wallet, MapPinned, ChevronRight, Truck,
+  Wallet, MapPinned, ChevronRight, Truck, ScrollText,
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { clearAuthStorage, type AppRole, type StoredUser } from "@/lib/roleAccess";
@@ -53,6 +53,9 @@ const NAV: Record<AppRole, NavItem[]> = {
     { section: "Reports",     label: "Dealer Category Report", href: "/dashboard/admin/reports/dealer-category",     icon: <TrendingUp size={15} />      },
     { section: "Accountants", label: "Manage Accountants", href: "/dashboard/admin/manageAccountants/add-account",   icon: <ShieldCheck size={15} />     },
     { section: "Rewards",     label: "Dealer Rewards",     href: "/dashboard/admin/rewards",                         icon: <Gift size={15} />            },
+    // Visible across the admin portal, but the API is ADMIN-only: an NSM opening
+    // this gets the access notice on the page rather than a blank table.
+    { section: "System",      label: "Audit Logs",         href: "/dashboard/admin/audit-logs",                      icon: <ScrollText size={15} />      },
   ],
   dealer: [
     { section: "Home",     label: "Home",             href: "/home",                          icon: <Home size={15} />          },

@@ -9,6 +9,9 @@ import { normalizeSku } from "@/lib/orderProductNotes.mjs";
 import { PostgresOrderStatusError, findPostgresStatusOrder } from "@/lib/postgresOrderStatus";
 import { mapPostgresOrderDispatchRecords, mapPostgresOrderItemToLegacy, mapPostgresOrderToLegacy, orderInclude, type PostgresOrderRecord } from "@/lib/postgresOrders";
 import { normalizeDispatchOrderItemId, normalizeDispatchRemark, normalizeDispatchStatus, normalizeDispatchTrackingInput, safeDispatchInteger, type DispatchStatus, type DispatchTrackingInfo, type OrderDispatchRecord } from "@/lib/orderDispatch";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
+import { createAuditLog } from "@/server/audit/audit-log";
+import { diffValues } from "@/server/audit/audit-sanitize";
 
 // Callers of the dispatch API keep importing the record mapper from here.
 export { mapPostgresOrderDispatchRecords };
@@ -132,10 +135,27 @@ export async function applyPostgresOrderDispatchTracking(orderId: unknown, actor
   const validated = normalizeDispatchTrackingInput(input);
   if (!validated.ok) throw new PostgresOrderStatusError(400, "invalid_tracking", validated.message);
 
-  const updated = await prisma.order.update({
-    where: { id: order.id },
-    data: validated.value,
-    include: postgresDispatchOrderInclude,
+  const updated = await prisma.$transaction(async (tx) => {
+    const row = await tx.order.update({
+      where: { id: order.id },
+      data: validated.value,
+      include: postgresDispatchOrderInclude,
+    });
+
+    await createAuditLog({
+      tx,
+      actor,
+      action: AUDIT_ACTION.UPDATE,
+      entity: AUDIT_ENTITY.DISPATCH,
+      entityId: order.orderNumber || order.id.toString(),
+      ...diffValues(
+        { dispatchPartner: order.dispatchPartner, trackingNumber: order.trackingNumber, trackingLink: order.trackingLink, dock: order.dock },
+        validated.value,
+      ),
+      metadata: { orderId: order.id.toString(), orderNumber: order.orderNumber, change: "tracking" },
+    });
+
+    return row;
   });
 
   return {
@@ -244,7 +264,7 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
 
   const updated = await prisma.$transaction(async (tx) => {
     await tx.orderItemDispatch.createMany({ data: creates });
-    return tx.order.update({
+    const row = await tx.order.update({
       where: { id: order.id },
       data: {
         fulfilmentStatus: nextFulfilment,
@@ -254,6 +274,24 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
       },
       include: postgresDispatchOrderInclude,
     });
+
+    await createAuditLog({
+      tx,
+      actor,
+      action: nextFulfilment === "COMPLETED" ? AUDIT_ACTION.DELIVER : AUDIT_ACTION.DISPATCH,
+      entity: AUDIT_ENTITY.DISPATCH,
+      entityId: order.orderNumber || order.id.toString(),
+      oldValues: { fulfilmentStatus: order.fulfilmentStatus, dispatchedPacks: totalDispatched - creates.reduce((sum, c) => sum + c.quantity, 0) },
+      newValues: { fulfilmentStatus: nextFulfilment, dispatchedPacks: totalDispatched },
+      metadata: {
+        orderId: order.id.toString(),
+        orderNumber: order.orderNumber,
+        lines: creates.length,
+        ...(validatedTracking?.ok ? { tracking: validatedTracking.value } : {}),
+      },
+    });
+
+    return row;
   });
 
   return {

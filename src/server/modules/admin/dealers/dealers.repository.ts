@@ -9,6 +9,9 @@ import { AdminRouteError } from "@/server/admin/admin-errors";
 import { normalizeEmail } from "@/server/auth/providers/postgres-auth.provider";
 import { hashPassword } from "@/server/auth/password";
 import { invalidateStaffAssignmentCache } from "@/lib/orderScopeServer";
+import { AUDIT_ACTION, AUDIT_ENTITY, type AuditAction } from "@/lib/auditActions";
+import { createAuditLog } from "@/server/audit/audit-log";
+import { diffValues } from "@/server/audit/audit-sanitize";
 import type {
   AdminDealerListInput,
   AdminDealerRecord,
@@ -134,8 +137,27 @@ async function resolveRsm(tx: Prisma.TransactionClient, rsmUserId: bigint | unde
   return { rsmUserId: rsm.id, region: rsm.staffProfile.salesRegion };
 }
 
-async function audit(tx: Prisma.TransactionClient, actor: AuthActor, eventType: string, metadata: Record<string, unknown>) {
-  await tx.authAuditLog.create({ data: { sessionId: actor.sessionId, role: actor.role as never, eventType, metadata: { ...metadata, userId: actor.userId.toString() } } });
+// Writes through the shared audit service so these rows carry action/entity and
+// before/after alongside the metadata they always had. Still inside the caller's
+// transaction, so the record and the change it describes commit together.
+async function audit(
+  tx: Prisma.TransactionClient,
+  actor: AuthActor,
+  eventType: string,
+  metadata: Record<string, unknown>,
+  trail?: { action: AuditAction; oldValues?: Record<string, unknown> | null; newValues?: Record<string, unknown> | null },
+) {
+  await createAuditLog({
+    tx,
+    actor,
+    eventType,
+    action: trail?.action ?? AUDIT_ACTION.UPDATE,
+    entity: AUDIT_ENTITY.DEALER,
+    entityId: metadata.dealerId as string | undefined,
+    oldValues: trail?.oldValues ?? null,
+    newValues: trail?.newValues ?? null,
+    metadata,
+  });
 }
 
 function mapUniqueError(error: unknown): never {
@@ -213,7 +235,10 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
         note: "Activated during dealer creation",
       });
     }
-    await audit(tx, actor, "ADMIN_DEALER_CREATED", { dealerId: dealer.id.toString(), assignedStaffIds: staffIds.map(String), rsmUserId: rsm?.rsmUserId?.toString(), region: rsm?.region, walletActive: Boolean(input.walletActive) });
+    await audit(tx, actor, "ADMIN_DEALER_CREATED", { dealerId: dealer.id.toString(), assignedStaffIds: staffIds.map(String), rsmUserId: rsm?.rsmUserId?.toString(), region: rsm?.region, walletActive: Boolean(input.walletActive) }, {
+      action: AUDIT_ACTION.CREATE,
+      newValues: { businessName: input.businessName, dealerCode: input.dealerCode, email: input.email, city: input.city, state: input.state },
+    });
     return tx.dealerProfile.findUniqueOrThrow({ where: { id: dealer.id }, include });
   }
 
@@ -343,13 +368,21 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
         }
         if (Object.keys(userData).length) await tx.user.update({ where: { id: current.userId }, data: userData });
         if (Object.keys(dealerData).length) await tx.dealerProfile.update({ where: { id: dealerId }, data: dealerData });
+        // The write payloads already hold exactly the new values; pairing them with
+        // the matching keys off the row we loaded gives a real before/after without
+        // storing either record whole.
+        const nextValues: Record<string, unknown> = { ...(dealerData as Record<string, unknown>), ...(userData as Record<string, unknown>) };
+        const currentFlat = { ...(current as unknown as Record<string, unknown>), ...(current.user as unknown as Record<string, unknown>) };
+        const prevValues = Object.fromEntries(Object.keys(nextValues).map((key) => [key, currentFlat[key]]));
+        const changes = diffValues(prevValues, nextValues);
+
         await audit(tx, actor, "ADMIN_DEALER_UPDATED", {
           dealerId: dealerId.toString(),
           changedFields: Array.from(new Set(changedFields)),
           ...(settlementOpened
             ? { walletSettlementId: settlementOpened.id.toString(), walletSettlementAmountPaise: settlementOpened.originalPaise.toString() }
             : {}),
-        });
+        }, { action: AUDIT_ACTION.UPDATE, ...changes });
         if (input.assignedStaffIds !== undefined) invalidateStaffAssignmentCache();
         return tx.dealerProfile.findUniqueOrThrow({ where: { id: dealerId }, include });
       });
@@ -366,7 +399,11 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
       const disable = input.status !== "ACTIVE";
       await tx.user.update({ where: { id: dealer.userId }, data: { status: input.status, ...(disable ? { tokenVersion: { increment: 1 } } : {}) } });
       if (disable) await tx.authSession.updateMany({ where: { userId: dealer.userId, revokedAt: null }, data: { revokedAt: now } });
-      await audit(tx, actor, "ADMIN_DEALER_STATUS_CHANGED", { dealerId: dealerId.toString(), oldStatus: dealer.user.status, newStatus: input.status, reason: input.reason });
+      await audit(tx, actor, "ADMIN_DEALER_STATUS_CHANGED", { dealerId: dealerId.toString(), oldStatus: dealer.user.status, newStatus: input.status, reason: input.reason }, {
+        action: AUDIT_ACTION.STATUS_CHANGE,
+        oldValues: { status: dealer.user.status },
+        newValues: { status: input.status, ...(input.reason ? { reason: input.reason } : {}) },
+      });
       return tx.dealerProfile.findUniqueOrThrow({ where: { id: dealerId }, include });
     });
   }
@@ -381,7 +418,10 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
       await tx.user.update({ where: { id: dealer.userId }, data: { deletedAt: now, status: "INACTIVE", tokenVersion: { increment: 1 } } });
       await tx.authSession.updateMany({ where: { userId: dealer.userId, revokedAt: null }, data: { revokedAt: now } });
       await tx.dealerStaffAssignment.updateMany({ where: { dealerId, active: true }, data: { active: false, removedAt: now } });
-      await audit(tx, actor, "ADMIN_DEALER_DELETED", { dealerId: dealerId.toString() });
+      await audit(tx, actor, "ADMIN_DEALER_DELETED", { dealerId: dealerId.toString() }, {
+        action: AUDIT_ACTION.DELETE,
+        oldValues: { businessName: dealer.businessName, dealerCode: dealer.dealerCode, status: dealer.user.status },
+      });
     });
   }
 
@@ -423,7 +463,13 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
           await tx.dealerStaffAssignment.update({ where: { id: assignment.id }, data: { active: false, removedAt: now } });
         }
       }
-      await audit(tx, actor, "ADMIN_DEALER_STAFF_ASSIGNMENTS_UPDATED", { dealerId: dealerId.toString(), addedStaffIds: added, removedStaffIds: removed, rsmUserId: rsmUserId?.toString() });
+      await audit(tx, actor, "ADMIN_DEALER_STAFF_ASSIGNMENTS_UPDATED", { dealerId: dealerId.toString(), addedStaffIds: added, removedStaffIds: removed, rsmUserId: rsmUserId?.toString() }, {
+        // Assigning and unassigning happen in the same replace call; the action
+        // reflects whichever side actually changed.
+        action: removed.length && !added.length ? AUDIT_ACTION.UNASSIGN : AUDIT_ACTION.ASSIGN,
+        oldValues: { assignedStaffIds: removed },
+        newValues: { assignedStaffIds: added },
+      });
       invalidateStaffAssignmentCache();
       return tx.dealerStaffAssignment.findMany({ where: { dealerId, active: true }, include: staffAssignmentInclude, orderBy: { assignedAt: "desc" } });
     });

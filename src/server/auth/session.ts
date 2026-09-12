@@ -1,10 +1,12 @@
 import "server-only";
 
 import { createHash, randomBytes } from "crypto";
+import type { Prisma } from "@prisma/client";
 import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
 import type { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
+import { requestIp, userAgent } from "@/server/http/request-meta";
 import { getProfileId, mapPostgresUserToLegacyProfile } from "@/server/auth/legacy-auth.mapper";
 import type { AuthenticatedPostgresUser } from "@/server/auth/providers/postgres-auth.provider";
 import type { AuthRole } from "./providers/types";
@@ -55,13 +57,8 @@ function audience() {
   return process.env.AUTH_JWT_AUDIENCE?.trim() || "omsons-web";
 }
 
-function requestIp(request: NextRequest) {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-}
-
-function userAgent(request: NextRequest) {
-  return request.headers.get("user-agent");
-}
+// Re-exported so the existing importers of these from session.ts keep working.
+export { requestIp, userAgent };
 
 export function hashRefreshToken(refreshToken: string) {
   return createHash("sha256").update(`${refreshToken}${refreshPepper()}`).digest("hex");
@@ -116,6 +113,16 @@ export async function writeAuthAuditLog(input: {
   eventType: string;
   request?: NextRequest;
   metadata?: Record<string, unknown>;
+  // The admin audit-trail columns. Optional, so the call sites that predate them
+  // keep writing exactly the rows they wrote before.
+  action?: string;
+  entity?: string;
+  entityId?: string;
+  actorName?: string;
+  actorEmail?: string;
+  oldValues?: Record<string, unknown> | null;
+  newValues?: Record<string, unknown> | null;
+  requestId?: string;
 }) {
   await prisma.authAuditLog.create({
     data: {
@@ -124,6 +131,15 @@ export async function writeAuthAuditLog(input: {
       eventType: input.eventType,
       ipAddress: input.request ? requestIp(input.request) : null,
       userAgent: input.request ? userAgent(input.request) : null,
+      actorId: input.userId ?? null,
+      actorName: input.actorName ?? null,
+      actorEmail: input.actorEmail ?? null,
+      action: input.action ?? null,
+      entity: input.entity ?? null,
+      entityId: input.entityId ?? null,
+      oldValues: (input.oldValues ?? undefined) as Prisma.InputJsonValue | undefined,
+      newValues: (input.newValues ?? undefined) as Prisma.InputJsonValue | undefined,
+      requestId: input.requestId ?? null,
       metadata: {
         ...(input.metadata ?? {}),
         ...(input.userId ? { userId: input.userId.toString() } : {}),
@@ -157,7 +173,15 @@ export async function createSessionForUser(actor: AuthenticatedPostgresUser, req
       data: {
         sessionId: created.id,
         role: actor.role,
+        // eventType stays LOGIN_SUCCEEDED — hundreds of rows already carry it.
+        // The action/entity columns are what the admin audit page reads.
         eventType: "LOGIN_SUCCEEDED",
+        action: "LOGIN",
+        entity: "USER",
+        entityId: actor.userId.toString(),
+        actorId: actor.userId,
+        actorName: actor.displayName,
+        actorEmail: actor.email,
         ipAddress: requestIp(request),
         userAgent: userAgent(request),
         metadata: {
@@ -321,6 +345,10 @@ export async function revokeSession(sessionId: string, request?: NextRequest) {
     userId: session.userId,
     role: session.user.role,
     eventType: "LOGOUT",
+    action: "LOGOUT",
+    entity: "USER",
+    entityId: session.userId.toString(),
+    actorEmail: session.user.email,
     request,
   });
 }

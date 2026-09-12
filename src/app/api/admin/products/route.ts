@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
   try {
     const actor = await requireAdmin();
     const requestId = requestIdFrom(request);
-    const data = await createAdminProduct(parseProductWriteInput(await request.json()));
+    const data = await createAdminProduct(parseProductWriteInput(await request.json()), actor);
     await auditAdminAction({ actor, request, eventType: "ADMIN_PRODUCT_CREATED", route: "/api/admin/products", requestId, targetId: data.id });
     return NextResponse.json({ success: true, data }, { status: 201, headers: { "Cache-Control": "no-store" } });
   } catch (error) {
