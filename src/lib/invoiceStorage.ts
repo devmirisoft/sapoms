@@ -8,6 +8,8 @@ import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
 import { isStaffLike } from "@/server/auth/sales-scope";
 import { fromPaise, toPaise } from "@/lib/postgresWallet";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
+import { createAuditLog } from "@/server/audit/audit-log";
 
 // Invoices and order exports used to live in Supabase: the PDF in a storage
 // bucket, the metadata in Supabase tables, both written straight from the
@@ -243,6 +245,18 @@ export async function saveInvoicePdf(actor: AuthActor, pdf: Buffer, input: SaveI
       },
       select: invoiceSelect,
     });
+    await createAuditLog({
+      actor,
+      action: AUDIT_ACTION.CREATE,
+      entity: AUDIT_ENTITY.INVOICE,
+      entityId: invoiceNumber,
+      newValues: {
+        invoiceNumber,
+        orderNumber,
+        totalAmountPaise: toPaise(input.totalAmount).toString(),
+      },
+      metadata: { dealerId: dealerId.toString(), invoiceId: row.id.toString() },
+    });
     return normalizeInvoice(row);
   } catch (error) {
     // Never leave an orphan blob behind when the metadata write loses a race.
@@ -320,6 +334,15 @@ export async function deleteInvoiceForActor(actor: AuthActor, rawInvoiceId: unkn
   // Soft delete: an issued invoice is a financial record, so the row is kept
   // and only the stored PDF is released.
   await prisma.invoice.update({ where: { id: invoice.id }, data: { deletedAt: new Date() } });
+  await createAuditLog({
+    actor,
+    action: AUDIT_ACTION.DELETE,
+    entity: AUDIT_ENTITY.INVOICE,
+    entityId: invoice.id.toString(),
+    oldValues: { deletedAt: null },
+    newValues: { deletedAt: new Date().toISOString() },
+    metadata: { dealerId: invoice.dealerId.toString() },
+  });
   await destroyQuietly(invoice.cloudinaryPublicId);
 }
 

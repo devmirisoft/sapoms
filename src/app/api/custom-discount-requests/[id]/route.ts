@@ -13,6 +13,9 @@ import {
   text,
 } from "@/lib/postgresDiscountDrafts";
 import { placeOrderForApprovedDiscount } from "@/lib/discountApprovalOrder";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
+import { createAuditLog } from "@/server/audit/audit-log";
+import { diffValues } from "@/server/audit/audit-sanitize";
 
 export const runtime = "nodejs";
 
@@ -232,6 +235,48 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           data: { approvalState: jsonValue({ approvalRequestId: row.id.toString(), status: String(row.status).toLowerCase(), updatedAt: new Date().toISOString() }) },
         });
       }
+
+      // Two review stages write to the same row, so the action names whichever
+      // decision this call carried; a dealer edit is a change, not a review.
+      const action = reviewUpdate
+        ? nextStatus === "APPROVED" ? AUDIT_ACTION.APPROVE : nextStatus === "REJECTED" ? AUDIT_ACTION.REJECT : AUDIT_ACTION.STATUS_CHANGE
+        : rsmReviewUpdate
+          ? nextRsmStatus === "APPROVED" ? AUDIT_ACTION.APPROVE : AUDIT_ACTION.REJECT
+          : wantsResubmit
+            ? AUDIT_ACTION.DISCOUNT_CHANGED
+            : AUDIT_ACTION.UPDATE;
+
+      const changes = diffValues(
+        {
+          status: existing.status,
+          rsmApprovalStatus: existing.rsmApprovalStatus,
+          requestedDiscountPercent: existing.requestedDiscountPercent?.toString() ?? null,
+          allowReorder: existing.allowReorder,
+        },
+        {
+          status: row.status,
+          rsmApprovalStatus: row.rsmApprovalStatus,
+          requestedDiscountPercent: row.requestedDiscountPercent?.toString() ?? null,
+          allowReorder: row.allowReorder,
+        },
+      );
+
+      await createAuditLog({
+        tx,
+        actor,
+        action,
+        entity: AUDIT_ENTITY.DISCOUNT_REQUEST,
+        entityId: row.id.toString(),
+        ...changes,
+        metadata: {
+          dealerId: row.dealerId.toString(),
+          stage: rsmReviewUpdate ? "rsm" : reviewUpdate ? "admin" : "dealer",
+          ...(row.adminNote ? { adminNote: row.adminNote } : {}),
+          ...(row.rsmNote ? { rsmNote: row.rsmNote } : {}),
+          ...(placedOrder ? { placedOrderNumber: placedOrder.orderNumber } : {}),
+        },
+      });
+
       return { row, rejectionDraftId, placedOrder };
     });
 

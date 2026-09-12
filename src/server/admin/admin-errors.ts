@@ -1,12 +1,10 @@
 import { NextResponse } from "next/server";
+import { AdminRouteError, type AdminErrorCode } from "./admin-route-error";
 
-export type AdminErrorCode =
-  | "INVALID_REQUEST"
-  | "UNAUTHENTICATED"
-  | "FORBIDDEN"
-  | "NOT_FOUND"
-  | "CONFLICT"
-  | "INTERNAL_ERROR";
+// Re-exported so every existing `from "@/server/admin/admin-errors"` import keeps
+// working; the definitions moved to a leaf module that pulls in no Next runtime.
+export { AdminRouteError };
+export type { AdminErrorCode };
 
 const STATUS_BY_CODE: Record<AdminErrorCode, number> = {
   INVALID_REQUEST: 400,
@@ -16,16 +14,6 @@ const STATUS_BY_CODE: Record<AdminErrorCode, number> = {
   CONFLICT: 409,
   INTERNAL_ERROR: 500,
 };
-
-export class AdminRouteError extends Error {
-  constructor(
-    public readonly code: AdminErrorCode,
-    message: string,
-    public readonly details?: Record<string, unknown>,
-  ) {
-    super(message);
-  }
-}
 
 export function adminErrorResponse(error: unknown, fallbackMessage = "Admin request failed") {
   let code: AdminErrorCode = "INTERNAL_ERROR";

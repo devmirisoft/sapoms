@@ -1,8 +1,10 @@
-import type { OrderAcceptanceStatus, OrderFulfilmentStatus, OrderStatus } from "@prisma/client";
+import type { OrderAcceptanceStatus, OrderFulfilmentStatus, OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
 import { buildOrderRegionWhere, isStaffLike } from "@/server/auth/sales-scope";
 import { createOrderRejectionDraft, refundDeclinedOrderWallet } from "@/lib/orderRejectionDrafts";
+import { AUDIT_ENTITY, type AuditAction } from "@/lib/auditActions";
+import { createAuditLog } from "@/server/audit/audit-log";
 
 export class PostgresOrderStatusError extends Error {
   status: number;
@@ -17,6 +19,34 @@ export class PostgresOrderStatusError extends Error {
 }
 
 type StatusOrder = NonNullable<Awaited<ReturnType<typeof findPostgresStatusOrder>>>;
+
+/**
+ * Every order state change routes through this file, so auditing here covers the
+ * overlay route and any future caller in one place. The write joins the caller's
+ * transaction: if the status change rolls back, so does its audit row.
+ *
+ * The record is addressed by order number rather than row id — that is what an
+ * admin searches for, and the numeric id stays in the metadata.
+ */
+async function auditOrder(
+  tx: Prisma.TransactionClient,
+  actor: AuthActor,
+  order: Pick<StatusOrder, "id" | "orderNumber">,
+  action: AuditAction,
+  oldValues: Record<string, unknown> | null,
+  newValues: Record<string, unknown> | null,
+) {
+  await createAuditLog({
+    tx,
+    actor,
+    action,
+    entity: AUDIT_ENTITY.ORDER,
+    entityId: order.orderNumber || order.id.toString(),
+    oldValues,
+    newValues,
+    metadata: { orderId: order.id.toString(), orderNumber: order.orderNumber },
+  });
+}
 
 const fulfilmentFlow: OrderFulfilmentStatus[] = [
   "PENDING",
@@ -197,6 +227,14 @@ export async function updatePostgresOrderAcceptance(
         },
       });
       await tx.orderOverlay.create({ data: { orderId: order.id, type: "rsm_acceptance", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, reason: reviewNote || null, metadata: { source: "postgres_status", stage: "rsm" } } });
+      await auditOrder(
+        tx,
+        actor,
+        order,
+        next === "ACCEPTED" ? "ACCEPT" : "DECLINE",
+        { rsmApprovalStatus: order.rsmApprovalStatus, status: order.status },
+        { rsmApprovalStatus: next, status: row.status, ...(reviewNote ? { rsmNote: reviewNote } : {}) },
+      );
       if (next === "DECLINED") {
         await createOrderRejectionDraft(tx, order, { role: actor.role, name: actor.displayName || actor.email || "" }, reviewNote);
         await refundDeclinedOrderWallet(tx, order);
@@ -224,6 +262,14 @@ export async function updatePostgresOrderAcceptance(
       },
     });
     await tx.orderOverlay.create({ data: { orderId: order.id, type: "acceptance", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, reason: reviewNote || null, metadata: { source: "postgres_status", stage: "staff" } } });
+    await auditOrder(
+      tx,
+      actor,
+      order,
+      next === "ACCEPTED" ? "ACCEPT" : "DECLINE",
+      { acceptanceStatus: order.acceptanceStatus, status: order.status },
+      { acceptanceStatus: next, status: row.status, ...(reviewNote ? { acceptanceNote: reviewNote } : {}) },
+    );
     if (next === "DECLINED") {
       await createOrderRejectionDraft(tx, order, { role: actor.role, name: actor.displayName || actor.email || "" }, reviewNote);
       await refundDeclinedOrderWallet(tx, order);
@@ -294,6 +340,14 @@ export async function revivePostgresOrderAcceptance(orderId: unknown, actor: Aut
         },
       },
     });
+    await auditOrder(
+      tx,
+      actor,
+      order,
+      "REVIVE",
+      { acceptanceStatus: order.acceptanceStatus, rsmApprovalStatus: order.rsmApprovalStatus, status: order.status },
+      { acceptanceStatus: "AWAITING", rsmApprovalStatus: "AWAITING", status: row.status },
+    );
     return { ...row, accept_order: legacyAcceptOrderAlias(row.acceptanceStatus), del_status: legacyDelStatusAlias(row.status) };
   });
 }
@@ -316,6 +370,16 @@ export async function updatePostgresOrderFulfilment(orderId: unknown, actor: Aut
       },
     });
     await tx.orderOverlay.create({ data: { orderId: order.id, type: "status", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, metadata: { source: "postgres_status" } } });
+    // Dispatch and delivery are fulfilment steps here, not separate operations,
+    // so they are named as themselves rather than a generic status change.
+    await auditOrder(
+      tx,
+      actor,
+      order,
+      next === "DISPATCHED" ? "DISPATCH" : next === "COMPLETED" ? "DELIVER" : "STATUS_CHANGE",
+      { fulfilmentStatus: order.fulfilmentStatus, status: order.status },
+      { fulfilmentStatus: next, status: row.status },
+    );
     return row;
   });
   return { ...updated, accept_order: legacyAcceptOrderAlias(updated.acceptanceStatus), del_status: legacyDelStatusAlias(updated.status) };
@@ -339,6 +403,14 @@ export async function cancelPostgresOrder(orderId: unknown, actor: AuthActor, re
       },
     });
     await tx.orderOverlay.create({ data: { orderId: order.id, type: "cancel", status: "cancelled", reason: reasonText, actorUserId: actor.userId, actorRole: actor.role, metadata: { source: "postgres_status" } } });
+    await auditOrder(
+      tx,
+      actor,
+      order,
+      "CANCEL",
+      { status: order.status },
+      { status: "CANCELLED", cancellationReason: reasonText },
+    );
     return row;
   });
   return { ...updated, accept_order: legacyAcceptOrderAlias(updated.acceptanceStatus), del_status: legacyDelStatusAlias(updated.status) };

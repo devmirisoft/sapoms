@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import { cookies } from "next/headers";
 import type { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
+import { requestIp, userAgent } from "@/server/http/request-meta";
 import { getProfileId, mapPostgresUserToLegacyProfile } from "@/server/auth/legacy-auth.mapper";
 import type { AuthenticatedPostgresUser } from "@/server/auth/providers/postgres-auth.provider";
 import type { AuthRole } from "./providers/types";
@@ -56,13 +57,8 @@ function audience() {
   return process.env.AUTH_JWT_AUDIENCE?.trim() || "omsons-web";
 }
 
-export function requestIp(request: NextRequest) {
-  return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || null;
-}
-
-export function userAgent(request: NextRequest) {
-  return request.headers.get("user-agent");
-}
+// Re-exported so the existing importers of these from session.ts keep working.
+export { requestIp, userAgent };
 
 export function hashRefreshToken(refreshToken: string) {
   return createHash("sha256").update(`${refreshToken}${refreshPepper()}`).digest("hex");

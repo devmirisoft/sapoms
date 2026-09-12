@@ -28,7 +28,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     const requestId = requestIdFrom(request);
     const { productId } = await params;
     const id = parseBigIntRouteParam(productId, "productId");
-    const data = await updateAdminProduct(id, parseProductWriteInput(await request.json()));
+    const data = await updateAdminProduct(id, parseProductWriteInput(await request.json()), actor);
     await auditAdminAction({ actor, request, eventType: "ADMIN_PRODUCT_UPDATED", route: "/api/admin/products/[productId]", requestId, targetId: productId });
     return NextResponse.json({ success: true, data }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
@@ -43,7 +43,7 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
     const requestId = requestIdFrom(request);
     const { productId } = await params;
     const id = parseBigIntRouteParam(productId, "productId");
-    await deleteAdminProduct(id);
+    await deleteAdminProduct(id, actor);
     await auditAdminAction({ actor, request, eventType: "ADMIN_PRODUCT_DELETED", route: "/api/admin/products/[productId]", requestId, targetId: productId });
     return NextResponse.json({ success: true }, { headers: { "Cache-Control": "no-store" } });
   } catch (error) {

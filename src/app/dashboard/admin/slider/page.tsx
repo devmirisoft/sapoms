@@ -252,7 +252,7 @@ export default function SliderManager({
                   <div className="bg-white px-3 py-2 border-t border-gray-100 flex items-center justify-between">
                     <p className="text-[12px] font-medium text-gray-700 truncate">{img.title || "—"}</p>
                     <p className="text-[10px] text-gray-400 font-mono flex-shrink-0 ml-2">
-                      {createdAt ? new Date(createdAt).toLocaleDateString() : ""}
+                      {createdAt ? new Date(createdAt).toLocaleDateString("en-IN") : ""}
                     </p>
                   </div>
                 )}

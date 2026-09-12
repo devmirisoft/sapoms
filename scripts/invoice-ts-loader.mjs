@@ -16,6 +16,12 @@ const firstExisting = (base) => {
 };
 
 export function resolve(specifier, context, next) {
+  // Next aliases these away at build time and ships no package for them, so
+  // plain node cannot resolve the marker imports. Outside the bundler they mean
+  // nothing, so resolve them to an empty module instead of failing.
+  if (specifier === 'server-only' || specifier === 'client-only') {
+    return { url: 'data:text/javascript,', shortCircuit: true };
+  }
   const base = specifier.startsWith('@/')
     ? `${ROOT}/src/${specifier.slice(2)}`
     : specifier.startsWith('.') && context.parentURL?.startsWith('file:')

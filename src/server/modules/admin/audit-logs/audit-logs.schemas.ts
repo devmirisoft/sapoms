@@ -1,4 +1,4 @@
-import { AdminRouteError } from "@/server/admin/admin-errors";
+import { AdminRouteError } from "@/server/admin/admin-route-error";
 import { parseAdminPagination } from "@/server/admin/admin-pagination";
 import type { AuthRole } from "@/server/auth/providers/types";
 import type { AdminAuditLogListInput } from "./audit-logs.types";

@@ -3,12 +3,29 @@ import "server-only";
 import type { Prisma } from "@prisma/client";
 import type { NextRequest } from "next/server";
 import type { AuditAction, AuditEntity } from "@/lib/auditActions";
-import { requestIp, userAgent, type AuthActor } from "@/server/auth/session";
+import type { AuthActor } from "@/server/auth/session";
+import { requestIp, userAgent } from "@/server/http/request-meta";
 import { prisma } from "@/server/db/prisma";
 import { sanitizeAuditValues } from "./audit-sanitize";
 
-export type AuditActorInput = Pick<AuthActor, "userId" | "role" | "sessionId"> &
-  Partial<Pick<AuthActor, "displayName" | "email">>;
+const AUTH_ROLES = new Set(["ADMIN", "NSM", "ACCOUNTANT", "RSM", "ASM", "STAFF", "DEALER"]);
+
+/**
+ * `role` is a plain string because several modules carry their own structurally
+ * compatible AuthActor whose role is typed `string`. It is validated against the
+ * enum before it reaches the column rather than cast blindly.
+ */
+export type AuditActorInput = {
+  userId: bigint;
+  role: string;
+  sessionId?: string;
+  displayName?: string;
+  email?: string;
+};
+
+function auditRole(role: string | undefined): AuthActor["role"] | null {
+  return role && AUTH_ROLES.has(role) ? (role as AuthActor["role"]) : null;
+}
 
 export type CreateAuditLogInput = {
   /** Omitted for events with no established identity yet, e.g. a failed login. */
@@ -51,7 +68,7 @@ function buildData(input: CreateAuditLogInput): Prisma.AuthAuditLogUncheckedCrea
     actorId: actor?.userId ?? null,
     actorName: actor?.displayName ?? null,
     actorEmail: actor?.email ?? null,
-    role: actor?.role ?? null,
+    role: auditRole(actor?.role),
     sessionId: actor?.sessionId ?? null,
 
     oldValues: (sanitizeAuditValues(input.oldValues) ?? undefined) as Prisma.InputJsonValue | undefined,
