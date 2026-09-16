@@ -1,5 +1,6 @@
 'use client'
 
+import DateInput from "@/components/ui/date-input";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
@@ -1254,7 +1255,7 @@ function FormField({
       <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
         {label}
       </label>
-      <input
+      <DateInput
         type={type}
         value={value}
         required={required}

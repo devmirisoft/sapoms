@@ -1,5 +1,6 @@
 "use client";
 
+import DateInput from "@/components/ui/date-input";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { ChevronDown, ChevronLeft, ChevronRight, X } from "lucide-react";
@@ -328,11 +329,11 @@ export default function AuditLogsPage() {
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label htmlFor="audit-from" className="mb-1 block text-xs font-medium text-[#667085]">From</label>
-                <input id="audit-from" type="date" value={dateFrom} onChange={(event) => withReset(setDateFrom)(event.target.value)} className={inputClass} />
+                <DateInput id="audit-from" value={dateFrom} onChange={(event) => withReset(setDateFrom)(event.target.value)} className={inputClass} />
               </div>
               <div>
                 <label htmlFor="audit-to" className="mb-1 block text-xs font-medium text-[#667085]">To</label>
-                <input id="audit-to" type="date" value={dateTo} onChange={(event) => withReset(setDateTo)(event.target.value)} className={inputClass} />
+                <DateInput id="audit-to" value={dateTo} onChange={(event) => withReset(setDateTo)(event.target.value)} className={inputClass} />
               </div>
             </div>
           </div>

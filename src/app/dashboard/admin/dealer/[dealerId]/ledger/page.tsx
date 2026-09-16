@@ -1,5 +1,6 @@
 'use client'
 
+import DateInput from "@/components/ui/date-input";
 import { useEffect, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
@@ -375,7 +376,7 @@ export default function DealerLedgerPage() {
 
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">Transaction date</span>
-                <input type="date" min={new Date().toISOString().slice(0, 10)} value={walletTransactionDate} onChange={(e) => setWalletTransactionDate(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <DateInput min={new Date().toISOString().slice(0, 10)} value={walletTransactionDate} onChange={(e) => setWalletTransactionDate(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
               </label>
 
               <label className="block">

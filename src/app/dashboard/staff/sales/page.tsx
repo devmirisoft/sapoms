@@ -1,5 +1,6 @@
 'use client'
 
+import DateInput from "@/components/ui/date-input";
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { useRouter } from "next/navigation"
@@ -293,8 +294,7 @@ function SalesReportPageInner() {
             </div>
             <div className="tool-card">
               <div className="tool-label">From date</div>
-              <input
-                type="date"
+              <DateInput
                 className="tool-input"
                 value={fromDate}
                 onChange={e => setFromDate(e.target.value)}
@@ -302,8 +302,7 @@ function SalesReportPageInner() {
             </div>
             <div className="tool-card">
               <div className="tool-label">To date</div>
-              <input
-                type="date"
+              <DateInput
                 className="tool-input"
                 value={toDate}
                 onChange={e => setToDate(e.target.value)}

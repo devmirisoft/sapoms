@@ -1,5 +1,6 @@
 "use client";
 
+import DateInput from "@/components/ui/date-input";
 /**
  * app/drafts/page.tsx
  * Shows all saved order drafts for the logged-in dealer.
@@ -472,15 +473,13 @@ export default function DraftsPage() {
                     <th className="px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap">
                       Last Edited
                       <div className="flex gap-1">
-                        <input
-                          type="date"
+                        <DateInput
                           value={filters.dateFrom}
                           onChange={(e) => setFilter("dateFrom", e.target.value)}
                           aria-label="Filter drafts edited from date"
                           className={`w-[124px] ${filterInputCls(!!filters.dateFrom)}`}
                         />
-                        <input
-                          type="date"
+                        <DateInput
                           value={filters.dateTo}
                           onChange={(e) => setFilter("dateTo", e.target.value)}
                           aria-label="Filter drafts edited up to date"

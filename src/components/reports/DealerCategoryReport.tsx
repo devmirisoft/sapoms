@@ -1,5 +1,6 @@
 'use client'
 
+import DateInput from "@/components/ui/date-input";
 import { Fragment, useDeferredValue, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import moment from 'moment'
 import { useRouter } from 'next/navigation'
@@ -692,8 +693,7 @@ export default function DealerCategoryReport({ allowedRoles = ['admin', 'staff']
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <label className="space-y-2 text-sm">
                 <span className="font-medium text-slate-700">From date</span>
-                <input
-                  type="date"
+                <DateInput
                   value={fromDate}
                   onChange={(event) => {
                     setRangePreset('custom')
@@ -705,8 +705,7 @@ export default function DealerCategoryReport({ allowedRoles = ['admin', 'staff']
 
               <label className="space-y-2 text-sm">
                 <span className="font-medium text-slate-700">To date</span>
-                <input
-                  type="date"
+                <DateInput
                   value={toDate}
                   onChange={(event) => {
                     setRangePreset('custom')

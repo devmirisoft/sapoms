@@ -318,7 +318,7 @@ export default function StaffDealerViewPage() {
   const orderSlice      = dealerOrders.slice((orderPage - 1) * ORDER_PAGE_SIZE, orderPage * ORDER_PAGE_SIZE)
 
   // Items pagination
-  const items          = itemsResp?.data ?? []
+  const items          = useMemo(() => itemsResp?.data ?? [], [itemsResp])
   const displayItems = useMemo(
     () => mergeFallbackProductNotes(items, fallbackProductNotes) as unknown as OrderItem[],
     [items, fallbackProductNotes]
@@ -662,7 +662,7 @@ export default function StaffDealerViewPage() {
                     {!itemsLoading && displayItems.map((item, i) => {
                       const badge = dispatchBadge(item.orderdata_status)
                       return (
-                        <tr key={item.orderdata_id} className="hover:bg-gray-50 transition-colors">
+                        <tr key={`${item.orderdata_id ?? 'row'}-${i}`} className="hover:bg-gray-50 transition-colors">
                           <td className="px-4 py-3.5 text-xs text-gray-400">{(itemPage - 1) * ITEM_PAGE_SIZE + i + 1}</td>
                           <td className="px-4 py-3.5">
                             <span className="font-mono text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded">

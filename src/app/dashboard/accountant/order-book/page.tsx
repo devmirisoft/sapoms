@@ -1,5 +1,6 @@
 "use client";
 
+import DateInput from "@/components/ui/date-input";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import moment from "moment";
@@ -401,13 +402,13 @@ export default function OrderBookPage() {
 
           <div className="flex flex-col gap-1">
             <label className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wider">From</label>
-            <input type="date" value={filters.from} onChange={e => setF("from", e.target.value)}
+            <DateInput value={filters.from} onChange={e => setF("from", e.target.value)}
               className="px-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 text-gray-700 bg-white" />
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wider">To</label>
-            <input type="date" value={filters.to} onChange={e => setF("to", e.target.value)}
+            <DateInput value={filters.to} onChange={e => setF("to", e.target.value)}
               className="px-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 text-gray-700 bg-white" />
           </div>
 
