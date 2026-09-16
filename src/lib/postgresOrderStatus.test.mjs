@@ -51,7 +51,7 @@ test("legacy accept_order and del_status remain response aliases only for Postgr
 test("RSM order headers include child staff hierarchy scope", () => {
   assert.match(postgresOrders, /if \(actor\.isRsm && actor\.userId\) return buildRsmOrderWhere\(actor\)/);
   assert.match(postgresOrders, /buildOrderRegionWhere\(\{ userId: BigInt\(actor\.userId!\), role: "RSM" \}/);
-  assert.match(postgresOrders, /parentRsmId: rsm\.id/);
+  assert.match(postgresOrders, /rsmTeamWhere\(rsm\.id\)/);
   assert.match(postgresOrders, /assignedStaffId: \{ in: childStaffIds \}/);
   assert.match(postgresOrders, /prisma\.dealerStaffAssignment\.findMany/);
   assert.match(postgresOrders, /staffId: \{ in: childStaffIds \}/);

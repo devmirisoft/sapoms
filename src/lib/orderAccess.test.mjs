@@ -58,7 +58,7 @@ test("RSM single-order scope reuses the same predicate as the list query", () =>
 });
 
 test("RSM hierarchy scope covers child staff and their dealers", () => {
-  assert.match(source.postgresOrders, /parentRsmId: rsm\.id/);
+  assert.match(source.postgresOrders, /rsmTeamWhere\(rsm\.id\)/);
   assert.match(source.postgresOrders, /assignedStaffId: \{ in: childStaffIds \}/);
   assert.match(source.postgresOrders, /dealerId: \{ in: childDealerIds \}/);
 });

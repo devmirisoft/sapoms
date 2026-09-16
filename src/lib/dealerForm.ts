@@ -14,6 +14,8 @@ export type StaffMember = {
   parentAsmId?: string;
   parent_rsm_id?: string;
   parent_asm_id?: string;
+  rsmIds?: string[];
+  rsm_ids?: string[];
   rsmUserId?: string;
   rsmId?: string;
   asmId?: string;

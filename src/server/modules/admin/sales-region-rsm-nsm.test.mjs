@@ -81,8 +81,9 @@ test("RSM discount request scope covers their reporting team, not just their reg
   const idRoute = readFileSync("src/app/api/custom-discount-requests/[id]/route.ts", "utf8");
   const drafts = readFileSync("src/lib/postgresDiscountDrafts.ts", "utf8");
 
-  // parentRsmId is denormalized on write, so one flat query returns the subtree.
-  assert.match(salesScope, /function resolveRsmTeamStaffIds[\s\S]*parentRsmId: actor\.staffId/);
+  // parentRsmId is denormalized on write, so one flat query returns the subtree;
+  // plain Staff join through their RSM links.
+  assert.match(salesScope, /function resolveRsmTeamStaffIds[\s\S]*where: rsmTeamWhere\(actor\.staffId\)/);
   assert.match(salesScope, /\[actor\.staffId, \.\.\.team\.map\(\(member\) => member\.id\)\]/);
 
   // Region OR team, and an unscoped region must never widen an RSM to everything.

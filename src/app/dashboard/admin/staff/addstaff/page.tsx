@@ -143,6 +143,7 @@ export default function AddStaffPage() {
   const [warehouse, setWarehouse] = useState('')
   const [parentRsmId, setParentRsmId] = useState('')
   const [parentAsmId, setParentAsmId] = useState('')
+  const [rsmIds, setRsmIds] = useState<string[]>([])
   const [reportingManagerId, setReportingManagerId] = useState('')
   const [assignedStates, setAssignedStates] = useState<string[]>([])
   const [assignedCities, setAssignedCities] = useState<string[]>([])
@@ -175,7 +176,8 @@ export default function AddStaffPage() {
   }, [selectedAsm, citiesByState])
   // Reporting manager: ASM reports to its RSM, Executive ("Sales Manager") reports to its ASM.
   // RSM has no parent staff record — its reporting manager is an NSM, picked explicitly below.
-  const reportingManagerLabel = role === 'ASM' || role === 'FIELD_EXECUTIVE'
+  // Staff are free and pick any number of RSMs instead.
+  const reportingManagerLabel = role === 'ASM'
     ? selectedRsm?.name || ''
     : role === 'EXECUTIVE'
       ? selectedAsm?.name || ''
@@ -223,7 +225,7 @@ export default function AddStaffPage() {
     setLocation((current) => (validCities.has(current) ? current : ''))
   }
 
-  const resetHierarchy = () => { setParentRsmId(''); setParentAsmId(''); setReportingManagerId(''); setAssignedStates([]); setAssignedCities([]); setLocation('') }
+  const resetHierarchy = () => { setParentRsmId(''); setParentAsmId(''); setRsmIds([]); setReportingManagerId(''); setAssignedStates([]); setAssignedCities([]); setLocation('') }
   const resetForm = () => {
     setName(''); setPersonalState(''); setLocation(''); setEmail('')
     setMobileNo(''); setAlternateNo(''); setPermanentAddress(''); setLocalAddress(''); setSameAddress(false)
@@ -232,6 +234,7 @@ export default function AddStaffPage() {
     setPassword(''); setRole(''); setSalesRegion(''); setWarehouse(''); resetHierarchy()
   }
   const toggleState = (state: string) => setAssignedStates((current) => current.includes(state) ? current.filter((entry) => entry !== state) : [...current, state].sort((a, b) => a.localeCompare(b)))
+  const toggleRsm = (rsmId: string) => setRsmIds((current) => current.includes(rsmId) ? current.filter((entry) => entry !== rsmId) : [...current, rsmId])
   const toggleCity = (city: string) => setAssignedCities((current) => current.includes(city) ? current.filter((entry) => entry !== city) : [...current, city].sort((a, b) => a.localeCompare(b)))
 
   // location column is a single free-text field, so the picked state rides along
@@ -254,7 +257,8 @@ export default function AddStaffPage() {
       staffRoleType: selectedStaffRoleTypeRef(),
       salesRegion: selectedAuthRoleRef() === 'RSM' ? salesRegion : undefined,
       warehouse: role === 'FIELD_EXECUTIVE' ? warehouse : undefined,
-      parentRsmId: role === 'ASM' || role === 'FIELD_EXECUTIVE' ? parentRsmId : undefined,
+      parentRsmId: role === 'ASM' ? parentRsmId : undefined,
+      rsmIds: role === 'FIELD_EXECUTIVE' ? rsmIds : undefined,
       parentAsmId: role === 'EXECUTIVE' ? parentAsmId : undefined,
       assignedStates: role === 'ASM' || role === 'RSM' ? assignedStates : undefined,
       assignedCities: role === 'EXECUTIVE' ? assignedCities : undefined,
@@ -446,7 +450,7 @@ export default function AddStaffPage() {
                   </div>
                 )}
 
-                {(role === 'ASM' || role === 'FIELD_EXECUTIVE') && (
+                {role === 'ASM' && (
                   <div className="flex flex-col gap-1.5">
                     <FieldLabel label="RSM" />
                     <select
@@ -461,8 +465,23 @@ export default function AddStaffPage() {
                   </div>
                 )}
 
-                {(role === 'ASM' || role === 'FIELD_EXECUTIVE') && (
+                {role === 'ASM' && (
                   <InputField label="Reporting Manager" value={reportingManagerLabel} onChange={() => {}} placeholder="Auto-filled from RSM" required={false} />
+                )}
+
+                {role === 'FIELD_EXECUTIVE' && (
+                  <div className="md:col-span-2 flex flex-col gap-1.5">
+                    <FieldLabel label="RSMs" required={false} />
+                    <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                      {rsmOptions.length ? rsmOptions.map((option) => (
+                        <label key={option.id} className="flex cursor-pointer items-center gap-3 rounded px-2 py-1.5 text-sm hover:bg-gray-50">
+                          <input type="checkbox" checked={rsmIds.includes(option.id)} onChange={() => toggleRsm(option.id)} className="h-4 w-4 accent-indigo-600" />
+                          <span className="text-black">{displayStaff(option)}</span>
+                        </label>
+                      )) : <p className="px-2 py-2 text-sm text-black">No RSM accounts found.</p>}
+                    </div>
+                    <span className="text-[11px] text-gray-500">Optional. Staff can work under any number of RSMs, from any region.</span>
+                  </div>
                 )}
 
                 {role === 'EXECUTIVE' && (

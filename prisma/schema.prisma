@@ -316,6 +316,8 @@ model StaffProfile {
   reportingManager        AdminProfile?          @relation("StaffReportingManager", fields: [reportingManagerId], references: [id], onDelete: SetNull)
   asmChildren            StaffProfile[]          @relation("StaffParentRsm")
   executiveChildren      StaffProfile[]          @relation("StaffParentAsm")
+  rsmLinks               StaffRsmLink[]          @relation("StaffRsmLinkStaff")
+  staffLinks             StaffRsmLink[]          @relation("StaffRsmLinkRsm")
   assignedOrders         Order[]
   customDiscountRequests CustomDiscountRequest[]
   dealerAssignments      DealerStaffAssignment[]
@@ -327,6 +329,20 @@ model StaffProfile {
   @@index([reportingManagerId])
   @@index([warehouse])
   @@map("staff_profiles")
+}
+
+// Plain Staff (staffRoleType "2") are free: linked to no RSM, one, or several,
+// in any region. ASMs and Sales Managers keep their single parentRsmId.
+model StaffRsmLink {
+  staffId BigInt @map("staff_id")
+  rsmId   BigInt @map("rsm_id")
+
+  staff StaffProfile @relation("StaffRsmLinkStaff", fields: [staffId], references: [id], onDelete: Cascade)
+  rsm   StaffProfile @relation("StaffRsmLinkRsm", fields: [rsmId], references: [id], onDelete: Cascade)
+
+  @@id([staffId, rsmId])
+  @@index([rsmId])
+  @@map("staff_rsm_links")
 }
 
 model DealerProfile {

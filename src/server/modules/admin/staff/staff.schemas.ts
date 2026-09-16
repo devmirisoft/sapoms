@@ -40,6 +40,12 @@ const idText = z.preprocess((value) => {
   return String(value).trim();
 }, z.string().regex(/^\d+$/).optional());
 
+const idList = z.preprocess((value) => {
+  if (value === undefined || value === null) return undefined;
+  const list = Array.isArray(value) ? value : [value];
+  return [...new Set(list.map((entry) => String(entry).trim()).filter(Boolean))];
+}, z.array(z.string().regex(/^\d+$/)).max(50).optional());
+
 const assignedStates = z.preprocess((value) => {
   if (value === undefined || value === null) return undefined;
   if (Array.isArray(value)) return value.map((entry) => String(entry).trim()).filter(Boolean);
@@ -85,6 +91,7 @@ function aliases(body: Record<string, unknown>) {
     warehouse: body.warehouse ?? body.warehouse_code,
     parentRsmId: body.parentRsmId ?? body.parent_rsm_id ?? body.rsmId,
     parentAsmId: body.parentAsmId ?? body.parent_asm_id ?? body.asmId,
+    rsmIds: body.rsmIds ?? body.rsm_ids,
     assignedStates: body.assignedStates ?? body.assigned_states ?? body.states,
     assignedCities: body.assignedCities ?? body.assigned_cities ?? body.cities,
     reportingManagerId: body.reportingManagerId ?? body.reporting_manager_id ?? body.nsmId,
@@ -117,13 +124,14 @@ const baseStaffSchema = {
   warehouse,
   parentRsmId: idText,
   parentAsmId: idText,
+  rsmIds: idList,
   assignedStates,
   assignedCities,
   reportingManagerId: idText,
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
 };
 
-function requireValidRoleRegion<T extends { role?: string; salesRegion?: string; warehouse?: string; staffRoleType?: string; parentRsmId?: string; parentAsmId?: string; assignedStates?: string[]; assignedCities?: string[]; reportingManagerId?: string }>(value: T) {
+function requireValidRoleRegion<T extends { role?: string; salesRegion?: string; warehouse?: string; staffRoleType?: string; parentRsmId?: string; parentAsmId?: string; rsmIds?: string[]; assignedStates?: string[]; assignedCities?: string[]; reportingManagerId?: string }>(value: T) {
   if (value.role === "RSM" && !value.salesRegion) throw new AdminRouteError("INVALID_REQUEST", "RSM region is required", { code: "RSM_REGION_REQUIRED" });
   if (value.role && value.role !== "RSM") value.salesRegion = undefined;
   if (value.role === "STAFF" && value.staffRoleType !== "1" && value.staffRoleType !== "2") {
@@ -133,7 +141,6 @@ function requireValidRoleRegion<T extends { role?: string; salesRegion?: string;
   if (value.role === "STAFF" && value.staffRoleType === "1" && !value.parentAsmId) throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must have a valid ASM parent", { code: "EXECUTIVE_ASM_REQUIRED" });
   if (value.role === "ASM" && value.assignedStates && !value.assignedStates.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one state", { code: "ASM_STATES_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "1" && value.assignedCities && !value.assignedCities.length) throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must cover at least one city", { code: "EXECUTIVE_CITIES_REQUIRED" });
-  if (value.role === "STAFF" && value.staffRoleType === "2" && !value.parentRsmId) throw new AdminRouteError("INVALID_REQUEST", "Staff must have a valid RSM parent", { code: "STAFF_RSM_REQUIRED" });
   // Only a Staff member is pinned to a warehouse; every other role sees both.
   if (value.role === "STAFF" && value.staffRoleType === "2" && !value.warehouse) throw new AdminRouteError("INVALID_REQUEST", "Warehouse is required", { code: "STAFF_WAREHOUSE_REQUIRED" });
   if (value.role && !(value.role === "STAFF" && value.staffRoleType === "2")) value.warehouse = undefined;
@@ -144,6 +151,10 @@ function requireValidRoleRegion<T extends { role?: string; salesRegion?: string;
   // states are derived from those cities on write, never picked in the form.
   if (value.role === "STAFF" && value.staffRoleType === "1") { value.parentRsmId = undefined; value.assignedStates = undefined; }
   if (value.role === "STAFF" && value.staffRoleType === "2") { value.parentAsmId = undefined; value.assignedStates = undefined; value.assignedCities = undefined; }
+  // Staff are free: zero or more RSMs from any region, sent as rsmIds. A lone
+  // legacy parentRsmId is still accepted as a one-item list.
+  if (value.role === "STAFF" && value.staffRoleType === "2") { value.rsmIds ??= value.parentRsmId ? [value.parentRsmId] : undefined; value.parentRsmId = undefined; }
+  if (value.role && !(value.role === "STAFF" && value.staffRoleType === "2")) value.rsmIds = undefined;
   // Only RSM has an explicit reporting manager (NSM); ASM/STAFF derive theirs from parentRsm/parentAsm.
   if (value.role && value.role !== "RSM") value.reportingManagerId = undefined;
   // Only the Sales Manager holds a city list, carved out of its ASM's states;
@@ -192,6 +203,7 @@ const updateSchema = z.preprocess((value) => aliases((value && typeof value === 
   warehouse,
   parentRsmId: idText,
   parentAsmId: idText,
+  rsmIds: idList,
   assignedStates,
   assignedCities,
   reportingManagerId: idText,

@@ -134,7 +134,7 @@ test("staff creation caps NSM at one and RSM at the number of sales regions", ()
 test("staff update accepts hierarchy and territory changes", () => {
   // The update schema used to drop these silently, so edits never persisted.
   const updateBlock = staffSchemas.slice(staffSchemas.indexOf("const updateSchema"));
-  for (const field of ["parentRsmId", "parentAsmId", "assignedStates", "assignedCities", "reportingManagerId"]) {
+  for (const field of ["parentRsmId", "parentAsmId", "rsmIds", "assignedStates", "assignedCities", "reportingManagerId"]) {
     assert.match(updateBlock, new RegExp(`${field}[,:]`));
   }
 });
@@ -194,7 +194,25 @@ test("staff login falls back to a temporary password only after the real hash fa
 test("staff list shows who each staff member reports to instead of a password", () => {
   assert.doesNotMatch(staffListPage, /password/i);
   assert.match(staffListPage, /Reports To/);
-  assert.match(staffListPage, /function reportingManagerOf/);
+  assert.match(staffListPage, /function managersOf/);
+});
+
+test("Staff are free: zero or more RSMs from any region", () => {
+  // No RSM is required, and a lone legacy parentRsmId becomes a one-item list.
+  assert.doesNotMatch(staffSchemas, /STAFF_RSM_REQUIRED/);
+  assert.match(staffSchemas, /value\.rsmIds \?\?= value\.parentRsmId \? \[value\.parentRsmId\] : undefined; value\.parentRsmId = undefined;/);
+  // Create links every picked RSM; update replaces the set; other roles drop it.
+  assert.match(staffRepo, /rsmIds = await resolveRsmIds\(tx, input\.rsmIds\)/);
+  assert.match(staffRepo, /rsmLinks: \{ create: rsmIds\.map\(\(rsmId\) => \(\{ rsmId \}\)\) \}/);
+  assert.match(staffRepo, /staffData\.rsmLinks = \{ deleteMany: \{\}, create: rsmIds\.map/);
+  assert.match(staffRepo, /nextStaffRoleType === "2"\)\) staffData\.rsmLinks = \{ deleteMany: \{\} \}/);
+  // An RSM's team covers linked Staff as well as parentRsmId children.
+  const salesScope = readFileSync("src/server/auth/sales-scope.ts", "utf8");
+  assert.match(salesScope, /\{ OR: \[\{ parentRsmId: rsmId \}, \{ rsmLinks: \{ some: \{ rsmId \} \} \}\] \}/);
+  for (const source of [addStaffPage, editStaffPage]) {
+    assert.match(source, /rsmIds: role === 'FIELD_EXECUTIVE' \? rsmIds : undefined/);
+    assert.match(source, /parentRsmId: role === 'ASM' \? parentRsmId : undefined/);
+  }
 });
 
 

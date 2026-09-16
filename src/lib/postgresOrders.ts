@@ -2,7 +2,7 @@ import "server-only";
 
 import { Prisma, type Warehouse } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
-import { buildOrderRegionWhere } from "@/server/auth/sales-scope";
+import { buildOrderRegionWhere, rsmTeamWhere } from "@/server/auth/sales-scope";
 import type { OrdersActor } from "@/lib/orderPagination";
 import { summarizeOrderSettlement } from "@/lib/orderSettlement";
 import { normalizeSku } from "@/lib/orderProductNotes.mjs";
@@ -370,7 +370,7 @@ async function buildRsmChildStaffOrderWhere(actor: OrdersActor): Promise<Prisma.
 
   const childStaff = await prisma.staffProfile.findMany({
     where: {
-      parentRsmId: rsm.id,
+      ...rsmTeamWhere(rsm.id),
       user: { status: "ACTIVE", deletedAt: null },
     },
     select: { id: true },

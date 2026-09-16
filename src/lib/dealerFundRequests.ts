@@ -1,4 +1,5 @@
 import type { FundRequestStatus, FundRequestType, Prisma } from "@prisma/client";
+import { rsmTeamWhere } from "@/server/auth/sales-scope";
 
 /**
  * State machine and scoping for the Advance Dealer Order / Fund Request flow.
@@ -130,7 +131,7 @@ export async function buildFundRequestScope(
     // held by staff reporting into them - mirrors resolveRsmTeamStaffIds so an
     // RSM's fund queue matches their discount queue.
     if (!actor.staffId) return { rsmUserId: actor.userId };
-    const team = await prisma.staffProfile.findMany({ where: { parentRsmId: actor.staffId }, select: { id: true } });
+    const team = await prisma.staffProfile.findMany({ where: rsmTeamWhere(actor.staffId), select: { id: true } });
     const teamStaffIds = [actor.staffId, ...team.map((member) => member.id)];
     return { OR: [{ rsmUserId: actor.userId }, { staffId: { in: teamStaffIds } }] };
   }
@@ -168,11 +169,16 @@ export async function resolveFundRequestRouting(
   // just because one link is unset.
   let rsmUserId = dealer.rsmUserId ?? null;
   if (!rsmUserId && staffId) {
-    const staff = await tx.staffProfile.findUnique({ where: { id: staffId }, select: { parentRsmId: true } });
-    if (staff?.parentRsmId) {
-      const parent = await tx.staffProfile.findUnique({ where: { id: staff.parentRsmId }, select: { userId: true } });
-      rsmUserId = parent?.userId ?? null;
-    }
+    const staff = await tx.staffProfile.findUnique({
+      where: { id: staffId },
+      select: {
+        parentRsm: { select: { userId: true } },
+        // ponytail: a Staff member linked to several RSMs routes to the first
+        // (lowest id); every linked RSM still sees it through their team scope.
+        rsmLinks: { orderBy: { rsmId: "asc" }, take: 1, select: { rsm: { select: { userId: true } } } },
+      },
+    });
+    rsmUserId = staff?.parentRsm?.userId ?? staff?.rsmLinks[0]?.rsm.userId ?? null;
   }
   if (!rsmUserId && dealer.region) {
     const regionRsm = await tx.staffProfile.findFirst({

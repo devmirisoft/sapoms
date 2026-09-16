@@ -26,6 +26,7 @@ type StaffData = {
   status: string
   parentRsm?: StaffRelation
   parentAsm?: StaffRelation
+  rsms?: NonNullable<StaffRelation>[]
   reportingManager?: StaffRelation
 }
 
@@ -81,15 +82,17 @@ function statusBadge(status: StaffStatus) {
 }
 
 // Mirrors the hierarchy the staff repository writes: RSM reports to the NSM,
-// ASM and plain Staff to their RSM, a Sales Manager to its ASM.
-function reportingManagerOf(staff: StaffData): StaffRelation {
+// ASM to its RSM, a Sales Manager to its ASM, and plain Staff to every RSM it
+// is linked to (possibly none).
+function managersOf(staff: StaffData): NonNullable<StaffRelation>[] {
   const authRole = String(staff.role ?? "").toUpperCase()
   const staffRoleType = String(staff.staff_roletype ?? "").toUpperCase()
-  if (authRole === "NSM") return null
-  if (authRole === "RSM" || staffRoleType === "RSM") return staff.reportingManager ?? null
-  if (authRole === "ASM" || staffRoleType === "ASM") return staff.parentRsm ?? null
-  if (staffRoleType === "1") return staff.parentAsm ?? null
-  return staff.parentRsm ?? null
+  const one = (rel?: StaffRelation) => (rel ? [rel] : [])
+  if (authRole === "NSM") return []
+  if (authRole === "RSM" || staffRoleType === "RSM") return one(staff.reportingManager)
+  if (authRole === "ASM" || staffRoleType === "ASM") return one(staff.parentRsm)
+  if (staffRoleType === "1") return one(staff.parentAsm)
+  return staff.rsms ?? []
 }
 
 // staff_profiles and admin_profiles (where the NSM lives) are separate id
@@ -110,11 +113,9 @@ function apiId(staff: StaffData) {
 }
 
 // An RSM reports to an NSM (admin_profiles); everyone else to a staff row.
-function managerKey(staff: StaffData) {
-  const rel = reportingManagerOf(staff)
-  if (!rel) return null
+function managerKeys(staff: StaffData) {
   const isRsm = String(staff.role ?? "").toUpperCase() === "RSM" || String(staff.staff_roletype ?? "").toUpperCase() === "RSM"
-  return `${isRsm ? "nsm" : "staff"}:${rel.id}`
+  return managersOf(staff).map(rel => `${isRsm ? "nsm" : "staff"}:${rel.id}`)
 }
 
 // A list cell that stays one line: first entry, then "+N".
@@ -145,15 +146,17 @@ function getRole(): AppRole {
 
 // ---------------------------------------------------------------- hierarchy
 
-// Walk up via reportingManagerOf. A manager that isn't in the staff list
+// Walk up via managersOf. A manager that isn't in the staff list
 // (the NSM lives in the admin table) still gets a node from its relation.
+// ponytail: a Staff member linked to several RSMs shows only the first above
+// it; the others still list it in their own trees.
 function ancestorsOf(staff: StaffData, byId: Map<string, StaffData>) {
   const chain: { id: string; name: string; label: string }[] = []
   const seen = new Set<string>()
   let current: StaffData | null = staff
   while (current) {
-    const rel = reportingManagerOf(current)
-    const key = managerKey(current)
+    const rel = managersOf(current)[0]
+    const key = managerKeys(current)[0]
     if (!rel || !key || seen.has(key)) break
     seen.add(key)
     const full = byId.get(key)
@@ -584,9 +587,7 @@ export default function StaffListPage() {
   const directReports = useMemo(() => {
     const map = new Map<string, StaffData[]>()
     data.forEach((staff) => {
-      const key = managerKey(staff)
-      if (!key) return
-      map.set(key, [...(map.get(key) ?? []), staff])
+      managerKeys(staff).forEach((key) => map.set(key, [...(map.get(key) ?? []), staff]))
     })
     return map
   }, [data])
@@ -704,7 +705,7 @@ export default function StaffListPage() {
       s.gender || "-",
       (directReports.get(nodeKey(s)) ?? []).map(r => `${r.staff_name} (${roleBadge(r).label})`).join(" | ") || "-",
       statusBadge(normalizeStaffStatus(s.status)).label,
-      reportingManagerOf(s)?.name ?? "-",
+      managersOf(s).map(m => m.name).join(" | ") || "-",
     ])
     const csv = [headers, ...rows].map(r => r.map(csvCell).join(",")).join("\n")
     const blob = new Blob([csv], { type: "text/csv" })
@@ -1124,12 +1125,16 @@ export default function StaffListPage() {
 
                       <td className="px-4 py-4">
                         {(() => {
-                          const manager = reportingManagerOf(staff)
-                          if (!manager) return <span className="text-gray-300 text-xs">-</span>
+                          const managers = managersOf(staff)
+                          if (!managers.length) return <span className="text-gray-300 text-xs">-</span>
                           return (
-                            <div className="flex flex-col">
-                              <span className="text-gray-700 text-xs font-medium">{manager.name || "-"}</span>
-                              {manager.email && <span className="text-gray-400 text-[11px]">{manager.email}</span>}
+                            <div className="flex flex-col gap-1">
+                              {managers.map(manager => (
+                                <div key={manager.id} className="flex flex-col">
+                                  <span className="text-gray-700 text-xs font-medium">{manager.name || "-"}</span>
+                                  {manager.email && <span className="text-gray-400 text-[11px]">{manager.email}</span>}
+                                </div>
+                              ))}
                             </div>
                           )
                         })()}
