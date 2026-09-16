@@ -136,7 +136,7 @@ export default function DispatchStatusPage() {
     staleTime: 60 * 1000,
   })
 
-  const data: OrderItem[] = response?.data || []
+  const data: OrderItem[] = useMemo(() => response?.data || [], [response])
   const displayData = useMemo(
     () => mergeFallbackProductNotes(data, fallbackProductNotes) as unknown as OrderItem[],
     [data, fallbackProductNotes]
@@ -341,7 +341,7 @@ export default function DispatchStatusPage() {
                     customDiscountProgressMap[getCustomDiscountProgressKeyForOrder(item.orderdata_orderid)]?.customDiscountStatus ?? null
                   )
                   return (
-                    <tr key={item.orderdata_id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={`${item.orderdata_id ?? 'row'}-${i}`} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-4 text-gray-400 text-xs">{startIndex + i}</td>
 
                       <td className="px-4 py-4">

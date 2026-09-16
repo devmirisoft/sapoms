@@ -98,11 +98,14 @@ export default function Login() {
       formData.append("email", email)
       formData.append("password", password)
 
-      const res = await fetch("/api/auth/login", {
+      // A keep-alive connection the dev/prod server closes mid-POST surfaces as
+      // "Failed to fetch" before the request is ever handled. One retry covers it.
+      const post = () => fetch("/api/auth/login", {
         method: "POST",
         body: formData,
         credentials: "include",
       })
+      const res = await post().catch(post)
       const data = await res.json()
       const responseMessage = typeof data?.message === "string" ? data.message : "Invalid credentials"
 

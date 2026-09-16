@@ -25,12 +25,13 @@ export default function AccountantLogin() {
     try {
       setLoading(true)
 
-      const res = await fetch("/api/auth/login", {
+      const post = () => fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({ email, password }),
       })
+      const res = await post().catch(post)
       const data = await res.json()
       const failureMessage = typeof data?.message === "string" ? data.message : "Invalid credentials"
 

@@ -1,5 +1,6 @@
 "use client";
 
+import DateInput from "@/components/ui/date-input";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -517,8 +518,7 @@ export default function CustomDiscountApprovalsPage() {
           </label>
           <label>
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">From</span>
-            <input
-              type="date"
+            <DateInput
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
               className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-indigo-500"
@@ -526,8 +526,7 @@ export default function CustomDiscountApprovalsPage() {
           </label>
           <label>
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">To</span>
-            <input
-              type="date"
+            <DateInput
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
               className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-indigo-500"

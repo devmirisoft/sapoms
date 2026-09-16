@@ -1,5 +1,6 @@
 "use client";
 
+import DateInput from "@/components/ui/date-input";
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 import Link from "next/link";
 import { LayoutDashboard, UserRoundPlus, Users, SquareUser, Plus, ClipboardList, Search } from 'lucide-react';
@@ -1314,11 +1315,11 @@ function AdminDashboardInner() {
               <div className="sale-range">
                 <label className="sale-field">
                   <span>From</span>
-                  <input type="date" value={saleFrom} min={saleEarliest} max={saleTo} onChange={(event) => setSaleFrom(event.target.value)} />
+                  <DateInput value={saleFrom} min={saleEarliest} max={saleTo} onChange={(event) => setSaleFrom(event.target.value)} />
                 </label>
                 <label className="sale-field">
                   <span>To</span>
-                  <input type="date" value={saleTo} min={saleFrom} max={today} onChange={(event) => setSaleTo(event.target.value)} />
+                  <DateInput value={saleTo} min={saleFrom} max={today} onChange={(event) => setSaleTo(event.target.value)} />
                 </label>
                 <button
                   type="button"

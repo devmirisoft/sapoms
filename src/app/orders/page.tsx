@@ -1,6 +1,8 @@
 /* eslint-disable react-hooks/set-state-in-effect */
 "use client";
 
+import DateInput from "@/components/ui/date-input";
+
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
@@ -1813,6 +1815,20 @@ export default function OrderHistoryPage() {
             {/* Acceptance split for the rows actually on screen */}
             {section === "active" && !isLoading && !isError && orders.length > 0 && (
               <div className="ml-auto flex items-center gap-3 text-[12px] text-gray-500">
+                <div className="flex gap-1">
+                          <DateInput
+                            value={filters.dateFrom}
+                            onChange={e => setFilter("dateFrom", e.target.value)}
+                            aria-label="Filter orders from date"
+                            className={`w-[124px] ${filterInputCls(!!filters.dateFrom)}`}
+                          />
+                          <DateInput
+                            value={filters.dateTo}
+                            onChange={e => setFilter("dateTo", e.target.value)}
+                            aria-label="Filter orders up to date"
+                            className={`w-[124px] ${filterInputCls(!!filters.dateTo)}`}
+                          />
+                        </div>
                 <span className="inline-flex items-center gap-1.5">
                   <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
                   {orders.filter(o => o.accept_order === "1").length} accepted
@@ -2034,22 +2050,20 @@ export default function OrderHistoryPage() {
                       )}
                       <th className={thCls}>
                         Date
-                        <div className="flex gap-1">
-                          <input
-                            type="date"
+                        {/* <div className="flex gap-1">
+                          <DateInput
                             value={filters.dateFrom}
                             onChange={e => setFilter("dateFrom", e.target.value)}
                             aria-label="Filter orders from date"
                             className={`w-[124px] ${filterInputCls(!!filters.dateFrom)}`}
                           />
-                          <input
-                            type="date"
+                          <DateInput
                             value={filters.dateTo}
                             onChange={e => setFilter("dateTo", e.target.value)}
                             aria-label="Filter orders up to date"
                             className={`w-[124px] ${filterInputCls(!!filters.dateTo)}`}
                           />
-                        </div>
+                        </div> */}
                       </th>
                       <th className={thCls}>
                         Gross

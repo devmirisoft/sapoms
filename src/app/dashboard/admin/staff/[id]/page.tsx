@@ -1,5 +1,6 @@
 'use client'
 
+import DateInput from "@/components/ui/date-input";
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
@@ -121,7 +122,7 @@ function InputField({
         {label}
         {required && <span className="text-orange-500 ml-0.5">*</span>}
       </label>
-      <input
+      <DateInput
         required={required}
         disabled={disabled}
         type={type}
