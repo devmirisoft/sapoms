@@ -1,4 +1,10 @@
-export type CustomDiscountProgress = "partially" | "completely" | null;
+export type CustomDiscountProgress = "accepted" | "rejected" | "awaiting" | null;
+
+export const CUSTOM_DISCOUNT_PROGRESS_LABELS = {
+  accepted: "Accepted",
+  rejected: "Rejected",
+  awaiting: "Awaiting",
+} as const;
 
 export type CustomDiscountRequestLike = {
   id?: string | number | null;
@@ -57,11 +63,10 @@ export function resolveCustomDiscountProgress(
 ): CustomDiscountProgress {
   if (requestsForOrder.length === 0) return null;
 
-  const allApproved = requestsForOrder.every(
-    (request) => normalizeCustomDiscountRequestStatus(request.status) === "approved"
-  );
-
-  return allApproved ? "completely" : "partially";
+  const statuses = requestsForOrder.map((request) => normalizeCustomDiscountRequestStatus(request.status));
+  if (statuses.every((status) => status === "approved")) return "accepted";
+  if (statuses.includes("rejected")) return "rejected";
+  return "awaiting";
 }
 
 export function summarizeCustomDiscountProgress(

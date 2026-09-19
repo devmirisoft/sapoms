@@ -14,16 +14,17 @@ import {
   type StaffMember,
 } from "@/lib/dealerForm";
 import { CITIES_BY_STATE, STATE_OPTIONS } from "@/lib/places";
+import { formatWarehouseLabel } from "@/lib/warehouses";
 
 const ADMIN_STAFF_URL = "/api/admin/staff";
 const DEALER_CODE_PREFIX = "OM-";
 
 type DealerFormMode = "admin-create" | "staff-submit" | "admin-review" | "staff-resubmit";
 type DealerDetailsTab = "company" | "alternate" | "remarks";
-type AssignmentRoleKey = "rsm" | "asm" | "salesManager" | "executive";
-type RoleAssignments = Record<AssignmentRoleKey, string>;
+export type AssignmentRoleKey = "rsm" | "asm" | "salesManager" | "executive";
+export type RoleAssignments = Record<AssignmentRoleKey, string>;
 
-const EMPTY_ROLE_ASSIGNMENTS: RoleAssignments = {
+export const EMPTY_ROLE_ASSIGNMENTS: RoleAssignments = {
   rsm: "",
   asm: "",
   salesManager: "",
@@ -684,7 +685,8 @@ function Tab({ active = false, onClick, children }: { active?: boolean; onClick:
   );
 }
 
-function RoleAssignmentPanel({
+// Shared with Edit Dealer: pick the Sales Manager, the ASM/RSM follow from it.
+export function RoleAssignmentPanel({
   loading,
   roleAssignments,
   roleOptions,
@@ -700,14 +702,10 @@ function RoleAssignmentPanel({
     const staff = staffId ? roleOptions[field.key].find((entry) => String(entry.staff_id) === staffId) : null;
     return { ...field, staffId, staff };
   });
-  const selectedSalesManager = findStaffByAnyId(roleAssignments.salesManager, roleOptions.salesManager);
-  // Staff (staffRoleType "2") hang off an RSM and have no ASM of their own, so
-  // the shared parent with a Sales Manager is the RSM at the top of its chain.
-  const selectedAsm = findStaffByAnyId(roleAssignments.asm, roleOptions.asm);
-  const selectedSalesManagerRsmId = getStaffRsmId(selectedSalesManager) || getStaffRsmId(selectedAsm);
-  const staffOptions = selectedSalesManagerRsmId
-    ? roleOptions.executive.filter((staff) => getStaffRsmId(staff) === selectedSalesManagerRsmId)
-    : roleOptions.executive;
+  // Staff (staffRoleType "2") are free of the RSM chain: every Staff member is
+  // offered whatever Sales Manager is picked. What matters for a Staff member
+  // is its warehouse, which decides the order list's warehouse tab.
+  const staffOptions = roleOptions.executive;
 
   return (
     <div className="mt-6">
@@ -786,9 +784,14 @@ function AssignmentSelect({
         {!loading && !options.length ? <option value="" disabled>No active {label} found</option> : null}
         {options.map((staff) => {
           const staffId = String(staff.staff_id);
+          // Sales Managers are told apart by their area, Staff by their warehouse.
+          const detail = roleKey === "salesManager"
+            ? (staff.assignedCities ?? []).join(", ")
+            : formatWarehouseLabel(staff.warehouse);
           return (
             <option key={staffId} value={staffId}>
               {staff.staff_name || "Staff #" + staffId}
+              {detail ? ` (${detail})` : ""}
             </option>
           );
         })}
@@ -804,7 +807,7 @@ const ASSIGNMENT_FIELDS: Array<{ key: AssignmentRoleKey; label: string }> = [
   { key: "executive", label: "Staff / Executive" },
 ];
 
-function uniqueStaffIds(ids: string[]) {
+export function uniqueStaffIds(ids: string[]) {
   return Array.from(new Set(ids.map((id) => String(id).trim()).filter(Boolean)));
 }
 
@@ -820,7 +823,7 @@ function normalizeStaffRole(staff: StaffMember): AssignmentRoleKey | null {
   return null;
 }
 
-function buildRoleOptions(staffList: StaffMember[]): Record<AssignmentRoleKey, StaffMember[]> {
+export function buildRoleOptions(staffList: StaffMember[]): Record<AssignmentRoleKey, StaffMember[]> {
   return staffList.reduce<Record<AssignmentRoleKey, StaffMember[]>>((groups, staff) => {
     const roleKey = normalizeStaffRole(staff);
     if (roleKey) groups[roleKey].push(staff);
@@ -832,7 +835,7 @@ function normalizeHierarchyText(value: unknown) {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function getStaffUserId(staffId: string, staffList: StaffMember[]) {
+export function getStaffUserId(staffId: string, staffList: StaffMember[]) {
   const staff = staffList.find((entry) => String(entry.staff_id) === String(staffId));
   return String(staff?.userId ?? staff?.id ?? "").trim();
 }
@@ -841,10 +844,6 @@ function findStaffByAnyId(id: string, staffList: StaffMember[]) {
   const normalized = String(id).trim();
   if (!normalized) return null;
   return staffList.find((staff) => [staff.staff_id, staff.id, staff.userId].some((value) => String(value ?? "").trim() === normalized)) ?? null;
-}
-
-function getStaffRsmId(staff: StaffMember | null) {
-  return String(staff?.parentRsmId ?? staff?.parent_rsm_id ?? staff?.rsmId ?? "").trim();
 }
 
 function getStaffLocation(staff: StaffMember | null) {
@@ -898,7 +897,7 @@ function resolveParentAssignments(
   return next;
 }
 
-function resolveNextRoleAssignments(
+export function resolveNextRoleAssignments(
   prev: RoleAssignments,
   roleOptions: Record<AssignmentRoleKey, StaffMember[]>,
   roleKey: AssignmentRoleKey,
@@ -920,7 +919,7 @@ function resolveNextRoleAssignments(
   return resolveParentAssignments(next, roleOptions, findStaffByAnyId(next.salesManager, roleOptions.salesManager));
 }
 
-function buildRoleAssignmentsFromIds(ids: string[], staffList: StaffMember[]): RoleAssignments {
+export function buildRoleAssignmentsFromIds(ids: string[], staffList: StaffMember[]): RoleAssignments {
   const next = { ...EMPTY_ROLE_ASSIGNMENTS };
   const staffById = new Map(staffList.map((staff) => [String(staff.staff_id), staff]));
 

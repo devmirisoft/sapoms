@@ -29,6 +29,7 @@ import {
   canUserBulkDispatch,
   canUserEditDispatch,
   canUserEditDispatchTracking,
+  dispatchPiecesToPacks,
   readDispatchTrackingInfo,
   DISPATCH_MUTATION_STATUSES,
   DISPATCH_STATUS_LABELS,
@@ -699,9 +700,9 @@ function ItemCard({
           <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${progressPct}%` }} />
         </div>
         <div className="flex items-center justify-between mt-1.5">
-          <span className="text-[11px] text-gray-500 font-mono">{pricing.ready} dispatched</span>
+          <span className="text-[11px] text-gray-500 font-mono">{pricing.ready * pricing.packSize} pcs dispatched</span>
           <span className={`text-[11px] font-mono font-semibold ${left > 0 ? "text-red-600" : "text-emerald-600"}`}>
-            {left > 0 ? `${left} left` : "complete"}
+            {left > 0 ? `${left * pricing.packSize} pcs left` : "complete"}
           </span>
         </div>
       </div>
@@ -1393,7 +1394,15 @@ export default function ViewOrderDealerPage() {
     acceptOrder,
     delStatus: orderDeleted,
   }) && !overlayState?.isCancelled && dispatchRecordsLoaded && dispatchRecordsOrderId === id;
-  const dispatchAllPlan = useMemo(() => buildBulkDispatchPlan(displayOrders), [displayOrders]);
+  const baseRowPricings = useMemo(
+    () => displayOrders.map((o) => getRowPricing(o, packLookup, displayOrderMeta)),
+    [displayOrders, packLookup, displayOrderMeta]
+  );
+  const dispatchItems = useMemo(
+    () => displayOrders.map((o, index) => ({ ...o, packSize: baseRowPricings[index]?.packSize ?? 1 })),
+    [displayOrders, baseRowPricings]
+  );
+  const dispatchAllPlan = useMemo(() => buildBulkDispatchPlan(dispatchItems), [dispatchItems]);
   const showDispatchAllControl = canUseDispatchAll;
   const dispatchableByKey = useMemo(
     () => new Map(dispatchAllPlan.lines.map((line) => [buildBulkDispatchLineKey(line), line])),
@@ -1404,10 +1413,6 @@ export default function ViewOrderDealerPage() {
     [dispatchAllPlan, selectedDispatchKeys]
   );
   const dispatchAllHasLines = selectedDispatchLines.length > 0;
-  const baseRowPricings = useMemo(
-    () => displayOrders.map((o) => getRowPricing(o, packLookup, displayOrderMeta)),
-    [displayOrders, packLookup, displayOrderMeta]
-  );
   // Compute totals from the same row pricing used by the table and cards.
   const calculatedTotals = baseRowPricings.reduce((acc, pricing) => {
     return {
@@ -1555,7 +1560,7 @@ export default function ViewOrderDealerPage() {
     setDispatchAllError("");
     setDispatchSelectedStatus("dispatched");
     setDispatchSelectedQuantities(Object.fromEntries(
-      selectedDispatchLines.map((line) => [buildBulkDispatchLineKey(line), String(line.remainingQuantity)])
+      selectedDispatchLines.map((line) => [buildBulkDispatchLineKey(line), String(line.remainingQuantity * line.packSize)])
     ));
     setDispatchAllIdempotencyKey(`${id}:${Date.now()}:${Math.random().toString(36).slice(2)}`);
     setDispatchAllDialogOpen(true);
@@ -1577,16 +1582,14 @@ export default function ViewOrderDealerPage() {
     }
     const requestedItems = selectedDispatchLines.map((line) => {
       const key = buildBulkDispatchLineKey(line);
-      return { ...line, key, dispatchQuantity: Number(dispatchSelectedQuantities[key]), status: dispatchSelectedStatus };
+      // Entered in pieces, sent in packs.
+      const packs = dispatchPiecesToPacks(Number(dispatchSelectedQuantities[key]), line.packSize);
+      return { ...line, key, dispatchQuantity: packs ?? 0, status: dispatchSelectedStatus };
     });
-    const invalidLine = requestedItems.find((line) =>
-      !Number.isFinite(line.dispatchQuantity)
-      || !Number.isInteger(line.dispatchQuantity)
-      || line.dispatchQuantity <= 0
-      || line.dispatchQuantity > line.remainingQuantity
-    );
+    const invalidLine = requestedItems.find((line) => line.dispatchQuantity <= 0 || line.dispatchQuantity > line.remainingQuantity);
     if (invalidLine) {
-      setDispatchAllError(`Enter a whole dispatch quantity between 1 and ${invalidLine.remainingQuantity} for ${invalidLine.productName || invalidLine.sku}.`);
+      const packNote = invalidLine.packSize > 1 ? ` in multiples of ${invalidLine.packSize}` : "";
+      setDispatchAllError(`Enter between ${invalidLine.packSize} and ${invalidLine.remainingQuantity * invalidLine.packSize} pieces${packNote} for ${invalidLine.productName || invalidLine.sku}.`);
       return;
     }
 
@@ -1670,7 +1673,6 @@ export default function ViewOrderDealerPage() {
   // server gate in updatePostgresOrderAcceptance.
   const canStaffAccept = !isRsm
     && currentUser?.role === "staff"
-    && currentUser.roletype !== "2"
     && !overlayState?.isCancelled
     && orderDeleted === "0"
     && acceptOrder === "0"
@@ -2289,8 +2291,8 @@ export default function ViewOrderDealerPage() {
                           <td className="px-4 py-3.5 font-mono font-bold text-gray-900">{pricing.packs}</td>
                           <td className="px-4 py-3.5 font-mono font-bold text-amber-700">{pricing.packs} × {pricing.packSize}</td>
                           <td className="px-4 py-3.5 font-mono font-bold text-gray-900">{pricing.pieces}</td>
-                          <td className="px-4 py-3.5 font-mono font-semibold text-emerald-600">{pricing.ready}</td>
-                          <td className="px-4 py-3.5 font-mono font-bold" style={{ color: left > 0 ? "#dc2626" : "#9ca3af" }}>{left}</td>
+                          <td className="px-4 py-3.5 font-mono font-semibold text-emerald-600">{pricing.ready * pricing.packSize}</td>
+                          <td className="px-4 py-3.5 font-mono font-bold" style={{ color: left > 0 ? "#dc2626" : "#9ca3af" }}>{left * pricing.packSize}</td>
                           <td className="px-4 py-3.5 text-[12px] text-gray-600">{o.product_unit || "—"}</td>
                           <td className="px-4 py-3.5 font-mono text-gray-900 font-semibold">₹{pricing.unitPrice.toLocaleString("en-IN")}</td>
                           <td className="px-4 py-3.5 font-mono text-gray-900">
@@ -2371,7 +2373,7 @@ export default function ViewOrderDealerPage() {
         assignedStaffId={assignedStaffId}
         acceptOrder={acceptOrder}
         delStatus={orderDeleted}
-        items={displayOrders}
+        items={dispatchItems}
         currentUser={currentUser}
         selectedItemId={activeDispatchItemId}
         onClose={() => setActiveDispatchItemId(null)}
@@ -2420,17 +2422,17 @@ export default function ViewOrderDealerPage() {
                       <div>
                         <p className="mt-1 font-mono text-[12px] text-amber-700">Catalogue Number: {line.sku || "-"}</p>
                       </div>
-                      <div><p className="text-[10px] font-bold uppercase text-slate-400">Ordered</p><p className="font-mono text-[13px] font-bold">{line.orderedQuantity}</p></div>
-                      <div><p className="text-[10px] font-bold uppercase text-slate-400">Dispatched</p><p className="font-mono text-[13px] font-bold">{line.dispatchedQuantity}</p></div>
-                      <div><p className="text-[10px] font-bold uppercase text-slate-400">Remaining</p><p className="font-mono text-[13px] font-bold text-indigo-700">{line.remainingQuantity}</p></div>
+                      <div><p className="text-[10px] font-bold uppercase text-slate-400">Ordered</p><p className="font-mono text-[13px] font-bold">{line.orderedQuantity * line.packSize} pcs</p></div>
+                      <div><p className="text-[10px] font-bold uppercase text-slate-400">Dispatched</p><p className="font-mono text-[13px] font-bold">{line.dispatchedQuantity * line.packSize} pcs</p></div>
+                      <div><p className="text-[10px] font-bold uppercase text-slate-400">Remaining</p><p className="font-mono text-[13px] font-bold text-indigo-700">{line.remainingQuantity * line.packSize} pcs</p></div>
                       <div><p className="mb-1 text-[10px] font-bold uppercase text-slate-400">Current status</p><StatusPill code={line.currentStatus} /></div>
                       <label className="text-[10px] font-bold uppercase text-slate-500">
-                        Dispatch qty
+                        Dispatch pcs
                         <input
                           type="number"
-                          min={1}
-                          max={line.remainingQuantity}
-                          step={1}
+                          min={line.packSize}
+                          max={line.remainingQuantity * line.packSize}
+                          step={line.packSize}
                           value={dispatchSelectedQuantities[lineKey] ?? ""}
                           onChange={(event) => {
                             setDispatchSelectedQuantities((previous) => ({ ...previous, [lineKey]: event.target.value }));

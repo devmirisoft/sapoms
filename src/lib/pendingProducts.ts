@@ -455,6 +455,19 @@ function buildPackSummary(packSizes: number[]): string {
   return uniquePackSizes.join(", ");
 }
 
+// The catalogue is a static 4MB import, so its lookup is built once per array
+// instead of on every request (it cost 90–400ms each time).
+const catalogueLookupCache = new WeakMap<unknown[], CatalogueLookup>();
+
+function cachedCatalogueLookup(products: unknown[]) {
+  let lookup = catalogueLookupCache.get(products);
+  if (!lookup) {
+    lookup = buildPendingProductsCatalogueLookup(products);
+    catalogueLookupCache.set(products, lookup);
+  }
+  return lookup;
+}
+
 export function buildPendingProductLines(input: {
   orders: PendingProductsOrderRow[];
   orderItemsByOrderId: Record<string, PendingProductsItemRow[]>;
@@ -462,7 +475,7 @@ export function buildPendingProductLines(input: {
   dealerDirectoryById?: Record<string, PendingDealerDirectoryRow>;
   catalogueProducts?: unknown[];
 }): PendingProductLine[] {
-  const lookup = buildPendingProductsCatalogueLookup(input.catalogueProducts ?? []);
+  const lookup = cachedCatalogueLookup(input.catalogueProducts ?? []);
   const lines: PendingProductLine[] = [];
 
   for (const order of input.orders ?? []) {

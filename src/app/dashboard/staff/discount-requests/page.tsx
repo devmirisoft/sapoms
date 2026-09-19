@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Receipt, RefreshCw, ArrowLeft } from "lucide-react";
 import { normalizeCustomDiscountRequestRecord } from "@/lib/customDiscountRequests";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
+import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
 
 type StaffUser = {
   staff_id: string;
@@ -40,6 +41,7 @@ type DiscountRequest = {
     displayName?: string;
     variantCode?: string;
   } | null;
+  orderNumber?: string;
   status: "pending" | "approved" | "rejected";
   rsmApprovalStatus?: "pending" | "approved" | "rejected";
   rsmReviewedBy?: string;
@@ -53,8 +55,8 @@ type TabKey = "awaiting" | "pending" | "approved" | "rejected" | "all";
 
 const TABS: { key: TabKey; label: string; tone?: "neutral" | "rose" | "amber" | "emerald"; rsmOnly?: boolean }[] = [
   { key: "awaiting", label: "Awaiting my review", tone: "amber", rsmOnly: true },
-  { key: "pending", label: "Pending", tone: "amber" },
-  { key: "approved", label: "Approved", tone: "emerald" },
+  { key: "pending", label: "Awaiting", tone: "amber" },
+  { key: "approved", label: "Accepted", tone: "emerald" },
   { key: "rejected", label: "Rejected", tone: "rose" },
   { key: "all", label: "All" },
 ];
@@ -72,8 +74,14 @@ function statusBadge(status: DiscountRequest["status"]) {
   return "border-amber-200 bg-amber-50 text-amber-700";
 }
 
+const STATUS_LABELS: Record<DiscountRequest["status"], string> = {
+  pending: "Awaiting",
+  approved: "Accepted",
+  rejected: "Rejected",
+};
+
 function statusLabel(status: DiscountRequest["status"]) {
-  return status[0].toUpperCase() + status.slice(1);
+  return STATUS_LABELS[status] ?? status;
 }
 
 export default function StaffDiscountRequestsPage() {
@@ -278,6 +286,9 @@ export default function StaffDiscountRequestsPage() {
                       <h2 className="text-[16px] font-bold text-gray-900">{request.dealerName || "Dealer"}</h2>
                       <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge(request.status)}`}>
                         {statusLabel(request.status)}
+                      </span>
+                      <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 font-mono text-[11px] font-bold text-gray-700">
+                        {request.orderNumber ? `Order ${formatDisplayOrderNumber(request.orderNumber, request.createdAt)}` : "Order not placed yet"}
                       </span>
                       <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700">
                         {(request.discountScope ?? "order") === "product" ? "Product discount" : "Order discount"}

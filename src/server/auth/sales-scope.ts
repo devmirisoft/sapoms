@@ -57,6 +57,14 @@ export async function buildOrderRegionWhere(actor: Pick<AuthActor, "userId" | "r
 }
 
 /**
+ * Staff on an RSM's team: ASMs and Sales Managers through `parentRsmId`, plain
+ * Staff through their (zero or more) RSM links.
+ */
+export function rsmTeamWhere(rsmId: bigint): Prisma.StaffProfileWhereInput {
+  return { OR: [{ parentRsmId: rsmId }, { rsmLinks: { some: { rsmId } } }] };
+}
+
+/**
  * Every staff profile reporting into an RSM, at any depth.
  *
  * `parentRsmId` is denormalized on write: an ASM gets it from the RSM it is
@@ -71,7 +79,7 @@ export async function resolveRsmTeamStaffIds(
 ): Promise<bigint[]> {
   if (actor.role !== "RSM" || !actor.staffId) return [];
   const team = await prisma.staffProfile.findMany({
-    where: { parentRsmId: actor.staffId },
+    where: rsmTeamWhere(actor.staffId),
     select: { id: true },
   });
   return [actor.staffId, ...team.map((member) => member.id)];

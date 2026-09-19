@@ -4,7 +4,7 @@
  * Re-running deletes and recreates the four accounts.
  *
  * Note: the schema has no "reports to SM" link. A Staff (staffRoleType "2")
- * hangs off an RSM directly, so Staff Test is parented to RSM Test.
+ * is free and linked to zero or more RSMs; Staff Test is linked to RSM Test.
  *
  * Usage: node scripts/seed-hierarchy-test-users.mjs
  */
@@ -65,7 +65,7 @@ const people = [
   },
 ];
 
-async function createOne(tx, person, { parentRsmId = null, parentAsmId = null, reportingManagerId = null }) {
+async function createOne(tx, person, { parentRsmId = null, parentAsmId = null, reportingManagerId = null, rsmIds = [] }) {
   const normalizedEmail = person.email.trim().toLowerCase();
   const user = await tx.user.create({
     data: {
@@ -103,6 +103,7 @@ async function createOne(tx, person, { parentRsmId = null, parentAsmId = null, r
       warehouse: person.warehouse ?? null,
       assignedStates: person.assignedStates ?? [],
       assignedCities: person.assignedCities ?? [],
+      rsmLinks: { create: rsmIds.map((rsmId) => ({ rsmId })) },
     },
   });
 }
@@ -165,8 +166,8 @@ async function main() {
     const sm = await createOne(tx, smSpec, { parentAsmId: asm.id, parentRsmId: asm.parentRsmId });
     console.log(`SM    ${smSpec.email} -> ASM ${asm.displayName}, RSM auto-resolved ${sm.parentRsmId === rsm.id ? 'OK' : 'MISMATCH'}, cities ${sm.assignedCities.join(', ')}, states ${sm.assignedStates.join(', ')}`);
 
-    const staff = await createOne(tx, staffSpec, { parentRsmId: rsm.id });
-    console.log(`Staff ${staffSpec.email} -> RSM ${rsm.displayName} (schema has no SM parent link; profile ${staff.id})`);
+    const staff = await createOne(tx, staffSpec, { rsmIds: [rsm.id] });
+    console.log(`Staff ${staffSpec.email} -> linked to RSM ${rsm.displayName} (schema has no SM parent link; profile ${staff.id})`);
   });
 
   console.log('\nAll four passwords are the email verbatim, including capitals.');

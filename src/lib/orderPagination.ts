@@ -6,6 +6,7 @@ export type OrdersActor = {
   actorId: string;
   isRsm?: boolean;
   isAsm?: boolean;
+  isSalesManager?: boolean;
   userId?: string;
   warehouse?: string;
 };

@@ -245,6 +245,7 @@ export default function EditStaffPage() {
   const [warehouse, setWarehouse] = useState('')
   const [parentRsmId, setParentRsmId] = useState('')
   const [parentAsmId, setParentAsmId] = useState('')
+  const [rsmIds, setRsmIds] = useState<string[]>([])
   const [assignedStates, setAssignedStates] = useState<string[]>([])
   const [assignedCities, setAssignedCities] = useState<string[]>([])
   const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
@@ -413,6 +414,7 @@ export default function EditStaffPage() {
         setWarehouse(String(data.warehouse || ''))
         setParentRsmId(String(data.parentRsmId || data.parent_rsm_id || ''))
         setParentAsmId(String(data.parentAsmId || data.parent_asm_id || ''))
+        setRsmIds(Array.isArray(data.rsmIds) ? data.rsmIds.map(String) : [])
         setAssignedStates(
           Array.isArray(data.assignedStates)
             ? data.assignedStates.map(String)
@@ -440,6 +442,7 @@ export default function EditStaffPage() {
   const resetHierarchy = () => {
     setParentRsmId('')
     setParentAsmId('')
+    setRsmIds([])
     setAssignedStates([])
     setAssignedCities([])
   }
@@ -454,6 +457,9 @@ export default function EditStaffPage() {
       return next.length === current.length ? current : next
     })
   }
+
+  const toggleRsm = (rsmId: string) =>
+    setRsmIds((current) => (current.includes(rsmId) ? current.filter((entry) => entry !== rsmId) : [...current, rsmId]))
 
   const handleParentRsmChange = (nextParentRsmId: string) => {
     setParentRsmId(nextParentRsmId)
@@ -526,7 +532,8 @@ export default function EditStaffPage() {
           staffRoleType: selectedRole.staffRoleType,
           salesRegion: selectedRole.authRole === 'RSM' ? salesRegion : undefined,
           warehouse: role === 'FIELD_EXECUTIVE' ? warehouse : undefined,
-          parentRsmId: role === 'ASM' || role === 'FIELD_EXECUTIVE' ? parentRsmId : undefined,
+          parentRsmId: role === 'ASM' ? parentRsmId : undefined,
+          rsmIds: role === 'FIELD_EXECUTIVE' ? rsmIds : undefined,
           parentAsmId: role === 'EXECUTIVE' ? parentAsmId : undefined,
           assignedStates: role === 'ASM' || role === 'RSM' ? assignedStates : undefined,
           assignedCities: role === 'EXECUTIVE' ? assignedCities : undefined,
@@ -869,7 +876,22 @@ export default function EditStaffPage() {
                   </div>
                 )}
 
-                {(role === 'ASM' || role === 'FIELD_EXECUTIVE') && (
+                {role === 'FIELD_EXECUTIVE' && (
+                  <div className="md:col-span-2 flex flex-col gap-1.5">
+                    <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">RSMs</label>
+                    <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
+                      {rsmOptions.length ? rsmOptions.map((option) => (
+                        <label key={option.id} className="flex cursor-pointer items-center gap-3 rounded px-2 py-1.5 text-sm hover:bg-gray-50">
+                          <input type="checkbox" checked={rsmIds.includes(option.id)} onChange={() => toggleRsm(option.id)} className="h-4 w-4 accent-indigo-600" />
+                          <span className="text-black">{displayStaff(option)}</span>
+                        </label>
+                      )) : <p className="px-2 py-2 text-sm text-black">No RSM accounts found.</p>}
+                    </div>
+                    <span className="text-[11px] text-gray-500">Optional. Staff can work under any number of RSMs, from any region.</span>
+                  </div>
+                )}
+
+                {role === 'ASM' && (
                   <div className="flex flex-col gap-1.5">
                     <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
                       RSM<span className="text-orange-500 ml-0.5">*</span>

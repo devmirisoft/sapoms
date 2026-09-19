@@ -21,6 +21,7 @@ export type OrderActor = {
   actorId: string;
   isRsm?: boolean;
   isAsm?: boolean;
+  isSalesManager?: boolean;
   userId?: string;
   warehouse?: string;
 };
@@ -59,6 +60,7 @@ export function orderActorFromAuth(actor: AuthActor): OrderActor | null {
     actorId,
     ...(rawRole === "rsm" ? { isRsm: true, userId: actor.userId?.toString() } : {}),
     ...(rawRole === "asm" ? { isAsm: true } : {}),
+    ...(rawRole === "staff" && actor.staffRoleType === "1" ? { isSalesManager: true } : {}),
     ...(actor.warehouse ? { warehouse: actor.warehouse } : {}),
   } as OrderActor;
 }

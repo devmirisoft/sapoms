@@ -8,6 +8,7 @@ import {
   type NormalizedCustomDiscountRequest,
 } from "@/lib/customDiscountRequests";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
+import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
 
@@ -26,9 +27,23 @@ function statusBadge(status: string) {
 }
 
 function statusLabel(status: string) {
-  if (status === "approved") return "Approved";
+  if (status === "approved") return "Accepted";
   if (status === "rejected") return "Rejected";
-  return "Pending";
+  return "Awaiting";
+}
+
+function orderNumberLabel(request: NormalizedCustomDiscountRequest) {
+  const orderNumber = request.source?.orderNumber;
+  return orderNumber ? formatDisplayOrderNumber(orderNumber, request.createdAt) : "";
+}
+
+function OrderNumberChip({ request }: { request: NormalizedCustomDiscountRequest }) {
+  const label = orderNumberLabel(request);
+  return (
+    <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-[10px] font-bold text-gray-700">
+      {label ? `Order ${label}` : "Order not placed yet"}
+    </span>
+  );
 }
 
 function resolveAdminName() {
@@ -195,6 +210,7 @@ function RequestCard({
             <span className="rounded-full bg-amber-50 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-700">
               {request.requestReference || request.id}
             </span>
+            <OrderNumberChip request={request} />
             <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
               {request.discountScope === "product" ? "Product Discount" : "Order Discount"}
             </span>
@@ -464,8 +480,8 @@ export default function CustomDiscountApprovalsPage() {
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           {[
             { key: "all", label: "All", value: stats.all },
-            { key: "pending", label: "Pending", value: stats.pending },
-            { key: "approved", label: "Approved", value: stats.approved },
+            { key: "pending", label: "Awaiting", value: stats.pending },
+            { key: "approved", label: "Accepted", value: stats.approved },
             { key: "rejected", label: "Rejected", value: stats.rejected },
           ].map((item) => (
             <button
@@ -512,7 +528,7 @@ export default function CustomDiscountApprovalsPage() {
             >
               <option value="all">All</option>
               <option value="pending">Awaiting</option>
-              <option value="approved">Approved</option>
+              <option value="approved">Accepted</option>
               <option value="rejected">Rejected</option>
             </select>
           </label>
@@ -588,6 +604,7 @@ export default function CustomDiscountApprovalsPage() {
                       <span className="rounded-full bg-amber-50 px-2 py-0.5 font-mono text-[10px] font-bold text-amber-700">
                         {request.requestReference || request.id}
                       </span>
+                      <OrderNumberChip request={request} />
                       <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge(request.normalizedStatus)}`}>
                         {statusLabel(request.normalizedStatus)}
                       </span>

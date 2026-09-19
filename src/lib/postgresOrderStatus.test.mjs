@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
@@ -48,14 +49,31 @@ test("legacy accept_order and del_status remain response aliases only for Postgr
   assert.match(postgresOrders, /del_status: legacyDeletion\(order\.status\)/);
 });
 
-test("RSM order headers include child staff hierarchy scope", () => {
+test("orders flow up through the Sales Manager (reverse waterfall)", () => {
+  // RSM sees only what its Sales Managers' dealers push, never its whole region.
   assert.match(postgresOrders, /if \(actor\.isRsm && actor\.userId\) return buildRsmOrderWhere\(actor\)/);
-  assert.match(postgresOrders, /buildOrderRegionWhere\(\{ userId: BigInt\(actor\.userId!\), role: "RSM" \}/);
-  assert.match(postgresOrders, /parentRsmId: rsm\.id/);
-  assert.match(postgresOrders, /assignedStaffId: \{ in: childStaffIds \}/);
-  assert.match(postgresOrders, /prisma\.dealerStaffAssignment\.findMany/);
-  assert.match(postgresOrders, /staffId: \{ in: childStaffIds \}/);
-  assert.match(postgresOrders, /dealerId: \{ in: childDealerIds \}/);
+  assert.match(postgresOrders, /return \{ salesManager: \{ parentRsmId: BigInt\(actor\.actorId\) \} \}/);
+  assert.doesNotMatch(postgresOrders, /buildOrderRegionWhere/);
+  // ASM through its Sales Managers; the Sales Manager through its own stamp.
+  assert.match(postgresOrders, /\{ salesManagerId: me \}/);
+  assert.match(postgresOrders, /actor\.isAsm \? \[\{ salesManager: \{ parentAsmId: me \} \}\] : \[\]/);
+  // Only plain Staff wait for the RSM.
+  assert.match(postgresOrders, /actor\.isAsm \|\| actor\.isSalesManager \? staffScope : \{ rsmApprovalStatus: "ACCEPTED", \.\.\.staffScope \}/);
+  // RSM status actions use the same chain, not the region.
+  assert.match(source, /salesManager: \{ parentRsmId: actor\.staffId \}/);
+  assert.doesNotMatch(source, /buildOrderRegionWhere/);
+});
+
+test("orders are stamped with the dealer's Sales Manager and Staff member", () => {
+  const stamp = readFileSync("src/lib/orderStaffStamp.ts", "utf8");
+  assert.match(stamp, /salesManagerId: firstOfType\("1"\)/);
+  assert.match(stamp, /assignedStaffId: firstOfType\("2"\)/);
+  // Pending orders follow a reassignment; reviewed ones keep their history.
+  assert.match(stamp, /where: \{ dealerId, rsmApprovalStatus: "AWAITING"/);
+  for (const file of ["src/lib/dealerOrderCreate.ts", "src/lib/discountApprovalOrder.ts"]) {
+    assert.match(readFileSync(file, "utf8"), /\.\.\.stamp,/);
+  }
+  assert.equal(readFileSync("src/server/modules/admin/dealers/dealers.repository.ts", "utf8").match(/await restampPendingOrders\(tx, dealerId\)/g)?.length, 2);
 });
 
 test("PostgreSQL order mutations bypass PHP and Mongo status writes", () => {
@@ -111,14 +129,8 @@ test("declined orders surface with their note in the cancelled orders tab", () =
   assert.match(annotations, /stage: row\.type === "rsm_acceptance" \? "rsm" : "staff"/);
 });
 
-test("staff decline collects a required note before submitting", () => {
-  // The Decline button used to post with no note, which the lib rejects with
-  // note_required - the modal is what makes a staff decline possible at all.
-  assert.match(orderManagement, /setDeclineTarget\(oid\)/);
-  assert.match(orderManagement, /disabled=\{!note\.trim\(\) \|\| saving\}/);
-  assert.match(orderManagement, /\.\.\.\(note \? \{ note \} : \{\}\)/);
-  // A decline now lands in the cancelled list, so that cache must be refreshed.
-  assert.match(orderManagement, /if \(status === 0\) queryClient\.invalidateQueries\(\{ queryKey: \["cancelled-orders"\] \}\)/);
+test("order list leaves accept/decline to the order detail page", () => {
+  assert.doesNotMatch(orderManagement, /setDeclineTarget|handleAccept/);
   // One order can hold both a cancel and a decline overlay; keying rows on the
   // order id alone would collide.
   assert.match(orderManagement, /key=\{order\.id \|\| order\.orderId\}/);

@@ -8,6 +8,7 @@ import { Download, Search, Package } from 'lucide-react'
 import { hasPriorityTag } from '@/lib/orderPriority'
 import {
   buildCustomDiscountProgressMap,
+  CUSTOM_DISCOUNT_PROGRESS_LABELS,
   getCustomDiscountProgressKeyForOrder,
   type CustomDiscountProgress,
 } from '@/lib/customDiscountProgress'
@@ -82,13 +83,11 @@ function statusBadge(status: string) {
 }
 
 function customDiscountBadge(progress: CustomDiscountProgress) {
-  if (progress === "completely") {
-    return { bg: "bg-emerald-50", text: "text-emerald-700", label: "Approved" }
-  }
-  if (progress === "partially") {
-    return { bg: "bg-amber-50", text: "text-amber-700", label: "Partially" }
-  }
-  return null
+  if (!progress) return null
+  const label = CUSTOM_DISCOUNT_PROGRESS_LABELS[progress]
+  if (progress === "accepted") return { bg: "bg-emerald-50", text: "text-emerald-700", label }
+  if (progress === "rejected") return { bg: "bg-red-50", text: "text-red-700", label }
+  return { bg: "bg-amber-50", text: "text-amber-700", label }
 }
 
 export default function DispatchStatusPage() {

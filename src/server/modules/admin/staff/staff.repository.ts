@@ -36,6 +36,7 @@ const include = {
   user: { select: { id: true, email: true, username: true, status: true, role: true } },
   parentRsm: { select: { id: true, displayName: true, user: { select: { id: true, email: true } } } },
   parentAsm: { select: { id: true, displayName: true, user: { select: { id: true, email: true } } } },
+  rsmLinks: { orderBy: { rsmId: "asc" }, select: { rsm: { select: { id: true, displayName: true, user: { select: { id: true, email: true } } } } } },
   reportingManager: { select: { id: true, displayName: true, user: { select: { id: true, email: true } } } },
 } satisfies Prisma.StaffProfileInclude;
 
@@ -125,6 +126,7 @@ function buildSyntheticRecord(args: {
     reportingManagerId: null,
     parentRsm: null,
     parentAsm: null,
+    rsmLinks: [],
     reportingManager: null,
     user: args.user,
   };
@@ -187,6 +189,19 @@ async function resolveRsm(tx: Prisma.TransactionClient, id: bigint | null) {
   });
   if (!rsm) throw invalid("Selected RSM was not found", "RSM_PARENT_INVALID", { rsmId: id.toString() });
   return rsm;
+}
+
+// A Staff member's RSM links: any number (including none), any region.
+async function resolveRsmIds(tx: Prisma.TransactionClient, ids: string[] | undefined) {
+  const wanted = [...new Set((ids ?? []).map((id) => parseId(id, "STAFF_RSM_INVALID")!))];
+  if (!wanted.length) return [];
+  const found = await tx.staffProfile.findMany({
+    where: { id: { in: wanted }, user: { role: "RSM", status: "ACTIVE", deletedAt: null } },
+    select: { id: true },
+  });
+  const missing = wanted.filter((id) => !found.some((rsm) => rsm.id === id));
+  if (missing.length) throw invalid("Selected RSM was not found", "STAFF_RSM_INVALID", { rsmIds: missing.map(String) });
+  return wanted;
 }
 
 async function resolveAsm(tx: Prisma.TransactionClient, id: bigint | null) {
@@ -304,6 +319,7 @@ export class PostgresAdminStaffRepository {
       let parentRsmId: bigint | null = null;
       let parentAsmId: bigint | null = null;
       let reportingManagerId: bigint | null = null;
+      let rsmIds: bigint[] = [];
       let assignedStates = uniqueStrings(input.assignedStates);
       let assignedCities = uniqueStrings(input.assignedCities);
 
@@ -321,8 +337,7 @@ export class PostgresAdminStaffRepository {
         assertSubset(assignedCities, citiesForStates(asm.assignedStates), "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities");
         assignedStates = statesForCities(assignedCities, asm.assignedStates);
       } else if (input.role === "STAFF" && input.staffRoleType === "2") {
-        const rsm = await resolveRsm(tx, parseId(input.parentRsmId, "STAFF_RSM_INVALID"));
-        parentRsmId = rsm.id;
+        rsmIds = await resolveRsmIds(tx, input.rsmIds);
         assignedStates = [];
         assignedCities = [];
       } else if (input.role === "RSM") {
@@ -388,6 +403,7 @@ export class PostgresAdminStaffRepository {
           assignedStates,
           assignedCities,
           reportingManagerId,
+          rsmLinks: { create: rsmIds.map((rsmId) => ({ rsmId })) },
         },
         include,
       });
@@ -466,11 +482,14 @@ export class PostgresAdminStaffRepository {
         staffData.assignedCities = assignedCities;
         staffData.reportingManager = { disconnect: true };
       } else if (nextRole === "STAFF" && nextStaffRoleType === "2") {
-        const rsm = await resolveRsm(tx, parseId(input.parentRsmId ?? current.parentRsmId?.toString(), "STAFF_RSM_INVALID"));
         staffData.staffRoleType = "2";
         staffData.salesRegion = null;
         if (input.warehouse !== undefined) staffData.warehouse = input.warehouse;
-        staffData.parentRsm = { connect: { id: rsm.id } };
+        if (input.rsmIds !== undefined) {
+          const rsmIds = await resolveRsmIds(tx, input.rsmIds);
+          staffData.rsmLinks = { deleteMany: {}, create: rsmIds.map((rsmId) => ({ rsmId })) };
+        }
+        staffData.parentRsm = { disconnect: true };
         staffData.parentAsm = { disconnect: true };
         staffData.assignedStates = [];
         staffData.assignedCities = [];
@@ -485,6 +504,8 @@ export class PostgresAdminStaffRepository {
         staffData.assignedCities = [];
         staffData.reportingManager = { disconnect: true };
       }
+      // RSM links belong to plain Staff only; any other role drops them.
+      if (!(nextRole === "STAFF" && nextStaffRoleType === "2")) staffData.rsmLinks = { deleteMany: {} };
       if (Object.keys(userData).length) await tx.user.update({ where: { id: current.userId }, data: userData });
       if (input.status !== undefined) await applyUserStatus(tx, current.userId, input.status);
       if (input.password !== undefined) {

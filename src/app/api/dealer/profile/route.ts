@@ -34,6 +34,7 @@ const contactSelect = {
   assignedCities: true,
   parentAsmId: true,
   parentRsmId: true,
+  rsmLinks: { orderBy: { rsmId: "asc" }, take: 1, select: { rsmId: true } },
   user: { select: { email: true, role: true, status: true, deletedAt: true } },
 } satisfies Prisma.StaffProfileSelect;
 
@@ -61,6 +62,9 @@ function mapContact(staff: ContactRecord) {
 // A dealer's contacts: the staff actively assigned to them, plus the ASM and
 // RSM those staff roll up to. parentAsmId/parentRsmId are denormalised onto
 // every staff row at creation, so both parents resolve in one extra query.
+// Plain Staff have no parentRsmId; their first linked RSM stands in.
+const rsmIdOf = (staff: ContactRecord) => staff.parentRsmId ?? staff.rsmLinks[0]?.rsmId ?? null;
+
 async function loadDealerContacts(dealerId: bigint) {
   const assignments = await prisma.dealerStaffAssignment.findMany({
     where: { dealerId, active: true, staff: { user: { status: "ACTIVE", deletedAt: null } } },
@@ -73,7 +77,8 @@ async function loadDealerContacts(dealerId: bigint) {
   const parentIds = new Set<bigint>();
   for (const staff of assignedStaff) {
     if (staff.parentAsmId) parentIds.add(staff.parentAsmId);
-    if (staff.parentRsmId) parentIds.add(staff.parentRsmId);
+    const rsmId = rsmIdOf(staff);
+    if (rsmId) parentIds.add(rsmId);
   }
   // Drop ids already present as directly-assigned staff so nobody is listed twice.
   for (const staff of assignedStaff) parentIds.delete(staff.id);
@@ -93,7 +98,7 @@ async function loadDealerContacts(dealerId: bigint) {
   // a dealer's staff share one branch of the hierarchy.
   const primary = assignedStaff[0] ?? null;
   const asmRecord = primary ? pick(primary.parentAsmId) : null;
-  const rsmRecord = primary ? pick(primary.parentRsmId) : null;
+  const rsmRecord = primary ? pick(rsmIdOf(primary)) : null;
 
   return {
     staff,

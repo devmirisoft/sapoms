@@ -11,7 +11,7 @@ async function loadPostgresOrders() {
     .replace(/^import "server-only";$/m, "")
     .replace(/^import \{ Prisma.*$/m, "const Prisma = {};")
     .replace(/^import \{ prisma \}.*$/m, "const prisma = {};")
-    .replace(/^import \{ buildOrderRegionWhere \}.*$/m, "const buildOrderRegionWhere = () => ({});")
+    .replace(/^import \{ buildOrderRegionWhere, rsmTeamWhere \}.*$/m, "const buildOrderRegionWhere = () => ({}); const rsmTeamWhere = () => ({});")
     .replace(/^import type \{ OrdersActor \}.*$/m, "")
     .replace(/^import \{ summarizeOrderSettlement \}.*$/m, "const summarizeOrderSettlement = () => ({});")
     .replace(/^import \{ normalizeSku \}.*$/m, "const normalizeSku = (value) => String(value ?? '').toLowerCase();")

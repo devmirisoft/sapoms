@@ -31,6 +31,7 @@ export type AdminStaffRecord = {
   reportingManagerId: bigint | null;
   parentRsm?: { id: bigint; displayName: string; user: { id: bigint; email: string } } | null;
   parentAsm?: { id: bigint; displayName: string; user: { id: bigint; email: string } } | null;
+  rsmLinks?: { rsm: { id: bigint; displayName: string; user: { id: bigint; email: string } } }[];
   reportingManager?: { id: bigint; displayName: string; user: { id: bigint; email: string } } | null;
   user: { id: bigint; email: string; username: string | null; status: string; role: UserRole };
 };
@@ -57,6 +58,7 @@ export type CreateAdminStaffInput = {
   warehouse?: Warehouse;
   parentRsmId?: string;
   parentAsmId?: string;
+  rsmIds?: string[];
   assignedStates?: string[];
   assignedCities?: string[];
   reportingManagerId?: string;
@@ -91,6 +93,7 @@ export type UpdateAdminStaffInput = {
   warehouse?: Warehouse;
   parentRsmId?: string;
   parentAsmId?: string;
+  rsmIds?: string[];
   assignedStates?: string[];
   assignedCities?: string[];
   reportingManagerId?: string;

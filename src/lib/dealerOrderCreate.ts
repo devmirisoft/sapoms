@@ -1,5 +1,6 @@
 import { Prisma, OrderDiscountType, WalletTransactionType } from "@prisma/client";
 import { applyWalletChange } from "@/lib/postgresWallet";
+import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
 import { buildEditLogEntry, diffOrderRows, orderItemsToDraftRows, ORDER_REJECTION_SOURCE } from "@/lib/orderRejectionDraft.mjs";
 
 /**
@@ -209,7 +210,7 @@ export async function createDealerOrder(
     if (existing) return { order: existing, duplicate: true, wallet: null as null | WalletDebitPayload };
   }
 
-  const dealer = await tx.dealerProfile.findUnique({ where: { id: dealerId }, include: { user: true, staffAssignments: { where: { active: true }, take: 1 } } });
+  const dealer = await tx.dealerProfile.findUnique({ where: { id: dealerId }, include: { user: true } });
   if (!dealer || dealer.deletedAt || dealer.user.status !== "ACTIVE") throw new OrderError("This dealer account is inactive.", 403, "inactive_dealer");
 
   const priced = await priceDealerOrder(tx, fields, dealer);
@@ -223,11 +224,17 @@ export async function createDealerOrder(
   }
 
   const orderNumber = await nextOrderNumber(tx);
+  const stamp = await resolveOrderStaffStamp(tx, dealer.id);
+  // A custom discount already cleared by both the RSM and Admin has had its RSM
+  // review, so the order skips the RSM stage and goes straight to Staff.
+  const rsmReview = priced.customRequests.length > 0 && priced.customRequests.every((request) => request.rsmApprovalStatus === "APPROVED")
+    ? priced.customRequests[0]
+    : null;
   const order = await tx.order.create({
     data: {
       orderNumber,
       dealerId: dealer.id,
-      assignedStaffId: dealer.staffAssignments[0]?.staffId ?? null,
+      ...stamp,
       createdByUserId: actor.userId,
       idempotencyKey,
       shipTo: text(fields.Dealer_shipto ?? fields.shipTo, 1000),
@@ -250,6 +257,13 @@ export async function createDealerOrder(
       finalPayableAmountPaise: priced.finalPayableAmountPaise,
       status: "AWAITING_ACCEPTANCE",
       acceptanceStatus: "AWAITING",
+      ...(rsmReview ? {
+        rsmApprovalStatus: "ACCEPTED" as const,
+        rsmReviewedByUserId: rsmReview.rsmReviewedByUserId,
+        rsmReviewedByName: rsmReview.rsmReviewedByName,
+        rsmReviewedAt: rsmReview.rsmReviewedAt ?? new Date(),
+        rsmNote: rsmReview.rsmNote,
+      } : {}),
       fulfilmentStatus: "PENDING",
       items: { create: priced.items.map((item) => ({
         productId: item.productId,

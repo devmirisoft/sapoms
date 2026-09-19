@@ -12,11 +12,21 @@ import {
   ShieldCheck,
   Users,
   FileText,
-  Search,
   Loader2,
 } from 'lucide-react'
-import { normalizeDealerContacts, type DealerContact } from '@/lib/dealerForm'
+import { normalizeDealerContacts, type DealerContact, type StaffMember } from '@/lib/dealerForm'
 import { showToast } from "@/components/ui/toast";
+import {
+  EMPTY_ROLE_ASSIGNMENTS,
+  RoleAssignmentPanel,
+  buildRoleAssignmentsFromIds,
+  buildRoleOptions,
+  getStaffUserId,
+  resolveNextRoleAssignments,
+  uniqueStaffIds,
+  type AssignmentRoleKey,
+  type RoleAssignments,
+} from "@/components/dealers/DealerFormCard";
 
 type DealerStatus = "active" | "inactive" | "suspended"
 
@@ -29,14 +39,6 @@ function normalizeDealerStatus(value: unknown): DealerStatus {
 
 function toApiStatus(value: DealerStatus) {
   return value === "active" ? "ACTIVE" : value === "suspended" ? "SUSPENDED" : "INACTIVE"
-}
-
-type StaffOption = {
-  staff_id: string
-  staff_name: string
-  staff_roletype: string
-  role?: string
-  status?: string
 }
 
 type DiagnosticPassword = {
@@ -61,15 +63,6 @@ async function parseJsonResponse<T>(res: Response): Promise<T> {
   } catch {
     throw new Error("Invalid JSON response")
   }
-}
-
-function staffRoleLabel(staff: StaffOption) {
-  const roleType = String(staff.staff_roletype || staff.role || "").toUpperCase()
-  if (roleType === "1") return "Exe"
-  if (roleType === "2") return "Field Exe"
-  if (roleType === "RSM") return "RSM"
-  if (roleType === "ASM") return "ASM"
-  return "Staff"
 }
 
 function splitCsv(value: unknown) {
@@ -154,8 +147,8 @@ export default function EditDealerPage() {
 
   const [isLoading,  setIsLoading]  = useState(false)
   const [isSaving,   setIsSaving]   = useState(false)
-  const [staffOptions, setStaffOptions] = useState<StaffOption[]>([])
-  const [staffSearch, setStaffSearch] = useState("")
+  const [staffOptions, setStaffOptions] = useState<StaffMember[]>([])
+  const [staffLoading, setStaffLoading] = useState(true)
 
   // Form fields
   const [name,           setName]           = useState("")
@@ -190,7 +183,9 @@ export default function EditDealerPage() {
   const [diagnosticSaving, setDiagnosticSaving] = useState(false)
   const [diagnosticRevoking, setDiagnosticRevoking] = useState(false)
   const [activeDiagnosticPassword, setActiveDiagnosticPassword] = useState<DiagnosticPassword | null>(null)
-  const [assignedStaffIds, setAssignedStaffIds] = useState<string[]>([])
+  const [roleAssignments, setRoleAssignments] = useState<RoleAssignments>(() => ({ ...EMPTY_ROLE_ASSIGNMENTS }))
+  // Untouched, the dealer's existing assignments are left exactly as stored.
+  const [staffTouched, setStaffTouched] = useState(false)
   const [initialAssignedStaffIds, setInitialAssignedStaffIds] = useState<string[]>([])
   const [existingStaffNames, setExistingStaffNames] = useState("")
 
@@ -229,9 +224,7 @@ export default function EditDealerPage() {
           setSecondaryContactEmail(d.secondaryContactEmail || "")
           setAdditionalContacts(normalizeDealerContacts(d.additionalContacts))
           setExistingStaffNames(d.staffname || "")
-          const initialStaffIds = splitCsv(d.assignedstaff)
-          setAssignedStaffIds(initialStaffIds)
-          setInitialAssignedStaffIds(initialStaffIds)
+          setInitialAssignedStaffIds(splitCsv(d.assignedstaff))
           setStatus(normalizeDealerStatus(d.status))
           setWalletStatus(String(d.walletStatus || "").toLowerCase() === "active" ? "active" : "inactive")
         } else {
@@ -259,14 +252,17 @@ export default function EditDealerPage() {
         const res = await fetch(`${ADMIN_STAFF_URL}?page=1&limit=100`, { credentials: "include" })
         const json = await parseJsonResponse<any>(res)
         if (active) {
-          setStaffOptions((json.data || []).filter((staff: StaffOption) => {
+          setStaffOptions((json.data || []).filter((staff: StaffMember) => {
             const role = String(staff.role || "").toUpperCase()
             const status = String(staff.status || "").toUpperCase()
             return ["STAFF", "RSM", "ASM"].includes(role) && (!status || status === "ACTIVE")
           }))
         }
-      } catch {
-        console.error("Failed to fetch staff")
+      } catch (error) {
+        console.error("Failed to fetch staff", error)
+        if (active) showToast('error', "Could not load the staff list, so staff cannot be changed right now")
+      } finally {
+        if (active) setStaffLoading(false)
       }
     }
 
@@ -276,25 +272,21 @@ export default function EditDealerPage() {
     return () => { active = false }
   }, [dealerId])
 
-  const toggleStaffId = (id: string) => {
-    setAssignedStaffIds(prev => prev.includes(id) ? prev.filter(s => s !== id) : [...prev, id])
-  }
-
   const isWalletActive = walletStatus === "active"
 
-  const filteredStaffOptions = useMemo(() => {
-    const q = staffSearch.trim().toLowerCase()
-    if (!q) return staffOptions
-    return staffOptions.filter(s =>
-      s.staff_name.toLowerCase().includes(q) || staffRoleLabel(s).toLowerCase().includes(q)
-    )
-  }, [staffOptions, staffSearch])
+  // Same picker as Add Dealer: choose the Sales Manager, ASM/RSM fill in.
+  const roleOptions = useMemo(() => buildRoleOptions(staffOptions), [staffOptions])
+  const assignedStaffIds = useMemo(() => uniqueStaffIds(Object.values(roleAssignments)), [roleAssignments])
 
-  const selectAllFiltered = () => {
-    setAssignedStaffIds(prev => Array.from(new Set([...prev, ...filteredStaffOptions.map(s => s.staff_id)])))
+  useEffect(() => {
+    if (staffTouched) return
+    setRoleAssignments(buildRoleAssignmentsFromIds(initialAssignedStaffIds, staffOptions))
+  }, [initialAssignedStaffIds, staffOptions, staffTouched])
+
+  const handleAssignmentChange = (roleKey: AssignmentRoleKey, staffId: string) => {
+    setStaffTouched(true)
+    setRoleAssignments(prev => resolveNextRoleAssignments(prev, roleOptions, roleKey, staffId))
   }
-
-  const clearAllStaff = () => setAssignedStaffIds([])
 
   // Derive staffname string from current selection (matches what AddDealerForm does)
   const getStaffNames = () =>
@@ -392,13 +384,13 @@ export default function EditDealerPage() {
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
-    const normalizedStaffIds = Array.from(new Set(assignedStaffIds.map((id) => id.trim()).filter(Boolean))).sort()
-    const initialNormalizedStaffIds = Array.from(new Set(initialAssignedStaffIds.map((id) => id.trim()).filter(Boolean))).sort()
-    const staffChanged = normalizedStaffIds.length !== initialNormalizedStaffIds.length
-      || normalizedStaffIds.some((id, index) => id !== initialNormalizedStaffIds[index])
+    const normalizedStaffIds = [...assignedStaffIds].sort()
+    const initialNormalizedStaffIds = uniqueStaffIds(initialAssignedStaffIds).sort()
+    const staffChanged = staffTouched && (normalizedStaffIds.length !== initialNormalizedStaffIds.length
+      || normalizedStaffIds.some((id, index) => id !== initialNormalizedStaffIds[index]))
 
-    if (!normalizedStaffIds.length) {
-      showToast('error', "Please assign at least one staff member")
+    if ((staffTouched || !initialNormalizedStaffIds.length) && !roleAssignments.executive) {
+      showToast('error', "Select a Staff / Executive for this dealer.")
       return
     }
     const resolvedDealerId = dealerid || dealerId
@@ -456,12 +448,16 @@ export default function EditDealerPage() {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ staffIds: normalizedStaffIds }),
+          body: JSON.stringify({
+            staffIds: normalizedStaffIds,
+            rsmUserId: getStaffUserId(roleAssignments.rsm, staffOptions) || undefined,
+          }),
         })
         const staffPayload = await staffResponse.json()
         if (!staffResponse.ok || !staffPayload.success) throw new Error(staffPayload.message ?? "Failed to update staff assignments")
         setExistingStaffNames(getStaffNames())
         setInitialAssignedStaffIds(normalizedStaffIds)
+        setStaffTouched(false)
       }
       showToast('success', "Dealer updated successfully")
     } catch (error) {
@@ -732,66 +728,17 @@ export default function EditDealerPage() {
 
             {/* Staff Assignment */}
             <SectionCard title="Staff Assignment" icon={<Users className="w-4 h-4" />}>
-              <div className="flex flex-col gap-3">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <label className="text-xs font-medium text-gray-600 uppercase tracking-wide">
-                    Assign Staff
-                    <span className="text-orange-500 ml-0.5">*</span>
-                  </label>
-                  <span className="text-xs font-medium text-indigo-600 bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-full">
-                    {assignedStaffIds.length} selected
-                  </span>
-                </div>
-
-                <div className="relative">
-                  <Search className="w-4 h-4 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                  <input
-                    type="text"
-                    value={staffSearch}
-                    onChange={e => setStaffSearch(e.target.value)}
-                    placeholder="Search staff by name or role..."
-                    className="w-full pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                  />
-                </div>
-
-                <div className="flex items-center gap-3 text-xs">
-                  <button type="button" onClick={selectAllFiltered} className="text-indigo-600 font-medium hover:underline">
-                    Select all{staffSearch ? " (filtered)" : ""}
-                  </button>
-                  <span className="text-gray-300">|</span>
-                  <button type="button" onClick={clearAllStaff} className="text-gray-500 font-medium hover:underline">
-                    Clear all
-                  </button>
-                </div>
-
-                <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-72 overflow-y-auto">
-                  {filteredStaffOptions.length === 0 && (
-                    <p className="text-sm text-gray-400 px-3 py-6 text-center">No staff match your search.</p>
-                  )}
-                  {filteredStaffOptions.map(staff => {
-                    const checked = assignedStaffIds.includes(staff.staff_id)
-                    return (
-                      <label
-                        key={staff.staff_id}
-                        className={`flex items-center gap-3 px-3 py-2.5 text-sm cursor-pointer transition ${
-                          checked ? "bg-indigo-50/70" : "hover:bg-gray-50"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleStaffId(staff.staff_id)}
-                          className="w-4 h-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
-                        />
-                        <span className="text-gray-900">{staff.staff_name}</span>
-                        <span className="ml-auto text-[11px] text-gray-400 border border-gray-200 rounded-full px-2 py-0.5">
-                          {staffRoleLabel(staff)}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
+              <div className="-mt-6">
+                <RoleAssignmentPanel
+                  loading={staffLoading}
+                  roleAssignments={roleAssignments}
+                  roleOptions={roleOptions}
+                  onChange={handleAssignmentChange}
+                />
               </div>
+              {existingStaffNames && !staffTouched && (
+                <p className="mt-2 text-[11px] text-gray-400">Currently assigned: {existingStaffNames}</p>
+              )}
             </SectionCard>
 
             {/* Notes */}
