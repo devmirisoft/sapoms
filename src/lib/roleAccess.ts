@@ -87,16 +87,23 @@ export function persistAuthenticatedSession(storage: AuthStorageWriter, profile:
 
   const user = { ...profile, role } as StoredUser;
   const roletype = roleTypeForRole(role, user);
-  clearAuthStorage(storage);
-  storage.setItem("status", "true");
-  storage.setItem("UserData", JSON.stringify(user));
-  storage.setItem("roletype", roletype);
-  storage.setItem("role", role);
-  storage.setItem("roleType", roletype);
+  const userJson = JSON.stringify(user);
+  const next: Record<string, string> = { status: "true", UserData: userJson, roletype, role, roleType: roletype };
+  if (role === "admin") next.AdminData = userJson;
+  if (role === "staff") next.staffData = userJson;
+  if (role === "accountant") next.AccountantData = userJson;
 
-  if (role === "admin") storage.setItem("AdminData", JSON.stringify(user));
-  if (role === "staff") storage.setItem("staffData", JSON.stringify(user));
-  if (role === "accountant") storage.setItem("AccountantData", JSON.stringify(user));
+  // Only touch keys whose value actually changes. Every write fires a "storage"
+  // event in the other open tabs, whose useAuthSession re-fetches and persists
+  // again, so rewriting unchanged values made tabs ping-pong /api/auth/me forever.
+  AUTH_KEYS.forEach((key) => {
+    const value = next[key];
+    if (value === undefined) {
+      if (storage.getItem(key) !== null) storage.removeItem(key);
+    } else if (storage.getItem(key) !== value) {
+      storage.setItem(key, value);
+    }
+  });
 
   return session(role, user, roletype);
 }

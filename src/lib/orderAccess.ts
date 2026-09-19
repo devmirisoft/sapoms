@@ -1,4 +1,4 @@
-﻿import { resolveOrderDealerId, splitScopeIds } from "@/lib/staffOrderScope.js";
+﻿import { resolveOrderDealerId } from "@/lib/staffOrderScope.js";
 import { requireAuth } from "@/server/auth/session";
 import { fetchStaffAssignedDealerIds, orderActorFromAuth } from "@/lib/orderScopeServer";
 
@@ -9,6 +9,7 @@ type OrderActor = {
   actorId: string;
   isRsm?: boolean;
   isAsm?: boolean;
+  isSalesManager?: boolean;
   userId?: string;
   warehouse?: string;
 };
@@ -71,20 +72,12 @@ async function findPostgresAccessOrder(id: string): Promise<Record<string, unkno
   return order ? postgresOrders.mapPostgresOrderToLegacy(order) : null;
 }
 
-async function canStaffAccessOrder(order: Record<string, unknown>, options: OrderAccessOptions, lookupId: string) {
-  // Warehouse isolation runs before every other grant, so a direct order URL
-  // cannot reach past the same filter the order list applies.
-  if (options.actor.warehouse && safeText(order.staffwarehouse) !== options.actor.warehouse) return false;
-  if (splitScopeIds([order.assignedstaff, order.staffid]).includes(safeText(options.actor.actorId))) return true;
-  const dealerId = resolveOrderDealerId(order);
-  if (!!dealerId && new Set(splitScopeIds(options.assignedDealerIds)).has(dealerId)) return true;
-  // An RSM also owns every order under its region and its ASM/executive
-  // subtree, which direct assignment alone does not cover.
-  if (options.actor.isRsm) {
-    const { isOrderInRsmScope } = await import("@/lib/postgresOrders");
-    return isOrderInRsmScope(options.actor, lookupId);
-  }
-  return false;
+async function canStaffAccessOrder(options: OrderAccessOptions, lookupId: string) {
+  // A direct order URL runs the exact predicate the order list uses: the
+  // Sales Manager chain for ASM/RSM, the RSM-approval gate and warehouse
+  // isolation for plain Staff. Anything looser would leak orders by URL.
+  const { isOrderInActorScope } = await import("@/lib/postgresOrders");
+  return isOrderInActorScope(options.actor, lookupId, options.assignedDealerIds);
 }
 
 async function applyActorAccess(order: Record<string, unknown> | null, options: OrderAccessOptions | null, lookupId: string): Promise<OrderAccess> {
@@ -99,7 +92,7 @@ async function applyActorAccess(order: Record<string, unknown> | null, options: 
   }
 
   if (options.actor.role === "staff") {
-    return await canStaffAccessOrder(order, options, lookupId) ? result(order) : forbiddenResult();
+    return await canStaffAccessOrder(options, lookupId) ? result(order) : forbiddenResult();
   }
 
   return forbiddenResult();

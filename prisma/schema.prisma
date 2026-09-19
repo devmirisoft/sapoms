@@ -318,7 +318,8 @@ model StaffProfile {
   executiveChildren      StaffProfile[]          @relation("StaffParentAsm")
   rsmLinks               StaffRsmLink[]          @relation("StaffRsmLinkStaff")
   staffLinks             StaffRsmLink[]          @relation("StaffRsmLinkRsm")
-  assignedOrders         Order[]
+  assignedOrders         Order[]                 @relation("OrderAssignedStaff")
+  salesManagerOrders     Order[]                 @relation("OrderSalesManager")
   customDiscountRequests CustomDiscountRequest[]
   dealerAssignments      DealerStaffAssignment[]
   fundRequests           DealerFundRequest[]
@@ -594,6 +595,10 @@ model Order {
 
   dealerId        BigInt  @map("dealer_id")
   assignedStaffId BigInt? @map("assigned_staff_id")
+  // Reverse waterfall: the dealer's Sales Manager at order time. Its ASM and
+  // RSM (parentAsmId/parentRsmId) are who see the order above it; the Staff
+  // member in assignedStaffId only gets it after RSM approval.
+  salesManagerId  BigInt? @map("sales_manager_id")
   createdByUserId BigInt? @map("created_by_user_id")
 
   // Prevent duplicate order submission
@@ -682,7 +687,8 @@ model Order {
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   dealer        DealerProfile @relation(fields: [dealerId], references: [id], onDelete: Restrict)
-  assignedStaff StaffProfile? @relation(fields: [assignedStaffId], references: [id], onDelete: SetNull)
+  assignedStaff StaffProfile? @relation("OrderAssignedStaff", fields: [assignedStaffId], references: [id], onDelete: SetNull)
+  salesManager  StaffProfile? @relation("OrderSalesManager", fields: [salesManagerId], references: [id], onDelete: SetNull)
 
   createdBy User? @relation("OrderCreatedBy", fields: [createdByUserId], references: [id], onDelete: SetNull)
 
@@ -706,6 +712,7 @@ model Order {
 
   @@index([dealerId, createdAt])
   @@index([assignedStaffId, createdAt])
+  @@index([salesManagerId, createdAt])
   @@index([status, createdAt])
   @@index([acceptanceStatus])
   @@index([rsmApprovalStatus])

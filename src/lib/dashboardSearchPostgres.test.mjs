@@ -28,10 +28,10 @@ test("dashboard search keeps role scopes and legacy response aliases", async () 
 
   assert.match(route, /actor\.role === "ADMIN" \|\| actor\.role === "ACCOUNTANT"/);
   assert.match(route, /actor\.role === "DEALER"[\s\S]*dealerId: actor\.dealerId/);
-  assert.match(route, /isStaffLike\(actor\)[\s\S]*assignedStaffId: actor\.staffId/);
+  // Staff order hits use the order list's own scope (chain, RSM gate, warehouse).
+  assert.match(route, /isStaffLike\(actor\)[\s\S]*actorWhere\(orderActor, assignedDealerIds\.map\(String\)\)/);
   assert.match(route, /actor\.role === "ADMIN" \|\| isStaffLike\(actor\)/);
   assert.match(route, /staffAssignments: \{ some: \{ staffId: actor\.staffId/);
-  assert.match(route, /dealerId: \{ in: assignedDealerIds \}/);
   assert.match(route, /actor\.role === "ACCOUNTANT"[\s\S]*Promise\.resolve\(\[\]\)/);
 
   for (const alias of ["Dealer_Id", "Dealer_Name", "Dealer_Dealercode", "staff_id", "staff_name", "staff_email"]) {

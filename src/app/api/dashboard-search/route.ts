@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { Warehouse } from "@prisma/client";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
 import { isStaffLike } from "@/server/auth/sales-scope";
 import dashboardSearch from "@/lib/dashboardSearch.js";
-import { mapPostgresOrderToLegacy, orderInclude, type PostgresOrderRecord } from "@/lib/postgresOrders";
+import { actorWhere, mapPostgresOrderToLegacy, orderInclude, type PostgresOrderRecord } from "@/lib/postgresOrders";
+import { orderActorFromAuth } from "@/lib/orderScopeServer";
 
 export const runtime = "nodejs";
 
@@ -144,18 +144,13 @@ async function getAssignedDealerIds(actor: AuthActor) {
   return rows.map((row) => row.dealerId);
 }
 
-function buildOrderScope(actor: AuthActor, assignedDealerIds: bigint[]): Prisma.OrderWhereInput | null {
+async function buildOrderScope(actor: AuthActor, assignedDealerIds: bigint[]): Promise<Prisma.OrderWhereInput | null> {
   if (actor.role === "ADMIN" || actor.role === "ACCOUNTANT") return {};
   if (actor.role === "DEALER") return actor.dealerId ? { dealerId: actor.dealerId } : null;
   if (isStaffLike(actor)) {
-    const scopes: Prisma.OrderWhereInput[] = [];
-    if (actor.staffId) scopes.push({ assignedStaffId: actor.staffId });
-    if (assignedDealerIds.length > 0) scopes.push({ dealerId: { in: assignedDealerIds } });
-    if (scopes.length === 0) return null;
-    // Same warehouse isolation the order list applies.
-    return actor.warehouse
-      ? { assignedStaff: { warehouse: actor.warehouse as Warehouse }, OR: scopes }
-      : { OR: scopes };
+    // Same scope as the order list: Sales Manager chain, RSM gate, warehouse.
+    const orderActor = orderActorFromAuth(actor);
+    return orderActor ? actorWhere(orderActor, assignedDealerIds.map(String)) : null;
   }
   return null;
 }
@@ -230,7 +225,7 @@ export async function GET(req: NextRequest) {
     if (!queryInfo.canSearch) return NextResponse.json(emptyResponse(query));
     const role = toDashboardRole(actor);
     const assignedDealerIds = await getAssignedDealerIds(actor);
-    const orderScope = buildOrderScope(actor, assignedDealerIds);
+    const orderScope = await buildOrderScope(actor, assignedDealerIds);
     if (!orderScope) return NextResponse.json(emptyResponse(query));
 
     const productsPromise = actor.role === "ACCOUNTANT"

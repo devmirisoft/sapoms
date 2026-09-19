@@ -1,4 +1,5 @@
 import { Prisma } from "@prisma/client";
+import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
 
 /**
  * Auto-placement of an order when Admin approves a custom discount.
@@ -85,7 +86,7 @@ export async function placeOrderForApprovedDiscount(
 
   const dealer = await tx.dealerProfile.findUnique({
     where: { id: request.dealerId },
-    include: { user: true, staffAssignments: { where: { active: true }, take: 1 } },
+    include: { user: true },
   });
   if (!dealer || dealer.deletedAt || dealer.user.status !== "ACTIVE") {
     throw new DiscountOrderError(409, "inactive_dealer", "This dealer account is inactive, so the approved order could not be placed.");
@@ -129,11 +130,12 @@ export async function placeOrderForApprovedDiscount(
     : 0;
 
   const orderNumber = await nextOrderNumber(tx);
+  const stamp = await resolveOrderStaffStamp(tx, dealer.id);
   const order = await tx.order.create({
     data: {
       orderNumber,
       dealerId: dealer.id,
-      assignedStaffId: dealer.staffAssignments[0]?.staffId ?? null,
+      ...stamp,
       // The dealer owns the order; the approving Admin is recorded on the
       // discount request and the audit log instead.
       createdByUserId: dealer.userId,

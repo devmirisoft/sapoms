@@ -1,7 +1,7 @@
 import type { OrderAcceptanceStatus, OrderFulfilmentStatus, OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
-import { buildOrderRegionWhere, isStaffLike } from "@/server/auth/sales-scope";
+import { isStaffLike } from "@/server/auth/sales-scope";
 import { createOrderRejectionDraft, refundDeclinedOrderWallet } from "@/lib/orderRejectionDrafts";
 import { AUDIT_ENTITY, type AuditAction } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
@@ -137,8 +137,11 @@ async function assertCanAct(actor: AuthActor, order: StatusOrder, permission: "r
     return;
   }
   if (actor.role === "RSM") {
-    const regionWhere = await buildOrderRegionWhere(actor, undefined, prisma);
-    const scoped = await prisma.order.findFirst({ where: { id: order.id, ...regionWhere }, select: { id: true } });
+    // An RSM acts only on orders pushed up by its own Sales Managers.
+    const scoped = !!actor.staffId && await prisma.order.findFirst({
+      where: { id: order.id, salesManager: { parentRsmId: actor.staffId } },
+      select: { id: true },
+    });
     if (!scoped) {
       throw new PostgresOrderStatusError(403, "forbidden", "This order is outside your RSM scope.");
     }
@@ -153,7 +156,12 @@ async function assertCanAct(actor: AuthActor, order: StatusOrder, permission: "r
       where: { dealerId: order.dealerId, staffId: actor.staffId, active: true },
       select: { id: true },
     });
-    if (!assignedDirectly && !assignedDealer) {
+    // ASM sees its Sales Managers' orders even without a direct dealer assignment.
+    const viaChain = !assignedDirectly && !assignedDealer && actor.role === "ASM" && !!actor.staffId && await prisma.order.findFirst({
+      where: { id: order.id, salesManager: { parentAsmId: actor.staffId } },
+      select: { id: true },
+    });
+    if (!assignedDirectly && !assignedDealer && !viaChain) {
       throw new PostgresOrderStatusError(403, "forbidden", "This order is outside your assigned Dealer scope.");
     }
     if (permission === "cancel") {

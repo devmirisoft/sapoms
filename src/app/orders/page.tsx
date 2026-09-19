@@ -15,6 +15,7 @@ import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 import { STAFF_ORDER_SCOPE_VERSION } from "@/lib/staffOrderScope.js";
 import {
   buildCustomDiscountProgressMap,
+  CUSTOM_DISCOUNT_PROGRESS_LABELS,
   getCustomDiscountProgressKeyForOrder,
   type CustomDiscountProgress,
 } from "@/lib/customDiscountProgress";
@@ -413,12 +414,16 @@ function MtStatusBadge({ status }: { status: string }) {
 }
 
 function CustomDiscountBadge({ progress }: { progress: CustomDiscountProgress | null | undefined }) {
-  if (progress !== "completely" && progress !== "partially") return <span className="font-mono text-[12px] text-gray-500">—</span>;
-  const done = progress === "completely";
+  if (!progress) return <span className="font-mono text-[12px] text-gray-500">—</span>;
+  const [pill, dot] = progress === "accepted"
+    ? ["bg-emerald-50 text-emerald-800 border-emerald-200", "bg-emerald-500"]
+    : progress === "rejected"
+      ? ["bg-red-50 text-red-800 border-red-200", "bg-red-500"]
+      : ["bg-amber-50 text-amber-800 border-amber-200", "bg-amber-500"];
   return (
-    <span className={`${pillCls} ${done ? "bg-emerald-50 text-emerald-800 border-emerald-200" : "bg-amber-50 text-amber-800 border-amber-200"}`}>
-      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${done ? "bg-emerald-500" : "bg-amber-500"}`} />
-      {done ? "Completely" : "Partially"}
+    <span className={`${pillCls} ${pill}`}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
+      {CUSTOM_DISCOUNT_PROGRESS_LABELS[progress]}
     </span>
   );
 }
@@ -438,7 +443,7 @@ function FilterTag({ label, onRemove }: { label: string; onRemove: () => void })
 }
 
 const filterInputCls = (active: boolean) =>
-  `mt-1.5 block px-2 py-1 text-[11px] font-medium normal-case tracking-normal rounded-md border outline-none transition-colors ${
+  `mt-1 block px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal rounded-md border outline-none transition-colors ${
     active ? "border-indigo-400 bg-indigo-50 text-indigo-800" : "border-gray-200 bg-white text-gray-700"
   } focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100`;
 
@@ -1087,7 +1092,6 @@ export default function OrderHistoryPage() {
   const actorRole = !auth.loading && auth.session.status === "authenticated"
     ? auth.session.role
     : null;
-  const roletype = !auth.loading && auth.session.status === "authenticated" ? auth.session.roletype : "";
   const actorId = !auth.loading && auth.session.status === "authenticated"
     ? actorRole === "dealer"
       ? String(auth.session.user.Dealer_Id ?? "").trim()
@@ -1103,7 +1107,7 @@ export default function OrderHistoryPage() {
   const showCustomDiscount   = actorRole !== "dealer";
   const showActions          = actorRole !== "accountant";
   const canDeleteOrder       = (o: Order) => (actorRole === "admin" || actorRole === "dealer") && o.accept_order === "0" && o.del_status === "0";
-  const canAcceptOrder       = (o: Order) => actorRole === "staff" && roletype !== "2" && o.del_status === "0";
+  const canAcceptOrder       = (o: Order) => actorRole === "staff" && o.del_status === "0";
 
   // `useAuthSession` normalises rsm→staff, so the raw role is read separately.
   useEffect(() => {
@@ -1547,11 +1551,9 @@ export default function OrderHistoryPage() {
         "MT Status":    mtConf[mtStatusValue(o.mtstatus)].label,
       };
       if (showCustomDiscount) {
-        base["Custom Discount Status"] = customDiscountSummary?.customDiscountStatus === "completely"
-          ? "Completely"
-          : customDiscountSummary?.customDiscountStatus === "partially"
-            ? "Partially"
-            : "—";
+        base["Custom Discount Status"] = customDiscountSummary?.customDiscountStatus
+          ? CUSTOM_DISCOUNT_PROGRESS_LABELS[customDiscountSummary.customDiscountStatus]
+          : "—";
       }
       base["Discount Breakdown"] = getCompactOrderDiscountRows(amounts)
         .map(row => row.amount === undefined ? row.label : `${row.label} - ${formatMoney(row.amount, 2)}`)
@@ -1597,7 +1599,7 @@ export default function OrderHistoryPage() {
 
   const colCount = 12 + (showDealerCol ? 1 : 0) + (showCustomDiscount ? 1 : 0) + (showActions ? 1 : 0);
   const cancelledColCount = showDealerCol ? 8 : 7;
-  const thCls = "px-4 py-3.5 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap";
+  const thCls = "px-2 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap";
   // Only the selected tab carries a count — the other section's query is
   // disabled, so its total isn't loaded.
 
@@ -1668,7 +1670,7 @@ export default function OrderHistoryPage() {
       <div className="min-h-screen bg-gray-50" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
 
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between gap-6 sticky top-0 z-20">
+        <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between gap-4 sticky top-0 z-20">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => router.back()}
@@ -1739,10 +1741,10 @@ export default function OrderHistoryPage() {
           </div>
         </div>
 
-        <div className="px-8 py-6 max-w-[1840px] mx-auto">
+        <div className="px-3 py-2">
 
           {/* Section tabs + RSM approval scope */}
-          <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
             <SegmentedTabs
               label="Order section"
               value={section}
@@ -1814,7 +1816,7 @@ export default function OrderHistoryPage() {
 
             {/* Acceptance split for the rows actually on screen */}
             {section === "active" && !isLoading && !isError && orders.length > 0 && (
-              <div className="ml-auto flex items-center gap-3 text-[12px] text-gray-500">
+              <div className="ml-auto flex items-center gap-2 text-[12px] text-gray-500">
                 <div className="flex gap-1">
                           <DateInput
                             value={filters.dateFrom}
@@ -1843,7 +1845,7 @@ export default function OrderHistoryPage() {
           </div>
 
           {selectedOrdersForBilling.length > 0 && (
-            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 px-4 py-3">
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
               <div className="text-[13px] font-semibold text-blue-900">
                 Selected Orders: {selectedOrdersForBilling.length}
                 <span className="ml-3 font-mono">Selected Total: {formatMoney(selectedBillingTotal)}</span>
@@ -1859,7 +1861,7 @@ export default function OrderHistoryPage() {
             </div>
           )}
           {filtersActive && (
-            <div className="mb-3 flex flex-wrap items-center gap-2">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
               <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Filters</span>
               {filters.orderId && <FilterTag label={`Order: ${filters.orderId}…`} onRemove={() => setFilter("orderId", "")} />}
               {filters.dealer && <FilterTag label={`Dealer: ${filters.dealer}`} onRemove={() => setDealerFilter("")} />}
@@ -1965,39 +1967,39 @@ export default function OrderHistoryPage() {
                         )
                         : cancelledData.map((order, i) => (
                           <tr key={order.id || order.orderId} className="odd:bg-white even:bg-gray-50/50 hover:bg-blue-50/40 transition-colors">
-                            <td className="px-4 py-3.5 text-gray-700 font-medium">{String((page - 1) * pageSize + i + 1).padStart(2, "0")}</td>
-                            <td className="px-4 py-3.5">
+                            <td className="px-2 py-2 text-gray-700 font-medium">{String((page - 1) * pageSize + i + 1).padStart(2, "0")}</td>
+                            <td className="px-2 py-2">
                               <span className="font-mono text-[13px] font-bold text-indigo-700">
                                 {order.formattedOrderNumber || formatDisplayOrderNumber(order.orderId)}
                               </span>
                             </td>
                             {showDealerCol && (
-                              <td className="px-4 py-3.5">
+                              <td className="px-2 py-2">
                                 <p className="text-[13px] font-medium text-gray-900">{order.dealerName || (order.originalOrderRef?.Dealer_Name as string) || "Dealer"}</p>
                                 <p className="text-[11px] text-gray-500 font-mono mt-0.5">ID: {order.dealerId}</p>
                               </td>
                             )}
-                            <td className="px-4 py-3.5 font-mono text-[12px] text-gray-700">
+                            <td className="px-2 py-2 font-mono text-[12px] text-gray-700">
                               {((order.decline?.declinedAt || order.cancellation?.cancelledAt) || "").slice(0, 10) || "—"}
                             </td>
-                            <td className="px-4 py-3.5 max-w-[360px] text-[13px] text-gray-700">
+                            <td className="px-2 py-2 max-w-[360px] text-[13px] text-gray-700">
                               {order.outcome === "declined" ? (order.decline?.note || "—") : (order.cancellation?.reason || "—")}
                               {order.outcome === "declined" && (
                                 <p className="mt-1 text-[11px] text-red-700">Declined at {order.decline?.stage === "rsm" ? "RSM" : "staff"} stage</p>
                               )}
                             </td>
-                            <td className="px-4 py-3.5 font-mono text-[12px] text-gray-700">
+                            <td className="px-2 py-2 font-mono text-[12px] text-gray-700">
                               {order.outcome === "declined"
                                 ? (order.decline?.declinedBy?.name || order.decline?.declinedBy?.role || "Reviewer")
                                 : (order.cancellation?.cancelledBy?.name || order.cancellation?.cancelledBy?.id || "Dealer")}
                             </td>
-                            <td className="px-4 py-3.5">
+                            <td className="px-2 py-2">
                               <span className={`${pillCls} bg-red-50 text-red-700 border-red-200`}>
                                 <span className="w-1.5 h-1.5 rounded-full flex-shrink-0 bg-red-500" />
                                 {order.outcome === "declined" ? "Declined" : "Cancelled"}
                               </span>
                             </td>
-                            <td className="px-4 py-3.5">
+                            <td className="px-2 py-2">
                               <button
                                 onClick={() => router.push(`/orders/${order.orderId}`)}
                                 className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 text-[12px] font-semibold hover:bg-gray-50 transition-colors"
@@ -2031,7 +2033,7 @@ export default function OrderHistoryPage() {
                           maxLength={12}
                           autoComplete="off"
                           aria-label="Filter by order number"
-                          className={`w-[96px] ${filterInputCls(!!filters.orderId)}`}
+                          className={`w-[72px] ${filterInputCls(!!filters.orderId)}`}
                         />
                       </th>
                       {showDealerCol && (
@@ -2044,7 +2046,7 @@ export default function OrderHistoryPage() {
                             placeholder="Search…"
                             autoComplete="off"
                             aria-label="Filter by dealer"
-                            className={`w-[130px] ${filterInputCls(!!filters.dealer)}`}
+                            className={`w-[100px] ${filterInputCls(!!filters.dealer)}`}
                           />
                         </th>
                       )}
@@ -2074,7 +2076,7 @@ export default function OrderHistoryPage() {
                             onChange={e => setFilter("amountMin", e.target.value)}
                             placeholder="Min"
                             aria-label="Filter by minimum gross amount"
-                            className={`w-[64px] ${filterInputCls(!!filters.amountMin)}`}
+                            className={`w-[52px] ${filterInputCls(!!filters.amountMin)}`}
                           />
                           <input
                             type="number"
@@ -2082,7 +2084,7 @@ export default function OrderHistoryPage() {
                             onChange={e => setFilter("amountMax", e.target.value)}
                             placeholder="Max"
                             aria-label="Filter by maximum gross amount"
-                            className={`w-[64px] ${filterInputCls(!!filters.amountMax)}`}
+                            className={`w-[52px] ${filterInputCls(!!filters.amountMax)}`}
                           />
                         </div>
                       </th>
@@ -2095,7 +2097,7 @@ export default function OrderHistoryPage() {
                           value={filters.orderStatus}
                           onChange={e => setFilter("orderStatus", e.target.value)}
                           aria-label="Filter by order status"
-                          className={`w-[124px] ${filterInputCls(!!filters.orderStatus)}`}
+                          className={`w-[88px] ${filterInputCls(!!filters.orderStatus)}`}
                         >
                           <option value="">Any</option>
                           {Object.entries(statusConf).map(([value, conf]) => (
@@ -2109,7 +2111,7 @@ export default function OrderHistoryPage() {
                           value={filters.accepted}
                           onChange={e => setFilter("accepted", e.target.value)}
                           aria-label="Filter by confirmation"
-                          className={`w-[110px] ${filterInputCls(!!filters.accepted)}`}
+                          className={`w-[80px] ${filterInputCls(!!filters.accepted)}`}
                         >
                           <option value="">Any</option>
                           <option value="1">Accepted</option>
@@ -2122,7 +2124,7 @@ export default function OrderHistoryPage() {
                           value={filters.mtStatus}
                           onChange={e => setFilter("mtStatus", e.target.value)}
                           aria-label="Filter by MT status"
-                          className={`w-[130px] ${filterInputCls(!!filters.mtStatus)}`}
+                          className={`w-[80px] ${filterInputCls(!!filters.mtStatus)}`}
                         >
                           <option value="">Any</option>
                           <option value="Pending">Pending</option>
@@ -2169,7 +2171,7 @@ export default function OrderHistoryPage() {
 
                           return (
                             <tr key={oid || idx} className={`odd:bg-white even:bg-gray-50/50 hover:bg-blue-50/40 transition-colors ${isDeleted ? "opacity-60" : ""} ${selectedBillingOrderIds.has(String(oid)) ? "!bg-blue-50/70" : ""}`}>
-                              <td className="px-4 py-3.5">
+                              <td className="px-2 py-2">
                                 <input
                                   type="checkbox"
                                   checked={selectedBillingOrderIds.has(String(oid))}
@@ -2179,10 +2181,10 @@ export default function OrderHistoryPage() {
                                   className="h-4 w-4 rounded border-gray-300 text-blue-600 disabled:opacity-30"
                                 />
                               </td>
-                              <td className="px-4 py-3.5 text-gray-700 font-medium">
+                              <td className="px-2 py-2 text-gray-700 font-medium">
                                 {String((page - 1) * pageSize + idx + 1).padStart(2, "0")}
                               </td>
-                              <td className="px-4 py-3.5">
+                              <td className="px-2 py-2">
                                 <div className="flex items-center gap-2">
                                   <span
                                     className="font-mono text-[13px] font-bold text-indigo-700"
@@ -2193,13 +2195,13 @@ export default function OrderHistoryPage() {
                                   )}
                                 </div>
                                 {historyNote && (
-                                  <p className="mt-1 max-w-[320px] truncate text-[11px] text-gray-500" title={historyNote}>
+                                  <p className="mt-1 max-w-[160px] truncate text-[11px] text-gray-500" title={historyNote}>
                                     Note: {historyNote}
                                   </p>
                                 )}
                               </td>
                               {showDealerCol && (
-                                <td className="px-4 py-3.5">
+                                <td className="px-2 py-2">
                                   <p
                                     className="text-[13px] font-medium text-gray-900"
                                     dangerouslySetInnerHTML={{ __html: highlight(order.Dealer_Name || "—", filters.dealer) }}
@@ -2207,14 +2209,14 @@ export default function OrderHistoryPage() {
                                   <p className="text-[11px] text-gray-500 font-mono mt-0.5">ID: {order.order_dealer}</p>
                                 </td>
                               )}
-                              <td className="px-4 py-3.5">
+                              <td className="px-2 py-2">
                                 <p className="text-[13px] text-gray-900 font-medium">{moment(order.order_date).format("DD MMM YYYY")}</p>
                                 <p className="text-[11px] text-gray-600 font-mono mt-0.5">{moment(order.order_date).format("hh:mm A")}</p>
                               </td>
-                              <td className="px-4 py-3.5 font-mono text-[14px] font-bold text-gray-900">
+                              <td className="px-2 py-2 font-mono text-[14px] font-bold text-gray-900">
                                 {formatMoney(displayOrder.grossAmount)}
                               </td>
-                              <td className="px-4 py-3.5 font-mono text-[13px] text-amber-700">
+                              <td className="px-2 py-2 font-mono text-[13px] text-amber-700">
                                 {displayOrder.discountAmount > 0 ? `−${formatMoney(displayOrder.discountAmount)}` : "—"}
                                 {additionalDiscount ? (
                                   <>
@@ -2225,21 +2227,21 @@ export default function OrderHistoryPage() {
                                   discountBadge && <p className="mt-1 text-[11px] font-semibold text-indigo-600">{discountBadge}</p>
                                 )}
                               </td>
-                              <td className="px-4 py-3.5 font-mono text-[14px] font-bold text-emerald-700">
+                              <td className="px-2 py-2 font-mono text-[14px] font-bold text-emerald-700">
                                 {formatMoney(displayOrder.netPayableAmount)}
                               </td>
-                              <td className="px-4 py-3.5">
+                              <td className="px-2 py-2">
                                 <span className="px-2 py-0.5 bg-gray-100 text-gray-800 rounded-lg text-[12px] font-mono font-semibold">
                                   {order.orderdata_item_quantity} units
                                 </span>
                               </td>
-                              <td className="px-4 py-3.5">
+                              <td className="px-2 py-2">
                                 <div className="flex flex-wrap items-center gap-1.5">
                                   <OrderStatusBadge status={order.orderdata_status} />
                                   <SettlementBadge settlement={(order as any).settlement} />
                                 </div>
                               </td>
-                              <td className="px-4 py-3.5">
+                              <td className="px-2 py-2">
                                 <AcceptBadge accepted={order.accept_order} />
                                 {rsmStatus === "ACCEPTED" && (
                                   <p className="mt-1 text-[11px] font-semibold text-emerald-700">RSM Approved{reviewedBy ? ` by ${reviewedBy}` : ""}</p>
@@ -2251,25 +2253,25 @@ export default function OrderHistoryPage() {
                                   <p className="mt-1 text-[11px] font-semibold text-amber-700">Awaiting RSM approval</p>
                                 )}
                               </td>
-                              <td className="px-4 py-3.5">
+                              <td className="px-2 py-2">
                                 <MtStatusBadge status={order.mtstatus} />
                                 <p className="mt-1 text-[11px] text-gray-500 font-mono">
-                                  Total: {order.orderdata_item_quantity} · Dispatch: {order.readyquantity ?? 0}
+                                  Total: {order.orderdata_item_quantity || 0} pcs · Dispatched: {order.readyquantity || 0} pcs
                                 </p>
                                 {order.reason && <p className="mt-1 text-[11px] font-semibold text-red-700">⚠ {order.reason}</p>}
                               </td>
                               {showCustomDiscount && (
-                                <td className="px-4 py-3.5">
+                                <td className="px-2 py-2">
                                   <CustomDiscountBadge progress={customDiscountSummary?.customDiscountStatus ?? null} />
                                 </td>
                               )}
-                              <td className="px-4 py-3.5 font-mono text-[12px] text-gray-700">
+                              <td className="px-2 py-2 font-mono text-[12px] text-gray-700">
                                 {order.outstandingDate ? moment(order.outstandingDate).format("DD MMM YYYY") : "—"}
                               </td>
 
                               {/* Actions — collapsed into a single 3-dot menu */}
                               {showActions && (
-                                <td className="px-4 py-3.5 w-px whitespace-nowrap">
+                                <td className="px-2 py-2 w-px whitespace-nowrap">
                                   <div className="flex items-center justify-end">
                                     <RowActionsMenu
                                       order={displayOrder}
@@ -2302,7 +2304,7 @@ export default function OrderHistoryPage() {
             )}
 
             {!isLoading && !isError && totalPages > 1 && (
-              <div className="flex items-center justify-between px-6 py-4 border-t border-gray-100 bg-gray-50">
+              <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50">
                 <div className="flex items-center gap-4 flex-wrap">
                   <p className="text-[13px] text-gray-700 font-medium">
                     Page {page} of {totalPages} · <span className="text-gray-600">{totalCount} orders</span>

@@ -14,6 +14,7 @@ import {
   type StaffMember,
 } from "@/lib/dealerForm";
 import { CITIES_BY_STATE, STATE_OPTIONS } from "@/lib/places";
+import { formatWarehouseLabel } from "@/lib/warehouses";
 
 const ADMIN_STAFF_URL = "/api/admin/staff";
 const DEALER_CODE_PREFIX = "OM-";
@@ -701,18 +702,10 @@ export function RoleAssignmentPanel({
     const staff = staffId ? roleOptions[field.key].find((entry) => String(entry.staff_id) === staffId) : null;
     return { ...field, staffId, staff };
   });
-  const selectedSalesManager = findStaffByAnyId(roleAssignments.salesManager, roleOptions.salesManager);
-  // Staff (staffRoleType "2") are linked to zero or more RSMs and have no ASM,
-  // so a Staff member fits a Sales Manager when it is linked to that Sales
-  // Manager's RSM, or is linked to no RSM at all.
-  const selectedAsm = findStaffByAnyId(roleAssignments.asm, roleOptions.asm);
-  const selectedSalesManagerRsmId = getStaffRsmId(selectedSalesManager) || getStaffRsmId(selectedAsm);
-  const staffOptions = selectedSalesManagerRsmId
-    ? roleOptions.executive.filter((staff) => {
-        const rsmIds = staff.rsmIds ?? staff.rsm_ids ?? [];
-        return !rsmIds.length || rsmIds.includes(selectedSalesManagerRsmId);
-      })
-    : roleOptions.executive;
+  // Staff (staffRoleType "2") are free of the RSM chain: every Staff member is
+  // offered whatever Sales Manager is picked. What matters for a Staff member
+  // is its warehouse, which decides the order list's warehouse tab.
+  const staffOptions = roleOptions.executive;
 
   return (
     <div className="mt-6">
@@ -791,9 +784,14 @@ function AssignmentSelect({
         {!loading && !options.length ? <option value="" disabled>No active {label} found</option> : null}
         {options.map((staff) => {
           const staffId = String(staff.staff_id);
+          // Sales Managers are told apart by their area, Staff by their warehouse.
+          const detail = roleKey === "salesManager"
+            ? (staff.assignedCities ?? []).join(", ")
+            : formatWarehouseLabel(staff.warehouse);
           return (
             <option key={staffId} value={staffId}>
               {staff.staff_name || "Staff #" + staffId}
+              {detail ? ` (${detail})` : ""}
             </option>
           );
         })}
@@ -846,10 +844,6 @@ function findStaffByAnyId(id: string, staffList: StaffMember[]) {
   const normalized = String(id).trim();
   if (!normalized) return null;
   return staffList.find((staff) => [staff.staff_id, staff.id, staff.userId].some((value) => String(value ?? "").trim() === normalized)) ?? null;
-}
-
-function getStaffRsmId(staff: StaffMember | null) {
-  return String(staff?.parentRsmId ?? staff?.parent_rsm_id ?? staff?.rsmId ?? "").trim();
 }
 
 function getStaffLocation(staff: StaffMember | null) {

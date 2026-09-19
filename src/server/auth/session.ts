@@ -28,6 +28,8 @@ export type AuthActor = {
   staffId?: bigint;
   dealerId?: bigint;
   warehouse?: string;
+  /** Staff subtype: "1" Sales Manager, "2" Staff, "ASM"/"RSM". */
+  staffRoleType?: string;
   email: string;
   displayName: string;
 };
@@ -272,6 +274,7 @@ function actorFromUser(sessionId: string, user: NonNullable<UserWithProfiles>): 
     ...(user.role === "STAFF" || user.role === "RSM" || user.role === "ASM" ? { staffId: profileId } : {}),
     ...(user.role === "DEALER" ? { dealerId: profileId } : {}),
     ...(user.staffProfile?.warehouse ? { warehouse: user.staffProfile.warehouse } : {}),
+    ...(user.staffProfile?.staffRoleType ? { staffRoleType: user.staffProfile.staffRoleType } : {}),
     email: user.email,
     displayName: String(profile.name ?? profile.staff_name ?? profile.Dealer_Name ?? profile.ADMIN_NAME ?? ""),
   };

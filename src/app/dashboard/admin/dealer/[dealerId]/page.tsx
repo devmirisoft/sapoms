@@ -258,8 +258,9 @@ export default function EditDealerPage() {
             return ["STAFF", "RSM", "ASM"].includes(role) && (!status || status === "ACTIVE")
           }))
         }
-      } catch {
-        console.error("Failed to fetch staff")
+      } catch (error) {
+        console.error("Failed to fetch staff", error)
+        if (active) showToast('error', "Could not load the staff list, so staff cannot be changed right now")
       } finally {
         if (active) setStaffLoading(false)
       }

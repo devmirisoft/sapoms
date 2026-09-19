@@ -236,12 +236,13 @@ test("every staff order scope filters on the assigned staff's warehouse", () => 
   assert.match(orderScopeServer, /actor\.warehouse \? \{ warehouse: actor\.warehouse \}/);
 
   // Every path that hands order rows to a staff member applies the same filter.
-  for (const source of [postgresOrders, pendingProducts, dashboardSearch]) {
+  for (const source of [postgresOrders, pendingProducts]) {
     assert.match(source, /actor\.warehouse/);
     assert.match(source, /warehouse: actor\.warehouse as Warehouse/);
   }
-  // Detail lookups guard before any other grant, so a direct order URL cannot bypass the list.
-  assert.match(orderAccess, /options\.actor\.warehouse && safeText\(order\.staffwarehouse\) !== options\.actor\.warehouse\) return false/);
+  // Search and direct order URLs reuse the list's scope, warehouse filter included.
+  assert.match(dashboardSearch, /actorWhere\(orderActor/);
+  assert.match(orderAccess, /isOrderInActorScope\(options\.actor, lookupId, options\.assignedDealerIds\)/);
   assert.match(postgresOrders, /staffwarehouse: order\.assignedStaff\?\.warehouse/);
 });
 

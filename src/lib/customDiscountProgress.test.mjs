@@ -62,8 +62,10 @@ function extractOrderKeys(request) {
 
 function resolveCustomDiscountProgress(requestsForOrder) {
   if (requestsForOrder.length === 0) return null;
-  const allApproved = requestsForOrder.every((request) => normalizeStatus(request.status) === "approved");
-  return allApproved ? "completely" : "partially";
+  const statuses = requestsForOrder.map((request) => normalizeStatus(request.status));
+  if (statuses.every((status) => status === "approved")) return "accepted";
+  if (statuses.includes("rejected")) return "rejected";
+  return "awaiting";
 }
 
 function buildProgressMap(requests) {
@@ -91,20 +93,20 @@ test("no request returns null", () => {
   assert.equal(resolveCustomDiscountProgress([]), null);
 });
 
-test("pending request returns partially", () => {
-  assert.equal(resolveCustomDiscountProgress([{ status: "pending" }]), "partially");
+test("pending request returns awaiting", () => {
+  assert.equal(resolveCustomDiscountProgress([{ status: "pending" }]), "awaiting");
 });
 
-test("mixed pending and approved returns partially", () => {
-  assert.equal(resolveCustomDiscountProgress([{ status: "approved" }, { status: "pending" }]), "partially");
+test("mixed pending and approved returns awaiting", () => {
+  assert.equal(resolveCustomDiscountProgress([{ status: "approved" }, { status: "pending" }]), "awaiting");
 });
 
-test("all approved returns completely", () => {
-  assert.equal(resolveCustomDiscountProgress([{ status: "Approved" }, { status: "APPROVED" }]), "completely");
+test("all approved returns accepted", () => {
+  assert.equal(resolveCustomDiscountProgress([{ status: "Approved" }, { status: "APPROVED" }]), "accepted");
 });
 
-test("rejected request prevents completely", () => {
-  assert.equal(resolveCustomDiscountProgress([{ status: "approved" }, { status: "rejected" }]), "partially");
+test("rejected request returns rejected", () => {
+  assert.equal(resolveCustomDiscountProgress([{ status: "approved" }, { status: "rejected" }]), "rejected");
 });
 
 test("duplicate request ids are ignored and order keys group records", () => {
@@ -114,7 +116,7 @@ test("duplicate request ids are ignored and order keys group records", () => {
     { id: "b", orderNumber: "3838", status: "pending" },
   ]);
 
-  assert.equal(progressMap["3838"].customDiscountStatus, "partially");
+  assert.equal(progressMap["3838"].customDiscountStatus, "awaiting");
   assert.equal(progressMap["3838"].customDiscountRequestCount, 2);
   assert.equal(progressMap["3838"].customDiscountApprovedCount, 1);
 });

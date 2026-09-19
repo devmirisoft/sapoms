@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import {
   canUserEditDispatch,
+  dispatchPiecesToPacks,
   DISPATCH_MUTATION_STATUSES,
   DISPATCH_STATUS_LABELS,
   isAcceptedOrderForDispatch,
@@ -28,6 +29,7 @@ type DispatchPanelItem = {
   remark?: string;
   remarks?: string;
   fallbackProductNote?: string;
+  packSize?: number | string;
 };
 
 type ResolvedDispatchPanelItem = DispatchPanelItem & {
@@ -37,6 +39,7 @@ type ResolvedDispatchPanelItem = DispatchPanelItem & {
   dispatchStatus: DispatchStatus;
   dispatchHistory: OrderDispatchRecord["updates"];
   occurrence: number;
+  packSize: number;
 };
 
 type Props = {
@@ -91,6 +94,7 @@ function normalizeSelectedItem(item: DispatchPanelItem): ResolvedDispatchPanelIt
     dispatchStatus: item.dispatchStatus ?? "pending",
     dispatchHistory: Array.isArray(item.dispatchHistory) ? item.dispatchHistory : [],
     occurrence: Number(item.occurrence ?? 1) || 1,
+    packSize: Math.max(1, Math.floor(Number(item.packSize ?? 1)) || 1),
   };
 }
 
@@ -148,20 +152,28 @@ function DispatchPanelDialog({
     setFormError("");
   };
 
+  const { packSize } = selectedItem;
+
   const handleSubmit = async () => {
-    const dispatchQuantity = Number(form.dispatchQuantity);
+    const dispatchPieces = Number(form.dispatchQuantity);
     const trimmedRemark = form.remark.trim();
 
     if (!canEdit) {
       setFormError("You do not have permission to update dispatch details for this order.");
       return;
     }
-    if (!form.dispatchQuantity.trim() || !Number.isFinite(dispatchQuantity) || !Number.isInteger(dispatchQuantity)) {
-      setFormError("Dispatch Quantity must be a valid whole number.");
+    if (!form.dispatchQuantity.trim() || !Number.isFinite(dispatchPieces) || !Number.isInteger(dispatchPieces)) {
+      setFormError("Dispatch Quantity must be a valid whole number of pieces.");
       return;
     }
-    if (dispatchQuantity <= 0) {
+    if (dispatchPieces <= 0) {
       setFormError("Dispatch Quantity must be greater than zero.");
+      return;
+    }
+    // Stored in packs, so pieces must fill whole packs.
+    const dispatchQuantity = dispatchPiecesToPacks(dispatchPieces, packSize);
+    if (dispatchQuantity === null) {
+      setFormError(`Dispatch Quantity must be a multiple of the pack size (${packSize} pieces).`);
       return;
     }
     if (dispatchQuantity > selectedItem.remainingQuantity) {
@@ -265,15 +277,15 @@ function DispatchPanelDialog({
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Ordered</p>
-                <p className="mt-1 font-mono text-[15px] font-bold text-slate-900">{selectedItem.orderedQuantity}</p>
+                <p className="mt-1 font-mono text-[15px] font-bold text-slate-900">{selectedItem.orderedQuantity * packSize} pcs</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Dispatched</p>
-                <p className="mt-1 font-mono text-[15px] font-bold text-emerald-700">{selectedItem.dispatchedQuantity}</p>
+                <p className="mt-1 font-mono text-[15px] font-bold text-emerald-700">{selectedItem.dispatchedQuantity * packSize} pcs</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
                 <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Remaining</p>
-                <p className="mt-1 font-mono text-[15px] font-bold text-rose-600">{selectedItem.remainingQuantity}</p>
+                <p className="mt-1 font-mono text-[15px] font-bold text-rose-600">{selectedItem.remainingQuantity * packSize} pcs</p>
               </div>
             </div>
 
@@ -328,7 +340,7 @@ function DispatchPanelDialog({
                       {selectedItem.dispatchHistory.map((entry, index) => (
                         <tr key={entry.id} className="border-b border-slate-100 align-top last:border-b-0">
                           <td className="px-4 py-3 font-mono text-[11px] text-slate-500">{String(index + 1).padStart(2, "0")}</td>
-                          <td className="px-4 py-3 font-mono text-[12px] font-semibold text-slate-900">{entry.quantity}</td>
+                          <td className="px-4 py-3 font-mono text-[12px] font-semibold text-slate-900">{entry.quantity * packSize} pcs</td>
                           <td className="px-4 py-3 text-[12px] font-semibold text-indigo-700">{statusSelectLabel(entry.status)}</td>
                           <td className="px-4 py-3 text-[12px] leading-5 text-slate-700">{entry.remark}</td>
                           <td className="px-4 py-3 text-[12px] text-slate-600">{entry.actorId}</td>
@@ -368,13 +380,13 @@ function DispatchPanelDialog({
               <div className="mt-5 space-y-4">
                 <div>
                   <label htmlFor="dispatch-quantity" className="mb-1.5 block text-[12px] font-semibold text-slate-700">
-                    Dispatch Quantity
+                    Dispatch Quantity (pieces{packSize > 1 ? `, pack of ${packSize}` : ""})
                   </label>
                   <input
                     id="dispatch-quantity"
                     type="number"
-                    min="1"
-                    step="1"
+                    min={packSize}
+                    step={packSize}
                     value={form.dispatchQuantity}
                     onChange={(event) => handleChange("dispatchQuantity", event.target.value)}
                     disabled={submitDisabled}

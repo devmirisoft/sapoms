@@ -9,6 +9,7 @@ import { AdminRouteError } from "@/server/admin/admin-errors";
 import { normalizeEmail } from "@/server/auth/providers/postgres-auth.provider";
 import { hashPassword } from "@/server/auth/password";
 import { invalidateStaffAssignmentCache } from "@/lib/orderScopeServer";
+import { restampPendingOrders } from "@/lib/orderStaffStamp";
 import { AUDIT_ACTION, AUDIT_ENTITY, type AuditAction } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
 import { diffValues } from "@/server/audit/audit-sanitize";
@@ -364,6 +365,7 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
               await tx.dealerStaffAssignment.update({ where: { id: assignment.id }, data: { active: false, removedAt: now } });
             }
           }
+          await restampPendingOrders(tx, dealerId);
           changedFields.push("assignedStaffIds");
         }
         if (Object.keys(userData).length) await tx.user.update({ where: { id: current.userId }, data: userData });
@@ -463,6 +465,7 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
           await tx.dealerStaffAssignment.update({ where: { id: assignment.id }, data: { active: false, removedAt: now } });
         }
       }
+      await restampPendingOrders(tx, dealerId);
       await audit(tx, actor, "ADMIN_DEALER_STAFF_ASSIGNMENTS_UPDATED", { dealerId: dealerId.toString(), addedStaffIds: added, removedStaffIds: removed, rsmUserId: rsmUserId?.toString() }, {
         // Assigning and unassigning happen in the same replace call; the action
         // reflects whichever side actually changed.

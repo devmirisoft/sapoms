@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 
@@ -48,14 +49,31 @@ test("legacy accept_order and del_status remain response aliases only for Postgr
   assert.match(postgresOrders, /del_status: legacyDeletion\(order\.status\)/);
 });
 
-test("RSM order headers include child staff hierarchy scope", () => {
+test("orders flow up through the Sales Manager (reverse waterfall)", () => {
+  // RSM sees only what its Sales Managers' dealers push, never its whole region.
   assert.match(postgresOrders, /if \(actor\.isRsm && actor\.userId\) return buildRsmOrderWhere\(actor\)/);
-  assert.match(postgresOrders, /buildOrderRegionWhere\(\{ userId: BigInt\(actor\.userId!\), role: "RSM" \}/);
-  assert.match(postgresOrders, /rsmTeamWhere\(rsm\.id\)/);
-  assert.match(postgresOrders, /assignedStaffId: \{ in: childStaffIds \}/);
-  assert.match(postgresOrders, /prisma\.dealerStaffAssignment\.findMany/);
-  assert.match(postgresOrders, /staffId: \{ in: childStaffIds \}/);
-  assert.match(postgresOrders, /dealerId: \{ in: childDealerIds \}/);
+  assert.match(postgresOrders, /return \{ salesManager: \{ parentRsmId: BigInt\(actor\.actorId\) \} \}/);
+  assert.doesNotMatch(postgresOrders, /buildOrderRegionWhere/);
+  // ASM through its Sales Managers; the Sales Manager through its own stamp.
+  assert.match(postgresOrders, /\{ salesManagerId: me \}/);
+  assert.match(postgresOrders, /actor\.isAsm \? \[\{ salesManager: \{ parentAsmId: me \} \}\] : \[\]/);
+  // Only plain Staff wait for the RSM.
+  assert.match(postgresOrders, /actor\.isAsm \|\| actor\.isSalesManager \? staffScope : \{ rsmApprovalStatus: "ACCEPTED", \.\.\.staffScope \}/);
+  // RSM status actions use the same chain, not the region.
+  assert.match(source, /salesManager: \{ parentRsmId: actor\.staffId \}/);
+  assert.doesNotMatch(source, /buildOrderRegionWhere/);
+});
+
+test("orders are stamped with the dealer's Sales Manager and Staff member", () => {
+  const stamp = readFileSync("src/lib/orderStaffStamp.ts", "utf8");
+  assert.match(stamp, /salesManagerId: firstOfType\("1"\)/);
+  assert.match(stamp, /assignedStaffId: firstOfType\("2"\)/);
+  // Pending orders follow a reassignment; reviewed ones keep their history.
+  assert.match(stamp, /where: \{ dealerId, rsmApprovalStatus: "AWAITING"/);
+  for (const file of ["src/lib/dealerOrderCreate.ts", "src/lib/discountApprovalOrder.ts"]) {
+    assert.match(readFileSync(file, "utf8"), /\.\.\.stamp,/);
+  }
+  assert.equal(readFileSync("src/server/modules/admin/dealers/dealers.repository.ts", "utf8").match(/await restampPendingOrders\(tx, dealerId\)/g)?.length, 2);
 });
 
 test("PostgreSQL order mutations bypass PHP and Mongo status writes", () => {

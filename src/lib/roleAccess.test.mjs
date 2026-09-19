@@ -102,4 +102,20 @@ assert.equal(persistedStorage.getItem("roletype"), "3");
 assert.equal(JSON.parse(persistedStorage.getItem("UserData")).role, "admin");
 assert.equal(JSON.parse(persistedStorage.getItem("AdminData")).email, "admin@admin");
 assert.equal(persistedStorage.getItem("accountant_token"), null, "frontend auth sync does not store JWTs");
+
+// Re-persisting an unchanged session must not write: each write fires a
+// cross-tab "storage" event that makes other tabs re-fetch /api/auth/me.
+const writes = [];
+const originalSetItem = persistedStorage.setItem;
+persistedStorage.setItem = function (key, value) { writes.push(key); return originalSetItem.call(this, key, value); };
+persistedStorage.removed.length = 0;
+persistAuthenticatedSession(persistedStorage, { admin_id: "1", name: "Admin", email: "admin@admin", role: "nsm" });
+assert.deepEqual(writes, [], "unchanged session writes nothing");
+assert.deepEqual(persistedStorage.removed, [], "unchanged session removes nothing");
+
+// A stale key from another role is still cleared.
+const staleStorage = storage({ accountant_token: "x", staffData: "{}" });
+persistAuthenticatedSession(staleStorage, { admin_id: "1", name: "Admin", email: "admin@admin", role: "nsm" });
+assert.equal(staleStorage.getItem("accountant_token"), null);
+assert.equal(staleStorage.getItem("staffData"), null);
 console.log("roleAccess policy tests passed");

@@ -2,7 +2,6 @@ import "server-only";
 
 import { Prisma, type Warehouse } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
-import { buildOrderRegionWhere, rsmTeamWhere } from "@/server/auth/sales-scope";
 import type { OrdersActor } from "@/lib/orderPagination";
 import { summarizeOrderSettlement } from "@/lib/orderSettlement";
 import { normalizeSku } from "@/lib/orderProductNotes.mjs";
@@ -81,13 +80,19 @@ function legacyOrderStatus(status: string) {
 // some of it dispatched, all of it dispatched. Read off the dispatch rows rather
 // than fulfilmentStatus, which a manual status change can move without anything
 // actually leaving the warehouse.
-function legacyFulfilment(order: { items?: Array<{ quantityPacks: number; dispatches?: Array<{ quantity: number }> }> }) {
-  const items = order.items ?? [];
-  const ordered = items.reduce((sum, item) => sum + item.quantityPacks, 0);
-  const dispatched = items.reduce(
-    (sum, item) => sum + (item.dispatches ?? []).reduce((packs, dispatch) => packs + dispatch.quantity, 0),
-    0,
-  );
+type DispatchTotalsSource = { items?: Array<{ quantityPacks: number; packSize?: number; dispatches?: Array<{ quantity: number }> }> };
+
+// Ordered vs dispatched across the whole order, in pieces (dispatch rows hold packs).
+function orderDispatchPieces(order: DispatchTotalsSource) {
+  return (order.items ?? []).reduce((totals, item) => {
+    const packSize = Math.max(1, item.packSize ?? 1);
+    const dispatchedPacks = (item.dispatches ?? []).reduce((packs, dispatch) => packs + dispatch.quantity, 0);
+    return { ordered: totals.ordered + item.quantityPacks * packSize, dispatched: totals.dispatched + dispatchedPacks * packSize };
+  }, { ordered: 0, dispatched: 0 });
+}
+
+function legacyFulfilment(order: DispatchTotalsSource) {
+  const { ordered, dispatched } = orderDispatchPieces(order);
   if (dispatched <= 0) return "Pending";
   return dispatched >= ordered ? "Completed" : "Partial";
 }
@@ -293,6 +298,8 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     trackingLink: order.trackingLink || "",
     tracking_link: order.trackingLink || "",
     dock: order.dock || "",
+    orderdata_item_quantity: String(orderDispatchPieces(order).ordered),
+    readyquantity: String(orderDispatchPieces(order).dispatched),
     mtstatus: legacyFulfilment(order),
     del_status: legacyDeletion(order.status),
     productorder: (order.items ?? []).map((item) => mapPostgresOrderItemToLegacy(item, order)),
@@ -330,10 +337,17 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
   return row;
 }
 
-async function actorWhere(actor: OrdersActor, assignedDealerIds: Array<string | number> = []): Promise<Prisma.OrderWhereInput> {
+/**
+ * Which orders an actor sees. Orders flow as a reverse waterfall: the dealer's
+ * Sales Manager (stamped on the order) sees it first, and its ASM and RSM see
+ * it through that Sales Manager. Plain Staff only get it after RSM approval,
+ * and only for their own warehouse.
+ */
+export async function actorWhere(actor: OrdersActor, assignedDealerIds: Array<string | number> = []): Promise<Prisma.OrderWhereInput> {
   if (actor.role === "dealer") return { dealerId: BigInt(actor.actorId) };
   if (actor.isRsm && actor.userId) return buildRsmOrderWhere(actor);
   if (actor.role === "staff") {
+    const me = BigInt(actor.actorId);
     const assignedDealerBigInts = assignedDealerIds
       .map((id) => String(id ?? "").trim())
       .filter((id) => /^\d+$/.test(id))
@@ -343,57 +357,21 @@ async function actorWhere(actor: OrdersActor, assignedDealerIds: Array<string | 
       // sits in the same warehouse; staff with no warehouse keep full scope.
       ...(actor.warehouse ? { assignedStaff: { warehouse: actor.warehouse as Warehouse } } : {}),
       OR: [
-        { assignedStaffId: BigInt(actor.actorId) },
+        { assignedStaffId: me },
+        { salesManagerId: me },
+        ...(actor.isAsm ? [{ salesManager: { parentAsmId: me } }] : []),
         ...(assignedDealerBigInts.length > 0 ? [{ dealerId: { in: assignedDealerBigInts } }] : []),
       ],
     } satisfies Prisma.OrderWhereInput;
-    return actor.isAsm ? staffScope : { rsmApprovalStatus: "ACCEPTED", ...staffScope };
+    // Sales Manager and ASM sit above the RSM step; only plain Staff wait for it.
+    return actor.isAsm || actor.isSalesManager ? staffScope : { rsmApprovalStatus: "ACCEPTED", ...staffScope };
   }
   return {};
 }
 
+// An RSM sees exactly the orders pushed up by its own Sales Managers.
 async function buildRsmOrderWhere(actor: OrdersActor): Promise<Prisma.OrderWhereInput> {
-  const regionWhere = await buildOrderRegionWhere({ userId: BigInt(actor.userId!), role: "RSM" }, undefined, prisma);
-  const hierarchyWhere = await buildRsmChildStaffOrderWhere(actor);
-  return hierarchyWhere ? { OR: [regionWhere, hierarchyWhere] } : regionWhere;
-}
-
-async function buildRsmChildStaffOrderWhere(actor: OrdersActor): Promise<Prisma.OrderWhereInput | null> {
-  const rsm = await prisma.staffProfile.findFirst({
-    where: {
-      userId: BigInt(actor.userId!),
-      user: { role: "RSM", status: "ACTIVE", deletedAt: null },
-    },
-    select: { id: true },
-  });
-  if (!rsm) return null;
-
-  const childStaff = await prisma.staffProfile.findMany({
-    where: {
-      ...rsmTeamWhere(rsm.id),
-      user: { status: "ACTIVE", deletedAt: null },
-    },
-    select: { id: true },
-  });
-  const childStaffIds = childStaff.map((staff) => staff.id);
-  if (childStaffIds.length === 0) return null;
-
-  const childDealerAssignments = await prisma.dealerStaffAssignment.findMany({
-    where: {
-      active: true,
-      staffId: { in: childStaffIds },
-      dealer: { deletedAt: null, user: { status: "ACTIVE", deletedAt: null } },
-    },
-    select: { dealerId: true },
-  });
-  const childDealerIds = childDealerAssignments.map((assignment) => assignment.dealerId);
-
-  return {
-    OR: [
-      { assignedStaffId: { in: childStaffIds } },
-      ...(childDealerIds.length > 0 ? [{ dealerId: { in: childDealerIds } }] : []),
-    ],
-  };
+  return { salesManager: { parentRsmId: BigInt(actor.actorId) } };
 }
 
 export async function listPostgresOrderHeaders(actor: OrdersActor, assignedDealerIds: Array<string | number> = []) {
@@ -424,12 +402,16 @@ export async function findPostgresOrderByLookupId(orderId: unknown) {
 
 // Detail views resolve one order at a time, so they cannot reuse the list
 // query's where clause directly. Re-running that same clause against a single
-// order id keeps RSM scope for /api/order-access identical to the list scope.
+// order id keeps /api/order-access identical to the list scope.
 export async function isOrderInRsmScope(actor: OrdersActor, orderId: unknown) {
   if (!actor.isRsm || !actor.userId) return false;
+  return isOrderInActorScope(actor, orderId);
+}
+
+export async function isOrderInActorScope(actor: OrdersActor, orderId: unknown, assignedDealerIds: Array<string | number> = []) {
   const id = text(orderId);
   if (!id) return false;
-  const scopeWhere = await buildRsmOrderWhere(actor);
+  const scopeWhere = await actorWhere(actor, assignedDealerIds);
   const numericId = /^\d+$/.test(id) ? BigInt(id) : null;
   const match = await prisma.order.findFirst({
     where: {

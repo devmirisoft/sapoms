@@ -516,13 +516,13 @@ test("UI uses shared dispatch helper and API delegates to PostgreSQL dispatch se
 test("Order details page wires the selected-products dispatch flow", async () => {
   const source = await fs.readFile(orderDetailPath, "utf8");
   assert.match(source, /canUserBulkDispatch/);
-  assert.match(source, /buildBulkDispatchPlan\(displayOrders\)/);
+  assert.match(source, /buildBulkDispatchPlan\(dispatchItems\)/);
   assert.match(source, /Select All Dispatchable/);
   assert.match(source, /Clear Selection/);
   assert.match(source, /Dispatch Selected \(\{selectedDispatchLines\.length\}\)/);
   assert.match(source, /Dispatch Selected Products/);
   assert.match(source, /selectedDispatchLines\.map/);
-  assert.match(source, /String\(line\.remainingQuantity\)/);
+  assert.match(source, /String\(line\.remainingQuantity \* line\.packSize\)/);
   assert.match(source, /handleDispatchRecordsSaved\(records\)/);
   assert.doesNotMatch(source, /displayOrders\.forEach\(.*fetch/s);
 });

@@ -53,6 +53,7 @@ export type DispatchSourceItem = {
   remark?: string;
   remarks?: string;
   fallbackProductNote?: string;
+  packSize?: string | number;
 };
 
 export type MergedDispatchItem = {
@@ -238,6 +239,13 @@ export function safeDispatchInteger(value: unknown): number {
   return Math.max(0, Math.floor(parsed));
 }
 
+// Dispatch rows are stored in packs; the order screens enter and show pieces.
+// Returns null unless `pieces` is a positive whole number of packs.
+export function dispatchPiecesToPacks(pieces: number, packSize: number): number | null {
+  const size = Math.max(1, safeDispatchInteger(packSize) || 1);
+  return Number.isInteger(pieces) && pieces > 0 && pieces % size === 0 ? pieces / size : null;
+}
+
 export function normalizeDispatchStatus(value: unknown, fallback: DispatchStatus = "pending"): DispatchStatus {
   const text = String(value ?? "").trim().toLowerCase();
   if (!text) return fallback;
@@ -414,6 +422,7 @@ export type BulkDispatchLine = {
   dispatchedQuantity: number;
   remainingQuantity: number;
   currentStatus: DispatchStatus;
+  packSize: number;
 };
 
 export type BulkDispatchSkippedLine = {
@@ -471,6 +480,7 @@ export function buildBulkDispatchPlan<T extends DispatchSourceItem & Partial<Mer
       dispatchedQuantity: safeDispatchInteger(item.dispatchedQuantity ?? item.readyquantity),
       remainingQuantity,
       currentStatus: dispatchStatus,
+      packSize: Math.max(1, safeDispatchInteger(item.packSize) || 1),
     });
   }
 

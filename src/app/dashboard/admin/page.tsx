@@ -29,6 +29,7 @@ import {
 import { fetchDealerStatusOverrides, normalizeDealerStatus, type DealerStatusDocument } from "@/lib/dealerStatus";
 import PendingProductsPreview from "@/components/dashboard/PendingProductsPreview";
 import { clearAuthStorage } from "@/lib/roleAccess";
+import { staffRoleBadge } from "@/lib/staffRoleLabel";
 import { SegmentedDropdown, type SegItem } from "@/components/SegmentedTabs";
 
 
@@ -123,6 +124,8 @@ type DealerPaginationResponse = {
 
 type StaffSummary = {
   staff_roletype: string;
+  role?: string;
+  sales_region?: string;
 };
 
 type DiscountApproval = {
@@ -654,6 +657,12 @@ function AdminDashboardInner() {
     acc[s.staff_roletype || "unknown"] = (acc[s.staff_roletype || "unknown"] ?? 0) + 1;
     return acc;
   }, {} as Record<string, number>);
+  // Role-wise counts keyed by label (e.g. "West RSM", "ASM", "Sales Manager").
+  const staffByRole = Object.entries(staffRows.reduce((acc, s) => {
+    const label = staffRoleBadge({ role: s.role, staffRoleType: s.staff_roletype, salesRegion: s.sales_region }).label;
+    acc[label] = (acc[label] ?? 0) + 1;
+    return acc;
+  }, {} as Record<string, number>)).sort(([a], [b]) => a.localeCompare(b));
   const totalDistributors = adminData.dealerCount || dealersQ.data?.total || dealerRows.length;
   const distributorRows = useMemo(() => (distributorResponse?.data ?? []).map((dealer) => ({
     ...dealer,
@@ -970,6 +979,36 @@ function AdminDashboardInner() {
           gap: 14px;
         }
         .metrics-left .metric-card { grid-column: auto; }
+        .metrics-left { grid-template-rows: auto auto 1fr; }
+        .metrics-left .staff-roles { grid-column: 1 / -1; }
+        .role-pills { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+        .role-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 10px;
+          padding: 5px 5px 5px 14px;
+          border-radius: 999px;
+          border: 1px solid rgba(60, 60, 67, .12);
+          background: rgba(118, 118, 128, .06);
+          color: var(--apple-text);
+          font-size: 13px;
+          font-weight: 600;
+          text-decoration: none;
+          transition: background-color 150ms ease, border-color 150ms ease;
+        }
+        .role-pill:hover { background: rgba(0, 113, 227, .08); border-color: rgba(0, 113, 227, .3); }
+        .role-count {
+          display: inline-grid;
+          place-items: center;
+          min-width: 28px;
+          height: 28px;
+          padding: 0 6px;
+          border-radius: 999px;
+          background: white;
+          color: ;
+          font-size: 12px;
+          font-variant-numeric: tabular-nums;
+        }
 
         .sale-panel {
           grid-column: span 6;
@@ -1305,6 +1344,20 @@ function AdminDashboardInner() {
               <div className="metric-meta">
                 <span className="status-inline"><span className={`status-dot ${pendingApprovals > 0 ? "orange" : "green"}`} />{pendingApprovals > 0 ? "Needs attention" : "All clear"}</span>
                 <Link href="/dashboard/admin/custom-discount-approvals" className="metric-link">Review →</Link>
+              </div>
+            </article>
+
+            <article className="metric-card staff-roles">
+              <div className="metric-label">Staff by role</div>
+              <div className="role-pills">
+                {summaryLoading ? <span className="report-loading">Loading…</span>
+                  : staffByRole.length === 0 ? <span className="report-loading">No staff yet.</span>
+                  : staffByRole.map(([label, count]) => (
+                    <Link key={label} href="/dashboard/admin/staff/stafflist" className="role-pill">
+                      <span>{label}</span>
+                      <span className="role-count">{count}</span>
+                    </Link>
+                  ))}
               </div>
             </article>
 

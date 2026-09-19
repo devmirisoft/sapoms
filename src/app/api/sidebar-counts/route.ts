@@ -4,6 +4,8 @@ import { prisma } from "@/server/db/prisma";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
 import { buildRsmDiscountRequestWhere, isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
 import { buildFundRequestScope, STAGE_REQUIRES } from "@/lib/dealerFundRequests";
+import { actorWhere } from "@/lib/postgresOrders";
+import { fetchStaffAssignedDealerIds, orderActorFromAuth } from "@/lib/orderScopeServer";
 
 export const runtime = "nodejs";
 
@@ -11,13 +13,14 @@ export const runtime = "nodejs";
    each badge links to, so the number in the nav equals the number on arrival.
    Replaces the former per-badge /pending-count endpoints. */
 
-/* Same scope the pending-products report uses: a staff member sees the orders
-   assigned to them plus their dealers'; admin/accountant see everything. */
-function orderScope(actor: AuthActor): Prisma.OrderWhereInput {
+/* Same scope the order list uses, so the badge matches the list on arrival:
+   Sales Manager chain for ASM/RSM, RSM gate and warehouse for plain Staff. */
+async function orderScope(actor: AuthActor): Promise<Prisma.OrderWhereInput> {
   if (actor.role === "DEALER") return { dealerId: actor.dealerId };
-  if (isStaffLike(actor) && actor.staffId) {
-    const staffId = actor.staffId;
-    return { OR: [{ assignedStaffId: staffId }, { dealer: { staffAssignments: { some: { staffId, active: true } } } }] };
+  if (isStaffLike(actor)) {
+    const orderActor = orderActorFromAuth(actor);
+    if (!orderActor) return { id: BigInt(-1) };
+    return actorWhere(orderActor, await fetchStaffAssignedDealerIds(orderActor.actorId));
   }
   return {};
 }
@@ -33,7 +36,7 @@ async function countsFor(actor: AuthActor) {
     add("orders", () => prisma.order.count({ where: { dealerId, acceptanceStatus: "AWAITING", status: { notIn: ["CANCELLED", "DECLINED"] } } }));
     add("fundRequests", () => prisma.dealerFundRequest.count({ where: { dealerId, status: { notIn: ["COMPLETED", "REJECTED"] } } }));
   } else {
-    add("pendingOrders", () => prisma.order.count({ where: { ...orderScope(actor), acceptanceStatus: "AWAITING", status: { notIn: ["CANCELLED", "DECLINED"] } } }));
+    add("pendingOrders", async () => prisma.order.count({ where: { AND: [await orderScope(actor), { acceptanceStatus: "AWAITING", status: { notIn: ["CANCELLED", "DECLINED"] } }] } }));
 
     // Discount approvals: admin reviews the RSM-cleared queue, an RSM their
     // own region's unreviewed one, other staff only their own requests.
