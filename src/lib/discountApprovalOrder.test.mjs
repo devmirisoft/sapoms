@@ -10,10 +10,10 @@ const draftsPage = await readFile(new URL("../app/drafts/page.tsx", import.meta.
 test("approval places the order under the dealer, not the approving admin", () => {
   assert.match(service, /createByUserId|createdByUserId: dealer\.userId/);
   assert.match(service, /dealerId: dealer\.id/);
-  // Order must enter the normal two-stage flow, not skip to accepted.
+  // The RSM already approved the discount, so only Staff acceptance remains.
   assert.match(service, /status: "AWAITING_ACCEPTANCE"/);
   assert.match(service, /acceptanceStatus: "AWAITING"/);
-  assert.match(service, /rsmApprovalStatus: "AWAITING"/);
+  assert.match(service, /rsmApprovalStatus: "ACCEPTED"/);
 });
 
 test("auto-placement is idempotent and retires the draft", () => {

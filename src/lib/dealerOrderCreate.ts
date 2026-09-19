@@ -225,6 +225,11 @@ export async function createDealerOrder(
 
   const orderNumber = await nextOrderNumber(tx);
   const stamp = await resolveOrderStaffStamp(tx, dealer.id);
+  // A custom discount already cleared by both the RSM and Admin has had its RSM
+  // review, so the order skips the RSM stage and goes straight to Staff.
+  const rsmReview = priced.customRequests.length > 0 && priced.customRequests.every((request) => request.rsmApprovalStatus === "APPROVED")
+    ? priced.customRequests[0]
+    : null;
   const order = await tx.order.create({
     data: {
       orderNumber,
@@ -252,6 +257,13 @@ export async function createDealerOrder(
       finalPayableAmountPaise: priced.finalPayableAmountPaise,
       status: "AWAITING_ACCEPTANCE",
       acceptanceStatus: "AWAITING",
+      ...(rsmReview ? {
+        rsmApprovalStatus: "ACCEPTED" as const,
+        rsmReviewedByUserId: rsmReview.rsmReviewedByUserId,
+        rsmReviewedByName: rsmReview.rsmReviewedByName,
+        rsmReviewedAt: rsmReview.rsmReviewedAt ?? new Date(),
+        rsmNote: rsmReview.rsmNote,
+      } : {}),
       fulfilmentStatus: "PENDING",
       items: { create: priced.items.map((item) => ({
         productId: item.productId,

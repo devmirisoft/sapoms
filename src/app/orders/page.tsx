@@ -239,6 +239,11 @@ function dispatchStatusOptionLabel(status: string) {
   }
 }
 
+// Pieces of the whole order still waiting to be dispatched.
+function getOrderLeftPieces(order: Order): number {
+  return Math.max(0, safeNumber(order.orderdata_item_quantity) - safeNumber(order.readyquantity));
+}
+
 function getDispatchLeftQuantity(item: DispatchOrderProduct): number {
   return Math.max(0, safeNumber(item.orderdata_item_quantity) - safeNumber(item.readyquantity));
 }
@@ -459,7 +464,7 @@ function SkeletonRow({ cols }: { cols: number }) {
   );
 }
 
-// ─── Per-row Actions Menu — View / Accept / Decline / Invoice / Delete ────────
+// ─── Per-row Actions Menu — View / Invoice / Delete ─────────────────────────────
 /**
  * The menu is positioned `fixed` off the button rect rather than absolutely
  * inside the cell, so the table's horizontal overflow cannot clip it.
@@ -476,21 +481,17 @@ function menuPositionFor(button: HTMLElement) {
 
 function RowActionsMenu({
   order, role, actorId, isDeleted,
-  showAccept, showDelete, showDispatch, dispatchDisabled, rsmMode,
-  onView, onAccept, onDecline, onDispatch, onDelete,
+  showDelete, showDispatch, dispatchDisabled,
+  onView, onDispatch, onDelete,
 }: {
   order: Order;
   role: AppRole | null;
   actorId: string;
   isDeleted: boolean;
-  showAccept: boolean;
   showDelete: boolean;
   showDispatch: boolean;
   dispatchDisabled: boolean;
-  rsmMode: boolean;
   onView: () => void;
-  onAccept: () => void;
-  onDecline: () => void;
   onDispatch: () => void;
   onDelete: () => void;
 }) {
@@ -591,45 +592,6 @@ function RowActionsMenu({
                 <div>
                   <p className="font-semibold">Dispatch details</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">{dispatchDisabled ? "Accept order first" : "Update dispatch"}</p>
-                </div>
-              </button>
-            )}
-
-            {showAccept && !rsmMode && order.accept_order === "0" && (
-              <button role="menuitem" onClick={() => { setMenuPos(null); onAccept(); }} className={itemCls("hover:bg-emerald-50", "text-emerald-700")}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5" /></svg>
-                <div>
-                  <p className="font-semibold">Accept order</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Mark as confirmed</p>
-                </div>
-              </button>
-            )}
-
-            {/* {showAccept && rsmMode && (
-              <>
-                <button role="menuitem" onClick={() => { setMenuPos(null); onAccept(); }} className={itemCls("hover:bg-emerald-50", "text-emerald-700")}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M20 6 9 17l-5-5" /></svg>
-                  <div>
-                    <p className="font-semibold">Approve order</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Clear for staff acceptance</p>
-                  </div>
-                </button>
-                <button role="menuitem" onClick={() => { setMenuPos(null); onDecline(); }} className={itemCls("hover:bg-rose-50", "text-rose-700")}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                  <div>
-                    <p className="font-semibold">Disapprove order</p>
-                    <p className="text-[10px] text-gray-400 mt-0.5">Requires a reason</p>
-                  </div>
-                </button>
-              </>
-            )} */}
-
-            {showAccept && !rsmMode && order.accept_order === "1" && (
-              <button role="menuitem" onClick={() => { setMenuPos(null); onDecline(); }} className={itemCls("hover:bg-rose-50", "text-rose-700")}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><path d="M18 6 6 18M6 6l12 12" /></svg>
-                <div>
-                  <p className="font-semibold">Decline</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">Revert acceptance</p>
                 </div>
               </button>
             )}
@@ -812,43 +774,6 @@ function DeleteModal({ orderId, onConfirm, onClose }: { orderId: string; onConfi
   );
 }
 
-// ─── Decline Modal ────────────────────────────────────────────────────────────
-/** A decline must carry a reason — the backend rejects a note-less decline, and
- *  the dealer plus the other review stage only ever see this note. */
-function DeclineModal({ note, saving, onNoteChange, onConfirm, onClose }: {
-  note: string; saving: boolean;
-  onNoteChange: (value: string) => void; onConfirm: () => void; onClose: () => void;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ backdropFilter: "blur(8px)", background: "rgba(15,23,42,0.45)" }}
-      onClick={e => { if (e.target === e.currentTarget && !saving) onClose(); }}
-    >
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6" role="dialog" aria-modal="true" aria-labelledby="decline-modal-title" style={{ animation: "slideUp 0.2s ease" }}>
-        <h3 id="decline-modal-title" className="text-[15px] font-bold text-gray-900">Decline order</h3>
-        <p className="text-[13px] text-gray-600 mt-1">
-          This reason is shown to the dealer and to the other reviewer in Cancelled &amp; Declined.
-        </p>
-        <textarea
-          value={note}
-          autoFocus
-          maxLength={1500}
-          rows={4}
-          placeholder="Why is this order being declined?"
-          onChange={e => onNoteChange(e.target.value)}
-          className="mt-4 w-full px-4 py-3 text-[13px] text-gray-900 border border-gray-200 rounded-xl outline-none resize-y transition-all placeholder:text-gray-400 focus:border-red-400 focus:ring-2 focus:ring-red-100"
-        />
-        <div className="mt-4 flex gap-2">
-          <button onClick={onClose} disabled={saving} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-[13px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">Cancel</button>
-          <button onClick={onConfirm} disabled={!note.trim() || saving} className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-[13px] font-semibold transition-colors">
-            {saving ? "Declining…" : "Decline order"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // ─── Dispatch Details Drawer ──────────────────────────────────────────────────
 function DispatchDetailsDrawer({
@@ -1069,9 +994,6 @@ export default function OrderHistoryPage() {
   const [isRsm, setIsRsm] = useState(false);
   const [rsmOnlyAwaiting, setRsmOnlyAwaiting] = useState(false);
   const [deleteOrderId, setDeleteOrderId] = useState<string | null>(null);
-  const [declineTarget, setDeclineTarget] = useState<string | null>(null);
-  const [declineNote, setDeclineNote] = useState("");
-  const [declineSaving, setDeclineSaving] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [orderNotes, setOrderNotes] = useState<Record<string, OrderNoteOverlay>>({});
   const [summaryOverrides, setSummaryOverrides] = useState<Record<string, OrderSummaryOverride>>({});
@@ -1107,7 +1029,6 @@ export default function OrderHistoryPage() {
   const showCustomDiscount   = actorRole !== "dealer";
   const showActions          = actorRole !== "accountant";
   const canDeleteOrder       = (o: Order) => (actorRole === "admin" || actorRole === "dealer") && o.accept_order === "0" && o.del_status === "0";
-  const canAcceptOrder       = (o: Order) => actorRole === "staff" && o.del_status === "0";
 
   // `useAuthSession` normalises rsm→staff, so the raw role is read separately.
   useEffect(() => {
@@ -1309,52 +1230,6 @@ export default function OrderHistoryPage() {
     queryClient.invalidateQueries({ queryKey: ["cancelled-orders"] });
   };
 
-  const handleAccept = useCallback(async (id: string, status: 0 | 1, note?: string) => {
-    try {
-      const currentRes = await fetch(`/api/order-overlays/${encodeURIComponent(id)}`, { cache: "no-store" });
-      const currentJson = await currentRes.json().catch(() => null);
-      if (currentRes.ok && currentJson?.data?.isCancelled) {
-        showToast("error", "Cancelled orders cannot be accepted or declined.");
-        queryClient.invalidateQueries({ queryKey: ["orders"] });
-        return;
-      }
-      const res = await fetch(`/api/order-overlays/${encodeURIComponent(id)}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: status === 1 ? "mirror_acceptance" : "decline",
-          acceptOrder: status === 1 ? "1" : "2",
-          ...(note ? { note } : {}),
-        }),
-      });
-      const json = await res.json().catch(() => null);
-      if (!res.ok || json?.success === false) throw new Error(json?.message || "Acceptance update failed");
-      showToast("success", isRsm ? (status === 1 ? "Order approved." : "Order disapproved.") : "Status updated.");
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-      // A decline now shows up in the Cancelled tab, so refresh that list too.
-      if (status === 0) queryClient.invalidateQueries({ queryKey: ["cancelled-orders"] });
-    } catch (error) {
-      showToast("error", error instanceof Error ? error.message : "Action failed.");
-      throw error;
-    }
-  }, [queryClient, isRsm]);
-
-  const submitDecline = useCallback(async () => {
-    const trimmed = declineNote.trim();
-    if (!declineTarget || !trimmed || declineSaving) return;
-    setDeclineSaving(true);
-    try {
-      await handleAccept(declineTarget, 0, trimmed);
-      setDeclineTarget(null);
-      setDeclineNote("");
-    } catch {
-      // handleAccept already surfaced the reason; keep the modal open so the
-      // note is not lost and can be retried.
-    } finally {
-      setDeclineSaving(false);
-    }
-  }, [declineNote, declineTarget, declineSaving, handleAccept]);
-
   // ── Dispatch drawer ─────────────────────────────────────────────────────────
   const loadDispatchProducts = useCallback(async (orderId: string, preferredProductId?: string) => {
     setDispatchProductsLoading(true);
@@ -1546,6 +1421,7 @@ export default function OrderHistoryPage() {
         "Discount (₹)": amounts.discountAmount,
         "Net (₹)":      amounts.netPayableAmount,
         "Qty":          o.orderdata_item_quantity || "",
+        "Left (pcs)":   getOrderLeftPieces(o),
         "Confirmation": o.accept_order === "1" ? "Accepted" : "Awaiting",
         "Status":       statusConf[Number(o.orderdata_status)]?.label ?? "Pending",
         "MT Status":    mtConf[mtStatusValue(o.mtstatus)].label,
@@ -2163,11 +2039,6 @@ export default function OrderHistoryPage() {
                           const rsmStatus = rsmApprovalValue(order);
                           const reviewedBy = order.rsmReviewedBy || order.rsm_reviewed_by;
                           const customDiscountSummary = customDiscountProgressMap[getCustomDiscountProgressKeyForOrder(oid)];
-                          // An RSM reviews the order first; assigned staff can only accept
-                          // once that review has cleared, matching the server-side gate.
-                          const showAccept = isRsm
-                            ? rsmStatus === "AWAITING" || rsmStatus === ""
-                            : canAcceptOrder(order) && (actorRole !== "staff" || rsmStatus === "ACCEPTED");
 
                           return (
                             <tr key={oid || idx} className={`odd:bg-white even:bg-gray-50/50 hover:bg-blue-50/40 transition-colors ${isDeleted ? "opacity-60" : ""} ${selectedBillingOrderIds.has(String(oid)) ? "!bg-blue-50/70" : ""}`}>
@@ -2267,6 +2138,11 @@ export default function OrderHistoryPage() {
                               )}
                               <td className="px-2 py-2 font-mono text-[12px] text-gray-700">
                                 {order.outstandingDate ? moment(order.outstandingDate).format("DD MMM YYYY") : "—"}
+                                {safeNumber(order.orderdata_item_quantity) > 0 && (
+                                  <p className={`mt-1 text-[11px] font-semibold ${getOrderLeftPieces(order) > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                                    {getOrderLeftPieces(order) > 0 ? `Left: ${getOrderLeftPieces(order)} pcs` : "All dispatched"}
+                                  </p>
+                                )}
                               </td>
 
                               {/* Actions — collapsed into a single 3-dot menu */}
@@ -2278,16 +2154,12 @@ export default function OrderHistoryPage() {
                                       role={actorRole}
                                       actorId={actorId}
                                       isDeleted={isDeleted}
-                                      showAccept={showAccept}
                                       showDelete={canDeleteOrder(order)}
                                       // ponytail: dispatch drawer stays wired off, exactly as it was on
                                       // the old page. Flip both flags to enable it.
                                       showDispatch={false}
                                       dispatchDisabled={true}
-                                      rsmMode={isRsm}
                                       onView={() => router.push(`/orders/${oid}`)}
-                                      onAccept={() => handleAccept(oid, 1)}
-                                      onDecline={() => { setDeclineTarget(oid); setDeclineNote(""); }}
                                       onDispatch={() => openDispatchDetails(order)}
                                       onDelete={() => setDeleteOrderId(oid)}
                                     />
@@ -2342,15 +2214,6 @@ export default function OrderHistoryPage() {
 
       {deleteOrderId && (
         <DeleteModal orderId={deleteOrderId} onConfirm={handleDelete} onClose={() => setDeleteOrderId(null)} />
-      )}
-      {declineTarget && (
-        <DeclineModal
-          note={declineNote}
-          saving={declineSaving}
-          onNoteChange={setDeclineNote}
-          onConfirm={submitDecline}
-          onClose={() => { setDeclineTarget(null); setDeclineNote(""); }}
-        />
       )}
 
       <DispatchDetailsDrawer

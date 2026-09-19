@@ -62,6 +62,10 @@ type ApprovedRequest = {
   requestedDiscountAmountPaise?: bigint | null;
   requestedNetPayableAmountPaise?: bigint | null;
   currentDiscountPercent?: Prisma.Decimal | null;
+  rsmReviewedByUserId?: bigint | null;
+  rsmReviewedByName?: string | null;
+  rsmReviewedAt?: Date | null;
+  rsmNote?: string | null;
 };
 
 /**
@@ -155,7 +159,13 @@ export async function placeOrderForApprovedDiscount(
       finalPayableAmountPaise,
       status: "AWAITING_ACCEPTANCE",
       acceptanceStatus: "AWAITING",
-      rsmApprovalStatus: "AWAITING",
+      // The RSM already signed off on this exact order when approving the
+      // discount, so it goes straight to the Staff member for accept/decline.
+      rsmApprovalStatus: "ACCEPTED",
+      rsmReviewedByUserId: request.rsmReviewedByUserId ?? null,
+      rsmReviewedByName: request.rsmReviewedByName ?? null,
+      rsmReviewedAt: request.rsmReviewedAt ?? new Date(),
+      rsmNote: request.rsmNote ?? null,
       fulfilmentStatus: "PENDING",
       items: { create: items },
     },

@@ -122,7 +122,8 @@ function DispatchPanelDialog({
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<FormState>({
-    dispatchQuantity: "",
+    // Start from whatever is still left to dispatch, in pieces.
+    dispatchQuantity: selectedItem.remainingQuantity > 0 ? String(selectedItem.remainingQuantity * selectedItem.packSize) : "",
     status: initialStatus(selectedItem),
     remark: "",
   });

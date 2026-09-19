@@ -129,14 +129,8 @@ test("declined orders surface with their note in the cancelled orders tab", () =
   assert.match(annotations, /stage: row\.type === "rsm_acceptance" \? "rsm" : "staff"/);
 });
 
-test("staff decline collects a required note before submitting", () => {
-  // The Decline button used to post with no note, which the lib rejects with
-  // note_required - the modal is what makes a staff decline possible at all.
-  assert.match(orderManagement, /setDeclineTarget\(oid\)/);
-  assert.match(orderManagement, /disabled=\{!note\.trim\(\) \|\| saving\}/);
-  assert.match(orderManagement, /\.\.\.\(note \? \{ note \} : \{\}\)/);
-  // A decline now lands in the cancelled list, so that cache must be refreshed.
-  assert.match(orderManagement, /if \(status === 0\) queryClient\.invalidateQueries\(\{ queryKey: \["cancelled-orders"\] \}\)/);
+test("order list leaves accept/decline to the order detail page", () => {
+  assert.doesNotMatch(orderManagement, /setDeclineTarget|handleAccept/);
   // One order can hold both a cancel and a decline overlay; keying rows on the
   // order id alone would collide.
   assert.match(orderManagement, /key=\{order\.id \|\| order\.orderId\}/);

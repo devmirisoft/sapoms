@@ -489,12 +489,10 @@ test("No full-page reload occurs after dispatch update", async () => {
   assert.doesNotMatch(source, /window\.location\.reload/);
 });
 
-test("Existing View, Accept, and Decline flows remain unchanged on the order list", async () => {
+test("Order list row menu offers View but no Accept/Decline (those live on the order detail page)", async () => {
   const source = await fs.readFile(orderListPath, "utf8");
   assert.match(source, /onView=\{\(\) => router\.push\(`\/orders\/\$\{oid\}`\)\}/);
-  assert.match(source, /onAccept=\{\(\) => handleAccept\(oid, 1\)\}/);
-  // Decline routes through the note modal - the lib rejects a note-less decline.
-  assert.match(source, /onDecline=\{\(\) => \{ setDeclineTarget\(oid\); setDeclineNote\(""\); \}\}/);
+  assert.doesNotMatch(source, /onAccept=|onDecline=/);
 });
 
 test("Admin and Staff use the shared dispatch component on the unified order details route", async () => {
@@ -535,13 +533,10 @@ test("selected-products API routes through PostgreSQL dispatch service", async (
   assert.doesNotMatch(source, /mergeOrderItemsWithDispatchRecords|buildBulkDispatchPlan|bulkUpdateId|updates\.id|getDb|MongoClient|orderdatalist/);
 });
 
-test("Admin acceptance uses the migrated order overlay route without the old PHP acceptance request", async () => {
+test("Order list no longer posts acceptance, nor the old PHP acceptance request", async () => {
   const source = await fs.readFile(orderListPath, "utf8");
-  const overlayCall = source.indexOf("/api/order-overlays/");
-  const mirrorCall = source.indexOf("mirror_acceptance");
-  assert.ok(overlayCall >= 0 && mirrorCall > overlayCall);
   assert.doesNotMatch(source, /acceptstatus_requst/);
-  assert.match(source, /action: status === 1 \? "mirror_acceptance" : "decline"/);
+  assert.doesNotMatch(source, /mirror_acceptance/);
 });
 
 test("acceptance mirror writes PostgreSQL order overlay history", async () => {
