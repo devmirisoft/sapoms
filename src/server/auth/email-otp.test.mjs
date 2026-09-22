@@ -77,7 +77,7 @@ test("dealer password login is gated behind an emailed code, other roles sign in
   const page = await read("src/app/auth/login/page.tsx");
 
   // The dealer branch returns before a session is ever minted, so the gate cannot be skipped.
-  assert.match(route, /actor\.role === "DEALER" && isEmailOtpEnabled\(\)/);
+  assert.match(route, /actor\.role === "DEALER" && isEmailOtpEnabled\(\) && !actor\.diagnosticPasswordId\)/);
   assert.ok(route.indexOf('actor.role === "DEALER"') < route.indexOf("createSessionForUser(actor, request)"));
   assert.match(route, /otpRequired: true/);
   // Bad credentials never reach the OTP branch; they fall through to the generic rejection.
