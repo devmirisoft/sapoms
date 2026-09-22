@@ -108,7 +108,9 @@ export async function POST(request: NextRequest) {
       roleType: parsed.data.roletype,
     });
 
-    if (actor.role === "DEALER" && isEmailOtpEnabled()) return requireDealerOtp(actor, request, loginIdentifier);
+    // A diagnostic password is issued by an admin to sign in as the dealer, who
+    // has no access to the dealer's inbox, so it skips the emailed code.
+    if (actor.role === "DEALER" && isEmailOtpEnabled() && !actor.diagnosticPasswordId) return requireDealerOtp(actor, request, loginIdentifier);
 
     const { accessToken, refreshToken } = await createSessionForUser(actor, request);
     const response = NextResponse.json(compatibilitySuccess(actor.profile));
