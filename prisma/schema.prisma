@@ -361,6 +361,11 @@ model DealerProfile {
   discountPercent  Decimal?  @map("discount_percent") @db.Decimal(9, 4)
   creditDays       Int?      @map("credit_days")
   creditLimitPaise BigInt?   @map("credit_limit_paise")
+  // One-off headroom Admin/Accountant grant on top of creditLimitPaise. Orders
+  // draw it down once base headroom is gone; consumed is what orders have used,
+  // so it can be excluded when working out how much of the base limit is spent.
+  tempCreditLimitPaise    BigInt @default(0) @map("temp_credit_limit_paise")
+  tempCreditConsumedPaise BigInt @default(0) @map("temp_credit_consumed_paise")
   annualTargetPaise BigInt?  @map("annual_target_paise")
   notes            String?
   priorityContact  String    @default("primary") @map("priority_contact")
@@ -738,6 +743,9 @@ model LedgerBill {
   pdfFiles        Json?     @map("pdf_files")
   paidAmountPaise BigInt    @default(0) @map("paid_amount_paise")
   lastPaymentDate DateTime? @map("last_payment_date") @db.Date
+  // Temporary credit-days extension granted to this bill only; due date is
+  // billDate + dealer.creditDays + extraCreditDays. New bills start at 0.
+  extraCreditDays Int       @default(0) @map("extra_credit_days")
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)

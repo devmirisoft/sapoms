@@ -6,6 +6,8 @@ import type { AuthActor } from "@/server/auth/session";
 import { isStaffLike } from "@/server/auth/sales-scope";
 import { applyWalletChange, fromPaise, roundMoney, toPaise } from "@/lib/postgresWallet";
 import { mapPostgresOrderToLegacy } from "@/lib/postgresOrders";
+import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
+import { createAuditLog } from "@/server/audit/audit-log";
 
 export type LedgerOrderState = "Cancelled" | "Awaiting" | "SupposedToGo" | "SentAndSettled";
 
@@ -60,6 +62,7 @@ type LedgerBillRecord = {
   pdfFiles?: Prisma.JsonValue
   paidAmountPaise: bigint | number | null
   lastPaymentDate?: Date | string | null
+  extraCreditDays?: number | null
   createdAt: Date
   updatedAt: Date
 }
@@ -155,6 +158,7 @@ function normalizeLedgerBill(bill: LedgerBillRecord) {
     pdfFiles: ledgerBillPdfs(bill),
     paidAmount: money(bill.paidAmountPaise),
     lastPaymentDate: normalizeDateOnly(bill.lastPaymentDate),
+    extraCreditDays: bill.extraCreditDays ?? 0,
     createdAt: bill.createdAt.toISOString(),
     updatedAt: bill.updatedAt.toISOString(),
   };
@@ -466,6 +470,67 @@ export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, bo
         });
 
     return { created: !existing, bill: normalizeLedgerBill(saved) };
+  });
+}
+
+/**
+ * Temporary credit relief for a credit-terms dealer.
+ *   days  - adds N days to every bill still unpaid, so the extension lapses on
+ *           its own: bills raised afterwards are back on the dealer's base terms.
+ *   limit - tops up the temporary pot; orders draw it down once the base limit
+ *           is spent, and at zero the dealer is back on the base limit.
+ */
+export async function extendDealerCredit(actor: AuthActor, rawDealerId: string, body: Record<string, unknown>) {
+  const dealerId = parseBigIntId(rawDealerId, "dealer id");
+  if (actor.role !== "ADMIN" && actor.role !== "ACCOUNTANT") throw Object.assign(new Error("Only Admin or Accountant can extend credit."), { status: 403 });
+
+  const type = String(body.type ?? "");
+  const note = String(body.note ?? "").trim().slice(0, 500) || null;
+
+  return prisma.$transaction(async (tx) => {
+    await tx.$executeRaw`SELECT id FROM dealer_profiles WHERE id = ${dealerId} FOR UPDATE`;
+    const dealer = await tx.dealerProfile.findFirst({
+      where: { id: dealerId, deletedAt: null },
+      select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true },
+    });
+    if (!dealer) throw Object.assign(new Error("Dealer not found"), { status: 404 });
+    if (dealer.creditDays === null) throw Object.assign(new Error("This dealer is not on credit terms."), { status: 400 });
+
+    if (type === "days") {
+      const days = Number(body.days);
+      if (!Number.isInteger(days) || days <= 0 || days > 365) throw Object.assign(new Error("Enter a whole number of days between 1 and 365."), { status: 400 });
+      const bills = await tx.ledgerBill.findMany({ where: { dealerId }, select: { id: true, orderNumber: true, billAmountPaise: true, paidAmountPaise: true } });
+      const unpaid = bills.filter((bill) => bill.billAmountPaise > bill.paidAmountPaise);
+      if (unpaid.length === 0) throw Object.assign(new Error("No unpaid bills to extend."), { status: 400 });
+      await tx.ledgerBill.updateMany({ where: { id: { in: unpaid.map((bill) => bill.id) } }, data: { extraCreditDays: { increment: days } } });
+      await createAuditLog({
+        tx, actor, action: AUDIT_ACTION.UPDATE, entity: AUDIT_ENTITY.DEALER, entityId: dealerId,
+        newValues: { extraCreditDays: days },
+        metadata: { change: "temporary_credit_days", bills: unpaid.map((bill) => bill.orderNumber), note },
+      });
+      return { type, days, billCount: unpaid.length };
+    }
+
+    if (type === "limit") {
+      if (dealer.creditLimitPaise === null) throw Object.assign(new Error("This dealer has no credit limit to extend."), { status: 400 });
+      const amount = Number(body.amount);
+      if (!Number.isFinite(amount) || amount <= 0) throw Object.assign(new Error("Enter a valid amount."), { status: 400 });
+      const amountPaise = toPaise(amount);
+      const updated = await tx.dealerProfile.update({
+        where: { id: dealerId },
+        data: { tempCreditLimitPaise: { increment: amountPaise } },
+        select: { tempCreditLimitPaise: true },
+      });
+      await createAuditLog({
+        tx, actor, action: AUDIT_ACTION.UPDATE, entity: AUDIT_ENTITY.DEALER, entityId: dealerId,
+        oldValues: { tempCreditLimit: money(dealer.tempCreditLimitPaise) },
+        newValues: { tempCreditLimit: money(updated.tempCreditLimitPaise) },
+        metadata: { change: "temporary_credit_limit", added: amount, note },
+      });
+      return { type, amount, tempCreditLimit: money(updated.tempCreditLimitPaise) };
+    }
+
+    throw Object.assign(new Error("Unknown extension type."), { status: 400 });
   });
 }
 

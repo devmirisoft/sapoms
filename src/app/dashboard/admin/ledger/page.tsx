@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay'
-import { resolveOrderAmounts } from '@/lib/orderAmounts'
+import { billableOrders, dispatchedOrderAmount } from '@/components/ledger/DealerBillsPanel'
 import { resolveStoredAuth } from '@/lib/roleAccess'
 import { showToast } from "@/components/ui/toast";
 
@@ -47,6 +47,8 @@ type RawOrder = {
   order_amount?: string | number
   order_discount?: string | number
   total?: string | number
+  orderdata_item_quantity?: string | number
+  readyquantity?: string | number
 }
 
 type LedgerResponse = {
@@ -82,6 +84,7 @@ type Bill = {
   pdfFiles?: BillPdf[]
   paidAmount: number
   lastPaymentDate?: string
+  extraCreditDays?: number
 }
 
 type DealerTerms = 'credit' | 'advance'
@@ -221,9 +224,7 @@ function orderLabel(order: RawOrder) {
   return formatLedgerOrderId(orderNumber(order))
 }
 
-function orderAmount(order: RawOrder) {
-  return resolveOrderAmounts(order).netPayable
-}
+const orderAmount = dispatchedOrderAmount
 
 function roundForInput(value: number) {
   return Math.round(value * 100) / 100
@@ -736,8 +737,7 @@ export default function DealerLedgerShellPage() {
 
                 {orderDropdownOpen && (
                   <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-300 bg-white shadow-lg">
-                    {(dealerDetails[billDealer.Dealer_Id]?.orders || [])
-                      .filter((order) => orderNumber(order))
+                    {billableOrders(dealerDetails[billDealer.Dealer_Id]?.orders || [])
                       .map((order) => {
                         const currentOrderNumber = orderNumber(order)
                         return (
@@ -753,8 +753,8 @@ export default function DealerLedgerShellPage() {
                           </label>
                         )
                       })}
-                    {(dealerDetails[billDealer.Dealer_Id]?.orders || []).filter((order) => orderNumber(order)).length === 0 && (
-                      <div className="px-3 py-4 text-sm text-gray-400">No billable orders found</div>
+                    {billableOrders(dealerDetails[billDealer.Dealer_Id]?.orders || []).length === 0 && (
+                      <div className="px-3 py-4 text-sm text-gray-400">No dispatched orders to bill</div>
                     )}
                   </div>
                 )}
@@ -1123,8 +1123,8 @@ function FragmentRow({
                     )}
 
                     {bills.map((bill) => {
-                      const dueDate = addDays(bill.billDate, creditDays)
-                      const daysRemaining = getDaysRemaining(bill.billDate, creditDays)
+                      const dueDate = addDays(bill.billDate, creditDays + (bill.extraCreditDays || 0))
+                      const daysRemaining = getDaysRemaining(bill.billDate, creditDays + (bill.extraCreditDays || 0))
                       const isOverdue = daysRemaining < 0
                       const balance = Math.max(0, bill.billAmount - bill.paidAmount)
                       const pdfCount = billPdfs(bill).length

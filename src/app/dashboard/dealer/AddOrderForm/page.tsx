@@ -75,6 +75,14 @@ type WalletSnapshot = {
   transactions: Array<{ id: string; type: string; amount: number; createdAt?: string }>;
 };
 
+type CreditSnapshot = {
+  creditDays: number | null;
+  creditLimit: number | null;
+  used: number;
+  remaining: number | null;
+  isOverdue: boolean;
+} | null;
+
 type CustomDiscountRequest = {
   id: string;
   dealerId?: string;
@@ -451,6 +459,7 @@ function AddOrderPageInner() {
   const [user, setUser] = useState<any>(null);
   const [wallet, setWallet] = useState<WalletSnapshot | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
+  const [credit, setCredit] = useState<CreditSnapshot>(null);
   const orderIdempotencyKey = useRef<string | null>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [catalogueIndex, setCatalogueIndex] = useState<CatalogueIndex<CatalogueProduct> | null>(null);
@@ -1820,8 +1829,8 @@ function AddOrderPageInner() {
       headers: { "x-omsons-actor-role": "dealer", "x-omsons-actor-id": String(user.Dealer_Id) },
     })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("wallet unavailable")))
-      .then((json) => { if (json.success) setWallet(json); })
-      .catch(() => setWallet(null))
+      .then((json) => { if (json.success) { setWallet(json); setCredit(json.credit ?? null); } })
+      .catch(() => { setWallet(null); setCredit(null); })
       .finally(() => setWalletLoading(false));
   }, [user?.Dealer_Id]);
 
@@ -2042,6 +2051,14 @@ const verifySubmittedProductNotes = async (orderId: string) => {
     if (arr1.every(r => !r.productname)) { toast("Please select at least one product"); return; }
     if (rejectedOrderAwaitingReview) {
       toast("This resubmitted order is already awaiting approval.");
+      return;
+    }
+    if (credit?.isOverdue) {
+      toast.error("Payment is overdue on a previous bill. Clear the outstanding dues before placing a new order.");
+      return;
+    }
+    if (credit && credit.remaining !== null && credit.remaining < discountPayload.finalPayableAmount) {
+      toast.error(`Credit limit exceeded. Available: ${fmt(toPaise(credit.remaining))}. Required: ${fmt(toPaise(discountPayload.finalPayableAmount))}.`);
       return;
     }
     const payload = arr1.filter(r => r.productname).map(r => {
@@ -2630,6 +2647,27 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         </div>
           )
          }
+
+        {credit && (credit.isOverdue || credit.remaining !== null) && (
+          <div className={`mb-5 rounded-2xl border px-5 py-4 shadow-sm ${credit.isOverdue || (credit.remaining !== null && credit.remaining <= 0) ? "border-red-200 bg-red-50" : "border-emerald-200 bg-emerald-50"}`}>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-[10.5px] font-bold uppercase tracking-wider text-gray-500">Credit Available</p>
+                <p className={`mt-1 font-mono text-2xl font-bold ${credit.isOverdue || (credit.remaining !== null && credit.remaining <= 0) ? "text-red-700" : "text-emerald-700"}`}>
+                  {credit.remaining !== null ? fmt(toPaise(credit.remaining)) : "No limit set"}
+                </p>
+                <p className="mt-1 text-xs text-gray-500">
+                  {credit.isOverdue
+                    ? "A previous bill is past due - new orders are blocked until it's cleared."
+                    : "Ordering is blocked once this runs out, and does not free up when a bill is paid."}
+                </p>
+              </div>
+              <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${credit.isOverdue || (credit.remaining !== null && credit.remaining <= 0) ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
+                {credit.isOverdue ? "Overdue" : credit.remaining !== null && credit.remaining <= 0 ? "Limit Reached" : "Active"}
+              </span>
+            </div>
+          </div>
+        )}
 
         {/* Page heading */}
         <div className="mb-6 flex items-start justify-between">

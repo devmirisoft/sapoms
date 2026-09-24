@@ -3,7 +3,8 @@ import { prisma } from "@/server/db/prisma";
 import { requireAuth } from "@/server/auth/session";
 import { errorStatus } from "@/server/http/auth-error";
 import { isStaffLike } from "@/server/auth/sales-scope";
-import { getWalletSnapshot } from "@/lib/postgresWallet";
+import { getWalletSnapshot, fromPaise } from "@/lib/postgresWallet";
+import { getDealerCreditStatus } from "@/lib/dealerCreditLimit";
 
 export const runtime = "nodejs";
 
@@ -32,8 +33,23 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deal
     const dealerId = parseDealerId(rawDealerId);
     if (!(await canReadWallet(actor, dealerId))) return NextResponse.json({ success: false, message: "Wallet access denied." }, { status: 403 });
     const limit = Math.min(200, Math.max(1, Number(req.nextUrl.searchParams.get("limit") || 50)));
-    const data = await getWalletSnapshot(prisma, dealerId, { limit });
-    return NextResponse.json({ success: true, ...data });
+    const [data, dealer] = await Promise.all([
+      getWalletSnapshot(prisma, dealerId, { limit }),
+      prisma.dealerProfile.findUnique({
+        where: { id: dealerId },
+        select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true, tempCreditConsumedPaise: true },
+      }),
+    ]);
+    const creditStatus = dealer ? await getDealerCreditStatus(prisma, dealer) : null;
+    const credit = creditStatus && {
+      creditDays: dealer!.creditDays,
+      creditLimit: creditStatus.creditLimitPaise === null ? null : fromPaise(creditStatus.creditLimitPaise),
+      tempCreditLimit: fromPaise(creditStatus.tempCreditLimitPaise),
+      used: fromPaise(creditStatus.usedPaise),
+      remaining: creditStatus.remainingPaise === null ? null : fromPaise(creditStatus.remainingPaise),
+      isOverdue: creditStatus.isOverdue,
+    };
+    return NextResponse.json({ success: true, ...data, credit });
   } catch (error) {
     console.error("[GET /api/wallet/[dealerId]]", error);
     const status = error instanceof Error && error.message === "Invalid dealer id." ? 400 : errorStatus(error);
