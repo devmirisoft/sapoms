@@ -12,6 +12,7 @@ import AccountBookSummary, { AccountBookStats } from '@/components/ledger/Accoun
 import TransactionTable from '@/components/ledger/TransactionTable'
 import PayMoneyModal, { PaymentData } from '@/components/ledger/PayMoneyModal'
 import { InvoiceModal } from '@/components/InvoiceModel'
+import DealerBillsPanel, { BillableOrder, CreditSnapshot, LedgerBill } from '@/components/ledger/DealerBillsPanel'
 import { createIdempotencyKey } from '@/lib/idempotency'
 import { resolveStoredAuth } from '@/lib/roleAccess'
 import { showToast } from "@/components/ui/toast";
@@ -50,6 +51,7 @@ interface WalletResponse {
   totalConsumed: number
   transactions: WalletTransaction[]
   updatedAt?: string | null
+  credit?: CreditSnapshot
 }
 
 interface LedgerSummaryData {
@@ -74,6 +76,8 @@ interface DealerLedgerResponse {
   dealer: Dealer
   summary: LedgerSummaryData
   summaryStats: AccountBookStats
+  orders?: BillableOrder[]
+  bills?: LedgerBill[]
   transactionCount: number
   isLive: boolean
   updatedAt?: string
@@ -449,6 +453,20 @@ export default function DealerLedgerPage() {
           canRecordPayment={canManageLedgerEntries}
           canAdjustWallet
           onAdjustWalletClick={() => setWalletAdjustOpen(true)}
+        />
+
+        <DealerBillsPanel
+          dealerId={dealerId}
+          orders={ledgerData?.orders || []}
+          bills={ledgerData?.bills || []}
+          credit={walletData?.credit ?? null}
+          canManageBills={canManageLedgerEntries}
+          canExtendCredit={viewerRole === 'accountant' || viewerRole === 'admin'}
+          onChanged={() => Promise.all([
+            refetchLedger(),
+            refetchWallet(),
+            queryClient.invalidateQueries({ queryKey: ['dealer-transactions', dealerId] }),
+          ])}
         />
 
         {/* Summary Cards */}

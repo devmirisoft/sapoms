@@ -1,5 +1,6 @@
 import { Prisma, OrderDiscountType, WalletTransactionType } from "@prisma/client";
 import { applyWalletChange } from "@/lib/postgresWallet";
+import { getDealerCreditStatus, tempCreditDraw } from "@/lib/dealerCreditLimit";
 import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
 import { buildEditLogEntry, diffOrderRows, orderItemsToDraftRows, ORDER_REJECTION_SOURCE } from "@/lib/orderRejectionDraft.mjs";
 
@@ -220,6 +221,32 @@ export async function createDealerOrder(
     const available = wallet.balancePaise - wallet.reservedPaise;
     if (available < priced.finalPayableAmountPaise) {
       throw new OrderError(`Insufficient wallet balance. Available: ₹${fromPaise(available).toLocaleString("en-IN")}. Required: ₹${fromPaise(priced.finalPayableAmountPaise).toLocaleString("en-IN")}.`, 409, "insufficient_balance");
+    }
+  }
+
+  // Credit-terms dealers (dealer.creditDays set): blocked once their lifetime
+  // order total would cross creditLimitPaise plus any temporary headroom, or
+  // while any bill is past its (possibly extended) due date unpaid - regardless
+  // of limit headroom. Paying a bill never restores the limit.
+  // The row lock serialises one dealer's concurrent orders so two of them can't
+  // both pass the headroom check.
+  if (dealer.creditDays !== null) {
+    await tx.$executeRaw`SELECT id FROM dealer_profiles WHERE id = ${dealer.id} FOR UPDATE`;
+  }
+  const credit = await getDealerCreditStatus(tx, dealer);
+  if (credit) {
+    if (credit.isOverdue) {
+      throw new OrderError("Payment is overdue on a previous bill. Clear the outstanding dues before placing a new order.", 409, "credit_overdue");
+    }
+    if (credit.remainingPaise !== null && credit.remainingPaise < priced.finalPayableAmountPaise) {
+      throw new OrderError(`Credit limit exceeded. Available: ₹${fromPaise(credit.remainingPaise).toLocaleString("en-IN")}. Required: ₹${fromPaise(priced.finalPayableAmountPaise).toLocaleString("en-IN")}.`, 409, "credit_limit_exceeded");
+    }
+    const draw = tempCreditDraw(credit, priced.finalPayableAmountPaise);
+    if (draw > BigInt(0)) {
+      await tx.dealerProfile.update({
+        where: { id: dealer.id },
+        data: { tempCreditLimitPaise: { decrement: draw }, tempCreditConsumedPaise: { increment: draw } },
+      });
     }
   }
 
