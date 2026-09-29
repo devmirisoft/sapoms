@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
+import { reserveDealerCredit } from "@/lib/dealerCreditLimit";
 
 /**
  * Auto-placement of an order when Admin approves a custom discount.
@@ -132,6 +133,11 @@ export async function placeOrderForApprovedDiscount(
   const totalDiscountPercent = grossAmountPaise > BigInt(0)
     ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise)
     : 0;
+
+  if (dealer.creditDays !== null) {
+    const creditBlock = await reserveDealerCredit(tx, dealer.id, finalPayableAmountPaise);
+    if (creditBlock) throw new DiscountOrderError(409, creditBlock.code, creditBlock.message);
+  }
 
   const orderNumber = await nextOrderNumber(tx);
   const stamp = await resolveOrderStaffStamp(tx, dealer.id);

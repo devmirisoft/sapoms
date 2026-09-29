@@ -374,7 +374,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
   const [category, setCategory] = useState("");
   const [dealerId, setDealerId] = useState("");
   const [assignedStaffId, setAssignedStaffId] = useState("");
-  const [sort, setSort] = useState<"pending_desc" | "oldest_pending" | "alphabetical">("pending_desc");
+  const [sort, setSort] = useState<"pending_desc" | "oldest_pending" | "newest_pending" | "alphabetical">("pending_desc");
   const [clubBy, setClubBy] = useState<ClubBy>("product");
   const [viewMode, setViewMode] = useState<ViewMode>("list");
   const [expandedKey, setExpandedKey] = useState("");
@@ -557,35 +557,6 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
             <p className="mt-1 text-[13px] text-slate-500">{subtitleForRole(role)}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <SegmentedTabs
-              label="Pending products view"
-              value={viewMode}
-              onChange={(next) => {
-                setViewMode(next as ViewMode);
-                setExpandedKey("");
-              }}
-              items={[
-                {
-                  value: "list",
-                  label: "List View",
-                  icon: (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18" />
-                    </svg>
-                  ),
-                },
-                {
-                  value: "club",
-                  label: "Club View",
-                  icon: (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-                      <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
-                    </svg>
-                  ),
-                },
-              ]}
-            />
             <button
               type="button"
               onClick={() => setReportOpen(true)}
@@ -662,7 +633,8 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                 className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
               >
                 <option value="pending_desc">Highest pending</option>
-                <option value="oldest_pending">Oldest pending</option>
+                <option value="oldest_pending">Oldest → Newest</option>
+                <option value="newest_pending">Newest → Oldest</option>
                 <option value="alphabetical">Alphabetical</option>
               </select>
             </div>
@@ -751,6 +723,35 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                     {listPayload ? `${formatNumber(listPayload.total)} matching ${CLUB_OPTIONS[clubBy].plural}` : "Loading pending products..."}
                   </p>
                 </div>
+                  <SegmentedTabs
+                    label="Pending products view"
+                    value={viewMode}
+                    onChange={(next) => {
+                      setViewMode(next as ViewMode);
+                      setExpandedKey("");
+                    }}
+                    items={[
+                      {
+                        value: "list",
+                        label: "List View",
+                        icon: (
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18" />
+                          </svg>
+                        ),
+                      },
+                      {
+                        value: "club",
+                        label: "Club View",
+                        icon: (
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+                            <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
+                            <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
+                          </svg>
+                        ),
+                      },
+                    ]}
+                  />
               </div>
             </div>
 

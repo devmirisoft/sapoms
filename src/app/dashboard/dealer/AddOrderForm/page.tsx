@@ -2017,6 +2017,12 @@ const verifySubmittedProductNotes = async (orderId: string) => {
      order route applies no balance gate at all and Place Order stays as it is. */
   const needsFundRequest = wallet?.status === "active"
     && wallet.availableBalance < discountPayload.finalPayableAmount;
+  // Credit dealers: flag the cart as soon as it would cross the available limit,
+  // not only on submit. The order route re-checks this server-side.
+  const creditShortBy = credit && credit.remaining !== null ? discountPayload.finalPayableAmount - credit.remaining : 0;
+  const creditBlockReason = credit?.isOverdue
+    ? "Payment is overdue on a previous bill - clear it before ordering."
+    : creditShortBy > 0 ? `Cart is ${fmt(toPaise(creditShortBy))} over your available credit.` : null;
 
   const submitFundRequest = async (fd: FormData) => {
     const orderForm: Record<string, string> = {};
@@ -2659,7 +2665,9 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 <p className="mt-1 text-xs text-gray-500">
                   {credit.isOverdue
                     ? "A previous bill is past due - new orders are blocked until it's cleared."
-                    : "Ordering is blocked once this runs out, and does not free up when a bill is paid."}
+                    : creditShortBy > 0
+                      ? `Your cart is ${fmt(toPaise(creditShortBy))} over this - remove items to place the order.`
+                      : "Ordering is blocked once this runs out. Paying a bill frees that amount again."}
                 </p>
               </div>
               <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${credit.isOverdue || (credit.remaining !== null && credit.remaining <= 0) ? "bg-red-100 text-red-700" : "bg-emerald-100 text-emerald-700"}`}>
@@ -3688,10 +3696,10 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               ) : (
                 <button
                   onClick={hasUnsentDiscountSelection ? () => setShowDiscountConfirm(true) : handleSubmitProductArray}
-                  disabled={loading || customDiscountSubmitting}
-                  title={hasUnsentDiscountSelection
+                  disabled={loading || customDiscountSubmitting || !!creditBlockReason}
+                  title={creditBlockReason ?? (hasUnsentDiscountSelection
                     ? "A custom discount is selected - this order needs approval before it can be placed"
-                    : needsFundRequest ? `Wallet short by ${fmt(toPaise(discountPayload.finalPayableAmount - wallet!.availableBalance))} - request funds to proceed` : undefined}
+                    : needsFundRequest ? `Wallet short by ${fmt(toPaise(discountPayload.finalPayableAmount - wallet!.availableBalance))} - request funds to proceed` : undefined)}
                   className={`inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-xl text-[13.5px] font-semibold transition-all shadow-sm hover:shadow-md hover:-translate-y-px cursor-pointer border-none ${hasUnsentDiscountSelection
                       ? "bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600"
                       : needsFundRequest
@@ -3716,6 +3724,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   {hasUnsentDiscountSelection ? "Request Discount" : needsFundRequest ? "Request Funds" : "Place Order"}
                 </button>
               )}
+              {creditBlockReason && <p className="text-xs font-semibold text-red-600">{creditBlockReason}</p>}
 
               {hasUnsentDiscountSelection && (
                 <div className="flex items-center gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50 px-3.5 py-3">

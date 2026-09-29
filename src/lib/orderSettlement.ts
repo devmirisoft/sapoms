@@ -18,6 +18,7 @@ export type OrderSettlementBill = {
   orderNumber?: string | null;
   billAmountPaise: bigint | number | string;
   paidAmountPaise: bigint | number | string;
+  debitNotePaise?: bigint | number | string | null;
   lastPaymentDate?: Date | string | null;
 };
 
@@ -53,11 +54,13 @@ export function summarizeOrderSettlement(
   const rows = Array.isArray(bills) ? bills : [];
   const billedPaise = rows.reduce((sum, bill) => sum + toBigInt(bill.billAmountPaise), BigInt(0));
   const paidPaise = rows.reduce((sum, bill) => sum + toBigInt(bill.paidAmountPaise), BigInt(0));
+  const debitNotePaise = rows.reduce((sum, bill) => sum + toBigInt(bill.debitNotePaise), BigInt(0));
 
   // Prefer the order's own payable as the denominator: a bill can be raised for
-  // part of an order, and "settled" should mean the order is covered.
+  // part of an order, and "settled" should mean the order is covered. Debit
+  // notes sit on top of the order value (they are already inside billedPaise).
   const orderPayablePaise = toBigInt(finalPayableAmountPaise);
-  const totalPaise = orderPayablePaise > BigInt(0) ? orderPayablePaise : billedPaise;
+  const totalPaise = orderPayablePaise > BigInt(0) ? orderPayablePaise + debitNotePaise : billedPaise;
   const duePaise = totalPaise > paidPaise ? totalPaise - paidPaise : BigInt(0);
 
   const lastPaymentAt = rows
@@ -82,6 +85,7 @@ export function summarizeOrderSettlement(
     billedAmountPaise: billedPaise.toString(),
     paidAmount: rupees(paidPaise),
     paidAmountPaise: paidPaise.toString(),
+    debitNoteAmount: rupees(debitNotePaise),
     dueAmount: rupees(duePaise),
     dueAmountPaise: duePaise.toString(),
     lastPaymentAt,
@@ -97,7 +101,26 @@ export function summarizeOrderSettlement(
 
 export function orderSettlementLabel(status: OrderSettlementStatus) {
   if (status === "settled") return "Settled";
-  if (status === "part_settled") return "Part settled";
+  if (status === "part_settled") return "Partially paid";
   if (status === "unpaid") return "Unpaid";
   return "";
+}
+
+/**
+ * A payment clears previous dues first: walk the unpaid bills oldest first
+ * (caller sorts by bill date, then id) and fill each before touching the next.
+ * Whatever is left after every bill is covered stays on account as advance.
+ */
+export function allocateOldestFirst<T extends { billAmountPaise: bigint; paidAmountPaise: bigint }>(bills: T[], amountPaise: bigint) {
+  let remainingPaise = amountPaise;
+  const allocations: Array<{ bill: T; amountPaise: bigint }> = [];
+  for (const bill of bills) {
+    if (remainingPaise <= BigInt(0)) break;
+    const duePaise = bill.billAmountPaise - bill.paidAmountPaise;
+    if (duePaise <= BigInt(0)) continue;
+    const take = duePaise < remainingPaise ? duePaise : remainingPaise;
+    allocations.push({ bill, amountPaise: take });
+    remainingPaise -= take;
+  }
+  return { allocations, unallocatedPaise: remainingPaise };
 }

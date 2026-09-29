@@ -9,7 +9,7 @@ import { buildDealerRequestHeaders, type PublicDealerRequest } from "@/lib/deale
 import { readDashboardActor, type DashboardActor } from "@/lib/dealerRequestClient";
 import { showToast } from "@/components/ui/toast";
 
-type RequestMode = "admin-create" | "staff-submit" | "admin-review" | "staff-resubmit";
+type RequestMode = "admin-create" | "staff-submit" | "admin-review" | "rsm-review" | "staff-resubmit";
 
 const STAFF_REQUESTS_ROUTE = "/dashboard/staff/dealer-requests";
 const ADMIN_REQUESTS_ROUTE = "/dashboard/admin/dealer/requests";
@@ -50,12 +50,17 @@ function resolveMode(actor: DashboardActor | null, requestData: PublicDealerRequ
   if (!actor) return null;
   if (!requestData) {
     if (actor.role === "admin") return "admin-create";
-    if (actor.role === "staff") return "staff-submit";
+    // Plain Staff ("2") cannot raise dealer requests; SM, ASM and RSM can.
+    if (actor.role === "staff" && actor.roletype !== "2") return "staff-submit";
     return null;
   }
 
   if (actor.role === "admin" && requestData.status === "pending") {
     return "admin-review";
+  }
+
+  if (actor.role === "staff" && actor.roletype === "RSM" && requestData.status === "rsm_pending") {
+    return "rsm-review";
   }
 
   if (actor.role === "staff" && requestData.status === "rejected" && requestData.submittedById === actor.actorId) {
@@ -172,7 +177,7 @@ function AddDealerPageContent() {
         throw new Error("Missing request id");
       }
 
-      const action = mode === "admin-review" ? "accept" : "resubmit";
+      const action = mode === "admin-review" || mode === "rsm-review" ? "accept" : "resubmit";
       const response = await fetch(`/api/dealer-requests/${encodeURIComponent(requestData.id)}`, {
         method: "PATCH",
         headers: {
@@ -188,7 +193,9 @@ function AddDealerPageContent() {
 
       showToast("success", mode === "admin-review"
           ? "Dealer request accepted and dealer created."
-          : "Dealer request resubmitted for approval.");
+          : mode === "rsm-review"
+            ? "Dealer request approved and forwarded to admin."
+            : "Dealer request resubmitted for approval.");
 
       router.push(mode === "admin-review" ? ADMIN_REQUESTS_ROUTE : STAFF_REQUESTS_ROUTE);
     } catch (error) {
@@ -228,7 +235,7 @@ function AddDealerPageContent() {
       }
 
       showToast("success", "Dealer request rejected.");
-      router.push(ADMIN_REQUESTS_ROUTE);
+      router.push(mode === "rsm-review" ? STAFF_REQUESTS_ROUTE : ADMIN_REQUESTS_ROUTE);
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "Failed to reject dealer request");
     } finally {
@@ -274,7 +281,7 @@ function AddDealerPageContent() {
         mode={mode}
         initialSnapshot={requestData?.formSnapshot}
         isSubmitting={activeAction === "submit"}
-        secondaryAction={mode === "admin-review" ? {
+        secondaryAction={mode === "admin-review" || mode === "rsm-review" ? {
           label: "Reject Request",
           loadingLabel: "Rejecting...",
           onAction: handleReject,

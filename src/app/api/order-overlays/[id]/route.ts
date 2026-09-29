@@ -203,6 +203,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (action === "cancel") {
       const context = await loadPostgresEffectiveContext(id);
       if (!context) return NextResponse.json({ success: false, message: "Historical PHP orders are read-only for PostgreSQL cancellation." }, { status: 409 });
+      if (authActor.role === "DEALER" && context.effective.eligibility.dispatchStarted) {
+        return NextResponse.json({ success: false, code: "dispatch_already_started", message: "Dispatch has started; this order can no longer be cancelled." }, { status: 409 });
+      }
       if (authActor.role === "DEALER" && context.order.acceptanceStatus === "ACCEPTED") {
         const request = await createAcceptedOrderChangeRequest({
           orderId: context.order.id,
@@ -230,6 +233,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       if (!context) return NextResponse.json({ success: false, message: "Order overlays are available only for PostgreSQL orders." }, { status: 404 });
       if (context.order.dealerId !== authActor.dealerId) {
         return NextResponse.json({ success: false, message: "Only the Dealer who owns this order can edit it." }, { status: 403 });
+      }
+      if (context.effective.eligibility.dispatchStarted) {
+        return NextResponse.json({ success: false, code: "dispatch_already_started", message: "Dispatch has started; this order can no longer be edited." }, { status: 409 });
       }
       const acceptedChangeRequest = context.order.acceptanceStatus === "ACCEPTED";
       if (!context.effective.eligibility.canDealerChange && !acceptedChangeRequest) {

@@ -86,8 +86,8 @@ async function canRead(actor: AuthActor, order: Pick<PostgresDispatchOrder, "dea
   return false;
 }
 
+// Only staff attached to the order/dealer write dispatch ; admins and NSMs are read-only.
 async function canWrite(actor: AuthActor, order: Pick<PostgresDispatchOrder, "dealerId" | "assignedStaffId">) {
-  if (isGlobalDispatchRole(actor)) return true;
   if (isAssignedDispatchStaffRole(actor)) return order.assignedStaffId === actor.staffId || await hasActiveStaffDealerAssignment(actor, order);
   return false;
 }

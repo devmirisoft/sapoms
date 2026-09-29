@@ -63,9 +63,12 @@ async function countsFor(actor: AuthActor) {
       });
     }
 
+    // Dealer requests: admin's queue, an RSM's team queue, others their own open ones.
     if (isAdminLike(actor) || isStaffLike(actor)) {
       add("dealerRequests", () => prisma.dealerRequest.count({
-        where: { status: "pending", ...(isAdminLike(actor) ? {} : { submittedById: actor.staffId?.toString() ?? "" }) },
+        where: isAdminLike(actor) ? { status: "pending" }
+          : actor.role === "RSM" ? { status: "rsm_pending", rsmUserId: actor.userId }
+          : { status: { in: ["pending", "rsm_pending"] }, submittedById: actor.staffId?.toString() ?? "" },
       }));
     }
 

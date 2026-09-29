@@ -6,15 +6,10 @@ import { CreditCard, FileText, Loader2, Plus, X } from 'lucide-react'
 import DateInput from '@/components/ui/date-input'
 import { showToast } from '@/components/ui/toast'
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay'
-import { resolveOrderAmounts } from '@/lib/orderAmounts'
 
 export type BillableOrder = {
   order_id?: string
-  order_amount?: string | number
-  order_discount?: string | number
-  total?: string | number
-  orderdata_item_quantity?: string | number
-  readyquantity?: string | number
+  dispatched_amount?: string | number
 }
 
 export type LedgerBill = {
@@ -28,6 +23,7 @@ export type LedgerBill = {
   pdfUrl?: string
   pdfFiles?: Array<{ name: string; url: string; bytes?: number }>
   paidAmount: number
+  debitNote?: number
   lastPaymentDate?: string
   extraCreditDays?: number
 }
@@ -46,20 +42,33 @@ const today = () => new Date().toISOString().slice(0, 10)
 const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500'
 const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500'
 
-// Accountant only bills what's actually gone out: for a partially dispatched
-// order this scales the order's net payable down to the dispatched share, so
-// a 200-piece/20000 order with 100 pieces dispatched bills 10000.
-export function dispatchedOrderAmount(order: BillableOrder) {
-  const net = resolveOrderAmounts(order).netPayable
-  const ordered = Number(order.orderdata_item_quantity || 0)
-  const dispatched = Number(order.readyquantity || 0)
-  if (ordered > 0 && dispatched < ordered) return Math.round(net * (dispatched / ordered) * 100) / 100
-  return net
-}
+type BilledAgainst = Pick<LedgerBill, 'orderNumber' | 'billAmount' | 'debitNote'>
 
-/** Orders with something dispatched - the only ones the accountant can bill. */
-export function billableOrders<T extends BillableOrder>(orders: T[]) {
-  return orders.filter((order) => String(order.order_id || '').trim() && Number(order.readyquantity || 0) > 0)
+/**
+ * Accountant only bills what's gone out and hasn't been invoiced yet: each
+ * order's dispatched value (server-side, weighted per line) minus earlier bills
+ * on it. A 200-piece/20000 order with 100 dispatched offers 10000; once that is
+ * billed and 50 more go, it offers 5000.
+ */
+export function billableOrders<T extends BillableOrder>(orders: T[], bills: BilledAgainst[]) {
+  const dispatched = new Map(orders.map((order) => [String(order.order_id || '').trim(), Number(order.dispatched_amount || 0)]))
+  const billed = new Map<string, number>()
+  // ponytail: a bill covering several orders is split by their current dispatched
+  // value, which drifts if one of them dispatches more later; store per-order
+  // bill lines if that ever matters.
+  for (const bill of bills) {
+    const ids = bill.orderNumber.split(',').map((id) => id.trim()).filter(Boolean)
+    const goods = bill.billAmount - (bill.debitNote || 0)
+    const weights = ids.map((id) => dispatched.get(id) || 0)
+    const total = weights.reduce((sum, weight) => sum + weight, 0)
+    ids.forEach((id, index) => billed.set(id, (billed.get(id) || 0) + goods * (total > 0 ? weights[index] / total : 1 / ids.length)))
+  }
+  return orders
+    .map((order) => {
+      const id = String(order.order_id || '').trim()
+      return { ...order, unbilled: Math.round(((dispatched.get(id) || 0) - (billed.get(id) || 0)) * 100) / 100 }
+    })
+    .filter((order) => String(order.order_id || '').trim() && order.unbilled >= 1)
 }
 
 function formatAmount(value: number | string | undefined) {
@@ -151,7 +160,7 @@ export default function DealerBillsPanel({
   const creditDays = credit?.creditDays ?? 0
   const isCreditDealer = credit !== null
   const limitReached = credit?.remaining !== null && credit?.remaining !== undefined && credit.remaining <= 0
-  const selectable = billableOrders(orders)
+  const selectable = billableOrders(orders, bills)
 
   const close = () => {
     setModal(null)
@@ -171,7 +180,7 @@ export default function DealerBillsPanel({
   const toggleOrder = (orderId: string, checked: boolean) => {
     const next = checked ? [...invoiceOrders, orderId] : invoiceOrders.filter((id) => id !== orderId)
     setInvoiceOrders(next)
-    const total = selectable.filter((order) => next.includes(String(order.order_id))).reduce((sum, order) => sum + dispatchedOrderAmount(order), 0)
+    const total = selectable.filter((order) => next.includes(String(order.order_id))).reduce((sum, order) => sum + order.unbilled, 0)
     setInvoiceAmount(next.length > 0 ? String(Math.round(total * 100) / 100) : '')
   }
 
@@ -270,7 +279,7 @@ export default function DealerBillsPanel({
                 </p>
               </div>
               <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Ordered</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Outstanding</p>
                 <p className="font-semibold text-gray-900">{formatAmount(credit.used)}</p>
               </div>
               <div>
@@ -306,7 +315,7 @@ export default function DealerBillsPanel({
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Invoices</h2>
-              <p className="text-xs text-gray-500">{selectable.length} dispatched order{selectable.length === 1 ? '' : 's'} available for billing</p>
+              <p className="text-xs text-gray-500">{selectable.length} dispatched order{selectable.length === 1 ? '' : 's'} with unbilled value</p>
             </div>
             {canManageBills && (
               <button type="button" onClick={openInvoice} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
@@ -402,7 +411,7 @@ export default function DealerBillsPanel({
                     <label key={id} className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 text-sm last:border-b-0 hover:bg-gray-50">
                       <input type="checkbox" checked={invoiceOrders.includes(id)} onChange={(event) => toggleOrder(id, event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
                       <span className="flex-1 text-gray-900">{formatDisplayOrderNumber(id)}</span>
-                      <span className="text-xs font-semibold text-gray-600">{formatAmount(dispatchedOrderAmount(order))}</span>
+                      <span className="text-xs font-semibold text-gray-600">{formatAmount(order.unbilled)}</span>
                     </label>
                   )
                 })}

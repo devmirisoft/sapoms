@@ -73,6 +73,7 @@ export default function AdminProfilePage() {
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
   const [image, setImage] = useState<File | null>(null);
+  const [imageUrl, setImageUrl] = useState("");
 
   useEffect(() => {
     const admin = readAdminSession();
@@ -87,6 +88,7 @@ export default function AdminProfilePage() {
         setName(data.ADMIN_NAME || data.name || "");
         setPhone(data.ADMIN_PHONE || "");
         setEmail(data.ADMIN_EMAIL || data.email || "");
+        setImageUrl(json.data?.ADMIN_IMAGE || "");
       } catch {
         showToast("error", "Failed to load admin profile");
       } finally {
@@ -102,7 +104,12 @@ export default function AdminProfilePage() {
     event.preventDefault();
     setIsSaving(true);
     try {
-      const response = await axios.patch(ADMIN_PROFILE_URL, { name, email, phone }, { withCredentials: true });
+      let response = await axios.patch(ADMIN_PROFILE_URL, { name, email, phone }, { withCredentials: true });
+      if (image) {
+        const form = new FormData();
+        form.append("image", image);
+        response = await axios.post(ADMIN_PROFILE_URL, form, { withCredentials: true });
+      }
       const payload = response.data || {};
       const previous = readAdminSession() || {};
       const payloadData = payload?.data || {};
@@ -126,8 +133,8 @@ export default function AdminProfilePage() {
       localStorage.setItem("roletype", "3");
       showToast("success", payload?.msg || "Admin profile updated");
       setTimeout(() => window.location.reload(), 700);
-    } catch {
-      showToast("error", "Failed to update admin profile");
+    } catch (error) {
+      showToast("error", (axios.isAxiosError(error) && error.response?.data?.message) || "Failed to update admin profile");
     } finally {
       setIsSaving(false);
     }
@@ -171,10 +178,19 @@ export default function AdminProfilePage() {
             </h2>
             <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-4 text-sm text-gray-600 hover:border-indigo-300 hover:bg-indigo-50">
               <span className="flex items-center gap-2">
+                {imageUrl && (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={imageUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
+                )}
                 <Upload className="h-4 w-4" />
                 {image ? image.name : "Choose image"}
               </span>
-              <input type="file" accept="image/*" className="hidden" onChange={(event) => setImage(event.target.files?.[0] || null)} />
+              <input type="file" accept="image/*" className="hidden" onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (!file) return;
+                setImage(file);
+                setImageUrl(URL.createObjectURL(file));
+              }} />
             </label>
           </section>
 

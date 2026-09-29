@@ -181,21 +181,36 @@ function ToastIcon({ type }: { type: string | undefined }) {
 }
 
 function ToastList() {
-  const { toasts } = ToastPrimitive.useToastManager()
+  const { toasts, close } = ToastPrimitive.useToastManager()
+  const clearable = toasts.filter((item) => item.transitionStatus !== "ending").length > 1
 
-  return toasts.map((toastItem) => (
-    <Toast key={toastItem.id} toast={toastItem}>
-      <ToastContent>
-        <ToastIcon type={toastItem.type} />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <ToastTitle />
-          <ToastDescription />
-        </div>
-        <ToastAction />
-        <ToastClose />
-      </ToastContent>
-    </Toast>
-  ))
+  return (
+    <>
+      {clearable && (
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => close()}
+          className="pointer-events-auto absolute top-0 right-0 z-[1001] h-7 rounded-full bg-popover px-3 text-xs shadow-md"
+        >
+          Clear all
+        </Button>
+      )}
+      {toasts.map((toastItem) => (
+        <Toast key={toastItem.id} toast={toastItem} className={clearable ? "top-9" : undefined}>
+          <ToastContent>
+            <ToastIcon type={toastItem.type} />
+            <div className="flex min-w-0 flex-1 flex-col gap-1">
+              <ToastTitle />
+              <ToastDescription />
+            </div>
+            <ToastAction />
+            <ToastClose />
+          </ToastContent>
+        </Toast>
+      ))}
+    </>
+  )
 }
 
 function Toaster({

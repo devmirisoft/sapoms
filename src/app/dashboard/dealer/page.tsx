@@ -61,6 +61,7 @@ type WalletSnapshot = {
   status: "active" | "inactive";
   availableBalance: number;
   totalConsumed: number;
+  credit?: { creditLimit: number | null; used: number; remaining: number | null; isOverdue: boolean } | null;
 };
 type FunnelStage = { label: string; value: number; pct: number; color: string };
 // Only the orders array is used here — the aging maths is shared with the
@@ -509,6 +510,9 @@ function DealerDashboardInner() {
   const isWalletActive = wallet?.status === "active";
   const walletAvailable = Number(wallet?.availableBalance ?? 0);
   const walletConsumed = Number(wallet?.totalConsumed ?? 0);
+  // Present only for credit-terms dealers (creditDays set); remaining includes temp credit.
+  const credit = wallet?.credit ?? null;
+  const creditLeft = Number(credit?.remaining ?? 0);
   const outstanding  = aging.total;
   const overdueAmount = aging.d31 + aging.d61 + aging.d90;
   // Outstanding against the credit ceiling — how much of the limit is tied up.
@@ -860,6 +864,16 @@ function DealerDashboardInner() {
                     <div className="icard-sub">Credit ceiling</div>
                     <div className="icard-badge badge-blue">{usagePct}% of target</div>
                   </div>
+                  {credit && (
+                    <div className="icard" style={creditLeft <= 0 || credit.isOverdue ? { borderColor: "rgba(255,59,48,.28)", background: "rgba(255,59,48,.04)" } : undefined}>
+                      <div className="icard-lbl">Credit Left</div>
+                      <div className="icard-val">{credit.remaining === null ? "—" : fmtCurrency(creditLeft)}</div>
+                      <div className="icard-sub">Used: {fmtCurrency(credit.used)} of {fmtCurrency(credit.creditLimit ?? currentLimit)}</div>
+                      <div className={`icard-badge ${credit.isOverdue ? "badge-red pulse-amber" : creditLeft > 0 ? "badge-green" : "badge-red"}`}>
+                        {credit.isOverdue ? "Overdue bill" : credit.remaining === null ? "No limit set" : creditLeft > 0 ? "Available" : "Exhausted"}
+                      </div>
+                    </div>
+                  )}
                   <div className="icard">
                     <div className="icard-lbl">Credit Days</div>
                     <div className="icard-val">{creditDays}</div>

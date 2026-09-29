@@ -677,10 +677,12 @@ export async function buildInvoiceTemplateData(
     });
 
     // ── Template fields ─────────────────────────────────────────────────────
-    const isApproved = (displayOrder as any).accept_order === "1"
+    const normalizedRole = resolveInvoiceActor(options).role;
+    // Dealers (advance and credit alike) always get their copy as a PO.
+    const isApproved = normalizedRole !== "dealer" && (
+        (displayOrder as any).accept_order === "1"
         || Number(displayOrder.mtstatus ?? 0) >= 2
-        || String(displayOrder.mtstatus ?? "").toLowerCase().includes("completed");
-    const normalizedRole = String(options?.normalizedRole ?? "").trim().toLowerCase();
+        || String(displayOrder.mtstatus ?? "").toLowerCase().includes("completed"));
     const titleStr = isApproved
         ? "ORDER INVOICE"
         : normalizedRole === "staff" ? "SALES ORDER" : "PURCHASE ORDER";

@@ -7,8 +7,8 @@ import {
   normalizeCustomDiscountRequestRecord,
   type NormalizedCustomDiscountRequest,
 } from "@/lib/customDiscountRequests";
-import { SegmentedTabs } from "@/components/SegmentedTabs";
 import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
+import { ViewToggle, type ViewMode } from "@/components/ViewToggle";
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
 
@@ -59,39 +59,6 @@ function resolveAdminName() {
 
 function totalPieces(request: NormalizedCustomDiscountRequest) {
   return request.orderSnapshot.products.reduce((sum, product) => sum + Number(product.totalPieces || 0), 0);
-}
-
-type ViewMode = "list" | "cards";
-
-function ViewToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
-  return (
-    <SegmentedTabs
-      label="Result view"
-      value={mode}
-      onChange={(next) => onChange(next as ViewMode)}
-      items={[
-        {
-          value: "list",
-          label: "List",
-          icon: (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M3 15h18M9 3v18" />
-                    </svg>
-                  ),
-        },
-        {
-          value: "cards",
-          label: "Cards",
-          icon: (
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-                      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" />
-                      <rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" />
-                    </svg>
-                  ),
-        },
-      ]}
-    />
-  );
 }
 
 function DecisionPanel({

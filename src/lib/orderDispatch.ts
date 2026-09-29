@@ -163,6 +163,9 @@ export function normalizeDispatchTrackingInput(input: {
   trackingLink?: unknown;
   dock?: unknown;
 }): DispatchTrackingValidation {
+  if (!normalizeDispatchPartner(input.dispatchPartner)) {
+    return { ok: false, message: "Dispatched By is required." };
+  }
   if (!isValidTrackingLink(input.trackingLink)) {
     return { ok: false, message: "Tracking Link must be a valid http(s) URL." };
   }
@@ -189,7 +192,7 @@ export function readDispatchTrackingInfo(source: Record<string, unknown> | null 
   };
 }
 
-// Dealers read tracking information; only dispatch staff and admins write it.
+// Dealers and admins read tracking information; only the attached staff writes it.
 export function canUserEditDispatchTracking(user: DispatchUserSession | null, context: {
   dealerId?: string | null;
   assignedStaffId?: string | null;
@@ -319,10 +322,9 @@ export function canUpdateOrderDispatch(input: {
   isAccepted: boolean;
   isDeleted: boolean;
 }): boolean {
-  if (input.role === "dealer" || input.isDeleted || !input.isAccepted) return false;
-  if (input.role === "admin") return true;
-  if (input.role === "staff") return input.isAssignedStaff;
-  return false;
+  // Only the attached staff member dispatches; admins and dealers are read-only.
+  if (input.isDeleted || !input.isAccepted) return false;
+  return input.role === "staff" && input.isAssignedStaff;
 }
 
 export function canUserEditDispatch(user: DispatchUserSession | null, context: {

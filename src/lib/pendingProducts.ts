@@ -805,7 +805,7 @@ export function filterPendingProducts(
 
 export function sortPendingProducts(
   aggregates: PendingProductAggregate[],
-  sort: "pending_desc" | "oldest_pending" | "alphabetical" = "pending_desc"
+  sort: "pending_desc" | "oldest_pending" | "newest_pending" | "alphabetical" = "pending_desc"
 ): PendingProductAggregate[] {
   const sorted = [...(aggregates ?? [])];
 
@@ -817,6 +817,11 @@ export function sortPendingProducts(
       const leftDate = left.oldestPendingDateMs ?? Number.MAX_SAFE_INTEGER;
       const rightDate = right.oldestPendingDateMs ?? Number.MAX_SAFE_INTEGER;
       if (leftDate !== rightDate) return leftDate - rightDate;
+      if (right.pendingQuantity !== left.pendingQuantity) return right.pendingQuantity - left.pendingQuantity;
+    } else if (sort === "newest_pending") {
+      const leftDate = left.oldestPendingDateMs ?? Number.MIN_SAFE_INTEGER;
+      const rightDate = right.oldestPendingDateMs ?? Number.MIN_SAFE_INTEGER;
+      if (leftDate !== rightDate) return rightDate - leftDate;
       if (right.pendingQuantity !== left.pendingQuantity) return right.pendingQuantity - left.pendingQuantity;
     } else {
       if (right.pendingQuantity !== left.pendingQuantity) return right.pendingQuantity - left.pendingQuantity;

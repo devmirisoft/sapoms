@@ -63,7 +63,7 @@ test("ledger bill and payment mutations are accountant-only and bill-linked paym
   assert.match(ledgerSource, /ledgerBill\.findMany/);
   assert.match(ledgerSource, /Only Accountant can save ledger bills\./);
   assert.match(ledgerSource, /Only Accountant can record ledger payments\./);
-  assert.match(ledgerSource, /dealerId_orderNumber/);
+  assert.doesNotMatch(ledgerSource, /dealerId_orderNumber/);
   assert.match(ledgerSource, /billId/);
   assert.match(detailSource, /Bill saved successfully/);
   assert.match(paySource, /bill: result\.bill/);

@@ -47,7 +47,7 @@ function safeInteger(value: unknown, fallback: number) {
 }
 
 function parseSort(value: string) {
-  if (value === "alphabetical" || value === "oldest_pending") return value;
+  if (value === "alphabetical" || value === "oldest_pending" || value === "newest_pending") return value;
   return "pending_desc";
 }
 

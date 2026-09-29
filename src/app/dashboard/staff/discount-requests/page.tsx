@@ -7,6 +7,7 @@ import { Receipt, RefreshCw, ArrowLeft } from "lucide-react";
 import { normalizeCustomDiscountRequestRecord } from "@/lib/customDiscountRequests";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
 import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
+import { ViewToggle, type ViewMode } from "@/components/ViewToggle";
 
 type StaffUser = {
   staff_id: string;
@@ -94,6 +95,7 @@ export default function StaffDiscountRequestsPage() {
   const [tab, setTab] = useState<TabKey>("pending");
   const [updating, setUpdating] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  const [viewMode, setViewMode] = useState<ViewMode>("cards");
 
   useEffect(() => {
     try {
@@ -215,6 +217,87 @@ export default function StaffDiscountRequestsPage() {
     return requests.filter((r) => r.status === tab);
   }, [requests, tab, awaitingRsm]);
 
+  const reviewPanel = (request: DiscountRequest) => {
+    const rsmState = request.rsmApprovalStatus ?? "pending";
+    const canReview = isRsm && rsmState === "pending" && request.status === "pending";
+    if (!isRsm) {
+      return (
+        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Read Only</p>
+          <p className="mt-2 text-[12px] leading-5 text-gray-600">
+            This page is view-only for staff. Approval, rejection, note editing, and status changes remain admin-only.
+          </p>
+          <p className="mt-3 text-[12px] text-gray-500">
+            Created on {request.createdAt ? new Date(request.createdAt).toLocaleDateString("en-IN") : "-"}
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">RSM Review</p>
+        {canReview ? (
+          <>
+            <p className="mt-2 text-[12px] leading-5 text-gray-600">
+              Approving forwards this request to Admin for final approval. Disapproving rejects it outright.
+            </p>
+            <textarea
+              value={notes[request.id] ?? ""}
+              onChange={(e) => setNotes((prev) => ({ ...prev, [request.id]: e.target.value }))}
+              placeholder="Note for the dealer (required to disapprove)"
+              rows={3}
+              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-indigo-300"
+            />
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                disabled={updating === request.id}
+                onClick={() => void review(request, "approved")}
+                className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
+              >
+                {updating === request.id ? "Saving..." : "Approve"}
+              </button>
+              <button
+                type="button"
+                disabled={updating === request.id || !(notes[request.id] ?? "").trim()}
+                title={!(notes[request.id] ?? "").trim() ? "Add a note to disapprove" : undefined}
+                onClick={() => void review(request, "rejected")}
+                className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {updating === request.id ? "Saving..." : "Disapprove"}
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <p className="mt-2 text-[12px] leading-5 text-gray-600">
+              {rsmState === "approved"
+                ? "You approved this request. It is now with Admin for final approval."
+                : rsmState === "rejected"
+                  ? "This request was disapproved at RSM review."
+                  : "RSM review is complete for this request."}
+            </p>
+            {request.rsmReviewedBy && (
+              <p className="mt-2 text-[12px] text-gray-500">
+                Reviewed by {request.rsmReviewedBy}
+                {request.rsmReviewedAt ? ` on ${new Date(request.rsmReviewedAt).toLocaleDateString("en-IN")}` : ""}
+              </p>
+            )}
+            {request.rsmNote && (
+              <p className="mt-2 text-[12px] text-gray-600">RSM note: {request.rsmNote}</p>
+            )}
+            {request.adminNote && (
+              <p className="mt-2 text-[12px] text-gray-600">Admin note: {request.adminNote}</p>
+            )}
+          </>
+        )}
+        <p className="mt-3 text-[12px] text-gray-500">
+          Created on {request.createdAt ? new Date(request.createdAt).toLocaleDateString("en-IN") : "-"}
+        </p>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 px-6 py-6" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
       <div className="mx-auto max-w-[1840px] space-y-5">
@@ -242,12 +325,15 @@ export default function StaffDiscountRequestsPage() {
             </div>
           </div>
 
-          <button
-            onClick={() => void load()}
-            className="w-fit rounded-xl border border-gray-200 bg-white px-4 py-2 text-[13px] font-semibold text-gray-700 hover:bg-gray-100"
-          >
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            <ViewToggle mode={viewMode} onChange={setViewMode} />
+            <button
+              onClick={() => void load()}
+              className="w-fit rounded-xl border border-gray-200 bg-white px-4 py-2 text-[13px] font-semibold text-gray-700 hover:bg-gray-100"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
 
         <SegmentedTabs
@@ -275,6 +361,117 @@ export default function StaffDiscountRequestsPage() {
         ) : visibleRequests.length === 0 ? (
           <div className="flex min-h-[260px] items-center justify-center rounded-2xl border border-gray-200 bg-white text-sm text-gray-500">
             {isRsm ? "No discount requests in this view for your region." : "No discount requests found for this staff member."}
+          </div>
+        ) : viewMode === "cards" ? (
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2 2xl:grid-cols-3">
+            {visibleRequests.map((request) => {
+              const products = snapshots.get(request.id)?.products ?? [];
+              const rsmState = request.rsmApprovalStatus ?? "pending";
+              return (
+                <div key={request.id} className="flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-gray-300 hover:shadow-md">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="mb-1 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-[10px] font-bold text-gray-700">
+                          {request.orderNumber ? `Order ${formatDisplayOrderNumber(request.orderNumber, request.createdAt)}` : "Order not placed yet"}
+                        </span>
+                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                          {(request.discountScope ?? "order") === "product" ? "Product Discount" : "Order Discount"}
+                        </span>
+                      </div>
+                      <h3 className="truncate text-[14px] font-bold text-gray-900">{request.dealerName || "Dealer"}</h3>
+                      <p className="mt-0.5 truncate text-[11px] text-gray-500">
+                        Dealer ID: {request.dealerId}
+                        {request.dealerCode ? ` · Code: ${request.dealerCode}` : ""}
+                        {` · Requested ${request.createdAt ? new Date(request.createdAt).toLocaleString("en-IN") : "-"}`}
+                      </p>
+                      {isRsm && request.staffName && (
+                        <p className="mt-0.5 text-[11px] font-semibold text-indigo-700">
+                          Raised by: {request.staffName}
+                          {request.staffId === user?.staff_id ? " (you)" : ""}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`shrink-0 rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge(request.status)}`}>
+                      {statusLabel(request.status)}
+                    </span>
+                  </div>
+
+                  {rsmState === "approved" ? (
+                    <p className="text-[11px] font-semibold text-emerald-700">
+                      RSM Approved{request.rsmReviewedBy ? ` by ${request.rsmReviewedBy}` : ""}
+                      {request.status === "pending" ? " · With Admin" : ""}
+                    </p>
+                  ) : rsmState === "rejected" ? (
+                    <p className="text-[11px] font-semibold text-red-600">RSM Rejected</p>
+                  ) : (
+                    <p className="text-[11px] font-semibold text-amber-600">Awaiting RSM Approval</p>
+                  )}
+
+                  {(request.discountScope ?? "order") === "product" && (
+                    <p className="text-[11px] font-semibold text-indigo-700">
+                      Target: {request.targetProduct?.displayName || request.targetProduct?.variantCode || request.targetProduct?.productname || "Selected product"}
+                    </p>
+                  )}
+
+                  <div className="grid grid-cols-3 gap-3 border-t border-gray-100 pt-4">
+                    {[
+                      { label: "Current", val: `${request.currentDiscountPercent}%`, cls: "text-gray-900" },
+                      { label: "Requested", val: `${request.requestedDiscountPercent}%`, cls: "text-indigo-700" },
+                      { label: "Products", val: String(products.length), cls: "text-gray-900" },
+                      { label: "Subtotal", val: money(request.subtotal), cls: "text-gray-500" },
+                      { label: "Discount", val: `-${money(request.requestedDiscountAmount)}`, cls: "text-amber-700" },
+                      { label: "Net Payable", val: money(request.requestedFinalPayable), cls: "text-emerald-700" },
+                    ].map((f) => (
+                      <div key={f.label}>
+                        <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{f.label}</p>
+                        <p className={`mt-0.5 font-mono text-[13px] font-bold ${f.cls}`}>{f.val}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  {products.length > 0 && (
+                    <details className="overflow-hidden rounded-xl border border-gray-200">
+                      <summary className="cursor-pointer list-none bg-gray-50 px-3 py-2 text-[11px] font-bold text-gray-700">
+                        Products ({products.length})
+                      </summary>
+                      <div className="max-h-72 divide-y divide-gray-100 overflow-y-auto">
+                        {products.map((product, index) => (
+                          <div
+                            key={`${request.id}-${product.productKey || product.sku}-${index}`}
+                            className={`px-3 py-2 ${product.usesCustomDiscount ? "bg-indigo-50" : ""}`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="min-w-0">
+                                <p className="font-mono text-[11px] font-bold text-amber-700">{product.catalogueNumber || product.sku || "-"}</p>
+                                <p className="truncate text-[12px] font-semibold text-gray-900">{product.productName || "-"}</p>
+                              </div>
+                              <p className="shrink-0 font-mono text-[12px] font-bold text-emerald-700">{money(product.finalAmount)}</p>
+                            </div>
+                            <p className="mt-1 font-mono text-[11px] text-gray-500">
+                              {product.quantity} x {product.packSize} = {product.totalPieces} pcs · {money(product.unitPrice)}
+                            </p>
+                            <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] font-bold">
+                              <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
+                                Base {product.baseDiscountPercent}%
+                              </span>
+                              <span className={`rounded-full border px-2 py-0.5 ${product.usesCustomDiscount ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
+                                {product.usesCustomDiscount ? `Custom ${product.requestedCustomDiscountPercent ?? 0}%` : "Standard Discount"}
+                              </span>
+                              {product.isPriority && (
+                                <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-red-700">Priority</span>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+                  )}
+
+                  {reviewPanel(request)}
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="space-y-4">
@@ -438,86 +635,7 @@ export default function StaffDiscountRequestsPage() {
                     })()}
                   </div>
 
-                  {(() => {
-                    const rsmState = request.rsmApprovalStatus ?? "pending";
-                    const canReview = isRsm && rsmState === "pending" && request.status === "pending";
-                    if (!isRsm) {
-                      return (
-                        <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Read Only</p>
-                          <p className="mt-2 text-[12px] leading-5 text-gray-600">
-                            This page is view-only for staff. Approval, rejection, note editing, and status changes remain admin-only.
-                          </p>
-                          <p className="mt-3 text-[12px] text-gray-500">
-                            Created on {request.createdAt ? new Date(request.createdAt).toLocaleDateString("en-IN") : "-"}
-                          </p>
-                        </div>
-                      );
-                    }
-                    return (
-                      <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">RSM Review</p>
-                        {canReview ? (
-                          <>
-                            <p className="mt-2 text-[12px] leading-5 text-gray-600">
-                              Approving forwards this request to Admin for final approval. Disapproving rejects it outright.
-                            </p>
-                            <textarea
-                              value={notes[request.id] ?? ""}
-                              onChange={(e) => setNotes((prev) => ({ ...prev, [request.id]: e.target.value }))}
-                              placeholder="Note for the dealer (required to disapprove)"
-                              rows={3}
-                              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-indigo-300"
-                            />
-                            <div className="mt-3 flex gap-2">
-                              <button
-                                type="button"
-                                disabled={updating === request.id}
-                                onClick={() => void review(request, "approved")}
-                                className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
-                              >
-                                {updating === request.id ? "Saving..." : "Approve"}
-                              </button>
-                              <button
-                                type="button"
-                                disabled={updating === request.id || !(notes[request.id] ?? "").trim()}
-                                title={!(notes[request.id] ?? "").trim() ? "Add a note to disapprove" : undefined}
-                                onClick={() => void review(request, "rejected")}
-                                className="flex-1 rounded-lg bg-red-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-red-700 disabled:opacity-50"
-                              >
-                                {updating === request.id ? "Saving..." : "Disapprove"}
-                              </button>
-                            </div>
-                          </>
-                        ) : (
-                          <>
-                            <p className="mt-2 text-[12px] leading-5 text-gray-600">
-                              {rsmState === "approved"
-                                ? "You approved this request. It is now with Admin for final approval."
-                                : rsmState === "rejected"
-                                  ? "This request was disapproved at RSM review."
-                                  : "RSM review is complete for this request."}
-                            </p>
-                            {request.rsmReviewedBy && (
-                              <p className="mt-2 text-[12px] text-gray-500">
-                                Reviewed by {request.rsmReviewedBy}
-                                {request.rsmReviewedAt ? ` on ${new Date(request.rsmReviewedAt).toLocaleDateString("en-IN")}` : ""}
-                              </p>
-                            )}
-                            {request.rsmNote && (
-                              <p className="mt-2 text-[12px] text-gray-600">RSM note: {request.rsmNote}</p>
-                            )}
-                            {request.adminNote && (
-                              <p className="mt-2 text-[12px] text-gray-600">Admin note: {request.adminNote}</p>
-                            )}
-                          </>
-                        )}
-                        <p className="mt-3 text-[12px] text-gray-500">
-                          Created on {request.createdAt ? new Date(request.createdAt).toLocaleDateString("en-IN") : "-"}
-                        </p>
-                      </div>
-                    );
-                  })()}
+                  {reviewPanel(request)}
                 </div>
               </div>
             ))}

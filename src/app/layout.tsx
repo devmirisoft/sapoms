@@ -29,7 +29,7 @@ export default function RootLayout({
     <html lang="en-IN" className={cn("font-sans", geist.variable)}>
       <body className="antialiased">
         <ReactQueryProvider>
-          <Toaster>
+          <Toaster limit={5}>
             <DealerTermsGate />
             <DealerPasswordGate />
             {children}

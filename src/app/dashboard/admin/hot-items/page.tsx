@@ -770,7 +770,7 @@ export default function AdminHotItemsPage() {
       <div className="min-h-screen bg-[#f8fafc]" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
 
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-6 lg:px-8 py-4 sticky top-0 z-20">
+        <div className="bg-white border-b border-gray-200 px-6 lg:px-8 py-4 sticky top-[72px] z-20">
           <div className="admin-page-shell flex items-center justify-between gap-4">
             <div className="flex items-center gap-3">
               <button onClick={() => router.back()}

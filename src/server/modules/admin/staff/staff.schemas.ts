@@ -2,6 +2,7 @@ import { z } from "zod";
 import { AdminRouteError } from "@/server/admin/admin-errors";
 import { parseAdminPagination } from "@/server/admin/admin-pagination";
 import { SALES_REGION_OPTIONS } from "@/lib/salesRegions";
+import { MIN_STAFF_AGE, isAdultDob } from "@/lib/staffDob";
 import type { AdminStaffListInput } from "./staff.types";
 
 export function parseAdminStaffListInput(searchParams: URLSearchParams): AdminStaffListInput {
@@ -67,6 +68,8 @@ const dateValue = z.preprocess((value) => {
   return Number.isNaN(parsed.getTime()) ? value : parsed;
 }, z.date().optional());
 
+const adultDob = dateValue.refine((value) => !value || isAdultDob(value.toISOString()), `Staff must be at least ${MIN_STAFF_AGE} years old`);
+
 function aliases(body: Record<string, unknown>) {
   return {
     name: body.name ?? body.staff_name ?? body.displayName,
@@ -113,7 +116,7 @@ const baseStaffSchema = {
   permanentAddress: text(1000),
   localAddress: text(1000),
   gender: text(20),
-  dob: dateValue,
+  dob: adultDob,
   nationality: text(100),
   maritalStatus: text(40),
   qualification: text(120),
@@ -198,6 +201,8 @@ const updateSchema = z.preprocess((value) => aliases((value && typeof value === 
   role: z.preprocess((value) => value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim().toUpperCase(), updateRole.optional()),
   designation: text(100),
   location: text(100),
+  // Only reachable through the admin-only PATCH route, so only an admin changes a DOB.
+  dob: adultDob,
   staffRoleType: text(30),
   salesRegion,
   warehouse,

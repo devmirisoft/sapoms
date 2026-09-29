@@ -543,7 +543,7 @@ function ProductListContent() {
 
       {/* ── Topbar — translucent material, content scrolls underneath ── */}
       <div
-        className="px-8 h-16 flex items-center justify-between gap-4 sticky top-0 z-20 border-b border-black/[0.06]"
+        className="px-8 h-16 flex items-center justify-between gap-4 sticky top-[72px] z-20 border-b border-black/[0.06]"
         style={{ background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(20px) saturate(180%)' }}
       >
         <div className="flex items-center gap-3">

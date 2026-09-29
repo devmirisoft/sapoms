@@ -91,6 +91,26 @@ function orderDispatchPieces(order: DispatchTotalsSource) {
   }, { ordered: 0, dispatched: 0 });
 }
 
+// Order payable scaled to the value dispatched so far. Each line is weighted by
+// its own amount, so dispatching the costly line bills more than a cheap one.
+function dispatchedPayablePaise(order: {
+  finalPayableAmountPaise: bigint;
+  items?: Array<{ quantityPacks: number; packSize?: number; finalAmountPaise: bigint; dispatches?: Array<{ quantity: number }> }>;
+}) {
+  let orderedValue = BigInt(0);
+  let dispatchedValue = BigInt(0);
+  for (const item of order.items ?? []) {
+    if (item.quantityPacks <= 0) continue;
+    const packs = Math.min(item.quantityPacks, (item.dispatches ?? []).reduce((sum, dispatch) => sum + dispatch.quantity, 0));
+    orderedValue += item.finalAmountPaise;
+    dispatchedValue += item.finalAmountPaise * BigInt(packs) / BigInt(item.quantityPacks);
+  }
+  if (orderedValue > BigInt(0)) return order.finalPayableAmountPaise * dispatchedValue / orderedValue;
+  // Lines without stored amounts (old imports): fall back to the piece share.
+  const { ordered, dispatched } = orderDispatchPieces(order);
+  return ordered > 0 ? order.finalPayableAmountPaise * BigInt(Math.min(dispatched, ordered)) / BigInt(ordered) : BigInt(0);
+}
+
 function legacyFulfilment(order: DispatchTotalsSource) {
   const { ordered, dispatched } = orderDispatchPieces(order);
   if (dispatched <= 0) return "Pending";
@@ -300,6 +320,7 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     dock: order.dock || "",
     orderdata_item_quantity: String(orderDispatchPieces(order).ordered),
     readyquantity: String(orderDispatchPieces(order).dispatched),
+    dispatched_amount: rupees(dispatchedPayablePaise(order)),
     mtstatus: legacyFulfilment(order),
     del_status: legacyDeletion(order.status),
     productorder: (order.items ?? []).map((item) => mapPostgresOrderItemToLegacy(item, order)),

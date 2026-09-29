@@ -1046,8 +1046,8 @@ function ExecutiveDashboard() {
                               {d.currentlimit ? `₹${Number(d.currentlimit).toLocaleString("en-IN")}` : "—"}
                             </td>
                             <td>
-                              <span className={Number(d.status) === 1 ? "st-active" : "st-inactive"}>
-                                {Number(d.status) === 1 ? "Active" : "Inactive"}
+                              <span className={isActiveDealerStatus(d.status) ? "st-active" : "st-inactive"}>
+                                {isActiveDealerStatus(d.status) ? "Active" : "Inactive"}
                               </span>
                             </td>
                             <td>

@@ -362,10 +362,8 @@ model DealerProfile {
   creditDays       Int?      @map("credit_days")
   creditLimitPaise BigInt?   @map("credit_limit_paise")
   // One-off headroom Admin/Accountant grant on top of creditLimitPaise. Orders
-  // draw it down once base headroom is gone; consumed is what orders have used,
-  // so it can be excluded when working out how much of the base limit is spent.
-  tempCreditLimitPaise    BigInt @default(0) @map("temp_credit_limit_paise")
-  tempCreditConsumedPaise BigInt @default(0) @map("temp_credit_consumed_paise")
+  // draw it down once base headroom is gone; at zero the base limit is back.
+  tempCreditLimitPaise BigInt @default(0) @map("temp_credit_limit_paise")
   annualTargetPaise BigInt?  @map("annual_target_paise")
   notes            String?
   priorityContact  String    @default("primary") @map("priority_contact")
@@ -746,6 +744,11 @@ model LedgerBill {
   // Temporary credit-days extension granted to this bill only; due date is
   // billDate + dealer.creditDays + extraCreditDays. New bills start at 0.
   extraCreditDays Int       @default(0) @map("extra_credit_days")
+  // Debit note raised with the invoice (freight, packing, short payment...).
+  // Already INCLUDED in billAmountPaise so every "due = bill - paid" stays
+  // right; kept apart only to show it and to add it to the ledger debits.
+  debitNotePaise  BigInt    @default(0) @map("debit_note_paise")
+  debitNoteReason String?   @map("debit_note_reason") @db.Text
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -755,7 +758,8 @@ model LedgerBill {
 
   settlementApplications WalletSettlementApplication[]
 
-  @@unique([dealerId, orderNumber])
+  // No unique on orderNumber: a partially dispatched order is invoiced once per
+  // dispatch, each bill with its own credit-days clock.
   @@index([dealerId, billDate])
   @@index([orderId])
   @@map("ledger_bills")

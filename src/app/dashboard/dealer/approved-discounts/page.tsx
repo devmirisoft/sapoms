@@ -178,6 +178,9 @@ export default function ApprovedDiscountsPage() {
                         <span>{totalPieces} pieces</span>
                         {request.shipto && <span className="max-w-[420px] truncate">Ship To: {request.shipto}</span>}
                       </div>
+                      {request.rsmApprovalStatus === "approved" && request.rsmReviewedBy && (
+                        <p className="text-[12px] font-semibold text-emerald-600">RSM Approved by {request.rsmReviewedBy}</p>
+                      )}
                       {request.rsmNote && (
                         <p className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-[12px] text-gray-700">
                           RSM note: {request.rsmNote}

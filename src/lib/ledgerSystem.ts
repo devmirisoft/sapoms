@@ -63,6 +63,7 @@ type LedgerBillRecord = {
   paidAmountPaise: bigint | number | null
   lastPaymentDate?: Date | string | null
   extraCreditDays?: number | null
+  debitNotePaise?: bigint | number | null
   createdAt: Date
   updatedAt: Date
 }
@@ -157,6 +158,7 @@ function normalizeLedgerBill(bill: LedgerBillRecord) {
     pdfUrl: bill.pdfUrl || undefined,
     pdfFiles: ledgerBillPdfs(bill),
     paidAmount: money(bill.paidAmountPaise),
+    debitNote: money(bill.debitNotePaise),
     lastPaymentDate: normalizeDateOnly(bill.lastPaymentDate),
     extraCreditDays: bill.extraCreditDays ?? 0,
     createdAt: bill.createdAt.toISOString(),
@@ -170,14 +172,6 @@ function classifyPostgresOrder(order: Pick<LedgerOrder, "status" | "acceptanceSt
   return order.fulfilmentStatus === OrderFulfilmentStatus.COMPLETED || order.status === OrderStatus.COMPLETED
     ? "SentAndSettled"
     : "SupposedToGo";
-}
-
-function orderMode(order: LedgerOrder) {
-  const state = classifyPostgresOrder(order);
-  if (state === "SentAndSettled") return "Sent & Settled";
-  if (state === "SupposedToGo") return "Supposed to Go";
-  if (state === "Awaiting") return "Awaiting Confirm";
-  return "Cancelled";
 }
 
 /* The advance->credit closing debit and the settlement credits that draw it
@@ -198,21 +192,6 @@ export function ledgerTransactionDirection(type: WalletTransactionType, metadata
     return direction === "debit" ? "debit" : "credit";
   }
   return "debit";
-}
-
-function orderTransaction(order: LedgerOrder) {
-  const legacy = mapPostgresOrderToLegacy(order);
-  return {
-    id: order.id.toString(),
-    debit: money(order.finalPayableAmountPaise),
-    credit: 0,
-    narration: `Order ${order.orderNumber}`,
-    date: order.orderDate.toISOString(),
-    invoice: order.legacyPhpId || order.orderNumber || order.id.toString(),
-    mode: orderMode(order),
-    type: "debit",
-    order: legacy,
-  };
 }
 
 function walletLedgerTransaction(tx: Prisma.WalletTransactionGetPayload<{ include: { order: true } }>) {
@@ -363,7 +342,7 @@ export async function getDealerLedger(actor: AuthActor, rawDealerId: string) {
     summaryStats: summary.accountBook,
     orders: orders.filter((order) => classifyPostgresOrder(order) !== "Cancelled").map(mapPostgresOrderToLegacy),
     bills: bills.map(normalizeLedgerBill),
-    transactionCount: orders.length + transactions.length,
+    transactionCount: transactions.length,
   };
 }
 
@@ -372,14 +351,8 @@ export async function getDealerLedgerTransactions(actor: AuthActor, rawDealerId:
   if (!(await canAccessDealer(prisma, actor, dealerId))) throw Object.assign(new Error("Ledger access denied."), { status: 403 });
   const pageSize = Math.min(100, Math.max(5, Number(options.limit || 20)));
   const requestedPage = Math.max(1, Number(options.page || 1));
-  const [orders, walletTransactions] = await Promise.all([
-    prisma.order.findMany({ where: { dealerId }, include: orderInclude }),
-    prisma.walletTransaction.findMany({ where: { dealerId }, include: { order: true } }),
-  ]);
-  const allTransactions = [
-    ...orders.filter((order) => classifyPostgresOrder(order) !== "Cancelled").map(orderTransaction),
-    ...walletTransactions.map(walletLedgerTransaction),
-  ].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  const walletTransactions = await prisma.walletTransaction.findMany({ where: { dealerId }, include: { order: true }, orderBy: { createdAt: "desc" } });
+  const allTransactions = walletTransactions.map(walletLedgerTransaction);
   const count = allTransactions.length;
   const totalPages = Math.max(1, Math.ceil(count / pageSize));
   const page = Math.min(requestedPage, totalPages);
@@ -426,8 +399,6 @@ export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, bo
       : [String(body.pdfName || "").trim()].filter(Boolean);
   const pdfName = pdfNames.join(", ").slice(0, 255) || null;
   const pdfUrl = (uploadedPdfs[0]?.url || String(body.pdfUrl || "").trim()).slice(0, 4000) || null;
-  // Leave the stored PDFs untouched when an edit does not re-send them.
-  const hasPdfInput = uploadedPdfs.length > 0 || pdfNames.length > 0;
 
   return prisma.$transaction(async (tx) => {
     const dealer = await tx.dealerProfile.findFirst({ where: { id: dealerId, deletedAt: null, user: { status: "ACTIVE" } }, select: { id: true } });
@@ -435,41 +406,25 @@ export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, bo
 
     const orderLookups = await Promise.all(uniqueRequestedOrderNumbers.map((orderNumber) => findDealerOrder(tx, dealerId, orderNumber)));
     const storedOrderNumbers = uniqueRequestedOrderNumbers.map((orderNumber, index) => orderLookups[index]?.legacyPhpId || orderNumber);
-    const storedOrderNumber = storedOrderNumbers.join(", ");
     const linkedOrder = orderLookups.length === 1 ? orderLookups[0] : null;
-    const existing = await tx.ledgerBill.findUnique({ where: { dealerId_orderNumber: { dealerId, orderNumber: storedOrderNumber } } });
-    const paidAmountPaise = existing && existing.paidAmountPaise > billAmountPaise ? billAmountPaise : existing?.paidAmountPaise ?? BigInt(0);
 
-    const saved = existing
-      ? await tx.ledgerBill.update({
-          where: { id: existing.id },
-          data: {
-            orderId: linkedOrder?.id ?? existing.orderId,
-            orderNumber: storedOrderNumber,
-            billAmountPaise,
-            gstPercent,
-            billDate,
-            ...(hasPdfInput
-              ? { pdfName, pdfUrl, pdfFiles: uploadedPdfs.length > 0 ? (uploadedPdfs as Prisma.InputJsonValue) : Prisma.DbNull }
-              : {}),
-            paidAmountPaise,
-          },
-        })
-      : await tx.ledgerBill.create({
-          data: {
-            dealerId,
-            orderId: linkedOrder?.id ?? null,
-            orderNumber: storedOrderNumber,
-            billAmountPaise,
-            gstPercent,
-            billDate,
-            pdfName,
-            pdfUrl,
-            ...(uploadedPdfs.length > 0 ? { pdfFiles: uploadedPdfs as Prisma.InputJsonValue } : {}),
-          },
-        });
+    // Always a new bill: each dispatch of an order gets its own invoice and
+    // credit-days clock, so an earlier invoice is never overwritten.
+    const saved = await tx.ledgerBill.create({
+      data: {
+        dealerId,
+        orderId: linkedOrder?.id ?? null,
+        orderNumber: storedOrderNumbers.join(", "),
+        billAmountPaise,
+        gstPercent,
+        billDate,
+        pdfName,
+        pdfUrl,
+        ...(uploadedPdfs.length > 0 ? { pdfFiles: uploadedPdfs as Prisma.InputJsonValue } : {}),
+      },
+    });
 
-    return { created: !existing, bill: normalizeLedgerBill(saved) };
+    return { created: true, bill: normalizeLedgerBill(saved) };
   });
 }
 

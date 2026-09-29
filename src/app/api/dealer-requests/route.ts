@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
-import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
+import { isAdminLike, isStaffLike, resolveDealerRequestRoute } from "@/server/auth/sales-scope";
 import { errorStatus } from "@/server/http/auth-error";
+import { prisma } from "@/server/db/prisma";
 
 import { ensurePostgresDealerRequestIndexes, getPostgresDealerRequestCollection, isPostgresDealerRequestDependencyError } from "@/lib/postgresDealerRequests";
 import { findDealerCodeReservationConflict } from "@/server/modules/dealers/dealer-code.service";
@@ -34,6 +35,7 @@ function actorFromAuth(authActor: AuthActor) {
       actorId: authActor.staffId.toString(),
       actorName: authActor.displayName || authActor.email || "Staff",
       roletype: authActor.role,
+      userId: authActor.userId.toString(),
     };
   }
 
@@ -68,7 +70,7 @@ export async function GET(request: NextRequest) {
     const search = request.nextUrl.searchParams.get("search") ?? "";
 
     const filters: Record<string, unknown>[] = [buildDealerRequestAccessQuery(actor)];
-    if (status === "pending" || status === "accepted" || status === "rejected") {
+    if (status === "rsm_pending" || status === "pending" || status === "accepted" || status === "rejected") {
       filters.push({ status });
     }
 
@@ -119,11 +121,13 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const actor = actorFromAuth(await requireAuth());
+    const authActor = await requireAuth();
+    const actor = actorFromAuth(authActor);
 
     if (!actor || actor.role !== "staff") {
       return buildResponseError("Only staff-like roles can submit dealer approval requests", 403);
     }
+    const route = await resolveDealerRequestRoute(authActor, prisma);
 
     let snapshot = normalizeDealerFormSnapshot(body.formSnapshot ?? body);
     const dealerCode = await generatePostgresDealerCode(snapshot.dealerCode);
@@ -150,7 +154,7 @@ export async function POST(request: NextRequest) {
     await ensurePostgresDealerRequestIndexes();
     const collection = getPostgresDealerRequestCollection();
 
-    const doc = buildDealerRequestCreateDocument({ actor, snapshot, now });
+    const doc = buildDealerRequestCreateDocument({ actor, snapshot, now, ...route });
     const existing = await collection.findOne({ openRequestKey: doc.openRequestKey });
     if (existing) {
       return NextResponse.json({ success: true, data: toDealerRequestDetail(existing) });

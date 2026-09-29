@@ -51,6 +51,8 @@ type Order = {
   rsm_approval_status?: string;
   rsmReviewedBy?: string;
   rsm_reviewed_by?: string;
+  staffname?: string;
+  acceptanceReviewedBy?: string;
 };
 type ApiResponse = { msg: string; count: number; status: boolean; data: Order[]; total?: number; last_page?: number };
 type OrderNoteOverlay = {
@@ -1546,7 +1548,7 @@ export default function OrderHistoryPage() {
       <div className="min-h-screen bg-gray-50" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
 
         {/* Header */}
-        <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between gap-4 sticky top-0 z-20">
+        <div className="bg-white border-b border-gray-200 px-4 py-2 flex items-center justify-between gap-4 sticky top-[72px] z-20">
           <div className="flex items-center gap-3 min-w-0">
             <button
               onClick={() => router.back()}
@@ -1926,7 +1928,7 @@ export default function OrderHistoryPage() {
                           />
                         </th>
                       )}
-                      <th className={thCls}>
+                      <th className={`${thCls} min-w-[120px]`}>
                         Date
                         {/* <div className="flex gap-1">
                           <DateInput
@@ -1994,7 +1996,7 @@ export default function OrderHistoryPage() {
                           <option value="0">Awaiting</option>
                         </select>
                       </th>
-                      <th className={thCls}>
+                      <th className={`${thCls} min-w-[140px]`}>
                         MT Status
                         <select
                           value={filters.mtStatus}
@@ -2008,7 +2010,7 @@ export default function OrderHistoryPage() {
                           <option value="Completed">Completed</option>
                         </select>
                       </th>
-                      {showCustomDiscount && <th className={thCls}>Custom Discount</th>}
+                      {showCustomDiscount && <th className={`${thCls} !whitespace-normal w-[90px] leading-tight`}>Custom Discount</th>}
                       <th className={thCls}>Outstanding</th>
                       {showActions && <th className={thCls}>Actions</th>}
                     </tr>
@@ -2115,19 +2117,28 @@ export default function OrderHistoryPage() {
                               <td className="px-2 py-2">
                                 <AcceptBadge accepted={order.accept_order} />
                                 {rsmStatus === "ACCEPTED" && (
-                                  <p className="mt-1 text-[11px] font-semibold text-emerald-700">RSM Approved{reviewedBy ? ` by ${reviewedBy}` : ""}</p>
+                                  <>
+                                    <p className="mt-1 text-[10px] leading-tight font-semibold text-emerald-700">RSM Approved{reviewedBy ? `: ${reviewedBy}` : ""}</p>
+                                    {order.accept_order === "1" ? (
+                                      <p className="text-[10px] leading-tight font-semibold text-emerald-700">Staff Approved{order.acceptanceReviewedBy ? `: ${order.acceptanceReviewedBy}` : ""}</p>
+                                    ) : order.accept_order === "2" ? (
+                                      <p className="text-[10px] leading-tight font-semibold text-rose-700">Staff Disapproved{order.acceptanceReviewedBy ? `: ${order.acceptanceReviewedBy}` : ""}</p>
+                                    ) : (
+                                      <p className="text-[10px] leading-tight font-semibold text-amber-700">Staff Awaiting{order.staffname ? `: ${order.staffname}` : ""}</p>
+                                    )}
+                                  </>
                                 )}
                                 {rsmStatus === "DECLINED" && (
-                                  <p className="mt-1 text-[11px] font-semibold text-rose-700">RSM Disapproved{reviewedBy ? ` by ${reviewedBy}` : ""}</p>
+                                  <p className="mt-1 text-[10px] leading-tight font-semibold text-rose-700">RSM Disapproved{reviewedBy ? ` by ${reviewedBy}` : ""}</p>
                                 )}
                                 {rsmStatus === "AWAITING" && (
-                                  <p className="mt-1 text-[11px] font-semibold text-amber-700">Awaiting RSM approval</p>
+                                  <p className="mt-1 text-[10px] leading-tight font-semibold text-amber-700">Awaiting RSM approval</p>
                                 )}
                               </td>
                               <td className="px-2 py-2">
                                 <MtStatusBadge status={order.mtstatus} />
-                                <p className="mt-1 text-[11px] text-gray-500 font-mono">
-                                  Total: {order.orderdata_item_quantity || 0} pcs · Dispatched: {order.readyquantity || 0} pcs
+                                <p className="mt-1 text-[11px] leading-snug text-gray-500 font-mono">
+                                  Total: {order.orderdata_item_quantity || 0} pcs<br />Dispatched: {order.readyquantity || 0} pcs
                                 </p>
                                 {order.reason && <p className="mt-1 text-[11px] font-semibold text-red-700">⚠ {order.reason}</p>}
                               </td>

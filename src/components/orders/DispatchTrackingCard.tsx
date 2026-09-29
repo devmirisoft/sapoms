@@ -271,7 +271,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
             <div>
-              <label htmlFor="dispatch-partner" className="mb-1.5 block text-[12px] font-semibold text-gray-700">Dispatched By</label>
+              <label htmlFor="dispatch-partner" className="mb-1.5 block text-[12px] font-semibold text-gray-700">Dispatched By <span className="text-rose-600">*</span></label>
               <select
                 id="dispatch-partner"
                 value={form.dispatchPartner}

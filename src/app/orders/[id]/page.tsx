@@ -220,7 +220,7 @@ type EffectiveOrderOverlayState = {
   isEdited: boolean;
   latestRevision: number;
   cancellation?: { reason?: string; cancelledAt?: string; cancelledBy?: { id?: string; role?: string; name?: string } } | null;
-  eligibility?: { canDealerChange?: boolean; reason?: string; accepted?: boolean } | null;
+  eligibility?: { canDealerChange?: boolean; reason?: string; accepted?: boolean; dispatchStarted?: boolean } | null;
   changeHistory?: Array<{ summary?: string; type?: string }>;
   changeRequests?: Array<Record<string, unknown> & { id?: string; type?: string; status?: string; note?: string; requestedAt?: string; revision?: { effectiveItems?: OrderData[]; changes?: Array<{ summary?: string; type?: string }> }; originalItems?: OrderData[]; proposedItems?: OrderData[] } >;
   acceptance?: { status?: string; rawStatus?: string; acceptedAt?: string } | null;
@@ -958,7 +958,8 @@ export default function ViewOrderDealerPage() {
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState("");
   // RSM approval lives here (moved out of the order-management row menu).
-  const [isRsm, setIsRsm] = useState(false);
+  const [authRole, setAuthRole] = useState("");
+  const isRsm = authRole === "rsm";
   const [rsmSaving, setRsmSaving] = useState(false);
   const [rsmDeclineOpen, setRsmDeclineOpen] = useState(false);
   const [rsmDeclineNote, setRsmDeclineNote] = useState("");
@@ -1657,7 +1658,7 @@ export default function ViewOrderDealerPage() {
     fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
-        if (!cancelled) setIsRsm(String(json?.data?.role ?? "").toLowerCase() === "rsm");
+        if (!cancelled) setAuthRole(String(json?.data?.role ?? "").toLowerCase());
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -1671,8 +1672,7 @@ export default function ViewOrderDealerPage() {
   const canRsmReview = isRsm && !overlayState?.isCancelled && (rsmStatus === "AWAITING" || rsmStatus === "");
   // Staff acceptance opens only after the RSM has approved, mirroring the
   // server gate in updatePostgresOrderAcceptance.
-  const canStaffAccept = !isRsm
-    && currentUser?.role === "staff"
+  const canStaffAccept = authRole === "staff"
     && !overlayState?.isCancelled
     && orderDeleted === "0"
     && acceptOrder === "0"
@@ -1868,6 +1868,9 @@ export default function ViewOrderDealerPage() {
   const orderNote = extractOrderNote(displayOrders, localOrderNote);
   const dealerChangeRequiresApproval = currentUser?.role === "dealer" && !!overlayState?.eligibility?.accepted && !overlayState?.isCancelled;
   const dealerCanChangeOrder = currentUser?.role === "dealer" && !overlayState?.isCancelled;
+  // Once any product has shipped the dealer can no longer edit or cancel.
+  const dealerDispatchStarted = !!overlayState?.eligibility?.dispatchStarted
+    || displayOrders.some((o) => num(o.dispatchedQuantity ?? o.readyquantity) > 0);
   const canReviewChangeRequests = currentUser?.role === "admin";
   const pendingChangeRequests = (overlayState?.changeRequests ?? []).filter((request) => request.status === "pending");
 
@@ -1885,7 +1888,7 @@ export default function ViewOrderDealerPage() {
       <div className="min-h-screen bg-gray-50" style={{ fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
 
         {/* Top bar */}
-        <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-0 z-20">
+        <div className="bg-white border-b border-gray-200 px-8 py-4 flex items-center justify-between sticky top-[72px] z-20">
           <div className="flex items-center gap-3">
             <button onClick={() => router.back()}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 bg-gray-50 text-[12.5px] font-medium text-gray-600 hover:bg-gray-100 transition-all">
@@ -1944,12 +1947,14 @@ export default function ViewOrderDealerPage() {
             )}
             {dealerCanChangeOrder && (
               <>
-                <button onClick={() => setEditDialogOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[13px] font-semibold rounded-xl transition-colors">
+                <button onClick={() => setEditDialogOpen(true)} disabled={dealerDispatchStarted}
+                  title={dealerDispatchStarted ? "Dispatch has started; this order can no longer be edited." : undefined}
+                  className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white text-[13px] font-semibold rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-amber-600">
                 <PenLine /> {dealerChangeRequiresApproval ? "Request Edit" : "Edit Order"}
                 </button>
-                <button onClick={() => setCancelDialogOpen(true)}
-                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold rounded-xl transition-colors">
+                <button onClick={() => setCancelDialogOpen(true)} disabled={dealerDispatchStarted}
+                  title={dealerDispatchStarted ? "Dispatch has started; this order can no longer be cancelled." : undefined}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-[13px] font-semibold rounded-xl transition-colors disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-red-600">
                  <Trash2 /> {dealerChangeRequiresApproval ? "Request Cancellation" : "Cancel Order"}
                 </button>
               </>
