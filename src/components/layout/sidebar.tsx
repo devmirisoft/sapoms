@@ -97,7 +97,7 @@ const NAV: Record<AppRole, NavItem[]> = {
     {                       label: "Advance Order Requests", href: "/dashboard/accountant/fund-requests",     icon: <Wallet size={15} />, badgeKey: "fundRequests" },
     {                       label: "Fund Addition Records",  href: "/dashboard/accountant/fund-records",      icon: <BookOpen size={15} />        },
     {                       label: "Dealer Ledger",   href: "/dashboard/admin/ledger",                       icon: <Wallet size={15} />          },
-    {                       label: "Reports",        href: "/dashboard/accountant",                          icon: <TrendingUp size={15} />      },
+    {                       label: "Reports",        href: "/dashboard/accountant/reports",                  icon: <TrendingUp size={15} />      },
   ],
 };
 

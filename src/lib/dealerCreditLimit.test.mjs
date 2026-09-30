@@ -14,7 +14,7 @@ async function loadModule(relativePath) {
   return import(`data:text/javascript;base64,${Buffer.from(transpiled, "utf8").toString("base64")}`);
 }
 
-const { getDealerCreditStatus, tempCreditDraw } = await loadModule("src/lib/dealerCreditLimit.ts");
+const { billAgeing, getDealerCreditStatus, tempCreditDraw } = await loadModule("src/lib/dealerCreditLimit.ts");
 
 const DAY = 86_400_000;
 const client = (orderPaise, bills = []) => ({
@@ -68,4 +68,14 @@ test("overdue uses per-bill extra days, and paid bills never block", async () =>
   assert.equal((await getDealerCreditStatus(client([], [unpaid]), dealer())).isOverdue, true);
   assert.equal((await getDealerCreditStatus(client([], [{ ...unpaid, extraCreditDays: 10 }]), dealer())).isOverdue, false);
   assert.equal((await getDealerCreditStatus(client([], [{ ...unpaid, paidAmountPaise: 100n }]), dealer())).isOverdue, false);
+});
+
+test("ageing report: unpaid balance counts as due only past credit days", () => {
+  const now = Date.parse("2026-09-25T10:00:00Z");
+  const bill = (date, paise, paid = 0n, extra = 0) =>
+    billAgeing({ billDate: new Date(`${date}T00:00:00Z`), billAmountPaise: paise, paidAmountPaise: paid, extraCreditDays: extra }, 45, now);
+  assert.deepEqual(bill("2026-07-25", 570000n), { ageDays: 62, duePaise: 570000n });
+  assert.deepEqual(bill("2026-09-05", 350000n), { ageDays: 20, duePaise: 0n });
+  assert.deepEqual(bill("2026-07-25", 570000n, 70000n), { ageDays: 62, duePaise: 500000n });
+  assert.deepEqual(bill("2026-07-25", 570000n, 0n, 20), { ageDays: 62, duePaise: 0n });
 });
