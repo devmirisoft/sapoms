@@ -30,6 +30,8 @@ export const orderInclude = {
   // Bills carry paidAmountPaise, which is what wallet settlement moves. Without
   // them an order settled from advance still reads as fully unpaid.
   ledgerBills: { orderBy: { billDate: "desc" as const } },
+  // Latest dispatch only, for the note shown on the order list.
+  dispatches: { orderBy: { createdAt: "desc" as const }, take: 1, select: { remark: true, createdAt: true } },
 } satisfies Prisma.OrderInclude;
 
 const orderDetailInclude = {
@@ -89,6 +91,26 @@ function orderDispatchPieces(order: DispatchTotalsSource) {
     const dispatchedPacks = (item.dispatches ?? []).reduce((packs, dispatch) => packs + dispatch.quantity, 0);
     return { ordered: totals.ordered + item.quantityPacks * packSize, dispatched: totals.dispatched + dispatchedPacks * packSize };
   }, { ordered: 0, dispatched: 0 });
+}
+
+// Order payable scaled to the value dispatched so far. Each line is weighted by
+// its own amount, so dispatching the costly line bills more than a cheap one.
+function dispatchedPayablePaise(order: {
+  finalPayableAmountPaise: bigint;
+  items?: Array<{ quantityPacks: number; packSize?: number; finalAmountPaise: bigint; dispatches?: Array<{ quantity: number }> }>;
+}) {
+  let orderedValue = BigInt(0);
+  let dispatchedValue = BigInt(0);
+  for (const item of order.items ?? []) {
+    if (item.quantityPacks <= 0) continue;
+    const packs = Math.min(item.quantityPacks, (item.dispatches ?? []).reduce((sum, dispatch) => sum + dispatch.quantity, 0));
+    orderedValue += item.finalAmountPaise;
+    dispatchedValue += item.finalAmountPaise * BigInt(packs) / BigInt(item.quantityPacks);
+  }
+  if (orderedValue > BigInt(0)) return order.finalPayableAmountPaise * dispatchedValue / orderedValue;
+  // Lines without stored amounts (old imports): fall back to the piece share.
+  const { ordered, dispatched } = orderDispatchPieces(order);
+  return ordered > 0 ? order.finalPayableAmountPaise * BigInt(Math.min(dispatched, ordered)) / BigInt(ordered) : BigInt(0);
 }
 
 function legacyFulfilment(order: DispatchTotalsSource) {
@@ -298,8 +320,10 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     trackingLink: order.trackingLink || "",
     tracking_link: order.trackingLink || "",
     dock: order.dock || "",
+    dispatch_note: (order.dispatches ?? []).reduce<{ remark: string | null; createdAt: Date } | null>((latest, dispatch) => (!latest || dispatch.createdAt >= latest.createdAt ? dispatch : latest), null)?.remark || "",
     orderdata_item_quantity: String(orderDispatchPieces(order).ordered),
     readyquantity: String(orderDispatchPieces(order).dispatched),
+    dispatched_amount: rupees(dispatchedPayablePaise(order)),
     mtstatus: legacyFulfilment(order),
     del_status: legacyDeletion(order.status),
     productorder: (order.items ?? []).map((item) => mapPostgresOrderItemToLegacy(item, order)),

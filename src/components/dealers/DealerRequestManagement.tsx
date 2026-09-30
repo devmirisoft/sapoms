@@ -33,17 +33,23 @@ function badgeStyles(status: DealerRequestStatus) {
 function badgeLabel(status: DealerRequestStatus) {
   if (status === "accepted") return "Accepted";
   if (status === "rejected") return "Rejected";
+  if (status === "rsm_pending") return "Pending RSM Approval";
   return "Pending Approval";
 }
 
 function tabLabel(status: DealerRequestStatus) {
   if (status === "accepted") return "Accepted Dealers";
   if (status === "rejected") return "Rejected Dealers";
+  if (status === "rsm_pending") return "Pending RSM";
   return "Pending Approval";
 }
 
-function requestActionHref(scope: "admin" | "staff", request: PublicDealerRequest) {
+function requestActionHref(scope: "admin" | "staff", request: PublicDealerRequest, actor: DashboardActor | null) {
   if (scope === "admin" && request.status === "pending") {
+    return `/dashboard/admin/dealer/AddDealerForm?requestId=${encodeURIComponent(request.id)}`;
+  }
+
+  if (scope === "staff" && request.status === "rsm_pending" && actor?.roletype === "RSM") {
     return `/dashboard/admin/dealer/AddDealerForm?requestId=${encodeURIComponent(request.id)}`;
   }
 
@@ -64,7 +70,8 @@ export default function DealerRequestManagement({ scope }: DealerRequestManageme
   const router = useRouter();
 
   const [actor] = useState<DashboardActor | null>(() => readDashboardActor());
-  const [tab, setTab] = useState<DealerRequestStatus>("pending");
+  // An RSM's own queue is its team's requests waiting on it.
+  const [tab, setTab] = useState<DealerRequestStatus>(() => actor?.roletype === "RSM" ? "rsm_pending" : "pending");
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
@@ -162,9 +169,10 @@ export default function DealerRequestManagement({ scope }: DealerRequestManageme
         ]
       : [
           { label: "Dealer List", href: "/dashboard/staff/dealerlist" },
-          { label: "Add Dealer", href: "/dashboard/admin/dealer/AddDealerForm" },
+          // Plain Staff ("2") cannot raise dealer requests.
+          ...(actor?.roletype === "2" ? [] : [{ label: "Add Dealer", href: "/dashboard/admin/dealer/AddDealerForm" }]),
         ]
-  ), [scope]);
+  ), [actor, scope]);
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
@@ -196,10 +204,10 @@ export default function DealerRequestManagement({ scope }: DealerRequestManageme
                 setTab(next as DealerRequestStatus);
                 setPage(1);
               }}
-              items={(["pending", "accepted", "rejected"] as DealerRequestStatus[]).map((status) => ({
+              items={(["rsm_pending", "pending", "accepted", "rejected"] as DealerRequestStatus[]).map((status) => ({
                 value: status,
                 label: tabLabel(status),
-                tone: status === "accepted" ? "emerald" : status === "rejected" ? "rose" : "amber",
+                tone: status === "accepted" ? "emerald" : status === "rejected" ? "rose" : status === "rsm_pending" ? "neutral" : "amber",
               }))}
             />
 
@@ -267,9 +275,9 @@ export default function DealerRequestManagement({ scope }: DealerRequestManageme
                   </tr>
                 ) : (
                   rows.map((request) => {
-                    const actionHref = requestActionHref(scope, request);
+                    const actionHref = requestActionHref(scope, request, actor);
                     const showViewDealer = request.status === "accepted" && request.createdDealerId;
-                    const actionLabel = scope === "admin" ? "Review" : "Correct";
+                    const actionLabel = request.status === "rejected" ? "Correct" : "Review";
                     const dateLabel = tab === "accepted"
                       ? request.acceptedAt
                       : tab === "rejected"

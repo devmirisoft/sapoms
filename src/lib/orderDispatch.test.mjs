@@ -190,24 +190,14 @@ test("Failed updates do not append history", () => {
   assert.equal(record.updates.length, 0);
 });
 
-test("Admin may update an authorized order", () => {
+test("Admin cannot update dispatch; only the attached staff can", () => {
   assert.equal(dispatch.canUserEditDispatch(
     { role: "admin", id: "1" },
     { dealerId: "225", assignedStaffId: "77", acceptOrder: "1", delStatus: "0" }
-  ), true);
-});
-
-test("Admin with an accepted order is allowed by the shared pure helper", () => {
+  ), false);
   assert.equal(dispatch.canUpdateOrderDispatch(
     { role: "admin", isAssignedStaff: false, isAccepted: true, isDeleted: false }
-  ), true);
-});
-
-test('Admin with accepted value "1" is allowed', () => {
-  assert.equal(dispatch.canUserEditDispatch(
-    { role: "admin", id: "1" },
-    { dealerId: "225", assignedStaffId: "77", acceptOrder: "1", delStatus: "0" }
-  ), true);
+  ), false);
 });
 
 test("Assigned staff may update their order", () => {
@@ -238,10 +228,10 @@ test("Dealer cannot update dispatch", () => {
   ), false);
 });
 
-test("Multi-item dispatch allows admin or assigned staff and still requires accepted order access", () => {
+test("Multi-item dispatch allows only assigned staff and still requires accepted order access", () => {
   const context = { dealerId: "225", assignedStaffId: "77", acceptOrder: "1", delStatus: "0" };
   assert.equal(dispatch.canUserBulkDispatch({ role: "staff", id: "77" }, context), true);
-  assert.equal(dispatch.canUserBulkDispatch({ role: "admin", id: "1" }, context), true);
+  assert.equal(dispatch.canUserBulkDispatch({ role: "admin", id: "1" }, context), false);
   assert.equal(dispatch.canUserBulkDispatch({ role: "dealer", id: "225" }, context), false);
   assert.equal(dispatch.canUserBulkDispatch({ role: "staff", id: "90" }, context), false);
   assert.equal(dispatch.canUserBulkDispatch({ role: "staff", id: "77" }, { ...context, acceptOrder: "0" }), false);
@@ -604,13 +594,13 @@ test("Dispatch tracking input validates the four fields together", () => {
     dock: "Dock 04",
   });
 
-  const empty = dispatch.normalizeDispatchTrackingInput({});
-  assert.equal(empty.ok, true);
-  assert.deepEqual(empty.value, { dispatchPartner: null, trackingNumber: null, trackingLink: null, dock: null });
+  // Dispatched By is mandatory.
+  assert.equal(dispatch.normalizeDispatchTrackingInput({}).ok, false);
+  assert.equal(dispatch.normalizeDispatchTrackingInput({ dispatchPartner: "   ", trackingNumber: "AWB1" }).ok, false);
 
   // Courier names come from an admin-managed table, so any name is accepted.
   assert.equal(dispatch.normalizeDispatchTrackingInput({ dispatchPartner: "Unknown Courier" }).ok, true);
-  assert.equal(dispatch.normalizeDispatchTrackingInput({ trackingLink: "ftp://x" }).ok, false);
+  assert.equal(dispatch.normalizeDispatchTrackingInput({ dispatchPartner: "DTDC", trackingLink: "ftp://x" }).ok, false);
 });
 
 test("Legacy dispatch records without tracking information read as empty", () => {
@@ -634,10 +624,10 @@ test("Legacy dispatch records without tracking information read as empty", () =>
   });
 });
 
-test("Only dispatching staff and admins may edit dispatch tracking information", () => {
+test("Only the attached staff may edit dispatch tracking information", () => {
   const context = { dealerId: "225", assignedStaffId: "77", acceptOrder: "1", delStatus: "0" };
   assert.equal(dispatch.canUserEditDispatchTracking({ role: "staff", id: "77" }, context), true);
-  assert.equal(dispatch.canUserEditDispatchTracking({ role: "admin", id: "1" }, context), true);
+  assert.equal(dispatch.canUserEditDispatchTracking({ role: "admin", id: "1" }, context), false);
   assert.equal(dispatch.canUserEditDispatchTracking({ role: "staff", id: "78" }, context), false);
   assert.equal(dispatch.canUserEditDispatchTracking({ role: "dealer", id: "225" }, context), false);
   assert.equal(dispatch.canUserEditDispatchTracking({ role: "staff", id: "77" }, { ...context, acceptOrder: "0" }), false);

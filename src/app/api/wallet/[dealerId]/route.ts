@@ -14,7 +14,7 @@ function parseDealerId(value: string) {
 }
 
 async function canReadWallet(actor: Awaited<ReturnType<typeof requireAuth>>, dealerId: bigint) {
-  if (actor.role === "ADMIN") return true;
+  if (actor.role === "ADMIN" || actor.role === "ACCOUNTANT") return true;
   if (actor.role === "DEALER") return actor.dealerId === dealerId;
   if (isStaffLike(actor) && actor.staffId) {
     const assignment = await prisma.dealerStaffAssignment.findFirst({
@@ -37,7 +37,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deal
       getWalletSnapshot(prisma, dealerId, { limit }),
       prisma.dealerProfile.findUnique({
         where: { id: dealerId },
-        select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true, tempCreditConsumedPaise: true },
+        select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true },
       }),
     ]);
     const creditStatus = dealer ? await getDealerCreditStatus(prisma, dealer) : null;

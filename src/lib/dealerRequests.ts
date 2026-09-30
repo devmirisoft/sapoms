@@ -4,7 +4,8 @@ import {
   type DealerFormSnapshot,
 } from "@/lib/dealerForm";
 
-export type DealerRequestStatus = "pending" | "accepted" | "rejected";
+// "rsm_pending": raised by a Sales Manager/ASM, waiting on their RSM before admin sees it as "pending".
+export type DealerRequestStatus = "rsm_pending" | "pending" | "accepted" | "rejected";
 export type DealerRequestActorRole = "admin" | "staff" | "dealer" | "accountant";
 export type DealerRequestAction = "accept" | "reject" | "resubmit";
 
@@ -13,6 +14,8 @@ export type DealerRequestActor = {
   actorId: string;
   actorName: string;
   roletype: string;
+  /** users.id; set for an RSM so it can see the requests routed to it. */
+  userId?: string;
 };
 
 export type DealerRequestAuditEntry = {
@@ -101,6 +104,7 @@ function normalizeStatus(value: unknown): DealerRequestStatus {
   const status = cleanText(value, 40).toLowerCase();
   if (status === "accepted" || status === "approved") return "accepted";
   if (status === "rejected" || status === "disapproved") return "rejected";
+  if (status === "rsm_pending") return "rsm_pending";
   return "pending";
 }
 
@@ -231,19 +235,23 @@ export function buildDealerRequestHeaders(actor: DealerRequestActor) {
 
 export function buildDealerRequestAccessQuery(actor: DealerRequestActor) {
   if (actor.role === "admin") return {};
-  if (actor.role === "staff") return { submittedById: actor.actorId };
+  if (actor.role === "staff") {
+    return actor.roletype === "RSM" && actor.userId
+      ? { $or: [{ submittedById: actor.actorId }, { rsmUserId: actor.userId }] }
+      : { submittedById: actor.actorId };
+  }
   throw new Error("Dealer request access is restricted to admin and staff");
 }
 
 export function ensureStatusTransition(currentStatus: DealerRequestStatus, action: DealerRequestAction) {
   if (action === "accept") {
-    return currentStatus === "pending"
+    return currentStatus === "pending" || currentStatus === "rsm_pending"
       ? null
       : "Only pending requests can be accepted";
   }
 
   if (action === "reject") {
-    return currentStatus === "pending"
+    return currentStatus === "pending" || currentStatus === "rsm_pending"
       ? null
       : "Only pending requests can be rejected";
   }
@@ -276,8 +284,10 @@ export function buildDealerRequestCreateDocument(params: {
   actor: DealerRequestActor;
   snapshot: DealerFormSnapshot;
   now: string;
+  status: "pending" | "rsm_pending";
+  rsmUserId: bigint | null;
 }) {
-  const { actor, now } = params;
+  const { actor, now, status, rsmUserId } = params;
   // Normalize so snapshots built with the legacy `contactPerson` key still resolve their priority contact.
   const snapshot = normalizeDealerFormSnapshot(params.snapshot);
   const contact = getSelectedDealerContact(snapshot);
@@ -286,7 +296,8 @@ export function buildDealerRequestCreateDocument(params: {
     requestReference: "",
     requestIdentityKey: buildDealerRequestIdentityKey(snapshot, actor.actorId),
     openRequestKey: buildDealerRequestIdentityKey(snapshot, actor.actorId),
-    status: "pending" as DealerRequestStatus,
+    status: status as DealerRequestStatus,
+    rsmUserId,
     dealerName: snapshot.name,
     dealerCode: snapshot.dealerCode,
     city: snapshot.city,

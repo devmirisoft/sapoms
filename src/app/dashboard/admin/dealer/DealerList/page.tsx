@@ -831,7 +831,7 @@ export default function DealerListPage() {
               Dealer Requests
             </Link>
             <button
-              className={`inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 ${pressable}`}
+              className={`inline-flex items-center gap-2 rounded-lg bg-[#0B767C] px-4 py-2 text-sm font-medium text-white hover:bg-[#00494b] ${pressable}`}
               onClick={() => window.location.href = "/dashboard/admin/dealer/AddDealerForm"}
             >
               <UserPlus className="h-4 w-4" />

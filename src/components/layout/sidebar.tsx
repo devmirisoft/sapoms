@@ -7,6 +7,7 @@ import {
   Plus, ClipboardList, Home, LogOut, Package, Images,
   ShieldCheck, Gift, Receipt, TrendingUp, BookOpen, FileText,
   Wallet, MapPinned, ChevronRight, Truck, ScrollText,
+  Handshake, Box, FilePen, ChartColumn, Calculator, Settings,
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { clearAuthStorage, type AppRole, type StoredUser } from "@/lib/roleAccess";
@@ -26,6 +27,7 @@ type SidebarUser = {
   staff_name?: string;
   staff_email?: string;
   staff_roletype?: string;
+  ADMIN_IMAGE?: string;
 };
 
 const NAV: Record<AppRole, NavItem[]> = {
@@ -99,9 +101,17 @@ const NAV: Record<AppRole, NavItem[]> = {
   ],
 };
 
-function getInitials(name?: string) {
-  if (!name?.trim()) return "AD";
-  return name.trim().split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+const SECTION_ICONS: Record<string, React.ReactNode> = {
+  Dealers: <Handshake />, Staff: <Users />, Products: <Box />, Orders: <ClipboardList />,
+  Content: <FileText />, Forms: <FilePen />, Reports: <ChartColumn />, Accountants: <Calculator />,
+  Rewards: <Gift />, System: <Settings />, Finance: <Wallet />,
+};
+
+export function getInitials(name?: string) {
+  const words = name?.trim().split(/\s+/).filter(Boolean) ?? [];
+  if (!words.length) return "AD";
+  // "Admin" -> "AD", "Ravi Kumar" -> "RK"
+  return (words.length === 1 ? words[0].slice(0, 2) : words[0][0] + words[1][0]).toUpperCase();
 }
 
 function staffRoleLabel(rt?: string) {
@@ -260,7 +270,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         .sb-panel {
           position: fixed; top: 0; left: 0; bottom: 0;
           width: 264px; z-index: 40;
-          background: #1f4b8d;
+          background: #333333;
           display: flex; flex-direction: column;
           transform: translateX(-100%);
           overflow: hidden;
@@ -274,82 +284,89 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
 
         /* Head */
         .sb-head {
-          display: flex; align-items: center; gap: 10px;
+          display: flex; align-items: center; gap: 12px;
           transition: gap .3s cubic-bezier(.32,.72,0,1), padding .3s cubic-bezier(.32,.72,0,1);
-          padding: 14px 14px 12px;
-          border-bottom: 1px solid rgba(255,255,255,0.07);
+          height: 72px; box-sizing: border-box; padding: 0 13px; /* 46px mark centred in the 72px rail and header */
         }
         .sb-mark {
-          width: 38px; height: 38px; flex: 0 0 auto;
-          border-radius: 10px;
-          background: #fff;
+          width: 52px; height: 56px; flex: 0 0 auto; padding: 4px; box-sizing: border-box;
+          border-radius: 12px;
+          background:;
           overflow: hidden;
         }
         .sb-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
-        .sb-headtext { min-width: 0; }
-        .sb-title { font-size: 13.5px; font-weight: 620; color: #fff; letter-spacing: -.2px; }
+        .sb-headtext { min-width: 0; padding-left: 12px; border-left: 1px solid rgba(255,255,255,0.3); }
+        .sb-title { font-size: 16px; font-weight: 700; color: #fff; letter-spacing: -.2px; }
         .sb-chip {
-          display: block; margin-top: 2px;
-          color: #818cf8; font-size: 10px; font-weight: 650;
-          letter-spacing: .1em; text-transform: uppercase;
+          display: block; margin-top: 3px;
+          color: rgba(255,255,255,0.85); font-size: 10.5px; font-weight: 500;
+          letter-spacing: .16em; text-transform: uppercase;
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         /* User card */
         .sb-user {
-          margin: 12px 12px 0; padding: 11px 12px;
+          margin: 10px 14px 0; padding: 14px;
           background: rgba(255,255,255,0.04);
-          border: 1px solid rgba(255,255,255,0.08);
-          border-radius: 10px;
-          display: flex; align-items: center; gap: 10px;
+          border: 1px solid rgba(255,255,255,0.28);
+          border-radius: 14px;
+          display: flex; align-items: center; gap: 12px;
           transition: gap .3s cubic-bezier(.32,.72,0,1), margin .3s cubic-bezier(.32,.72,0,1), padding .3s cubic-bezier(.32,.72,0,1);
         }
         .sb-avatar {
-          width: 34px; height: 34px; flex: 0 0 auto;
+          width: 44px; height: 44px; flex: 0 0 auto;
           border-radius: 50%;
-          background: linear-gradient(135deg,#6366f1,#a78bfa);
+          background: #3d8bfd;
           display: grid; place-items: center;
-          font-size: 12px; font-weight: 700; color: #fff;
+          font-size: 15px; font-weight: 700; color: #fff;
+          overflow: hidden;
         }
+        .sb-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .sb-usertext { min-width: 0; }
-        .sb-uname { font-size: 12.5px; font-weight: 620; color: #f1f5f9; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sb-meta  { font-size: 10.5px; color: #fefefe; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sb-role  { margin-top: 6px; display: inline-block; font-size: 10px; font-family: monospace; background: rgba(99,102,241,0.18); color: #a5b4fc; padding: 2px 8px; border-radius: 4px; }
+        .sb-uname { font-size: 14px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sb-meta  { font-size: 12px; color: rgba(255,255,255,0.9); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sb-role  { margin-top: 6px; display: inline-block; font-size: 11px; background: rgba(255,255,255,0.2); color: #fff; padding: 1px 10px; border-radius: 999px; }
+
+        .sb-divider { height: 1px; flex: 0 0 auto; margin: 14px 18px; background: rgba(255,255,255,0.18); }
 
         /* Nav */
-        .sb-nav { flex: 1; padding: 8px 14px 0; margin-top: 8px; overflow-y: auto; overflow-x: hidden; }
+        .sb-nav { flex: 1; padding: 0 14px; overflow-y: auto; overflow-x: hidden; }
         .sb-nav::-webkit-scrollbar { width: 4px; }
-        .sb-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+        .sb-nav::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.18); border-radius: 3px; }
 
+        /* The first group (Overview / Home) is a fixed label with its links always shown. */
+        .sb-lead-label {
+          padding: 2px 4px 10px;
+          font-size: 11px; font-weight: 600;
+          letter-spacing: .16em; text-transform: uppercase;
+          color: rgba(255,255,255,0.8);
+          white-space: nowrap; overflow: hidden;
+        }
+        .sb-group.lead { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.18); }
+
+        /* Every other group is a collapsible row with its own icon. */
         .sb-section {
-          width: 100%;
-          display: flex;
-          align-items: center;
-          justify-content: space-between;
-          border: 0;
+          position: relative;
+          width: 100%; height: 46px;
+          display: flex; align-items: center;
+          padding: 0; margin-bottom: 2px;
+          border: 0; border-radius: 12px;
           background: transparent;
-          color: #8b98ab;
+          color: #fff;
           cursor: pointer;
-          font-family: inherit;
-          user-select: none;
-          font-size: 10px;
-          font-weight: 700;
-          letter-spacing: .08em;
-          margin-top: 6px;
-          height: 30px;
-          padding: 0 4px;
+          font-family: inherit; font-size: 12.5px; font-weight: 600;
+          letter-spacing: .14em; text-transform: uppercase;
           text-align: left;
-          text-transform: uppercase;
+          user-select: none;
+          transition: background .16s;
         }
-        .sb-group.open .sb-section { color: #ffffff; }
-        .sb-section {
-          background-repeat: no-repeat;
-          background-position: center;
-          background-size: 0 1px;
-          background-image: linear-gradient(rgba(255,255,255,.09), rgba(255,255,255,.09));
-          transition: background-size .3s cubic-bezier(.32,.72,0,1), color .16s ease;
+        .sb-section:hover { background: rgba(255,255,255,0.08); }
+        .sb-group.open .sb-section { background: rgba(255,255,255,0.06); }
+        .sb-section-icon {
+          width: 16px !important; height: 16px !important; padding: 0 !important;
+          margin-left: auto; margin-right: 14px; flex-shrink: 0;
+          opacity: .85;
+          transition: transform .3s cubic-bezier(.32,.72,0,1);
         }
-        .sb-section > * { transition: opacity .18s ease .12s; }
-        .sb-section-icon { width: 13px; height: 13px; transition: transform .3s cubic-bezier(.32,.72,0,1); }
         .sb-group.open .sb-section-icon { transform: rotate(90deg); }
         /* Closed is the resting state; a click opens one group at a time.
            The 0fr/1fr grid keeps the height animatable. */
@@ -357,8 +374,8 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           display: grid; grid-template-rows: 0fr; overflow: hidden;
           transition: grid-template-rows .34s cubic-bezier(.4,0,.2,1);
         }
-        .sb-group.open > .sb-group-items { grid-template-rows: 1fr; }
-        /* A group with no section header (the leading items) is never collapsible. */
+        .sb-group.open > .sb-group-items,
+        .sb-group.lead > .sb-group-items,
         .sb-group.bare > .sb-group-items { grid-template-rows: 1fr; }
         /* The rows animate the box; the content fades and slides with it, so the
            links don't appear pre-drawn behind a sliding edge. Closing runs the
@@ -369,72 +386,67 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           transition: opacity .16s ease, transform .16s ease;
         }
         .sb-group.open > .sb-group-items > .sb-group-inner,
+        .sb-group.lead > .sb-group-items > .sb-group-inner,
         .sb-group.bare > .sb-group-items > .sb-group-inner {
           opacity: 1; transform: none;
           transition: opacity .22s ease .08s, transform .26s cubic-bezier(.4,0,.2,1) .08s;
         }
 
-        /* The rail hairline is painted by .sb-section itself, so this stays out of flow */
-        .sb-rule { display: none; }
-
         .sb-link {
           position: relative;
           display: flex; align-items: center; gap: 0;
-          height: 44px; padding: 0; border-radius: 12px;
-          font-size: 13.5px; font-weight: 500;
-          color: #ffffff; text-decoration: none;
+          height: 46px; padding: 0; border-radius: 12px;
+          font-size: 14px; font-weight: 500;
+          color: #fff; text-decoration: none;
           margin-bottom: 2px;
           transition: background .16s, color .16s;
         }
-        /* content-box padding makes the 18px glyph occupy a fixed 44px slot */
-        .sb-link svg { width: 18px; height: 18px; flex: 0 0 auto; box-sizing: content-box; padding: 0 13px; }
+        /* content-box padding makes the 20px glyph occupy a fixed 44px slot */
+        .sb-link svg, .sb-section svg { width: 20px; height: 20px; flex: 0 0 auto; box-sizing: content-box; padding: 0 12px; }
+        /* Links inside an opened section sit a step in and a size down. */
+        .sb-group:not(.lead) .sb-link { height: 40px; font-size: 13px; color: rgba(255,255,255,0.9); }
+        .sb-group:not(.lead) .sb-link svg { width: 16px; height: 16px; padding: 0 14px; }
         .sb-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sb-link:hover { background: rgba(255,255,255,0.05); color: #e2e8f0; }
-        .sb-link.active {
-          background: rgba(99,102,241,0.20);
-          color: #a5b4fc;
-          font-weight: 560;
+        .sb-link:hover { background: rgba(255,255,255,0.05); color: #fff; }
+        .sb-link.active,
+        .sb-group:not(.lead) .sb-link.active {
+          background: #4D4D4D;
+          color: #fff;
+          font-weight: 600;
         }
-        /* Accent bar — the part of the active state that survives the collapse */
-        .sb-link.active::before {
-          content: "";
-          position: absolute; left: 0; top: 50%;
-          transform: translateY(-50%);
-          width: 3px; height: 22px;
-          border-radius: 0 3px 3px 0;
-          background: #6366f1;
-        }
-        .sb-link-dot { width: 5px; height: 5px; border-radius: 50%; background: #6366f1; margin-left: auto; margin-right: 14px; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
-        .sb-link.active .sb-link-dot { opacity: 1; }
+        .sb-link-dot { width: 6px; height: 6px; border-radius: 50%; background: #fff; margin-left: auto; margin-right: 14px; flex-shrink: 0; opacity: 0; transition: opacity .15s; }
+        .sb-group:not(.lead) .sb-link.active .sb-link-dot { opacity: 1; }
 
         /* Pending-approval count. Replaces the active dot when non-zero, so it
-           occupies the same trailing slot and never shifts the label. */
+           occupies the same trailing slot and never shifts the label. A closed
+           section shows the total of its links on its own row. */
         .sb-count {
           margin-left: auto; margin-right: 12px;
           flex-shrink: 0;
           min-width: 20px; height: 20px;
           padding: 0 6px;
           border-radius: 999px;
-          background: #6366f1;
-          color: #ffffff;
-          font-size: 11px; font-weight: 650; line-height: 20px;
+          background: #ef4444;
+          color: #fff;
+          font-size: 11px; font-weight: 650; line-height: 20px; letter-spacing: 0;
           text-align: center;
           font-variant-numeric: tabular-nums;
         }
-        .sb-link.active .sb-count { background: #a5b4fc; color: #1e1b4b; }
+        .sb-section .sb-count { margin-right: 6px; }
+        .sb-section .sb-count + .sb-section-icon { margin-left: 0; }
 
         /* Footer */
-        .sb-foot { padding: 12px 14px; border-top: 1px solid rgba(255,255,255,0.07); display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+        .sb-foot { padding: 14px; display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
         .sb-logout {
-          width: 100%; height: 44px; padding: 0; border-radius: 12px;
-          background: transparent; border: 1px solid rgba(255,255,255,0.09);
-          font-size: 13px; font-weight: 500; color: #fbfcfe;
+          width: 100%; height: 48px; padding: 0; border-radius: 14px;
+          background: transparent; border: 1px solid rgba(255,255,255,0.28);
+          font-size: 14.5px; font-weight: 500; color: #fff;
           cursor: pointer; font-family: inherit;
           display: flex; align-items: center; justify-content: flex-start; gap: 0;
           transition: background .16s, color .16s, border-color .16s;
         }
-        .sb-logout svg { width: 15px; height: 15px; flex: 0 0 auto; box-sizing: content-box; padding: 0 14.5px; }
-        .sb-logout:hover { background: rgba(239,68,68,0.1); border-color: rgba(239,68,68,0.28); color: #f87171; }
+        .sb-logout svg { width: 20px; height: 20px; flex: 0 0 auto; box-sizing: content-box; padding: 0 11px; }
+        .sb-logout:hover { background: rgba(239,68,68,0.14); border-color: rgba(254,202,202,0.6); color: #fee2e2; }
 
         @media (min-width: 1024px) {
           .sb-overlay { display: none; }
@@ -455,51 +467,41 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           .dl-shell { margin-left: 72px; }
           html[data-sb-pinned="1"] .dl-shell { margin-left: 264px; }
 
+          /* Inverted corner hanging off the sticky header, so the sidebar
+             curves into the content and stays put while the page scrolls. */
+          .dl-topbar::after {
+            content: ""; position: absolute; top: 100%; left: 0;
+            width: 18px; height: 18px; pointer-events: none;
+            background: radial-gradient(circle at 100% 100%, transparent 18px, #333333 18.5px);
+          }
+
           /* Hover and the edge strip replace it here; it stays for the mobile drawer. */
           .dl-hamburger { display: none; }
 
           .sb-railstrip { display: block; }
 
-          /* ── Collapsed rail ── */
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-head { justify-content: center; gap: 0; padding: 12px 0 0; border-bottom: 0; }
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-headtext,
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-usertext,
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-label,
+          /* ── Collapsed rail: icons only, each centred on the 72px rail ── */
+          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-head { gap: 0; }
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-link-dot { display: none; }
+          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-section-icon { opacity: 0; }
 
           /* Collapsed rail: the count stays, riding the icon's top-right. */
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-link { position: relative; }
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-count {
-            position: absolute; top: 6px; left: 50%;
+            position: absolute; top: 5px; left: 50%;
             margin: 0; transform: translateX(2px);
             min-width: 16px; height: 16px; padding: 0 4px;
             font-size: 10px; line-height: 16px;
-            box-shadow: 0 0 0 2px #1f4b8d;
+            box-shadow: 0 0 0 2px #333333;
           }
 
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-user {
-            margin: 12px 18px 0; padding: 12px 0; gap: 0;
+            margin: 10px 13px 0; padding: 0; gap: 0;
             background: transparent;
-            border: 0;
-            border-top: 1px solid rgba(255,255,255,0.09);
-            border-bottom: 1px solid rgba(255,255,255,0.09);
-            border-radius: 0;
-            justify-content: center;
+            border-color: transparent;
           }
 
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-nav { margin-top: 12px; }
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-nav::-webkit-scrollbar { width: 0; }
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-group-items { grid-template-rows: 1fr; }
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-group-inner { opacity: 1; transform: none; }
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-logout { border-color: transparent; }
-
-          /* Section headers keep their box in the rail: the label fades out and
-             a hairline is painted in its place, so no icon below ever moves. */
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-section { background-size: 30px 1px; }
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-section > * {
-            opacity: 0;
-            transition: opacity .12s ease;
-          }
         }
 
         /* ── Motion ──────────────────────────────────────────────────
@@ -508,22 +510,20 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         .sb-panel .sb-headtext,
         .sb-panel .sb-usertext,
         .sb-panel .sb-label,
+        .sb-panel .sb-lead-label,
         .sb-panel .sb-link-dot {
           transition: opacity .22s ease .13s, transform .3s cubic-bezier(.32,.72,0,1) .13s;
         }
         @media (min-width: 1024px) {
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-headtext,
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-usertext,
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-label {
+          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-label,
+          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-lead-label {
             display: block;
             opacity: 0;
             transform: translateX(-8px);
             pointer-events: none;
             transition: opacity .12s ease, transform .12s ease;
-          }
-          .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-link-dot {
-            display: block; opacity: 0; pointer-events: none;
-            transition: opacity .12s ease;
           }
         }
 
@@ -586,7 +586,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         {/* Head */}
         <div className="sb-head">
           <div className="sb-mark">
-            <img src="/omsons_logo.jpeg" alt="Omsons" />
+            <img src="/Omsons_Logo.png" alt="Omsons" />
           </div>
           <div className="sb-headtext">
             <div className="sb-title">Workspace</div>
@@ -597,7 +597,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         {/* User card */}
         <div className="sb-user">
           <div className="sb-avatar">
-            {mounted ? getInitials(name) : "…"}
+            {!mounted ? "…" : user?.ADMIN_IMAGE
+              // eslint-disable-next-line @next/next/no-img-element
+              ? <img src={user.ADMIN_IMAGE} alt="" />
+              : getInitials(name)}
           </div>
           <div className="sb-usertext">
             <div className="sb-uname">
@@ -612,25 +615,32 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           </div>
         </div>
 
+        <div className="sb-divider" />
+
         {/* Nav */}
         <nav className="sb-nav">
           {grouped.map((group, gi) => {
-            const isOpen = !!group.section && openSection === group.section;
+            const lead = gi === 0 && !!group.section;
+            const isOpen = !lead && !!group.section && openSection === group.section;
+            const groupCount = group.items.reduce((sum, item) => sum + (item.badgeKey ? badgeCounts[item.badgeKey] ?? 0 : 0), 0);
             return (
-            <div key={gi} className={`sb-group${isOpen ? " open" : ""}${group.section ? "" : " bare"}`}>
-              {group.section ? (
-                <>
-                  <button
-                    type="button"
-                    className="sb-section"
-                    aria-expanded={isOpen}
-                    onClick={() => setOpenSection(isOpen ? null : group.section!)}
-                  >
-                    <span>{group.section}</span>
-                    <ChevronRight className="sb-section-icon" />
-                  </button>
-                  {gi > 0 && <span className="sb-rule" aria-hidden="true" />}
-                </>
+            <div key={gi} className={`sb-group${lead ? " lead" : ""}${isOpen ? " open" : ""}${group.section ? "" : " bare"}`}>
+              {lead ? (
+                <div className="sb-lead-label">{group.section}</div>
+              ) : group.section ? (
+                <button
+                  type="button"
+                  className="sb-section"
+                  aria-expanded={isOpen}
+                  onClick={() => setOpenSection(isOpen ? null : group.section!)}
+                >
+                  {SECTION_ICONS[group.section] ?? <FileText />}
+                  <span className="sb-label">{group.section}</span>
+                  {!isOpen && groupCount > 0 && (
+                    <span className="sb-count" aria-label={`${groupCount} pending`}>{groupCount > 99 ? "99+" : groupCount}</span>
+                  )}
+                  <ChevronRight className="sb-section-icon" />
+                </button>
               ) : null}
               <div className="sb-group-items">
                 <div className="sb-group-inner">
@@ -663,10 +673,12 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           })}
         </nav>
 
+        <div className="sb-divider" style={{ margin: "0 18px" }} />
+
         {/* Footer */}
         <div className="sb-foot">
           <button className="sb-logout" onClick={handleLogout} aria-label="Sign out">
-            <LogOut size={14} />
+            <LogOut />
             <span className="sb-label">Sign out</span>
           </button>
         </div>

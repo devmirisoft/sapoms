@@ -1,12 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { UploadApiResponse } from "cloudinary";
 import { prisma } from "@/server/db/prisma";
-import { cloudinary } from "@/lib/cloudinary";
+import { cloudinary, uploadImage } from "@/lib/cloudinary";
 import { parseBigIntRouteParam, requireAdmin } from "@/server/admin/admin-route";
 
 export const runtime = "nodejs";
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const CLOUDINARY_FOLDER = "sapoms/slider";
 
 type Params = { params: Promise<{ id: string }> };
@@ -32,22 +30,6 @@ function errorResponse(error: unknown) {
   return NextResponse.json({ success: false, message }, { status, headers: { "Cache-Control": "no-store" } });
 }
 
-async function uploadImage(file: File) {
-  if (!file.type.startsWith("image/")) throw Object.assign(new Error("Only image uploads are allowed"), { status: 400 });
-  if (file.size > MAX_IMAGE_BYTES) throw Object.assign(new Error("Image must be 5 MB or smaller"), { status: 400 });
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-  return new Promise<UploadApiResponse>((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { folder: CLOUDINARY_FOLDER, resource_type: "image" },
-      (error, result) => {
-        if (error || !result) reject(error ?? new Error("Cloudinary upload failed"));
-        else resolve(result);
-      }
-    );
-    stream.end(buffer);
-  });
-}
 
 function formString(form: FormData, key: string) {
   const value = form.get(key);
@@ -75,7 +57,7 @@ export async function PATCH(request: NextRequest, context: Params) {
 
     const file = form.get("image");
     if (file instanceof File && file.size > 0) {
-      const uploaded = await uploadImage(file);
+      const uploaded = await uploadImage(file, CLOUDINARY_FOLDER);
       uploadedPublicId = uploaded.public_id;
       data.imageUrl = uploaded.secure_url;
       data.cloudinaryPublicId = uploaded.public_id;

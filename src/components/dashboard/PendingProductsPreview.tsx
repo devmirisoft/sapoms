@@ -201,7 +201,7 @@ export default function PendingProductsPreview({ role, moreHref }: PendingProduc
           <div style={{ fontSize: 16, lineHeight: 1.2, fontWeight: 680, letterSpacing: "-.022em", color: "#1d1d1f" }}>Pending Products</div>
           <div style={{ fontSize: 11.5, lineHeight: 1.35, color: "#6e6e73", marginTop: 4 }}>Product-wise delivery quantities from eligible orders</div>
         </div>
-        <Link href={moreHref} style={{ color: "#007aff", fontSize: 11.5, fontWeight: 620, textDecoration: "none", whiteSpace: "nowrap" }}>
+        <Link href={moreHref} style={{ color: "#006162", fontSize: 11.5, fontWeight: 620, textDecoration: "none", whiteSpace: "nowrap" }}>
           View report &rarr;
         </Link>
       </div>

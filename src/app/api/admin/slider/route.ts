@@ -1,14 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import type { UploadApiResponse } from "cloudinary";
 import { prisma } from "@/server/db/prisma";
-import { cloudinary } from "@/lib/cloudinary";
+import { cloudinary, uploadImage } from "@/lib/cloudinary";
 import { requireAdmin, requestIdFrom } from "@/server/admin/admin-route";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const CLOUDINARY_FOLDER = "sapoms/slider";
 
 function safeTitle(value: FormDataEntryValue | null) {
@@ -36,22 +34,6 @@ function toDto(row: { id: bigint; title: string | null; imageUrl: string; positi
   };
 }
 
-async function uploadImage(file: File) {
-  if (!file.type.startsWith("image/")) throw Object.assign(new Error("Only image uploads are allowed"), { status: 400 });
-  if (file.size > MAX_IMAGE_BYTES) throw Object.assign(new Error("Image must be 5 MB or smaller"), { status: 400 });
-
-  const buffer = Buffer.from(await file.arrayBuffer());
-  return new Promise<UploadApiResponse>((resolve, reject) => {
-    const stream = cloudinary.uploader.upload_stream(
-      { folder: CLOUDINARY_FOLDER, resource_type: "image" },
-      (error, result) => {
-        if (error || !result) reject(error ?? new Error("Cloudinary upload failed"));
-        else resolve(result);
-      }
-    );
-    stream.end(buffer);
-  });
-}
 
 function errorResponse(error: unknown) {
   const message = error instanceof Error ? error.message : "Slider request failed";
@@ -79,7 +61,7 @@ export async function POST(request: NextRequest) {
     const file = form.get("image");
     if (!(file instanceof File)) throw Object.assign(new Error("Image file is required"), { status: 400 });
 
-    const uploaded = await uploadImage(file);
+    const uploaded = await uploadImage(file, CLOUDINARY_FOLDER);
     uploadedPublicId = uploaded.public_id;
 
     const row = await prisma.sliderImage.create({

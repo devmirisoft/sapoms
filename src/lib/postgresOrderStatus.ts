@@ -119,14 +119,13 @@ function requiresRsmApprovalBeforeAcceptance(actor: AuthActor) {
 }
 
 async function assertCanAct(actor: AuthActor, order: StatusOrder, permission: "read" | "acceptance" | "fulfilment" | "cancel") {
-  if (actor.role === "ADMIN") {
-    if (permission === "acceptance") {
-      throw new PostgresOrderStatusError(403, "forbidden", "Admin cannot approve or disapprove orders.");
-    }
-    return;
+  // Acceptance is a two-step chain: RSM approves first, then STAFF accepts.
+  if (permission === "acceptance" && actor.role !== "RSM" && actor.role !== "STAFF") {
+    throw new PostgresOrderStatusError(403, "forbidden", "Only RSM and Staff can approve or accept orders.");
   }
+  if (actor.role === "ADMIN") return;
   if (actor.role === "NSM") {
-    if (permission === "read" || permission === "acceptance" || permission === "fulfilment") return;
+    if (permission === "read" || permission === "fulfilment") return;
     throw new PostgresOrderStatusError(403, "forbidden", "NSM cannot cancel Dealer orders.");
   }
   if (actor.role === "DEALER") {

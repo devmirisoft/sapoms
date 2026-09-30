@@ -115,9 +115,12 @@ test("new dealer requests retain the full form snapshot and open-request identit
     },
     snapshot,
     now: "2026-07-13T10:00:00.000Z",
+    status: "rsm_pending",
+    rsmUserId: 9n,
   });
 
-  assert.equal(doc.status, "pending");
+  assert.equal(doc.status, "rsm_pending");
+  assert.equal(doc.rsmUserId, 9n);
   assert.equal(doc.dealerName, "North Labs");
   assert.equal(doc.formSnapshot.password, "secret123");
   assert.equal(doc.openRequestKey, dealerRequests.buildDealerRequestIdentityKey(snapshot, "17"));

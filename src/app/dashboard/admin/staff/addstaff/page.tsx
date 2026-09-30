@@ -1,6 +1,7 @@
 'use client'
 
 import DateInput from "@/components/ui/date-input";
+import { adultDobCutoff } from "@/lib/staffDob";
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
@@ -52,13 +53,14 @@ function FieldLabel({ label, required = true }: { label: string; required?: bool
   )
 }
 
-function InputField({ label, value, onChange, type = 'text', placeholder, required = true, readOnly = false, hint }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; required?: boolean; readOnly?: boolean; hint?: string }) {
+function InputField({ label, value, onChange, type = 'text', placeholder, required = true, readOnly = false, hint, max }: { label: string; value: string; onChange: (v: string) => void; type?: string; placeholder?: string; required?: boolean; readOnly?: boolean; hint?: string; max?: string }) {
   return (
     <div className="flex flex-col gap-1.5">
       <FieldLabel label={label} required={required} />
       {type === 'date' ? (
         <DateInput
           required={required}
+          max={max}
           value={value}
           onChange={e => onChange(e.target.value)}
           className={`px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition w-full ${readOnly ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white'}`}
@@ -346,7 +348,7 @@ export default function AddStaffPage() {
                 <InputField label="Mobile No." value={mobileNo} onChange={setMobileNo} type="tel" placeholder="10-digit mobile number" />
                 <InputField label="Alternate Number" value={alternateNo} onChange={setAlternateNo} type="tel" placeholder="Alternate contact number" required={false} />
                 <SelectField label="Gender" value={gender} onChange={setGender} options={GENDER_OPTIONS} />
-                <InputField label="Date of Birth" value={dob} onChange={setDob} type="date" />
+                <InputField label="Date of Birth" value={dob} onChange={setDob} type="date" max={adultDobCutoff()} hint="Add DOB to get discount. Must be 18 or older; only an admin can change it later." />
                 <InputField label="Nationality" value={nationality} onChange={setNationality} placeholder="e.g. Indian" required={false} />
                 <SelectField label="Marital Status" value={maritalStatus} onChange={setMaritalStatus} options={MARITAL_STATUS_OPTIONS} required={false} />
                 <SelectField label="Qualification" value={qualification} onChange={setQualification} options={QUALIFICATION_OPTIONS} required={false} />

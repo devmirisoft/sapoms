@@ -19,7 +19,7 @@ import { formatWarehouseLabel } from "@/lib/warehouses";
 const ADMIN_STAFF_URL = "/api/admin/staff";
 const DEALER_CODE_PREFIX = "OM-";
 
-type DealerFormMode = "admin-create" | "staff-submit" | "admin-review" | "staff-resubmit";
+type DealerFormMode = "admin-create" | "staff-submit" | "admin-review" | "rsm-review" | "staff-resubmit";
 type DealerDetailsTab = "company" | "alternate" | "remarks";
 export type AssignmentRoleKey = "rsm" | "asm" | "salesManager" | "executive";
 export type RoleAssignments = Record<AssignmentRoleKey, string>;
@@ -80,6 +80,13 @@ function getModeCopy(mode: DealerFormMode) {
         subtitle: "Review the submitted values, make corrections if needed, and accept the request to create the real dealer.",
         submitLabel: "Accept Request",
         submittingLabel: "Approving...",
+      };
+    case "rsm-review":
+      return {
+        title: "Review Dealer Request",
+        subtitle: "Review your team's request, make corrections if needed, and approve it to forward to admin.",
+        submitLabel: "Approve & Forward to Admin",
+        submittingLabel: "Forwarding...",
       };
     case "staff-resubmit":
       return {
@@ -237,7 +244,7 @@ export default function DealerFormCard({
 
   const isAdvanceDealer = formData.paymentType === "advance";
 
-  const dealerCodeLocked = mode === "staff-submit" || mode === "staff-resubmit";
+  const dealerCodeLocked = mode === "staff-submit" || mode === "staff-resubmit" || mode === "rsm-review";
   const dealerCodeHint = dealerCodeError
     ? dealerCodeError
     : dealerCodeLoading

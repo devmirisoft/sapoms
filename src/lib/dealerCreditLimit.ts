@@ -4,12 +4,13 @@ import type { Prisma } from "@prisma/client";
  * Credit-limit and credit-day enforcement for dealers who buy on credit terms
  * (dealer.creditDays is set) rather than through a prepaid wallet.
  *
- * The limit never frees up when an order is billed or paid - it only tracks
- * how much the dealer has ever ordered against dealer.creditLimitPaise. On top
- * of it sits a temporary pot (tempCreditLimitPaise) that orders draw down once
- * the base headroom is gone; when it hits zero the dealer is back on the base
- * limit. The overdue check blocks ordering while any ledger bill is past
- * billDate + creditDays + bill.extraCreditDays without being paid in full.
+ * Used credit is everything ordered (not cancelled) plus debit notes, minus what
+ * the accountant has recorded as paid against bills - so paying a 2k bill frees
+ * 2k of limit. On top of dealer.creditLimitPaise sits a temporary pot
+ * (tempCreditLimitPaise) that orders draw down once the base headroom is gone;
+ * at zero the dealer is back on the base limit. The overdue check blocks
+ * ordering while any bill is past billDate + creditDays + bill.extraCreditDays
+ * without being paid in full.
  */
 
 type CreditClient = Pick<Prisma.TransactionClient, "order" | "ledgerBill">;
@@ -19,7 +20,6 @@ export type CreditDealer = {
   creditDays: number | null;
   creditLimitPaise: bigint | null;
   tempCreditLimitPaise: bigint;
-  tempCreditConsumedPaise: bigint;
 };
 
 export type DealerCreditStatus = {
@@ -33,6 +33,7 @@ export type DealerCreditStatus = {
 };
 
 const DAY_MS = 86_400_000;
+const ZERO = BigInt(0);
 
 export function billDueDate(billDate: Date, creditDays: number, extraCreditDays: number) {
   return new Date(billDate.getTime() + (creditDays + extraCreditDays) * DAY_MS);
@@ -49,17 +50,18 @@ export async function getDealerCreditStatus(client: CreditClient, dealer: Credit
     }),
     client.ledgerBill.findMany({
       where: { dealerId: dealer.id },
-      select: { billAmountPaise: true, paidAmountPaise: true, billDate: true, extraCreditDays: true },
+      select: { billAmountPaise: true, paidAmountPaise: true, debitNotePaise: true, billDate: true, extraCreditDays: true },
     }),
   ]);
 
-  const usedPaise = orders.reduce((sum, order) => sum + order.finalPayableAmountPaise, BigInt(0));
+  const owedPaise = orders.reduce((sum, order) => sum + order.finalPayableAmountPaise, ZERO)
+    + bills.reduce((sum, bill) => sum + bill.debitNotePaise - bill.paidAmountPaise, ZERO);
+  const usedPaise = owedPaise > ZERO ? owedPaise : ZERO;
   const creditLimitPaise = dealer.creditLimitPaise;
   let baseHeadroomPaise: bigint | null = null;
   let remainingPaise: bigint | null = null;
   if (creditLimitPaise !== null) {
-    const baseUsed = usedPaise - dealer.tempCreditConsumedPaise;
-    baseHeadroomPaise = creditLimitPaise > baseUsed ? creditLimitPaise - baseUsed : BigInt(0);
+    baseHeadroomPaise = creditLimitPaise > usedPaise ? creditLimitPaise - usedPaise : ZERO;
     remainingPaise = baseHeadroomPaise + dealer.tempCreditLimitPaise;
   }
 
@@ -81,6 +83,37 @@ export async function getDealerCreditStatus(client: CreditClient, dealer: Credit
 
 /** How much of an order the temporary pot has to cover once base headroom is used up. */
 export function tempCreditDraw(status: DealerCreditStatus, orderPaise: bigint) {
-  if (status.baseHeadroomPaise === null || orderPaise <= status.baseHeadroomPaise) return BigInt(0);
+  if (status.baseHeadroomPaise === null || orderPaise <= status.baseHeadroomPaise) return ZERO;
   return orderPaise - status.baseHeadroomPaise;
+}
+
+export type CreditBlock = { code: "credit_overdue" | "credit_limit_exceeded"; message: string };
+
+const rupees = (paise: bigint) => `₹${(Number(paise) / 100).toLocaleString("en-IN")}`;
+
+/**
+ * Gate every order a credit-terms dealer places, whichever path creates it.
+ * Returns why the order is blocked, or null once it may go ahead (having drawn
+ * any temporary headroom it needs). The row lock serialises one dealer's
+ * concurrent orders so two of them can't both pass the headroom check.
+ */
+export async function reserveDealerCredit(tx: Prisma.TransactionClient, dealerId: bigint, orderPaise: bigint): Promise<CreditBlock | null> {
+  await tx.$executeRaw`SELECT id FROM dealer_profiles WHERE id = ${dealerId} FOR UPDATE`;
+  const dealer = await tx.dealerProfile.findUnique({
+    where: { id: dealerId },
+    select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true },
+  });
+  const credit = dealer ? await getDealerCreditStatus(tx, dealer) : null;
+  if (!credit) return null;
+  if (credit.isOverdue) {
+    return { code: "credit_overdue", message: "Payment is overdue on a previous bill. Clear the outstanding dues before placing a new order." };
+  }
+  if (credit.remainingPaise !== null && credit.remainingPaise < orderPaise) {
+    return { code: "credit_limit_exceeded", message: `Credit limit exceeded. Available: ${rupees(credit.remainingPaise)}. Required: ${rupees(orderPaise)}.` };
+  }
+  const draw = tempCreditDraw(credit, orderPaise);
+  if (draw > ZERO) {
+    await tx.dealerProfile.update({ where: { id: dealerId }, data: { tempCreditLimitPaise: { decrement: draw } } });
+  }
+  return null;
 }

@@ -52,6 +52,7 @@ function toWhere(query?: Query): Prisma.DealerRequestWhereInput {
 
   if (typeof query.status === "string") and.push({ status: query.status });
   if (typeof query.submittedById === "string") and.push({ submittedById: query.submittedById });
+  if (query.rsmUserId !== undefined) and.push({ rsmUserId: idValue(query.rsmUserId) ?? BigInt(-1) });
   if (query.openRequestKey !== undefined) and.push({ openRequestKey: query.openRequestKey === null ? null : String(query.openRequestKey) });
 
   for (const key of ["dealerName", "dealerCode", "city", "contactEmail", "contactPhone", "assignedStaffNames", "submittedByName", "requestReference"] as const) {

@@ -2,154 +2,90 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Save } from "lucide-react";
 import { showToast } from "@/components/ui/toast";
+import { SALES_REGION_OPTIONS } from "@/lib/salesRegions";
+import { WAREHOUSE_OPTIONS } from "@/lib/warehouses";
 
-type StaffSession = {
-  staff_id?: string;
-  staff_name?: string;
-  staff_designation?: string;
-  staff_location?: string;
-  sales_region?: string;
-  salesRegion?: string;
-  staff_password?: string;
-  staff_email?: string;
-  staff_roletype?: string;
-  image?: string;
-  name?: string;
-  staff_image?: string;
+type Person = { id: string; name: string; email?: string } | null;
+
+type StaffProfile = {
+  name: string;
+  email: string;
+  staff_username: string;
+  designation: string;
+  location: string;
+  mobileNo: string;
+  alternateNo: string;
+  permanentAddress: string;
+  localAddress: string;
+  gender: string;
+  dob: string;
+  nationality: string;
+  maritalStatus: string;
+  qualification: string;
+  emergencyContactNo1: string;
+  emergencyContactNo2: string;
+  role: string;
+  staffRoleType: string;
+  status: string;
+  salesRegion: string;
+  warehouse: string;
+  parentRsm: Person;
+  parentAsm: Person;
+  rsms: NonNullable<Person>[];
+  assignedStates: string[];
+  assignedCities: string[];
 };
 
-function formatSalesRegion(value?: string) {
-  const normalized = String(value ?? "").trim().toUpperCase();
-  if (!normalized) return "";
-  return normalized.charAt(0) + normalized.slice(1).toLowerCase();
+// Mirrors the role labels on the admin staff form.
+function roleLabel(role: string, staffRoleType: string) {
+  if (role === "RSM" || role === "ASM" || role === "NSM") return role;
+  if (staffRoleType === "2") return "Staff";
+  if (staffRoleType === "1") return "Sales Manager";
+  return role || "—";
 }
 
-function readStaffSession(): StaffSession | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem("staffData") || localStorage.getItem("UserData");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
-}
+const optionLabel = (options: readonly { value: string; label: string }[], value: string) =>
+  options.find((option) => option.value === value)?.label || value;
 
-function Field({
-  label,
-  value,
-  onChange,
-  type = "text",
-  readOnly = false,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  type?: string;
-  readOnly?: boolean;
-}) {
+const personLabel = (person: Person) => (person ? `${person.name}${person.email ? ` (${person.email})` : ""}` : "");
+
+function Field({ label, value, wide = false }: { label: string; value?: string; wide?: boolean }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <label className="text-xs font-medium uppercase tracking-wide text-gray-600">
-        {label}
-        <span className="ml-0.5 text-orange-500">*</span>
-      </label>
-      <input
-        required={!readOnly}
-        readOnly={readOnly}
-        type={type}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`rounded-lg border border-gray-200 px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500 ${readOnly ? "bg-gray-50" : "bg-white"}`}
-      />
+    <div className={`flex flex-col gap-1.5 ${wide ? "md:col-span-2" : ""}`}>
+      <span className="text-xs font-medium uppercase tracking-wide text-gray-600">{label}</span>
+      <div className="min-h-[42px] whitespace-pre-wrap rounded-lg border border-gray-200 bg-gray-50 px-3 py-2.5 text-sm text-gray-900">
+        {value || "—"}
+      </div>
     </div>
+  );
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
+      <h2 className="mb-5 border-b border-gray-100 pb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">{title}</h2>
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2">{children}</div>
+    </section>
   );
 }
 
 export default function StaffProfilePage() {
   const router = useRouter();
-  const [staffId, setStaffId] = useState("");
+  const [profile, setProfile] = useState<StaffProfile | null>(null);
   const [isLoading, setIsLoading] = useState(true);
-  const [isSaving, setIsSaving] = useState(false);
-
-  const [name, setName] = useState("");
-  const [designation, setDesignation] = useState("");
-  const [location, setLocation] = useState("");
-  const [salesRegion, setSalesRegion] = useState("");
-  const [password, setPassword] = useState("");
 
   useEffect(() => {
-    const session = readStaffSession();
-    const id = String(session?.staff_id || "");
-    if (!id) {
-      router.push("/auth/login");
-      return;
-    }
-    setStaffId(id);
-
-    const loadStaff = async () => {
-      setIsLoading(true);
-      try {
-        const response = await fetch("/api/staff/profile", { cache: "no-store" });
+    fetch("/api/staff/profile", { cache: "no-store" })
+      .then(async (response) => {
+        if (response.status === 401) { router.push("/auth/login"); return; }
         const json = await response.json();
-        const data = json.data || session || {};
-        setName(data.staff_name || "");
-        setDesignation(data.staff_designation || "");
-        setLocation(data.staff_location || "");
-        setSalesRegion(data.sales_region || data.salesRegion || "");
-        setPassword(data.staff_password || "");
-      } catch {
-        showToast("error", "Failed to load staff profile");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    loadStaff();
+        if (!response.ok || !json.success) throw new Error(json.message);
+        setProfile(json.data as StaffProfile);
+      })
+      .catch(() => showToast("error", "Failed to load staff profile"))
+      .finally(() => setIsLoading(false));
   }, [router]);
-
-
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!staffId) return;
-
-    setIsSaving(true);
-    try {
-      const response = await fetch("/api/staff/profile", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ staff_name: name, staff_designation: designation, staff_location: location, staff_password: password }),
-      });
-      const payload = await response.json();
-      if (!response.ok || !payload.success) throw new Error(payload.message || "Update failed");
-      const previous = readStaffSession() || {};
-      const payloadData = payload?.data || {};
-      const updated = {
-        ...previous,
-        ...payloadData,
-        staff_id: staffId,
-        staff_name: name,
-        staff_designation: designation,
-        staff_location: location,
-        sales_region: payloadData.sales_region || payloadData.salesRegion || previous.sales_region || previous.salesRegion || "",
-        salesRegion: payloadData.salesRegion || payloadData.sales_region || previous.salesRegion || previous.sales_region || "",
-        staff_password: password,
-        name: payloadData.name || previous.name || name,
-        image: payloadData.image || previous.image || undefined,
-      };
-      localStorage.setItem("status", "true");
-      localStorage.setItem("UserData", JSON.stringify(updated));
-      localStorage.setItem("staffData", JSON.stringify(updated));
-      localStorage.setItem("roletype", String(updated.staff_roletype || previous.staff_roletype || "1"));
-      showToast("success", payload?.msg || "Staff profile updated");
-      setTimeout(() => window.location.reload(), 700);
-    } catch {
-      showToast("error", "Failed to update staff profile");
-    } finally {
-      setIsSaving(false);
-    }
-  };
 
   if (isLoading) {
     return (
@@ -162,42 +98,54 @@ export default function StaffProfilePage() {
     );
   }
 
+  if (!profile) return <div className="min-h-screen bg-gray-100 p-6 text-sm text-gray-500">Profile unavailable.</div>;
+
+  const p = profile;
+  const isRsm = p.role === "RSM";
+  const isAsm = p.role === "ASM";
+  const isFieldStaff = p.role === "STAFF" && p.staffRoleType === "2";
+  const isSalesManager = p.role === "STAFF" && p.staffRoleType === "1";
+
   return (
     <div className="min-h-screen bg-gray-100 p-6">
-
       <div className="mx-auto max-w-[1840px]">
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">Staff Profile</h1>
-          <p className="mt-1 text-sm text-gray-500">Update your staff account details</p>
+          <p className="mt-1 text-sm text-gray-500">Your account details. Contact an admin to change anything here.</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <section className="rounded-xl border border-gray-200 bg-white p-6 shadow-sm">
-            <h2 className="mb-5 border-b border-gray-100 pb-3 text-sm font-semibold uppercase tracking-wide text-gray-700">
-              Staff Details
-            </h2>
-            <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
-              <Field label="Name" value={name} onChange={setName} />
-              <Field label="Designation" value={designation} onChange={setDesignation} />
-              <Field label="Location" value={location} onChange={setLocation} />
-              {String((readStaffSession()?.staff_roletype ?? "")).toUpperCase() === "RSM" && (
-                <Field label="RSM Region" value={formatSalesRegion(salesRegion)} onChange={() => {}} readOnly />
-              )}
-              <Field label="Password" value={password} onChange={setPassword} type="password" />
-            </div>
-          </section>
+        <div className="space-y-6 pb-6">
+          <Section title="Personal Information">
+            <Field label="Full Name" value={p.name} />
+            <Field label="Designation" value={p.designation} />
+            <Field label="Email" value={p.email} />
+            <Field label="Location" value={p.location} />
+            <Field label="Mobile No." value={p.mobileNo} />
+            <Field label="Alternate Number" value={p.alternateNo} />
+            <Field label="Gender" value={p.gender} />
+            <Field label="Date of Birth" value={p.dob} />
+            <Field label="Nationality" value={p.nationality} />
+            <Field label="Marital Status" value={p.maritalStatus} />
+            <Field label="Qualification" value={p.qualification} />
+            <Field label="Emergency Contact No. 1" value={p.emergencyContactNo1} />
+            <Field label="Emergency Contact No. 2" value={p.emergencyContactNo2} />
+            <Field label="Permanent Address" value={p.permanentAddress} />
+            <Field label="Local Address" value={p.localAddress} />
+          </Section>
 
-          <div className="flex justify-end gap-3 pb-6">
-            <button
-              type="submit"
-              disabled={isSaving}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-6 py-2.5 text-sm font-medium text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              <Save className="h-4 w-4" />
-              {isSaving ? "Saving..." : "Save Changes"}
-            </button>
-          </div>
-        </form>
+          <Section title="Account Settings">
+            <Field label="Username" value={p.staff_username} />
+            <Field label="Status" value={p.status === "ACTIVE" ? "Active" : "Inactive"} />
+            <Field label="Role" value={roleLabel(p.role, p.staffRoleType)} />
+            {isRsm && <Field label="Region" value={optionLabel(SALES_REGION_OPTIONS, p.salesRegion)} />}
+            {isFieldStaff && <Field label="Warehouse" value={optionLabel(WAREHOUSE_OPTIONS, p.warehouse)} />}
+            {isFieldStaff && <Field label="RSMs" value={p.rsms.map(personLabel).join("\n")} wide />}
+            {isAsm && <Field label="RSM" value={personLabel(p.parentRsm)} />}
+            {isSalesManager && <Field label="ASM" value={personLabel(p.parentAsm)} />}
+            {(isRsm || isAsm) && <Field label="States" value={p.assignedStates.join(", ")} wide />}
+            {isSalesManager && <Field label="Cities" value={p.assignedCities.join(", ")} wide />}
+          </Section>
+        </div>
       </div>
     </div>
   );

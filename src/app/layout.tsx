@@ -14,9 +14,9 @@ export const metadata: Metadata = {
   title: "Omsons",
   description: "Omsons Germany",
   icons: {
-    icon: "/omsons_logo.jpeg",
-    shortcut: "/omsons_logo.jpeg",
-    apple: "/omsons_logo.jpeg",
+    icon: "/Omsons_Logo.png",
+    shortcut: "/Omsons_Logo.png",
+    apple: "/Omsons_Logo.png",
   },
 };
 
@@ -29,7 +29,7 @@ export default function RootLayout({
     <html lang="en-IN" className={cn("font-sans", geist.variable)}>
       <body className="antialiased">
         <ReactQueryProvider>
-          <Toaster>
+          <Toaster limit={5}>
             <DealerTermsGate />
             <DealerPasswordGate />
             {children}

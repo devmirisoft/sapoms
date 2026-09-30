@@ -19,7 +19,7 @@ import {
   X,
 } from 'lucide-react'
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay'
-import { billableOrders, dispatchedOrderAmount } from '@/components/ledger/DealerBillsPanel'
+import { billableOrders } from '@/components/ledger/DealerBillsPanel'
 import { resolveStoredAuth } from '@/lib/roleAccess'
 import { showToast } from "@/components/ui/toast";
 
@@ -224,8 +224,6 @@ function orderLabel(order: RawOrder) {
   return formatLedgerOrderId(orderNumber(order))
 }
 
-const orderAmount = dispatchedOrderAmount
-
 function roundForInput(value: number) {
   return Math.round(value * 100) / 100
 }
@@ -394,9 +392,9 @@ export default function DealerLedgerShellPage() {
       const nextOrderNumbers = checked
         ? Array.from(new Set([...prev.orderNumbers, nextOrderNumber]))
         : prev.orderNumbers.filter((orderNumber) => orderNumber !== nextOrderNumber)
-      const selectedOrders = (billDealer ? dealerDetails[billDealer.Dealer_Id]?.orders || [] : [])
+      const selectedOrders = (billDealer ? billableOrders(dealerDetails[billDealer.Dealer_Id]?.orders || [], billsByDealer[billDealer.Dealer_Id] || []) : [])
         .filter((order) => nextOrderNumbers.includes(orderNumber(order)))
-      const nextAmount = selectedOrders.reduce((sum, order) => sum + orderAmount(order), 0)
+      const nextAmount = selectedOrders.reduce((sum, order) => sum + order.unbilled, 0)
 
       return {
         ...prev,
@@ -737,7 +735,7 @@ export default function DealerLedgerShellPage() {
 
                 {orderDropdownOpen && (
                   <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-300 bg-white shadow-lg">
-                    {billableOrders(dealerDetails[billDealer.Dealer_Id]?.orders || [])
+                    {billableOrders(dealerDetails[billDealer.Dealer_Id]?.orders || [], billsByDealer[billDealer.Dealer_Id] || [])
                       .map((order) => {
                         const currentOrderNumber = orderNumber(order)
                         return (
@@ -749,11 +747,11 @@ export default function DealerLedgerShellPage() {
                               className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
                             />
                             <span className="flex-1 text-gray-900">{orderLabel(order)}</span>
-                            <span className="text-xs font-semibold text-gray-600">{formatAmount(orderAmount(order))}</span>
+                            <span className="text-xs font-semibold text-gray-600">{formatAmount(order.unbilled)}</span>
                           </label>
                         )
                       })}
-                    {billableOrders(dealerDetails[billDealer.Dealer_Id]?.orders || []).length === 0 && (
+                    {billableOrders(dealerDetails[billDealer.Dealer_Id]?.orders || [], billsByDealer[billDealer.Dealer_Id] || []).length === 0 && (
                       <div className="px-3 py-4 text-sm text-gray-400">No dispatched orders to bill</div>
                     )}
                   </div>

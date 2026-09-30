@@ -1,7 +1,7 @@
 import { Prisma, type DealerRequest } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/server/auth/session";
-import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
+import { isAdminLike, isStaffLike, resolveDealerRequestRoute } from "@/server/auth/sales-scope";
 import { errorStatus } from "@/server/http/auth-error";
 
 import { AdminRouteError } from "@/server/admin/admin-errors";
@@ -41,6 +41,7 @@ function actorFromAuth(authActor: Awaited<ReturnType<typeof requireAuth>>): Deal
       actorId: authActor.staffId.toString(),
       actorName: authActor.displayName || authActor.email || "Staff",
       roletype: authActor.role,
+      userId: authActor.userId.toString(),
     };
   }
 
@@ -188,7 +189,8 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const actor = actorFromAuth(await requireAuth());
+    const authActor = await requireAuth();
+    const actor = actorFromAuth(authActor);
 
     if (!actor || (actor.role !== "admin" && actor.role !== "staff")) {
       return buildResponseError("Dealer request access is restricted to admin and staff-like roles", 403);
@@ -211,6 +213,51 @@ export async function PATCH(
     const transitionError = ensureStatusTransition(current.status, action);
     if (transitionError) {
       return buildResponseError(transitionError, 409);
+    }
+
+    // A Sales Manager/ASM request is the RSM's to accept or reject before admin
+    // sees it; the access query already limits an RSM to requests routed to it.
+    const atRsmStage = current.status === "rsm_pending";
+    const canReview = atRsmStage ? actor.roletype === "RSM" : actor.role === "admin";
+    if ((action === "accept" || action === "reject") && !canReview) {
+      return buildResponseError(atRsmStage ? "This request is waiting for RSM review" : "Only admin can review this dealer request", 403);
+    }
+
+    if (action === "accept" && atRsmStage) {
+      let snapshot = normalizeDealerFormSnapshot(body.formSnapshot ?? existing.formSnapshot);
+      // The code was reserved when the request was raised; keep it.
+      snapshot = { ...snapshot, dealerCode: current.dealerCode };
+      const validationError = validateDealerFormSnapshot(snapshot);
+      if (validationError) {
+        return buildResponseError(validationError, 400);
+      }
+
+      const now = new Date().toISOString();
+      const forwarded = await collection.findOneAndUpdate(
+        { _id: oid, status: "rsm_pending" },
+        {
+          $set: {
+            ...buildSnapshotSummary(snapshot),
+            formSnapshot: snapshot,
+            status: "pending",
+            updatedAt: now,
+            auditTrail: appendAuditEntry(current.auditTrail, {
+              action: "rsm_approved",
+              at: now,
+              actorId: actor.actorId,
+              actorName: actor.actorName,
+              actorRole: actor.role,
+            }),
+          },
+        },
+        { returnDocument: "after" },
+      );
+
+      if (!forwarded) {
+        return buildResponseError("This request can no longer be approved", 409);
+      }
+
+      return NextResponse.json({ success: true, data: toDealerRequestDetail(forwarded) });
     }
 
     if (action === "accept") {
@@ -302,10 +349,6 @@ export async function PATCH(
       }
     }
     if (action === "reject") {
-      if (actor.role !== "admin") {
-        return buildResponseError("Only admin can reject dealer requests", 403);
-      }
-
       const rejectionReason = String(body.rejectionReason ?? "").trim().slice(0, 1500);
       if (!rejectionReason) {
         return buildResponseError("Rejection reason is required", 400);
@@ -324,7 +367,7 @@ export async function PATCH(
 
       const now = new Date().toISOString();
       const rejected = await collection.findOneAndUpdate(
-        { _id: oid, status: "pending" },
+        { _id: oid, status: current.status },
         {
           $set: {
             ...(hasSnapshot ? buildSnapshotSummary(snapshot) : {}),
@@ -364,6 +407,8 @@ export async function PATCH(
     if (actor.role !== "staff" || current.submittedById !== actor.actorId) {
       return buildResponseError("Only the submitting staff-like user can resubmit this request", 403);
     }
+    // Re-route from the submitter's current place in the hierarchy.
+    const route = await resolveDealerRequestRoute(authActor, prisma);
 
     let snapshot = normalizeDealerFormSnapshot(body.formSnapshot ?? existing.formSnapshot);
     const dealerCode = await generatePostgresDealerCode(snapshot.dealerCode);
@@ -396,7 +441,7 @@ export async function PATCH(
             ...buildSnapshotSummary(snapshot),
             formSnapshot: snapshot,
             requestIdentityKey: buildDealerRequestIdentityKey(snapshot, actor.actorId),
-            status: "pending",
+            ...route,
             reviewedById: "",
             reviewedByName: "",
             reviewedAt: "",

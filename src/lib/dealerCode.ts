@@ -1,7 +1,7 @@
 export const MIN_DEALER_CODE = 1000;
 export const MAX_DEALER_CODE = 9999;
 export const DEALER_CODE_WIDTH = 4;
-export const RESERVED_DEALER_REQUEST_STATUSES = ["pending"] as const;
+export const RESERVED_DEALER_REQUEST_STATUSES = ["pending", "rsm_pending"] as const;
 
 export function normalizeDealerCode(value: unknown) {
   return typeof value === "string" || typeof value === "number"

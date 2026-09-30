@@ -19,17 +19,31 @@ const { getDealerCreditStatus, tempCreditDraw } = await loadModule("src/lib/deal
 const DAY = 86_400_000;
 const client = (orderPaise, bills = []) => ({
   order: { findMany: async () => orderPaise.map((finalPayableAmountPaise) => ({ finalPayableAmountPaise })) },
-  ledgerBill: { findMany: async () => bills },
+  ledgerBill: { findMany: async () => bills.map((bill) => ({ debitNotePaise: 0n, extraCreditDays: 0, billDate: new Date(), ...bill })) },
 });
-const dealer = (over = {}) => ({ id: 1n, creditDays: 30, creditLimitPaise: 50_000n, tempCreditLimitPaise: 0n, tempCreditConsumedPaise: 0n, ...over });
+const dealer = (over = {}) => ({ id: 1n, creditDays: 30, creditLimitPaise: 50_000n, tempCreditLimitPaise: 0n, ...over });
 
 test("advance dealers (no credit days) are not credit-checked", async () => {
   assert.equal(await getDealerCreditStatus(client([]), dealer({ creditDays: null })), null);
 });
 
-test("limit is lifetime ordered total, paid or not", async () => {
-  const status = await getDealerCreditStatus(client([30_000n, 20_000n]), dealer());
-  assert.equal(status.remainingPaise, 0n);
+test("limit is ordered minus paid: recording a payment frees that much again", async () => {
+  const limit = dealer({ creditLimitPaise: 10_000n });
+  assert.equal((await getDealerCreditStatus(client([10_000n]), limit)).remainingPaise, 0n);
+  // 2k dispatched, billed and paid -> 2k back.
+  const paid = { billAmountPaise: 2_000n, paidAmountPaise: 2_000n };
+  assert.equal((await getDealerCreditStatus(client([10_000n], [paid]), limit)).remainingPaise, 2_000n);
+  // Billed but unpaid frees nothing.
+  assert.equal((await getDealerCreditStatus(client([10_000n], [{ ...paid, paidAmountPaise: 0n }]), limit)).remainingPaise, 0n);
+  // An unpaid debit note counts as owed.
+  assert.equal((await getDealerCreditStatus(client([8_000n], [{ billAmountPaise: 2_500n, paidAmountPaise: 0n, debitNotePaise: 500n }]), limit)).remainingPaise, 1_500n);
+});
+
+test("temporary limit, once used, leaves the dealer on the base limit even after payments", async () => {
+  // 50k base, 60k ordered (10k temp spent): paying 10k only brings it back to the 50k line.
+  const bills = (paid) => [{ billAmountPaise: 60_000n, paidAmountPaise: paid }];
+  assert.equal((await getDealerCreditStatus(client([60_000n], bills(10_000n)), dealer())).remainingPaise, 0n);
+  assert.equal((await getDealerCreditStatus(client([60_000n], bills(60_000n)), dealer())).remainingPaise, 50_000n);
 });
 
 test("temporary limit is drawn only past base headroom, then the base limit is back", async () => {
@@ -39,12 +53,12 @@ test("temporary limit is drawn only past base headroom, then the base limit is b
   assert.equal(tempCreditDraw(before, 12_000n), 7_000n);
 
   // After that order: temp 3k left, 7k consumed; base is fully spent.
-  const after = await getDealerCreditStatus(client([45_000n, 12_000n]), dealer({ tempCreditLimitPaise: 3_000n, tempCreditConsumedPaise: 7_000n }));
+  const after = await getDealerCreditStatus(client([45_000n, 12_000n]), dealer({ tempCreditLimitPaise: 3_000n }));
   assert.equal(after.baseHeadroomPaise, 0n);
   assert.equal(after.remainingPaise, 3_000n);
 
   // A fresh 10k grant later gives exactly 10k more, not 10k minus the overshoot.
-  const regrant = await getDealerCreditStatus(client([45_000n, 12_000n, 3_000n]), dealer({ tempCreditLimitPaise: 10_000n, tempCreditConsumedPaise: 10_000n }));
+  const regrant = await getDealerCreditStatus(client([45_000n, 12_000n, 3_000n]), dealer({ tempCreditLimitPaise: 10_000n }));
   assert.equal(regrant.remainingPaise, 10_000n);
 });
 

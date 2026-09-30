@@ -16,7 +16,7 @@ async function loadModule(relativePath) {
   return import(`data:text/javascript;base64,${Buffer.from(transpiled, "utf8").toString("base64")}`);
 }
 
-const { summarizeOrderSettlement, orderSettlementLabel } = await loadModule("src/lib/orderSettlement.ts");
+const { summarizeOrderSettlement, orderSettlementLabel, allocateOldestFirst } = await loadModule("src/lib/orderSettlement.ts");
 
 const orders = await readFile(new URL("./postgresOrders.ts", import.meta.url), "utf8");
 const ledger = await readFile(new URL("./ledgerSystem.ts", import.meta.url), "utf8");
@@ -47,7 +47,7 @@ test("a partial settlement reports the remaining balance", () => {
   assert.equal(summary.status, "part_settled");
   assert.equal(summary.paidAmount, 200);
   assert.equal(summary.dueAmount, 300);
-  assert.equal(orderSettlementLabel(summary.status), "Part settled");
+  assert.equal(orderSettlementLabel(summary.status), "Partially paid");
 });
 
 test("the order payable wins over the billed total as the denominator", () => {
@@ -90,4 +90,31 @@ test("the invoice prints paid and balance only when something was settled", () =
 test("ledger totals still exclude settlement transactions", () => {
   // Counting them would drop the dealer's outstanding twice for one payment.
   assert.match(ledger, /if \(isSettlementTransaction\(tx\.metadata\)\) return totals/);
+});
+
+test("a payment clears the oldest dues first and leaves the rest on account", () => {
+  const bills = [
+    { id: "old", billAmountPaise: 10000n, paidAmountPaise: 4000n },
+    { id: "paid", billAmountPaise: 5000n, paidAmountPaise: 5000n },
+    { id: "mid", billAmountPaise: 8000n, paidAmountPaise: 0n },
+    { id: "new", billAmountPaise: 3000n, paidAmountPaise: 0n },
+  ];
+  const partial = allocateOldestFirst(bills, 9000n);
+  assert.deepEqual(partial.allocations.map((a) => [a.bill.id, a.amountPaise]), [["old", 6000n], ["mid", 3000n]]);
+  assert.equal(partial.unallocatedPaise, 0n);
+
+  const over = allocateOldestFirst(bills, 20000n);
+  assert.deepEqual(over.allocations.map((a) => [a.bill.id, a.amountPaise]), [["old", 6000n], ["mid", 8000n], ["new", 3000n]]);
+  assert.equal(over.unallocatedPaise, 3000n);
+});
+
+test("a debit note raises what the order still owes", () => {
+  // Order payable 1000; bill 1100 includes a 100 debit note; 1000 paid.
+  const summary = summarizeOrderSettlement(
+    [{ id: 1n, billAmountPaise: 110000n, paidAmountPaise: 100000n, debitNotePaise: 10000n }],
+    100000n,
+  );
+  assert.equal(summary.status, "part_settled");
+  assert.equal(summary.debitNoteAmount, 100);
+  assert.equal(summary.dueAmount, 100);
 });

@@ -341,13 +341,8 @@ export default function DashboardSmartSearch({
           autoComplete="off"
           className="min-w-0 flex-1 bg-transparent pr-3 text-[13.5px] text-white outline-none placeholder:text-white/35"
         />
-        <button
-          type="submit"
-          className="flex items-center justify-center border-l border-white/10 px-4 text-white/60 transition hover:bg-white/10 hover:text-white"
-          aria-label="Search"
-        >
-          {entityLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-        </button>
+        {/* Enter submits via handleKeyDown; the header shows a Ctrl+K hint here. */}
+        {entityLoading && <Loader2 className="mr-3 h-4 w-4 self-center animate-spin text-white/70" />}
       </form>
 
       {isOpen && (

@@ -54,6 +54,11 @@ const ADMIN_DEALERS_URL = "/api/admin/dealers"
 const ADMIN_STAFF_URL = "/api/admin/staff"
 const DEALER_LIST_ROUTE = "/dashboard/admin/dealer/DealerList"
 
+function rupeesToPaise(value: string) {
+  const amount = Number(value)
+  return Number.isFinite(amount) ? String(Math.round((amount + Number.EPSILON) * 100)) : ""
+}
+
 async function parseJsonResponse<T>(res: Response): Promise<T> {
   const text = await res.text()
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
@@ -422,7 +427,7 @@ export default function EditDealerPage() {
       }
       if (!isWalletActive) {
         updateBody.creditDays = creditdays
-        updateBody.creditLimitPaise = currentlimit
+        updateBody.creditLimitPaise = rupeesToPaise(currentlimit)
       }
 
       const updateResponse = await fetch(`${ADMIN_DEALERS_URL}/${encodeURIComponent(resolvedDealerId)}`, {

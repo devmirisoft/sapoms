@@ -1,6 +1,7 @@
 'use client'
 
 import DateInput from "@/components/ui/date-input";
+import { adultDobCutoff } from "@/lib/staffDob";
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
@@ -107,6 +108,8 @@ function InputField({
   placeholder,
   required = true,
   disabled = false,
+  max,
+  hint,
 }: {
   label: string
   value: string
@@ -115,6 +118,8 @@ function InputField({
   placeholder?: string
   required?: boolean
   disabled?: boolean
+  max?: string
+  hint?: string
 }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -125,12 +130,14 @@ function InputField({
       <DateInput
         required={required}
         disabled={disabled}
+        max={max}
         type={type}
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder || label}
         className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition disabled:bg-gray-50 disabled:text-gray-500"
       />
+      {hint ? <span className="text-[11px] text-gray-500">{hint}</span> : null}
     </div>
   )
 }
@@ -641,6 +648,8 @@ export default function EditStaffPage() {
                   value={dob}
                   onChange={setDob}
                   type="date"
+                  max={adultDobCutoff()}
+                  hint="Add DOB to get discount. Must be 18 or older."
                 />
                 <InputField
                   label="Nationality"

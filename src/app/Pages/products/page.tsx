@@ -543,7 +543,7 @@ function ProductListContent() {
 
       {/* ── Topbar — translucent material, content scrolls underneath ── */}
       <div
-        className="px-8 h-16 flex items-center justify-between gap-4 sticky top-0 z-20 border-b border-black/[0.06]"
+        className="px-8 h-16 flex items-center justify-between gap-4 sticky top-[72px] z-20 border-b border-black/[0.06]"
         style={{ background: 'rgba(255,255,255,0.72)', backdropFilter: 'blur(20px) saturate(180%)' }}
       >
         <div className="flex items-center gap-3">
@@ -582,14 +582,14 @@ function ProductListContent() {
               placeholder="Search product code, catalogue no. or name…"
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
-              className="pl-[42px] pr-[16px] py-[12px] border border-[#e5e5ea] rounded-full text-[16px] font-semibold bg-white text-[#1d1d1f] w-full outline-none transition-shadow duration-150 placeholder:text-[#98989d] placeholder:font-normal focus:border-[#0071e3] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
+              className="pl-[42px] pr-[16px] py-[12px] border border-[#e5e5ea] rounded-full text-[16px] font-semibold bg-white text-[#1d1d1f] w-full outline-none transition-shadow duration-150 placeholder:text-[#98989d] placeholder:font-normal focus:border-[#00494B] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
               style={{ fontFamily: "inherit", letterSpacing: '-0.01em' }}
             /> 
           </div>
            <div className="flex items-center gap-2">
              <button
             onClick={() => router.push('/Pages/products/addproducts')}
-            className={`${PRESS} inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border-none bg-[#0071e3] text-[12.5px] font-semibold text-white cursor-pointer whitespace-nowrap hover:bg-[#0077ed]`}
+            className={`${PRESS} inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border-none bg-[#00494B] text-[12.5px] font-semibold text-white cursor-pointer whitespace-nowrap hover:bg-[#007D7D]`}
           >
             <Plus size={14} />
             Add Product
@@ -609,7 +609,7 @@ function ProductListContent() {
         {!isLoading && (
           <div className="flex gap-2.5 mb-6 flex-wrap">
             {[
-              { dot: "#0071e3", label: "Total Products", value: total.toLocaleString() },
+              { dot: "#00494B", label: "Total Products", value: total.toLocaleString() },
               { dot: "#34c759", label: "This Page",      value: visibleData.length },
               { dot: "#ff9f0a", label: "Page",           value: `${page} / ${totalPages}` },
             ].map(s => (
@@ -652,7 +652,7 @@ function ProductListContent() {
                         placeholder={col.label}
                         value={(columnFilters as Record<string, string>)[col.key]}
                         onChange={(e) => setColumnFilters((f) => ({ ...f, [col.key]: e.target.value }))}
-                        className="w-full bg-white border border-[#e5e5ea] rounded-[8px] px-2.5 py-[6px] text-[11px] font-medium text-[#3a3a3c] outline-none transition-colors placeholder:text-[#98989d] placeholder:font-semibold placeholder:uppercase placeholder:text-[10.5px] focus:border-[#0071e3] focus:shadow-[0_0_0_3px_rgba(0,113,227,0.12)]"
+                        className="w-full bg-white border border-[#e5e5ea] rounded-[8px] px-2.5 py-[6px] text-[11px] font-medium text-[#3a3a3c] outline-none transition-colors placeholder:text-[#98989d] placeholder:font-semibold placeholder:uppercase placeholder:text-[10.5px] focus:border-[#00494B] focus:shadow-[0_0_0_3px_rgba(0,113,227,0.12)]"
                         style={{ letterSpacing: '0.02em' }}
                       />
                     </th>
@@ -754,7 +754,7 @@ function ProductListContent() {
                           onClick={() => product.admin_product_id
                             ? router.push(`/Pages/products/addproducts?id=${encodeURIComponent(product.admin_product_id)}`)
                             : showToast("error", 'Only PostgreSQL products can be edited here')}
-                          className={`${PRESS} inline-flex items-center gap-1 px-[11px] py-1.5 rounded-full text-[12px] font-medium bg-[#fafafc] text-[#3a3a3c] border border-black/[0.06] cursor-pointer hover:bg-[#eef6ff] hover:text-[#0071e3]`}
+                          className={`${PRESS} inline-flex items-center gap-1 px-[11px] py-1.5 rounded-full text-[12px] font-medium bg-[#fafafc] text-[#3a3a3c] border border-black/[0.06] cursor-pointer hover:bg-[#eef6ff] hover:text-[#00494B]`}
                         >
                           <Pencil size={12} />
                           Edit
@@ -802,7 +802,7 @@ function ProductListContent() {
                       onClick={() => handlePageChange(p as number)}
                       className={`${PRESS} min-w-[34px] h-[34px] px-2 rounded-full border text-[13px] font-medium inline-flex items-center justify-center cursor-pointer ${
                         p === page
-                          ? "bg-[#0071e3] border-[#0071e3] text-white font-semibold"
+                          ? "bg-[#00494B] border-[#00494B] text-white font-semibold"
                           : "bg-white border-[#e5e5ea] text-[#3a3a3c] hover:bg-[#fafafc]"
                       }`}
                     >

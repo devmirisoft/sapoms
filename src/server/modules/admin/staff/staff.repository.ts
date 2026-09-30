@@ -432,6 +432,7 @@ export class PostgresAdminStaffRepository {
       if (input.name !== undefined) staffData.displayName = input.name;
       if (input.designation !== undefined) staffData.designation = input.designation;
       if (input.location !== undefined) staffData.location = input.location;
+      if (input.dob !== undefined) staffData.dob = input.dob;
       if (input.staffRoleType !== undefined) staffData.staffRoleType = input.staffRoleType;
       const nextRole = input.role ?? current.user.role;
       const nextStaffRoleType = nextRole === "ASM" ? "ASM" : nextRole === "RSM" ? "RSM" : input.staffRoleType ?? current.staffRoleType;
