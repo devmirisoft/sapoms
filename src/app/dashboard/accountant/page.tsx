@@ -78,6 +78,7 @@ type AccountantDashboardResponse = {
   chartOrders?: ChartOrder[];
   recentOrders?: Order[];
   pendingOrders?: PendingOrder[];
+  billedTotal?: number;
 };
 
 // ─── CSV Export ───────────────────────────────────────────────────────────────
@@ -256,6 +257,7 @@ function AccountantDashboardInner() {
   const [pendingOrders, setPendingOrders] = useState<PendingOrder[]>([]);
   const [summaryOverrides, setSummaryOverrides] = useState<Record<string, OrderSummaryOverride>>({});
   const [stats,         setStats]         = useState<Stats>({ dealerCount:0, staffCount:0, orderCount:0, PorderCount:0 });
+  const [billedTotal,   setBilledTotal]   = useState(0);
   const [loading,       setLoading]       = useState(true);
 
   // Guard: redirect if not authenticated
@@ -278,6 +280,7 @@ function AccountantDashboardInner() {
         }))).sort((left, right) => Number(right.total) - Number(left.total)));
         setChartDealers(dashboard.top || []);
         setStats(dashboard.stats || (Array.isArray(dashboard.data) ? dashboard.data[0] : undefined) || { dealerCount:0, staffCount:0, orderCount:0, PorderCount:0 });
+        setBilledTotal(Number(dashboard.billedTotal) || 0);
         setPendingOrders(activePending);
         setRecentOrders(activeRecent);
       } catch (e) {
@@ -352,6 +355,7 @@ function AccountantDashboardInner() {
 
   const statCards = [
     { label: "Total Sale",       value: `₹${totalSale.toLocaleString("en-IN")}`,     icon: <DollarSign size={15}/>,   tint: "rgba(52,199,89,.12)",  accent: "#1a7f37" },
+    { label: "Total Billed",     value: `₹${billedTotal.toLocaleString("en-IN")}`,   icon: <Receipt size={15}/>,      tint: "rgba(90,200,250,.14)", accent: "#0071a4" },
     { label: "Total Orders",     value: stats.orderCount,                              icon: <ShoppingCart size={15}/>, tint: "rgba(0,122,255,.10)",  accent: "#007aff" },
     { label: "Pending Orders",   value: stats.PorderCount,                             icon: <Clock size={15}/>,        tint: "rgba(255,149,0,.12)",  accent: "#b25c00" },
     { label: "Pending Payments", value: pendingPayCount,                               icon: <AlertCircle size={15}/>,  tint: "rgba(255,59,48,.10)",  accent: "#ff3b30" },

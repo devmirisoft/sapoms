@@ -39,6 +39,7 @@ type Order = {
   outstandingDate: string;
   order_note?: string;
   note?: string;
+  dispatch_note?: string;
   remark?: string;
   remarks?: string;
   reason?: string;
@@ -1025,6 +1026,9 @@ export default function OrderHistoryPage() {
     : "";
   const dealerId = actorRole === "dealer" ? actorId : "";
   const actorReady = actorRole === "admin" || actorRole === "accountant" || Boolean(actorId);
+  // Accountants track billing off dispatches, so they get the latest dispatch
+  // note where everyone else sees the confirmation status.
+  const showDispatchNote = actorRole === "accountant";
 
   // Role gates carried over from the old Order Management page's ROLE_CONFIG.
   const showDealerCol        = actorRole !== "dealer";
@@ -1424,7 +1428,9 @@ export default function OrderHistoryPage() {
         "Net (₹)":      amounts.netPayableAmount,
         "Qty":          o.orderdata_item_quantity || "",
         "Left (pcs)":   getOrderLeftPieces(o),
-        "Confirmation": o.accept_order === "1" ? "Accepted" : "Awaiting",
+        ...(showDispatchNote
+          ? { "Dispatch Note": o.dispatch_note || "" }
+          : { "Confirmation": o.accept_order === "1" ? "Accepted" : "Awaiting" }),
         "Status":       statusConf[Number(o.orderdata_status)]?.label ?? "Pending",
         "MT Status":    mtConf[mtStatusValue(o.mtstatus)].label,
       };
@@ -1983,7 +1989,7 @@ export default function OrderHistoryPage() {
                           ))}
                         </select>
                       </th>
-                      <th className={thCls}>
+                      {showDispatchNote ? <th className={thCls}>Dispatch Note</th> : <th className={thCls}>
                         Confirmation
                         <select
                           value={filters.accepted}
@@ -1995,7 +2001,7 @@ export default function OrderHistoryPage() {
                           <option value="1">Accepted</option>
                           <option value="0">Awaiting</option>
                         </select>
-                      </th>
+                      </th>}
                       <th className={`${thCls} min-w-[140px]`}>
                         MT Status
                         <select
@@ -2114,6 +2120,11 @@ export default function OrderHistoryPage() {
                                   <SettlementBadge settlement={(order as any).settlement} />
                                 </div>
                               </td>
+                              {showDispatchNote ? (
+                              <td className="px-2 py-2 max-w-[220px] text-[11px] leading-snug text-gray-700 whitespace-normal break-words">
+                                {order.dispatch_note || <span className="text-gray-400">—</span>}
+                              </td>
+                              ) : (
                               <td className="px-2 py-2">
                                 <AcceptBadge accepted={order.accept_order} />
                                 {rsmStatus === "ACCEPTED" && (
@@ -2135,6 +2146,7 @@ export default function OrderHistoryPage() {
                                   <p className="mt-1 text-[10px] leading-tight font-semibold text-amber-700">Awaiting RSM approval</p>
                                 )}
                               </td>
+                              )}
                               <td className="px-2 py-2">
                                 <MtStatusBadge status={order.mtstatus} />
                                 <p className="mt-1 text-[11px] leading-snug text-gray-500 font-mono">

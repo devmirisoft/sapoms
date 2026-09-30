@@ -318,7 +318,7 @@ export async function buildAccountantDashboard() {
     ],
   };
 
-  const [dealerCount, staffCount, orderCount, pendingCount, recentOrders, pendingOrders, topDealerGroups, monthAggregate, allAggregate, walletAggregate, walletTransactionAggregate] = await Promise.all([
+  const [dealerCount, staffCount, orderCount, pendingCount, recentOrders, pendingOrders, topDealerGroups, monthAggregate, allAggregate, walletAggregate, walletTransactionAggregate, billAggregate] = await Promise.all([
     prisma.dealerProfile.count({ where: { deletedAt: null } }),
     prisma.staffProfile.count(),
     prisma.order.count({ where: activeOrderWhere }),
@@ -330,6 +330,7 @@ export async function buildAccountantDashboard() {
     prisma.order.aggregate({ where: activeOrderWhere, _sum: { grossAmountPaise: true, totalDiscountAmountPaise: true, finalPayableAmountPaise: true }, _count: { _all: true } }),
     prisma.dealerWallet.aggregate({ _sum: { balancePaise: true, reservedPaise: true, totalCreditedPaise: true, totalConsumedPaise: true } }),
     prisma.walletTransaction.aggregate({ _sum: { amountPaise: true }, _count: { _all: true } }),
+    prisma.ledgerBill.aggregate({ _sum: { billAmountPaise: true } }),
   ]);
 
   const dealerNames = new Map((await prisma.dealerProfile.findMany({
@@ -368,6 +369,8 @@ export async function buildAccountantDashboard() {
       PorderCount: pendingCount,
     }],
     stats: { dealerCount, staffCount, orderCount, PorderCount: pendingCount },
+    // Sum of every invoice the accountant has added in the ledger.
+    billedTotal: paiseToRupees(billAggregate._sum.billAmountPaise ?? BigInt(0)),
     top: topDealerGroups.map((row: any) => ({
       Dealer_Name: dealerNames.get(row.dealerId.toString()) ?? row.dealerId.toString(),
       total: String(paiseToRupees((row._sum as any)?.finalPayableAmountPaise ?? BigInt(0))),

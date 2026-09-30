@@ -30,6 +30,8 @@ export const orderInclude = {
   // Bills carry paidAmountPaise, which is what wallet settlement moves. Without
   // them an order settled from advance still reads as fully unpaid.
   ledgerBills: { orderBy: { billDate: "desc" as const } },
+  // Latest dispatch only, for the note shown on the order list.
+  dispatches: { orderBy: { createdAt: "desc" as const }, take: 1, select: { remark: true, createdAt: true } },
 } satisfies Prisma.OrderInclude;
 
 const orderDetailInclude = {
@@ -318,6 +320,7 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     trackingLink: order.trackingLink || "",
     tracking_link: order.trackingLink || "",
     dock: order.dock || "",
+    dispatch_note: (order.dispatches ?? []).reduce<{ remark: string | null; createdAt: Date } | null>((latest, dispatch) => (!latest || dispatch.createdAt >= latest.createdAt ? dispatch : latest), null)?.remark || "",
     orderdata_item_quantity: String(orderDispatchPieces(order).ordered),
     readyquantity: String(orderDispatchPieces(order).dispatched),
     dispatched_amount: rupees(dispatchedPayablePaise(order)),

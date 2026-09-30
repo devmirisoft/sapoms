@@ -194,17 +194,21 @@ export function ledgerTransactionDirection(type: WalletTransactionType, metadata
   return "debit";
 }
 
-function walletLedgerTransaction(tx: Prisma.WalletTransactionGetPayload<{ include: { order: true } }>) {
+function walletLedgerTransaction(tx: Prisma.WalletTransactionGetPayload<{ include: { order: true } }>, forDealer = false) {
   const direction = ledgerTransactionDirection(tx.type, tx.metadata, tx.orderId);
   const amount = money(tx.amountPaise);
+  // A settlement note is one entry seen from both sides: the accountant issues
+  // a credit note, the dealer books it as a debit note.
+  const settlementNote = Boolean((tx.metadata as Record<string, unknown> | null)?.creditNote) ? (forDealer ? "Debit note" : "Credit note") : "";
+  const narration = tx.note || tx.reference || String(tx.type).toLowerCase().replace(/_/g, " ");
   return {
     id: tx.id.toString(),
     debit: direction === "debit" ? amount : 0,
     credit: direction === "credit" ? amount : 0,
-    narration: tx.note || tx.reference || String(tx.type).toLowerCase().replace(/_/g, " "),
+    narration: settlementNote ? `${settlementNote} - ${narration}` : narration,
     date: tx.createdAt.toISOString(),
     invoice: tx.reference || tx.order?.orderNumber || tx.orderId?.toString() || "",
-    mode: String(tx.type).toLowerCase().replace(/_/g, " "),
+    mode: settlementNote.toLowerCase() || String(tx.type).toLowerCase().replace(/_/g, " "),
     type: String(tx.type).toLowerCase(),
   };
 }
@@ -352,7 +356,7 @@ export async function getDealerLedgerTransactions(actor: AuthActor, rawDealerId:
   const pageSize = Math.min(100, Math.max(5, Number(options.limit || 20)));
   const requestedPage = Math.max(1, Number(options.page || 1));
   const walletTransactions = await prisma.walletTransaction.findMany({ where: { dealerId }, include: { order: true }, orderBy: { createdAt: "desc" } });
-  const allTransactions = walletTransactions.map(walletLedgerTransaction);
+  const allTransactions = walletTransactions.map((tx) => walletLedgerTransaction(tx, actor.role === "DEALER"));
   const count = allTransactions.length;
   const totalPages = Math.max(1, Math.ceil(count / pageSize));
   const page = Math.min(requestedPage, totalPages);
@@ -500,6 +504,8 @@ export async function recordLedgerPayment(actor: AuthActor, rawDealerId: string,
   const rawBillId = String(body.billId || "").trim();
   const billId = rawBillId ? parseBigIntId(rawBillId, "bill id") : null;
   const paymentDate = body.paymentDate ? parseDateOnly(body.paymentDate, "payment date") : null;
+  const creditNote = body.paymentMode === "Credit Note";
+  if (creditNote && !String(body.narration || "").trim()) throw Object.assign(new Error("Credit note reason is required."), { status: 400 });
 
   return prisma.$transaction(async (tx) => {
     const dealer = await tx.dealerProfile.findFirst({ where: { id: dealerId, deletedAt: null, user: { status: "ACTIVE" } }, select: { id: true } });
@@ -520,6 +526,7 @@ export async function recordLedgerPayment(actor: AuthActor, rawDealerId: string,
         orderNumber: bill?.orderNumber || String(body.referenceId || body.reference || "").trim() || null,
         paymentMode: String(body.paymentMode || "Cash"),
         paymentDate: body.paymentDate || null,
+        creditNote,
       },
       actor: { userId: actor.userId, role: actor.role, displayName: actor.displayName },
       allowCreate: true,

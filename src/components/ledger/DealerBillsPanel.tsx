@@ -37,7 +37,9 @@ export type CreditSnapshot = {
   isOverdue: boolean
 } | null
 
-const PAYMENT_MODES = ['Cash', 'Cheque', 'NEFT', 'UPI', 'IMPF']
+// 'Credit Note' settles the bill without money changing hands (discount,
+// rate difference, return...); the dealer sees it as a debit note.
+const PAYMENT_MODES = ['Cash', 'Cheque', 'NEFT', 'UPI', 'IMPF', 'Credit Note']
 const today = () => new Date().toISOString().slice(0, 10)
 const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500'
 const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500'
@@ -232,6 +234,12 @@ export default function DealerBillsPanel({
       showToast('error', 'Enter a valid payment amount and date')
       return
     }
+    const creditNote = payment.mode === 'Credit Note'
+    const note = payment.reference.trim()
+    if (creditNote && !note) {
+      showToast('error', 'Enter the reason for the credit note')
+      return
+    }
     run(async () => {
       await axios.post(`/api/ledger/${encodeURIComponent(dealerId)}/pay`, {
         idempotencyKey: crypto.randomUUID(),
@@ -239,10 +247,10 @@ export default function DealerBillsPanel({
         amount,
         paymentMode: payment.mode,
         paymentDate: payment.date,
-        referenceId: payment.reference || paymentBill.orderNumber,
-        narration: `Payment against bill ${paymentBill.orderNumber}`,
+        referenceId: (!creditNote && note) || paymentBill.orderNumber,
+        narration: creditNote ? `${note} (bill ${paymentBill.orderNumber})` : `Payment against bill ${paymentBill.orderNumber}`,
       })
-      showToast('success', 'Payment recorded')
+      showToast('success', creditNote ? 'Credit note recorded' : 'Payment recorded')
     }, 'Could not record payment')
   }
 
@@ -463,8 +471,8 @@ export default function DealerBillsPanel({
               </label>
             </div>
             <label className="block">
-              <span className={labelClass}>Reference / Notes</span>
-              <input value={payment.reference} onChange={(event) => setPayment((prev) => ({ ...prev, reference: event.target.value }))} className={inputClass} />
+              <span className={labelClass}>{payment.mode === 'Credit Note' ? 'Credit note reason' : 'Reference / Notes'}</span>
+              <input value={payment.reference} onChange={(event) => setPayment((prev) => ({ ...prev, reference: event.target.value }))} className={inputClass} required={payment.mode === 'Credit Note'} />
             </label>
             <Actions onCancel={close} busy={busy} label="Record Payment" tone="emerald" />
           </form>
