@@ -858,18 +858,7 @@ export default function DealerLedgerShellPage() {
                       <span className="truncate font-medium">{file.name}</span>
                       {file.bytes ? (
                         <span className="shrink-0 text-xs text-gray-400">{formatFileSize(file.bytes)}</span>
-                      ) : (
-            <div className="inline-flex flex-col items-end">
-              <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Pending dues</span>
-              <span
-                className={`text-sm font-semibold ${
-                  Number(dealer.pendingDues || 0) > 0 ? 'text-rose-600' : 'text-emerald-600'
-                }`}
-              >
-                {formatAmount(dealer.pendingDues)}
-              </span>
-            </div>
-          )}
+                      ) : null}
                     </a>
                     <a
                       href={billPdfHref(pdfTarget.bill, index, 'attachment')}
@@ -1059,7 +1048,18 @@ function FragmentRow({
                 {formatAmount(dealer.walletBalance)}
               </span>
             </div>
-          ) : null}
+          ) : (
+            <div className="inline-flex flex-col items-end">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Pending dues</span>
+              <span
+                className={`text-sm font-semibold ${
+                  Number(dealer.pendingDues || 0) > 0 ? 'text-rose-600' : 'text-emerald-600'
+                }`}
+              >
+                {formatAmount(dealer.pendingDues)}
+              </span>
+            </div>
+          )}
         </td>
       </tr>
 
