@@ -12,16 +12,21 @@ type RetriableAxiosConfig = InternalAxiosRequestConfig & { _sessionRefreshRetrie
 
 let refreshPromise: Promise<boolean> | null = null;
 let axiosInterceptorInstalled = false;
+let nativeFetch: typeof fetch | null = null;
 
 async function refreshSession() {
   if (!refreshPromise) {
-    refreshPromise = fetch("/api/auth/refresh", {
-      method: "POST",
-      credentials: "include",
-      cache: "no-store",
-    })
-      .then((response) => response.ok)
-      .catch(() => false)
+    const doRefresh = (): Promise<boolean> =>
+      (nativeFetch ?? fetch)("/api/auth/refresh", {
+        method: "POST",
+        credentials: "include",
+        cache: "no-store",
+      })
+        .then((response) => response.ok)
+        .catch(() => false);
+    // Refresh tokens rotate on use, so two tabs refreshing at once would revoke each
+    // other's token. The lock makes the second tab wait and use the rotated cookie.
+    refreshPromise = (navigator.locks ? navigator.locks.request("omsons-auth-refresh", doRefresh).then((ok) => ok) : doRefresh())
       .finally(() => {
         refreshPromise = null;
       });
@@ -30,15 +35,31 @@ async function refreshSession() {
   return refreshPromise;
 }
 
-async function fetchWithSessionRefresh(input: RequestInfo | URL, init?: RequestInit) {
-  const response = await fetch(input, { credentials: "include", cache: "no-store", ...init });
-  if (response.status !== 401) return response;
-
-  const refreshed = await refreshSession();
-  if (!refreshed) return response;
-
-  return fetch(input, { credentials: "include", cache: "no-store", ...init });
+function isRefreshableApiUrl(input: RequestInfo | URL) {
+  const url = new URL(input instanceof Request ? input.url : String(input), window.location.href);
+  if (url.origin !== window.location.origin || !url.pathname.startsWith("/api/")) return false;
+  return url.pathname === "/api/auth/me" || !url.pathname.startsWith("/api/auth/");
 }
+
+// Pages call fetch directly and bounce to login on 401, so the refresh has to live
+// under fetch itself: an expired access cookie is renewed and the call retried once.
+function installFetchSessionRefresh() {
+  if (nativeFetch) return;
+  const original = window.fetch.bind(window);
+  nativeFetch = original;
+
+  window.fetch = async (input, init) => {
+    if (!isRefreshableApiUrl(input)) return original(input, init);
+
+    const retryInput = input instanceof Request ? input.clone() : input;
+    const response = await original(input, init);
+    if (response.status !== 401) return response;
+    if (!(await refreshSession())) return response;
+    return original(retryInput, init);
+  };
+}
+
+if (typeof window !== "undefined") installFetchSessionRefresh();
 
 function installAxiosSessionRefresh() {
   if (axiosInterceptorInstalled) return;
@@ -68,7 +89,7 @@ function installAxiosSessionRefresh() {
 }
 
 async function fetchCurrentSession(): Promise<AuthSession> {
-  const res = await fetchWithSessionRefresh("/api/auth/me");
+  const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
   if (!res.ok) return { status: "unauthenticated", reason: "missing" };
 
   const json = await res.json();
