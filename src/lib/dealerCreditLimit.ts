@@ -39,6 +39,17 @@ export function billDueDate(billDate: Date, creditDays: number, extraCreditDays:
   return new Date(billDate.getTime() + (creditDays + extraCreditDays) * DAY_MS);
 }
 
+/** A bill's age in days and what of it is overdue at `now` - the unpaid balance once past due, else 0. */
+export function billAgeing(
+  bill: { billDate: Date; billAmountPaise: bigint; paidAmountPaise: bigint; extraCreditDays: number },
+  creditDays: number,
+  now: number,
+) {
+  const outstanding = bill.billAmountPaise - bill.paidAmountPaise;
+  const overdue = outstanding > ZERO && billDueDate(bill.billDate, creditDays, bill.extraCreditDays).getTime() < now;
+  return { ageDays: Math.floor((now - bill.billDate.getTime()) / DAY_MS), duePaise: overdue ? outstanding : ZERO };
+}
+
 /** Returns null for dealers not on credit terms (dealer.creditDays is unset). */
 export async function getDealerCreditStatus(client: CreditClient, dealer: CreditDealer): Promise<DealerCreditStatus | null> {
   if (dealer.creditDays === null) return null;

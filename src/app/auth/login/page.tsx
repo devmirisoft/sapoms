@@ -8,7 +8,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { cn } from "@/lib/utils"
 
 
-const LOGO_SRC = "/Omsons_Logo.png"
+const LOGO_SRC = "/omsons_logo.jpeg"
 
 export default function Login() {
   const router = useRouter()
@@ -190,7 +190,7 @@ export default function Login() {
   return (
     <main className="h-screen overflow-hidden text-slate-950">
       <div className="flex h-full w-full">
-        <section className="grid w-full overflow-hidden bg-white lg:grid-cols-[0.86fr_1.14fr]">
+        <section className="grid w-full overflow-hidden bg-gray-100/50 lg:grid-cols-[0.86fr_1.14fr]">
 
           {/* ── Form panel ─────────────────────────────────────────────── */}
           <form
@@ -331,7 +331,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading || otpLoading}
-                className="mt-4 h-10 w-full rounded-full bg-[#E85222] px-4 text-[13px] font-bold text-white shadow-[0_14px_28px_rgba(89,61,244,0.28)] transition hover:-translate-y-0.5 hover:bg-[#EC691F] active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
+                className="mt-4 h-10 w-full rounded-full bg-indigo-600 px-4 text-[13px] font-bold text-white shadow-[0_14px_28px_rgba(89,61,244,0.28)] transition hover:-translate-y-0.5 hover:bg-indigo-700 active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {showOtp ? (otpLoading ? "Verifying..." : "Verify & Login") : loading ? "Signing in..." : "Login"}
               </button>
