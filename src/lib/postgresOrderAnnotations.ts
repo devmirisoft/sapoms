@@ -3,7 +3,7 @@ import "server-only";
 import { Prisma, type OrderAcceptanceStatus, type OrderFulfilmentStatus, type OrderStatus } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
-import { isStaffLike } from "@/server/auth/sales-scope";
+import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
 
 const orderAccessInclude = {
   dealer: { select: { id: true, businessName: true } },
@@ -52,7 +52,7 @@ export async function findPostgresOrderByLookup(orderId: unknown) {
 }
 
 export async function assertOrderAccess(order: PgOrder, actor: AuthActor) {
-  if (actor.role === "ADMIN") return;
+  if (isAdminLike(actor)) return;
   if (actor.role === "ACCOUNTANT") {
     throw new PostgresOrderAnnotationError(403, "forbidden", "Accountant order-note access is not permitted for this order.");
   }

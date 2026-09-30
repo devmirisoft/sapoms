@@ -32,7 +32,7 @@ test("order-note route ignores spoofed actor headers and query actor identity", 
 });
 
 test("PostgreSQL note permissions cover admin dealer staff accountant boundaries", () => {
-  assert.match(assertOrderAccess, /actor\.role === "ADMIN"/);
+  assert.match(assertOrderAccess, /isAdminLike\(actor\)/);
   assert.match(assertOrderAccess, /actor\.role === "DEALER"[\s\S]*order\.dealerId === actor\.dealerId/);
   assert.match(assertOrderAccess, /actor\.role === "STAFF" && actor\.staffId/);
   assert.match(assertOrderAccess, /order\.assignedStaffId === actor\.staffId/);

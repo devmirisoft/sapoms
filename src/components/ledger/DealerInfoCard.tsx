@@ -34,6 +34,8 @@ interface DealerInfoCardProps {
   onAdjustWalletClick?: () => void;
   canAdjustWallet?: boolean;
   canRecordPayment?: boolean;
+  /** False for credit-terms dealers: they pay against bills and have no wallet. */
+  showWallet?: boolean;
 }
 
 function formatAmount(value: number) {
@@ -59,6 +61,7 @@ export default function DealerInfoCard({
   onAdjustWalletClick,
   canAdjustWallet = false,
   canRecordPayment = false,
+  showWallet = true,
 }: DealerInfoCardProps) {
   if (isLoading) {
     return (
@@ -109,7 +112,7 @@ export default function DealerInfoCard({
               Pay Money
             </button>
           )}
-          {canAdjustWallet && onAdjustWalletClick && (
+          {showWallet && canAdjustWallet && onAdjustWalletClick && (
             <button
               onClick={onAdjustWalletClick}
               className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 transition-colors hover:bg-indigo-100"
@@ -164,22 +167,25 @@ export default function DealerInfoCard({
           </div>
         )}
 
-        <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
-          <div className="flex items-center gap-2">
-            <Wallet className="h-5 w-5 text-emerald-600" />
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
-              Wallet Balance
+        {showWallet && (
+          <div className="rounded-2xl border border-emerald-200 bg-emerald-50/70 p-4">
+            <div className="flex items-center gap-2">
+              <Wallet className="h-5 w-5 text-emerald-600" />
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Wallet Balance
+              </p>
+            </div>
+            <p className="mt-3 text-2xl font-bold text-emerald-700">
+              {formatAmount(currentBalance)}
             </p>
+            {walletLoading && (
+              <p className="mt-2 text-xs text-gray-500">Refreshing wallet data...</p>
+            )}
           </div>
-          <p className="mt-3 text-2xl font-bold text-emerald-700">
-            {formatAmount(currentBalance)}
-          </p>
-          {walletLoading && (
-            <p className="mt-2 text-xs text-gray-500">Refreshing wallet data...</p>
-          )}
-        </div>
+        )}
       </div>
 
+      {showWallet && (
       <div className="mt-6 rounded-2xl border border-gray-200 bg-gray-50 p-4">
         <div className="mb-4 flex items-center gap-2">
           <History className="h-4 w-4 text-gray-500" />
@@ -222,6 +228,7 @@ export default function DealerInfoCard({
           </div>
         )}
       </div>
+      )}
     </div>
   );
 }

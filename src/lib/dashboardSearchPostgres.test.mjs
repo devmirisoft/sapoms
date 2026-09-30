@@ -26,11 +26,11 @@ test("dashboard search uses authenticated PostgreSQL access only", async () => {
 test("dashboard search keeps role scopes and legacy response aliases", async () => {
   const route = await fs.readFile(routePath, "utf8");
 
-  assert.match(route, /actor\.role === "ADMIN" \|\| actor\.role === "ACCOUNTANT"/);
+  assert.match(route, /isAdminLike\(actor\) \|\| actor\.role === "ACCOUNTANT"/);
   assert.match(route, /actor\.role === "DEALER"[\s\S]*dealerId: actor\.dealerId/);
   // Staff order hits use the order list's own scope (chain, RSM gate, warehouse).
   assert.match(route, /isStaffLike\(actor\)[\s\S]*actorWhere\(orderActor, assignedDealerIds\.map\(String\)\)/);
-  assert.match(route, /actor\.role === "ADMIN" \|\| isStaffLike\(actor\)/);
+  assert.match(route, /isAdminLike\(actor\) \|\| isStaffLike\(actor\)/);
   assert.match(route, /staffAssignments: \{ some: \{ staffId: actor\.staffId/);
   assert.match(route, /actor\.role === "ACCOUNTANT"[\s\S]*Promise\.resolve\(\[\]\)/);
 

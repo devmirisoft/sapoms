@@ -64,6 +64,7 @@ interface WalletResponse {
   balance: number
   transactions: WalletTransaction[]
   updatedAt?: string | null
+  credit?: object | null
 }
 
 interface LedgerSummaryData {
@@ -624,6 +625,7 @@ export default function DealerLedgerPage() {
           walletLoading={isWalletLoading}
           onPayMoneyClick={() => setPayModalOpen(true)}
           canRecordPayment={canManageLedgerEntries}
+          showWallet={!walletData?.credit}
         />
 
         {/* A dealer can ask for a wallet top-up from their own ledger. The

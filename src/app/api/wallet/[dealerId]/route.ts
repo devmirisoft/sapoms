@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth } from "@/server/auth/session";
 import { errorStatus } from "@/server/http/auth-error";
-import { isStaffLike } from "@/server/auth/sales-scope";
+import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
 import { getWalletSnapshot, fromPaise } from "@/lib/postgresWallet";
 import { getDealerCreditStatus } from "@/lib/dealerCreditLimit";
 
@@ -14,7 +14,7 @@ function parseDealerId(value: string) {
 }
 
 async function canReadWallet(actor: Awaited<ReturnType<typeof requireAuth>>, dealerId: bigint) {
-  if (actor.role === "ADMIN" || actor.role === "ACCOUNTANT") return true;
+  if (isAdminLike(actor) || actor.role === "ACCOUNTANT") return true;
   if (actor.role === "DEALER") return actor.dealerId === dealerId;
   if (isStaffLike(actor) && actor.staffId) {
     const assignment = await prisma.dealerStaffAssignment.findFirst({
@@ -56,4 +56,4 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deal
     const message = status >= 500 ? "Unable to load wallet." : String((error as Error)?.message ?? "Unable to load wallet.");
     return NextResponse.json({ success: false, message }, { status });
   }
-}
+}

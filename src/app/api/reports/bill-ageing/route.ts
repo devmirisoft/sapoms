@@ -13,7 +13,7 @@ const COLUMNS = ["Name", "Credit Days", "Bill No.", "Bill Date", "Bill Amount", 
 /** Every bill with a balance still unpaid, aged as of today. `format=csv` downloads it. */
 export async function GET(request: Request) {
   try {
-    await requireRole(["ACCOUNTANT", "ADMIN"]);
+    await requireRole(["ACCOUNTANT", "ADMIN", "NSM"]);
     const params = new URL(request.url).searchParams;
     const dealerId = /^\d+$/.test(params.get("dealerId") ?? "") ? BigInt(params.get("dealerId")!) : null;
 
