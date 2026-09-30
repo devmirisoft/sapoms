@@ -1614,12 +1614,12 @@ function AdminDashboardInner() {
                       <XAxis dataKey="name" tick={{ fontSize: 10, fill: "#8e8e93" }} axisLine={false} tickLine={false} />
                       <YAxis tick={{ fontSize: 10, fill: "#8e8e93" }} axisLine={false} tickLine={false} width={50} />
                       <Tooltip
-                        cursor={{ fill: "rgba(60,60,67,.035)" }}
+                        cursor={{ fill: "#ffa58122" }}
                         contentStyle={{ backgroundColor: "rgba(255,255,255,.96)", border: "1px solid rgba(60,60,67,.12)", borderRadius: "14px", boxShadow: "0 10px 30px rgba(0,0,0,.10)", fontSize: "11px" }}
                         labelStyle={{ color: "#6e6e73" }}
                         formatter={(value) => `₹${Number(value).toLocaleString("en-IN")}`}
                       />
-                      <Bar dataKey="value" fill="#8e8e93" radius={[8, 8, 2, 2]} maxBarSize={38} />
+                      <Bar dataKey="value" fill="#ffA581" radius={[8, 8, 2, 2]} maxBarSize={38} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (
