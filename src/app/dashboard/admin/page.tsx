@@ -99,6 +99,7 @@ type AdminUser = {
   email?: string;
   role?: string;
   name?: string;
+  ADMIN_IMAGE?: string;
 };
 
 type DealerSummary = {
@@ -717,12 +718,6 @@ function AdminDashboardInner() {
     router.push("/auth/login");
   };
 
-  const initials = (adminUser.name || adminUser.username || "Admin")
-    .split(" ")
-    .map((n: string) => n.charAt(0))
-    .join("")
-    .toUpperCase()
-    .substring(0, 2) || "AD";
 
 
   return (
@@ -827,13 +822,7 @@ function AdminDashboardInner() {
           width: 36px;
           height: 36px;
           border-radius: 50%;
-          display: grid;
-          place-items: center;
-          background: linear-gradient(145deg, #1d1d1f, #52525a);
-          color: #fff;
-          font-size: 12px;
-          font-weight: 700;
-          letter-spacing: -.02em;
+          object-fit: cover;
         }
 
         .profile-copy { min-width: 0; padding-right: 5px; }
@@ -1290,7 +1279,8 @@ function AdminDashboardInner() {
             </div> */}
 
             <div className="profile-chip" aria-label="Current administrator">
-              <div className="profile-avatar">{loading ? "…" : initials}</div>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img className="profile-avatar" src={adminUser.ADMIN_IMAGE || "/image.png"} alt="" />
               <div className="profile-copy">
                 <div className="profile-name">{loading ? "Loading…" : (adminUser.name || adminUser.username || "Administrator")}</div>
                 <div className="profile-role">{adminUser.role || "Administrator"}</div>

@@ -10,7 +10,7 @@ import DashboardSmartSearch from "@/components/dashboard/DashboardSmartSearch";
 import DealerHelpButton from "@/components/dashboard/DealerHelpButton";
 import NotificationBell from "@/components/dashboard/NotificationBell";
 import SmartSearchBar from "@/components/SartSearchBar";
-import Sidebar, { getInitials } from "@/components/layout/sidebar";
+import Sidebar from "@/components/layout/sidebar";
 import { clearAuthStorage, type AppRole, type StoredUser } from "@/lib/roleAccess";
 import { useAuthSession } from "@/hooks/useAuthSession";
 
@@ -294,8 +294,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 14px;
-          font-weight: 700;
+          object-fit: cover;
         }
         .dl-user-name {
           max-width: 140px;
@@ -466,7 +465,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   aria-haspopup="menu"
                   aria-expanded={userMenu}
                 >
-                  <span className="dl-avatar">{getInitials(displayName)}</span>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img className="dl-avatar" src={String(user?.ADMIN_IMAGE || "/image.png")} alt="" />
                   <span className="dl-user-name">{displayName}</span>
                   <ChevronDown size={16} />
                 </button>

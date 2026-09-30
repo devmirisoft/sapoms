@@ -107,13 +107,6 @@ const SECTION_ICONS: Record<string, React.ReactNode> = {
   Rewards: <Gift />, System: <Settings />, Finance: <Wallet />,
 };
 
-export function getInitials(name?: string) {
-  const words = name?.trim().split(/\s+/).filter(Boolean) ?? [];
-  if (!words.length) return "AD";
-  // "Admin" -> "AD", "Ravi Kumar" -> "RK"
-  return (words.length === 1 ? words[0].slice(0, 2) : words[0][0] + words[1][0]).toUpperCase();
-}
-
 function staffRoleLabel(rt?: string) {
   return rt === "0" ? "Admin" : rt === "1" ? "Sales Manager" : rt === "2" ? "Staff" : "Staff";
 }
@@ -300,7 +293,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         .sb-chip {
           display: block; margin-top: 3px;
           color: rgba(255,255,255,0.85); font-size: 10.5px; font-weight: 500;
-          letter-spacing: .16em; text-transform: uppercase;
+          letter-spacing: .16em; 
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
         /* User card */
@@ -337,8 +330,9 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         .sb-lead-label {
           padding: 2px 4px 10px;
           font-size: 11px; font-weight: 600;
-          letter-spacing: .16em; text-transform: uppercase;
-          color: rgba(255,255,255,0.8);
+          letter-spacing: .16em; 
+          
+                    color: rgba(255,255,255,0.8);
           white-space: nowrap; overflow: hidden;
         }
         .sb-group.lead { margin-bottom: 14px; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.18); }
@@ -353,8 +347,8 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           background: transparent;
           color: #fff;
           cursor: pointer;
-          font-family: inherit; font-size: 12.5px; font-weight: 600;
-          letter-spacing: .14em; text-transform: uppercase;
+          font-family: ; font-size: 15.5px; ;
+          letter-spacing: .14em; ;
           text-align: left;
           user-select: none;
           transition: background .16s;
@@ -597,10 +591,8 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         {/* User card */}
         <div className="sb-user">
           <div className="sb-avatar">
-            {!mounted ? "…" : user?.ADMIN_IMAGE
-              // eslint-disable-next-line @next/next/no-img-element
-              ? <img src={user.ADMIN_IMAGE} alt="" />
-              : getInitials(name)}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            {!mounted ? "…" : <img src={user?.ADMIN_IMAGE || "/image.png"} alt="" />}
           </div>
           <div className="sb-usertext">
             <div className="sb-uname">

@@ -22,7 +22,7 @@ function parseStoredObject(key: string) {
 export function readDashboardActor(): DashboardActor | null {
   if (typeof window === "undefined") return null;
 
-  const accountantToken = localStorage.getItem("accountant_token");
+  const accountantToken = localStorage.getItem("AccountantData");
   if (accountantToken) {
     const accountant = parseStoredObject("AccountantData");
     return {

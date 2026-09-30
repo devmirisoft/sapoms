@@ -1058,6 +1058,8 @@ export default function OrderHistoryPage() {
     queryFn: () => fetchOrders(page, pageSize, query, filters, actorRole as AppRole, actorId, warehouse),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: "always",
     enabled: !auth.loading && auth.session.status === "authenticated" && actorReady && section === "active",
     retry: (failureCount, err) =>
       err instanceof OrdersRequestError && (err.status === 401 || err.status === 403) ? false : failureCount < 3,

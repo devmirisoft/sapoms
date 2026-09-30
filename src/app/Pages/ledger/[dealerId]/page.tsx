@@ -132,7 +132,7 @@ type RawOrder = {
 function resolveRole(): { role: Role; dealerId?: string; staffId?: string } {
   if (typeof window === 'undefined') return { role: 'admin' }
   try {
-    if (localStorage.getItem('accountant_token')) return { role: 'accountant' }
+    if (localStorage.getItem('AccountantData')) return { role: 'accountant' }
     const userData = localStorage.getItem('UserData')
     if (userData) {
       const p = JSON.parse(userData)

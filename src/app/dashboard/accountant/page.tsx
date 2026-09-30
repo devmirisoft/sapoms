@@ -590,7 +590,7 @@ function AccountantDashboardInner() {
       </div>
 
       {/* ── Recent Orders Table ── */}
-      <div className="panel">
+      {/* <div className="panel">
         <div className="panel-header">
           <div>
             <div className="panel-title">
@@ -649,7 +649,7 @@ function AccountantDashboardInner() {
           <span style={{ color: "#8e8e93" }}>Showing up to 10 recent orders</span>
           <Link href="/orders" className="quick-action-btn" style={{ marginTop: 0 }}>View all →</Link>
         </div>
-      </div>
+      </div> */}
 
       {/* ── Pending Orders Table ── */}
       {/* <div className="panel">

@@ -31,7 +31,7 @@ function AccountList() {
   const [user, setUser]       = useState<UserData>({})
   const [role, setRole]       = useState<string | null>(null)
   const [mounted, setMounted] = useState(false)
-  const [imageSrc, setImageSrc] = useState<string>("https://i.sstatic.net/l60Hf.png")
+  const [imageSrc, setImageSrc] = useState<string>("/image.png")
 
   useEffect(() => {
     if (typeof window === "undefined") return

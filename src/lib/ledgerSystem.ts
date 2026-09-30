@@ -313,16 +313,21 @@ export async function getCollectiveLedger(actor: AuthActor) {
     orderBy: { businessName: "asc" },
   });
   const dealerIds = dealers.map((dealer) => dealer.id);
-  const [orders, transactions] = dealerIds.length === 0 ? [[], []] : await Promise.all([
+  const [orders, transactions, bills] = dealerIds.length === 0 ? [[], [], []] : await Promise.all([
     prisma.order.findMany({ where: { dealerId: { in: dealerIds } }, include: orderInclude }),
     prisma.walletTransaction.findMany({ where: { dealerId: { in: dealerIds } } }),
+    prisma.ledgerBill.findMany({ where: { dealerId: { in: dealerIds } }, select: { dealerId: true, billAmountPaise: true, paidAmountPaise: true } }),
   ]);
 
   return dealers.map((dealer) => {
     const dealerOrders = orders.filter((order) => order.dealerId === dealer.id);
     const dealerTransactions = transactions.filter((tx) => tx.dealerId === dealer.id);
     const summary = summaryFrom(dealerOrders, dealerTransactions);
-    return { ...normalizeDealer(dealer, dealer.wallet), totalDebit: summary.totalDebit, totalCredit: summary.totalCredit, netBalance: summary.netBalance, accountBook: summary.accountBook };
+    // Bill balances still awaiting a recorded payment.
+    const pendingDuesPaise = bills
+      .filter((bill) => bill.dealerId === dealer.id && bill.billAmountPaise > bill.paidAmountPaise)
+      .reduce((sum, bill) => sum + (bill.billAmountPaise - bill.paidAmountPaise), BigInt(0));
+    return { ...normalizeDealer(dealer, dealer.wallet), totalDebit: summary.totalDebit, totalCredit: summary.totalCredit, netBalance: summary.netBalance, accountBook: summary.accountBook, pendingDues: money(pendingDuesPaise) };
   });
 }
 
