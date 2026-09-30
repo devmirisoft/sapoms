@@ -326,7 +326,7 @@ export default function DealerBillsPanel({
               <p className="text-xs text-gray-500">{selectable.length} dispatched order{selectable.length === 1 ? '' : 's'} with unbilled value</p>
             </div>
             {canManageBills && (
-              <button type="button" onClick={openInvoice} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+              <button type="button" onClick={openInvoice} className="inline-flex items-center gap-2 rounded-lg bg-[#00494B] px-3 py-2 text-sm font-semibold text-white hover:bg-[#007d7d]">
                 <Plus className="h-4 w-4" /> Add Invoice
               </button>
             )}
