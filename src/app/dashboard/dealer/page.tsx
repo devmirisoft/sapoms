@@ -362,7 +362,7 @@ function DealerDashboardInner() {
         const current = Number(parsed.currentlimit)  || 0;
         setFunnel([
           { label: "Annual Target", value: annual,  pct: 100, color: "#af52de" },
-          { label: "Current Limit", value: current, pct: annual > 0 ? Math.round((current / annual) * 100) : 0, color: "#007aff" },
+          { label: "Current Limit", value: current, pct: annual > 0 ? Math.round((current / annual) * 100) : 0, color: "#006162" },
         ]);
     } catch (err) {
       console.error("[DealerDashboard] top-level error:", err);
@@ -412,7 +412,7 @@ function DealerDashboardInner() {
           datasets: [{
             label: "Total Orders",
             data:  monthlyOrders.map(m => m.totalorders),
-            backgroundColor:      "#007aff",
+            backgroundColor:      "#006162",
             hoverBackgroundColor: "#0062cc",
             borderRadius: 7,
             borderSkipped: false,
@@ -610,8 +610,8 @@ function DealerDashboardInner() {
 
         /* ── Page header ── */
         .dashboard-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
-        .eyebrow { display: inline-flex; align-items: center; gap: 7px; color: #007aff; font-size: 12px; line-height: 1; font-weight: 650; margin-bottom: 10px; }
-        .eyebrow-dot { width: 7px; height: 7px; border-radius: 999px; background: #007aff; box-shadow: 0 0 0 4px rgba(0, 122, 255, .09); }
+        .eyebrow { display: inline-flex; align-items: center; gap: 7px; color: #006162; font-size: 12px; line-height: 1; font-weight: 650; margin-bottom: 10px; }
+        .eyebrow-dot { width: 7px; height: 7px; border-radius: 999px; background: #006162; box-shadow: 0 0 0 4px rgba(0, 122, 255, .09); }
         .page-heading, .page-title { margin: 0; font-size: clamp(32px, 4vw, 44px); line-height: 1.02; letter-spacing: -.045em; font-weight: 720; color: #1d1d1f; }
         .page-subtitle { max-width: 620px; margin: 10px 0 0; color: #6e6e73; font-size: 15px; line-height: 1.45; letter-spacing: -.01em; text-wrap: pretty; }
         .profile-chip {
@@ -654,12 +654,12 @@ function DealerDashboardInner() {
         .icard-badge::before { content: ""; width: 7px; height: 7px; border-radius: 999px; background: #8e8e93; flex-shrink: 0; }
         .badge-amber::before  { background: #ff9500; }
         .badge-green::before  { background: #34c759; }
-        .badge-blue::before   { background: #007aff; }
+        .badge-blue::before   { background: #006162; }
         .badge-purple::before { background: #af52de; }
         .badge-red::before    { background: #ff3b30; }
         .pulse-amber::before { animation: pulseAmber 1.8s infinite; }
         @keyframes pulseAmber { 0%{box-shadow:0 0 0 0 rgba(255,149,0,0.55)} 70%{box-shadow:0 0 0 6px rgba(255,149,0,0)} 100%{box-shadow:0 0 0 0 rgba(255,149,0,0)} }
-        .quick-action-btn { display: inline-block; margin-top: 12px; color: #007aff; font-size: 11.5px; font-weight: 620; text-decoration: none; white-space: nowrap; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+        .quick-action-btn { display: inline-block; margin-top: 12px; color: #006162; font-size: 11.5px; font-weight: 620; text-decoration: none; white-space: nowrap; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
         .quick-action-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
 
         /* ── Panels ── */
@@ -699,7 +699,7 @@ function DealerDashboardInner() {
         .progress-label { display: flex; align-items: center; justify-content: space-between; color: #6e6e73; font-size: 11.5px; margin-bottom: 8px; }
         .progress-label span:last-child { color: #1d1d1f; font-weight: 650; font-variant-numeric: tabular-nums; }
         .progress-track { height: 8px; border-radius: 999px; background: rgba(118, 118, 128, .14); overflow: hidden; }
-        .progress-fill { height: 100%; border-radius: 999px; background: #007aff; transition: width .3s ease; }
+        .progress-fill { height: 100%; border-radius: 999px; background: #006162; transition: width .3s ease; }
         .credit-meta { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 20px; }
         .credit-chip { display: inline-flex; align-items: center; gap: 6px; color: #6e6e73; font-size: 11.5px; white-space: nowrap; }
         .credit-chip::before { content: ""; width: 7px; height: 7px; border-radius: 999px; background: #8e8e93; flex-shrink: 0; }
@@ -724,7 +724,7 @@ function DealerDashboardInner() {
         .team-name { color: #1d1d1f; font-size: 13px; font-weight: 650; letter-spacing: -.01em; overflow-wrap: anywhere; }
         .team-desig { margin-top: 2px; color: #8e8e93; font-size: 11px; overflow-wrap: anywhere; }
         .team-contact { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
-        .team-link { color: #007aff; font-size: 11.5px; text-decoration: none; overflow-wrap: anywhere; }
+        .team-link { color: #006162; font-size: 11.5px; text-decoration: none; overflow-wrap: anywhere; }
         .team-link:hover { text-decoration: underline; text-underline-offset: 2px; }
         .team-panel .credit-chip { flex-shrink: 0; padding-top: 2px; }
         /* Third panel in a 2-up grid: span both columns so it does not sit
@@ -957,7 +957,7 @@ function DealerDashboardInner() {
                     <div className="panel-sub">Monthly order count</div>
                   </div>
                   <div className="legend">
-                    <span className="leg"><span className="leg-dot" style={{ background: "#007aff" }} />Total Orders</span>
+                    <span className="leg"><span className="leg-dot" style={{ background: "#006162" }} />Total Orders</span>
                   </div>
                 </div>
                 {loading ? (

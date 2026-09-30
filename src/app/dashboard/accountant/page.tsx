@@ -193,7 +193,7 @@ function ExportMenu({
           <div className="menu-sheet">
             <div className="menu-label">Invoice PDF</div>
             <button onClick={handleAllPDF} className="menu-item" style={{ borderBottom: "1px solid rgba(60,60,67,.11)" }}>
-              <Receipt size={13} style={{ color: "#007aff" }}/>
+              <Receipt size={13} style={{ color: "#006162" }}/>
               <div><p style={{ margin: 0, fontWeight: 620 }}>Download All PDFs</p><p className="faint" style={{ margin: "2px 0 0" }}>One per order (up to 10)</p></div>
             </button>
             <div className="menu-label">Excel / CSV</div>
@@ -356,7 +356,7 @@ function AccountantDashboardInner() {
   const statCards = [
     { label: "Total Sale",       value: `₹${totalSale.toLocaleString("en-IN")}`,     icon: <DollarSign size={15}/>,   tint: "rgba(52,199,89,.12)",  accent: "#1a7f37" },
     { label: "Total Billed",     value: `₹${billedTotal.toLocaleString("en-IN")}`,   icon: <Receipt size={15}/>,      tint: "rgba(90,200,250,.14)", accent: "#0071a4" },
-    { label: "Total Orders",     value: stats.orderCount,                              icon: <ShoppingCart size={15}/>, tint: "rgba(0,122,255,.10)",  accent: "#007aff" },
+    { label: "Total Orders",     value: stats.orderCount,                              icon: <ShoppingCart size={15}/>, tint: "rgba(0,122,255,.10)",  accent: "#006162" },
     { label: "Pending Orders",   value: stats.PorderCount,                             icon: <Clock size={15}/>,        tint: "rgba(255,149,0,.12)",  accent: "#b25c00" },
     { label: "Pending Payments", value: pendingPayCount,                               icon: <AlertCircle size={15}/>,  tint: "rgba(255,59,48,.10)",  accent: "#ff3b30" },
     { label: "Payment Exposure", value: `₹${pendingPayment.toLocaleString("en-IN")}`, icon: <TrendingUp size={15}/>,   tint: "rgba(175,82,222,.10)", accent: "#af52de" },
@@ -383,8 +383,8 @@ function AccountantDashboardInner() {
 
         /* ── Page header ── */
         .dashboard-header { margin-bottom: 30px; }
-        .eyebrow { display: inline-flex; align-items: center; gap: 7px; color: #007aff; font-size: 12px; line-height: 1; font-weight: 650; margin-bottom: 10px; }
-        .eyebrow-dot { width: 7px; height: 7px; border-radius: 999px; background: #007aff; box-shadow: 0 0 0 4px rgba(0, 122, 255, .09); }
+        .eyebrow { display: inline-flex; align-items: center; gap: 7px; color: #006162; font-size: 12px; line-height: 1; font-weight: 650; margin-bottom: 10px; }
+        .eyebrow-dot { width: 7px; height: 7px; border-radius: 999px; background: #006162; box-shadow: 0 0 0 4px rgba(0, 122, 255, .09); }
         .page-title { margin: 0; font-size: clamp(32px, 4vw, 44px); line-height: 1.02; letter-spacing: -.045em; font-weight: 720; color: #1d1d1f; }
         .page-subtitle { max-width: 620px; margin: 10px 0 0; color: #6e6e73; font-size: 15px; line-height: 1.45; letter-spacing: -.01em; text-wrap: pretty; }
         .section-label { margin: 0 0 12px 2px; color: #6e6e73; font-size: 12px; font-weight: 650; letter-spacing: .01em; }
@@ -413,13 +413,13 @@ function AccountantDashboardInner() {
         .icard-badge::before { content: ""; width: 7px; height: 7px; border-radius: 999px; background: #8e8e93; flex-shrink: 0; }
         .badge-amber::before  { background: #ff9500; }
         .badge-green::before  { background: #34c759; }
-        .badge-blue::before   { background: #007aff; }
+        .badge-blue::before   { background: #006162; }
         .badge-purple::before { background: #af52de; }
         .badge-red::before    { background: #ff3b30; }
         .pulse-amber::before { animation: pulseAmber 1.8s infinite; }
         @keyframes pulseAmber { 0%{box-shadow:0 0 0 0 rgba(255,149,0,0.55)} 70%{box-shadow:0 0 0 6px rgba(255,149,0,0)} 100%{box-shadow:0 0 0 0 rgba(255,149,0,0)} }
         .stat-icon { width: 34px; height: 34px; border-radius: 11px; display: grid; place-items: center; margin-bottom: 14px; }
-        .quick-action-btn { display: inline-block; margin-top: 12px; color: #007aff; font-size: 11.5px; font-weight: 620; text-decoration: none; white-space: nowrap; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
+        .quick-action-btn { display: inline-block; margin-top: 12px; color: #006162; font-size: 11.5px; font-weight: 620; text-decoration: none; white-space: nowrap; background: none; border: 0; padding: 0; cursor: pointer; font-family: inherit; }
         .quick-action-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
 
         /* ── Panels ── */
@@ -443,7 +443,7 @@ function AccountantDashboardInner() {
         .leg-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
 
         .pill { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 10.5px; font-weight: 650; white-space: nowrap; }
-        .pill-blue  { background: rgba(0,122,255,.10); color: #007aff; }
+        .pill-blue  { background: rgba(0,122,255,.10); color: #006162; }
         .pill-amber { background: rgba(255,149,0,.14); color: #b25c00; }
 
         .ghost-btn {
@@ -459,7 +459,7 @@ function AccountantDashboardInner() {
         .accent-btn {
           display: inline-flex; align-items: center; gap: 7px;
           height: 32px; padding: 0 13px; border-radius: 10px;
-          background: #007aff; border: 0; color: #fff;
+          background: #006162; border: 0; color: #fff;
           font-size: 11.5px; font-weight: 620;
           white-space: nowrap; cursor: pointer; font-family: inherit;
           transition: background .15s;
@@ -498,7 +498,7 @@ function AccountantDashboardInner() {
         .sd-green  { background: #34c759; }
         .sd-amber  { background: #ff9500; }
         .sd-red    { background: #ff3b30; }
-        .sd-blue   { background: #007aff; }
+        .sd-blue   { background: #006162; }
 
         /* ── Reports ── */
         .reports-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px; }
@@ -594,7 +594,7 @@ function AccountantDashboardInner() {
         <div className="panel-header">
           <div>
             <div className="panel-title">
-              <ShoppingCart size={15} style={{ color: "#007aff" }}/>
+              <ShoppingCart size={15} style={{ color: "#006162" }}/>
               Recent Orders
               <span className="pill pill-blue">Last 10</span>
             </div>
@@ -732,7 +732,7 @@ function AccountantDashboardInner() {
       {/* ── Charts ── */}
       <div className="charts-2">
         {[
-          { title: "Top Orders by Value",    sub: "Highest order amounts",         data: cOrdData,  fill: "#007aff", legend: "Order value" },
+          { title: "Top Orders by Value",    sub: "Highest order amounts",         data: cOrdData,  fill: "#006162", legend: "Order value" },
           { title: "Top Dealers by Revenue", sub: "Best performing dealer accounts", data: cDealData, fill: "#8e8e93", legend: "Revenue" },
         ].map(chart => (
           <div key={chart.title} className="panel">
@@ -772,7 +772,7 @@ function AccountantDashboardInner() {
         <div className="panel-header">
           <div>
             <div className="panel-title">
-              <TrendingUp size={15} style={{ color: "#007aff" }}/> Reports
+              <TrendingUp size={15} style={{ color: "#006162" }}/> Reports
             </div>
             <div className="panel-sub">Quick ranked view of your strongest orders and dealers</div>
           </div>

@@ -739,7 +739,7 @@ function AdminDashboardInner() {
           --apple-text: #1d1d1f;
           --apple-secondary: #6e6e73;
           --apple-tertiary: #8e8e93;
-          --apple-blue: #007aff;
+          --apple-blue: #006162;
           --apple-green: #34c759;
           --apple-orange: #ff9500;
           --apple-red: #ff3b30;
@@ -1036,13 +1036,13 @@ function AdminDashboardInner() {
           align-self: center;
           padding: 6px 12px;
           border-radius: 10px;
-          background: #0071e3;
+          background: #00494B;
           color: #fff;
           font-size: 12px;
           font-weight: 650;
           text-decoration: none;
         }
-        .sale-report:hover { background: #0077ed; }
+        .sale-report:hover { background: #007D7D; }
 
         .sale-field input {
           padding: 6px 10px;
@@ -1434,7 +1434,7 @@ function AdminDashboardInner() {
                         labelStyle={{ color: "#6e6e73", marginBottom: "5px" }}
                         formatter={(value) => [`₹${Number(value ?? 0).toLocaleString("en-IN")}`, "Net sale"]}
                       />
-                      <Line type="monotone" dataKey="total" stroke="#0071e3" strokeWidth={2.25} dot={false} activeDot={{ r: 4, fill: "#ffffff", stroke: "#0071e3", strokeWidth: 2 }} />
+                      <Line type="monotone" dataKey="total" stroke="#00494B" strokeWidth={2.25} dot={false} activeDot={{ r: 4, fill: "#ffffff", stroke: "#00494B", strokeWidth: 2 }} />
                     </LineChart>
                   </ResponsiveContainer>
                 ) : (
@@ -1570,7 +1570,7 @@ function AdminDashboardInner() {
                   <div className="panel-title">Top Orders</div>
                   <div className="panel-sub">Highest order values in the current dataset</div>
                 </div>
-                <span className="leg"><span className="leg-dot" style={{ background: "#007aff" }} />Order value</span>
+                <span className="leg"><span className="leg-dot" style={{ background: "#006162" }} />Order value</span>
               </div>
               <div className="chart-canvas compact">
                 {loading ? (
@@ -1587,7 +1587,7 @@ function AdminDashboardInner() {
                         labelStyle={{ color: "#6e6e73" }}
                         formatter={(value) => `₹${Number(value).toLocaleString("en-IN")}`}
                       />
-                      <Bar dataKey="value" fill="#007aff" radius={[8, 8, 2, 2]} maxBarSize={38} />
+                      <Bar dataKey="value" fill="#006162" radius={[8, 8, 2, 2]} maxBarSize={38} />
                     </BarChart>
                   </ResponsiveContainer>
                 ) : (

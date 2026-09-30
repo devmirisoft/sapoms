@@ -45,6 +45,8 @@ const orderInclude = {
   // Required by mapPostgresOrderToLegacy, which derives the order's settled
   // position from its bills.
   ledgerBills: { orderBy: { billDate: "desc" as const } },
+  // Latest dispatch only; mapPostgresOrderToLegacy reads its remark.
+  dispatches: { orderBy: { createdAt: "desc" as const }, take: 1, select: { remark: true, createdAt: true } },
 } satisfies Prisma.OrderInclude;
 
 type LedgerClient = Pick<Prisma.TransactionClient, "dealerProfile" | "dealerStaffAssignment" | "order" | "dealerWallet" | "walletTransaction" | "$executeRaw">;

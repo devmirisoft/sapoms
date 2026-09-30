@@ -529,18 +529,18 @@ function ExecutiveDashboard() {
         .profile-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; }
         .pchip { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 620; }
         .pc-purple { background: rgba(175,82,222,.10); color: #af52de; }
-        .pc-blue   { background: rgba(0,122,255,.10); color: #007aff; }
+        .pc-blue   { background: rgba(0,122,255,.10); color: #006162; }
         .pc-amber  { background: rgba(255,149,0,.12); color: #b25c00; }
         .pc-green  { background: rgba(52,199,89,.12); color: #1a7f37; font-variant-numeric: tabular-nums; }
 
         /* ── Refetch indicator ── */
-        .refetch-bar { height: 2px; background: linear-gradient(90deg, rgba(0,122,255,0), #007aff, rgba(0,122,255,0)); animation: slide 1.2s infinite; border-radius: 2px; margin-bottom: 12px; }
+        .refetch-bar { height: 2px; background: linear-gradient(90deg, rgba(0,122,255,0), #006162, rgba(0,122,255,0)); animation: slide 1.2s infinite; border-radius: 2px; margin-bottom: 12px; }
         @keyframes slide { 0%{transform:translateX(-100%)} 100%{transform:translateX(100%)} }
 
         /* ── Page header ── */
         .dashboard-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
-        .eyebrow { display: inline-flex; align-items: center; gap: 7px; color: #007aff; font-size: 12px; line-height: 1; font-weight: 650; margin-bottom: 10px; }
-        .eyebrow-dot { width: 7px; height: 7px; border-radius: 999px; background: #007aff; box-shadow: 0 0 0 4px rgba(0, 122, 255, .09); }
+        .eyebrow { display: inline-flex; align-items: center; gap: 7px; color: #006162; font-size: 12px; line-height: 1; font-weight: 650; margin-bottom: 10px; }
+        .eyebrow-dot { width: 7px; height: 7px; border-radius: 999px; background: #006162; box-shadow: 0 0 0 4px rgba(0, 122, 255, .09); }
         .page-title { margin: 0; font-size: clamp(32px, 4vw, 44px); line-height: 1.02; letter-spacing: -.045em; font-weight: 720; color: #1d1d1f; }
         .page-subtitle { max-width: 620px; margin: 10px 0 0; color: #6e6e73; font-size: 15px; line-height: 1.45; letter-spacing: -.01em; text-wrap: pretty; }
         .profile-chip {
@@ -585,12 +585,12 @@ function ExecutiveDashboard() {
         .stat-badge::before { content: ""; width: 7px; height: 7px; border-radius: 999px; background: #8e8e93; flex-shrink: 0; }
         .badge-amber::before  { background: #ff9500; }
         .badge-green::before  { background: #34c759; }
-        .badge-blue::before   { background: #007aff; }
+        .badge-blue::before   { background: #006162; }
         .badge-purple::before { background: #af52de; }
         .badge-red::before    { background: #ff3b30; }
         .pulse-amber::before { animation: pulseAmber 1.8s infinite; }
         @keyframes pulseAmber { 0%{box-shadow:0 0 0 0 rgba(255,149,0,0.55)} 70%{box-shadow:0 0 0 6px rgba(255,149,0,0)} 100%{box-shadow:0 0 0 0 rgba(255,149,0,0)} }
-        .quick-action-btn { display: inline-block; margin-top: 12px; color: #007aff; font-size: 11.5px; font-weight: 620; text-decoration: none; white-space: nowrap; }
+        .quick-action-btn { display: inline-block; margin-top: 12px; color: #006162; font-size: 11.5px; font-weight: 620; text-decoration: none; white-space: nowrap; }
         .quick-action-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
 
         /* ── Panels / Charts ── */
@@ -636,7 +636,7 @@ function ExecutiveDashboard() {
         .st-active::before, .st-inactive::before { content: ""; width: 7px; height: 7px; border-radius: 999px; flex-shrink: 0; }
         .st-active::before   { background: #34c759; }
         .st-inactive::before { background: #ff3b30; }
-        .view-btn { display: inline-flex; align-items: center; gap: 4px; color: #007aff; font-size: 11.5px; font-weight: 620; background: none; border: none; cursor: pointer; text-decoration: none; }
+        .view-btn { display: inline-flex; align-items: center; gap: 4px; color: #006162; font-size: 11.5px; font-weight: 620; background: none; border: none; cursor: pointer; text-decoration: none; }
         .view-btn:hover { text-decoration: underline; text-underline-offset: 2px; }
 
         /* ── Error banner ── */
@@ -647,7 +647,7 @@ function ExecutiveDashboard() {
           background: rgba(255,255,255,.8);
           border-radius: 16px; color: #b42318; font-size: 13px;
         }
-        .retry-btn { margin-left: auto; border: 0; background: transparent; color: #007aff; cursor: pointer; font-weight: 650; padding: 4px 7px; }
+        .retry-btn { margin-left: auto; border: 0; background: transparent; color: #006162; cursor: pointer; font-weight: 650; padding: 4px 7px; }
 
         /* ── Search ── */
         .search-wrap { position: relative; display: inline-flex; align-items: center; }
@@ -793,11 +793,11 @@ function ExecutiveDashboard() {
               <ChartPanel
                 title="Monthly Orders"
                 sub="Total order count per month"
-                legendColor="#007aff"
+                legendColor="#006162"
                 legendLabel="Orders"
                 loading={monthlyOrdersQ.isLoading}
                 data={ordersChartData}
-                barFill="#007aff"
+                barFill="#006162"
                 Tooltip={CountTooltip}
               />
               <ChartPanel
@@ -817,11 +817,11 @@ function ExecutiveDashboard() {
               <ChartPanel
                 title="Top Orders"
                 sub="Order value distribution"
-                legendColor="#007aff"
+                legendColor="#006162"
                 legendLabel="Order Value"
                 loading={topOrdersQ.isLoading}
                 data={topOrdersChartData}
-                barFill="#007aff"
+                barFill="#006162"
                 Tooltip={MoneyTooltip}
               />
               <ChartPanel
@@ -997,7 +997,7 @@ function ExecutiveDashboard() {
                             <button
                               key={item}
                               onClick={() => setDealerPage(item as number)}
-                              style={{ minWidth: 36, height: 34, padding: "0 10px", fontSize: 13, borderRadius: 7, border: "1px solid", borderColor: dealerPage === item ? "#007aff" : "rgba(60,60,67,.11)", background: dealerPage === item ? "#007aff" : "transparent", color: dealerPage === item ? "#fff" : "#1d1d1f", fontWeight: dealerPage === item ? 700 : 400, cursor: "pointer" }}
+                              style={{ minWidth: 36, height: 34, padding: "0 10px", fontSize: 13, borderRadius: 7, border: "1px solid", borderColor: dealerPage === item ? "#006162" : "rgba(60,60,67,.11)", background: dealerPage === item ? "#006162" : "transparent", color: dealerPage === item ? "#fff" : "#1d1d1f", fontWeight: dealerPage === item ? 700 : 400, cursor: "pointer" }}
                             >{item}</button>
                           )
                         )}

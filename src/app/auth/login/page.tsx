@@ -8,7 +8,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { cn } from "@/lib/utils"
 
 
-const LOGO_SRC = "/omsons_logo.jpeg"
+const LOGO_SRC = "/Omsons_Logo.png"
 
 export default function Login() {
   const router = useRouter()
@@ -207,14 +207,12 @@ export default function Login() {
                     alt="Omsons Logo"
                     width={34}
                     height={34}
-                    className="h-9 w-9 rounded-full bg-[#1d4ed8] object-contain p-1"
+                    className="h-19 w-19  bg-[#] object-contain p-1"
                   />
                   <div>
-                    <p className="text-sm font-semibold text-slate-950">Omsons</p>
-                    <p className="text-xs text-slate-400">Dealer network</p>
                   </div>
                 </div>
-                <h1 className="text-[26px] font-black leading-tight tracking-[-0.01em] text-slate-950">
+                <h1 className="text-[22px] font-black leading-tight tracking-[-0.01em] text-slate-950">
                   Login
                 </h1>
                 <p className="mt-1 text-[13px] text-slate-500">
@@ -303,7 +301,7 @@ export default function Login() {
                         type="button"
                         onClick={handleRequestOtp}
                         disabled={otpLoading}
-                        className="flex items-center gap-1.5 text-[11px] font-semibold text-[#4f35dc] hover:text-[#321fbd] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex items-center gap-1.5 text-[11px] font-semibold text-[#00494B] hover:text-[#321fbd] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <RotateCcw size={12} />
                         Resend Code
@@ -316,7 +314,7 @@ export default function Login() {
               <div className="mt-2 flex justify-end">
                 <button
                   type="button"
-                  className="text-[11px] font-semibold text-[#4f35dc] hover:text-[#321fbd]"
+                  className="text-[11px] font-semibold text-[#00494B] hover:text-[#321fbd]"
                 >
                   Forgot Password?
                 </button>
@@ -333,7 +331,7 @@ export default function Login() {
               <button
                 type="submit"
                 disabled={loading || otpLoading}
-                className="mt-4 h-10 w-full rounded-full bg-[#593df4] px-4 text-[13px] font-bold text-white shadow-[0_14px_28px_rgba(89,61,244,0.28)] transition hover:-translate-y-0.5 hover:bg-[#4b31de] active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
+                className="mt-4 h-10 w-full rounded-full bg-[#E85222] px-4 text-[13px] font-bold text-white shadow-[0_14px_28px_rgba(89,61,244,0.28)] transition hover:-translate-y-0.5 hover:bg-[#EC691F] active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {showOtp ? (otpLoading ? "Verifying..." : "Verify & Login") : loading ? "Signing in..." : "Login"}
               </button>

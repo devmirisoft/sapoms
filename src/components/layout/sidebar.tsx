@@ -270,7 +270,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         .sb-panel {
           position: fixed; top: 0; left: 0; bottom: 0;
           width: 264px; z-index: 40;
-          background: #075ED6;
+          background: #333333;
           display: flex; flex-direction: column;
           transform: translateX(-100%);
           overflow: hidden;
@@ -289,11 +289,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           height: 72px; box-sizing: border-box; padding: 0 13px; /* 46px mark centred in the 72px rail and header */
         }
         .sb-mark {
-          width: 46px; height: 46px; flex: 0 0 auto; padding: 4px; box-sizing: border-box;
+          width: 52px; height: 56px; flex: 0 0 auto; padding: 4px; box-sizing: border-box;
           border-radius: 12px;
-          background: #fff;
+          background:;
           overflow: hidden;
-          box-shadow: 0 2px 8px rgba(0,0,0,0.12);
         }
         .sb-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
         .sb-headtext { min-width: 0; padding-left: 12px; border-left: 1px solid rgba(255,255,255,0.3); }
@@ -408,10 +407,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         .sb-group:not(.lead) .sb-link { height: 40px; font-size: 13px; color: rgba(255,255,255,0.9); }
         .sb-group:not(.lead) .sb-link svg { width: 16px; height: 16px; padding: 0 14px; }
         .sb-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sb-link:hover { background: rgba(255,255,255,0.08); color: #fff; }
+        .sb-link:hover { background: rgba(255,255,255,0.05); color: #fff; }
         .sb-link.active,
         .sb-group:not(.lead) .sb-link.active {
-          background: rgba(255,255,255,0.16);
+          background: #4D4D4D;
           color: #fff;
           font-weight: 600;
         }
@@ -468,6 +467,14 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           .dl-shell { margin-left: 72px; }
           html[data-sb-pinned="1"] .dl-shell { margin-left: 264px; }
 
+          /* Inverted corner hanging off the sticky header, so the sidebar
+             curves into the content and stays put while the page scrolls. */
+          .dl-topbar::after {
+            content: ""; position: absolute; top: 100%; left: 0;
+            width: 18px; height: 18px; pointer-events: none;
+            background: radial-gradient(circle at 100% 100%, transparent 18px, #333333 18.5px);
+          }
+
           /* Hover and the edge strip replace it here; it stays for the mobile drawer. */
           .dl-hamburger { display: none; }
 
@@ -484,7 +491,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
             margin: 0; transform: translateX(2px);
             min-width: 16px; height: 16px; padding: 0 4px;
             font-size: 10px; line-height: 16px;
-            box-shadow: 0 0 0 2px #075ED6;
+            box-shadow: 0 0 0 2px #333333;
           }
 
           .sb-panel:not(.pinned):not(:hover):not(:focus-within) .sb-user {
@@ -579,7 +586,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         {/* Head */}
         <div className="sb-head">
           <div className="sb-mark">
-            <img src="/omsons_logo.jpeg" alt="Omsons" />
+            <img src="/Omsons_Logo.png" alt="Omsons" />
           </div>
           <div className="sb-headtext">
             <div className="sb-title">Workspace</div>

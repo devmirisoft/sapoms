@@ -148,8 +148,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           z-index: 20;
           height: 72px;
           padding: 0 22px;
-          background: #075ED6;
-          box-shadow: 0 2px 12px rgba(7,94,214,0.25);
+          background: #333333;
+          box-shadow: none;
           display: flex;
           align-items: center;
           gap: 14px;
@@ -270,7 +270,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           height: 10px;
           border-radius: 50%;
           background: #ef4444;
-          box-shadow: 0 0 0 2px #075ED6;
+          box-shadow: 0 0 0 2px #333333;
         }
         .dl-menu-root { position: relative; }
         .dl-user {
@@ -393,7 +393,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
       `}</style>
 
-      <div style={{ minHeight: "100vh", background: "#f0f2f5", fontFamily: "Arial, Helvetica, sans-serif" }}>
+      <div style={{ minHeight: "100vh", background: "#F0F0F0", fontFamily: "Arial, Helvetica, sans-serif" }}>
         <Sidebar open={open} onClose={() => setOpen(false)} />
 
         <div className={`dl-shell${open ? " sb-expanded" : ""}`} style={{ display: "flex", flexDirection: "column", minHeight: "100vh" }}>
