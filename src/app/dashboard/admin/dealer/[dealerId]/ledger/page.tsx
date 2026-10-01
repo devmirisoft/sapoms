@@ -453,6 +453,7 @@ export default function DealerLedgerPage() {
           canRecordPayment={canManageLedgerEntries}
           canAdjustWallet
           onAdjustWalletClick={() => setWalletAdjustOpen(true)}
+          showWallet={!walletData?.credit}
         />
 
         <DealerBillsPanel

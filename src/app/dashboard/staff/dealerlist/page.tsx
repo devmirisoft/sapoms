@@ -273,17 +273,6 @@ function isDealerAssignedToStaff(
   ).includes(currentStaffId);
 }
 
-function getInitials(name: string): string {
-  return name
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((word) =>
-      word.charAt(0).toUpperCase()
-    )
-    .join("");
-}
-
 function compareNewestDealerFirst(left: Dealer, right: Dealer): number {
   const leftId = Number(left.Dealer_Id);
   const rightId = Number(right.Dealer_Id);
@@ -687,11 +676,8 @@ export default function StaffDealerListPage() {
 
                           <td className="px-4 py-4">
                             <div className="flex items-center gap-3">
-                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-indigo-100 text-xs font-semibold text-indigo-700">
-                                {getInitials(
-                                  dealerName
-                                ) || "D"}
-                              </div>
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img src={dealer.Dealer_Image || "/image.png"} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
 
                               <Link
                                 href={

@@ -103,6 +103,8 @@ export async function applyWalletChange(
     metadata?: Record<string, unknown>;
     actor?: WalletActor;
     allowCreate?: boolean;
+    /** Log the transaction (ledger + idempotency) without moving the balance - credit-terms dealers have no spendable wallet. */
+    recordOnly?: boolean;
   } = {},
 ) {
   const amountPaise = toPaise(amountInput);
@@ -116,26 +118,28 @@ export async function applyWalletChange(
   let wallet = await client.dealerWallet.findUnique({ where: { dealerId } });
   if (!wallet) {
     if (!options.allowCreate && !isCreditType(type) && type !== WalletTransactionType.ADJUSTMENT) throw new WalletError("Dealer wallet was not found", 404, "wallet_not_found");
-    wallet = await client.dealerWallet.create({ data: { dealerId, status: WalletStatus.ACTIVE } });
+    wallet = await client.dealerWallet.create({ data: { dealerId, status: options.recordOnly ? WalletStatus.INACTIVE : WalletStatus.ACTIVE } });
   }
 
   const direction = isCreditType(type) ? BigInt(1) : BigInt(-1);
-  const nextBalance = wallet.balancePaise + (amountPaise * direction);
+  const nextBalance = options.recordOnly ? wallet.balancePaise : wallet.balancePaise + (amountPaise * direction);
   if (nextBalance < BigInt(0)) throw new WalletError("Insufficient wallet balance", 409, "insufficient_balance");
 
-  const creditedIncrement = isCreditType(type) ? amountPaise : BigInt(0);
-  const consumedIncrement = type === WalletTransactionType.ORDER_DEBIT || type === WalletTransactionType.DEBIT ? amountPaise : BigInt(0);
-  const updatedCount = await client.$executeRaw`
-    UPDATE dealer_wallets
-    SET balance_paise = ${nextBalance},
-        total_credited_paise = total_credited_paise + ${creditedIncrement},
-        total_consumed_paise = total_consumed_paise + ${consumedIncrement},
-        updated_at = NOW()
-    WHERE id = ${wallet.id}
-      AND balance_paise = ${wallet.balancePaise}
-      AND reserved_paise = ${wallet.reservedPaise}
-  `;
-  if (Number(updatedCount) !== 1) throw new WalletError("Wallet balance changed, please retry.", 409, "wallet_conflict");
+  if (!options.recordOnly) {
+    const creditedIncrement = isCreditType(type) ? amountPaise : BigInt(0);
+    const consumedIncrement = type === WalletTransactionType.ORDER_DEBIT || type === WalletTransactionType.DEBIT ? amountPaise : BigInt(0);
+    const updatedCount = await client.$executeRaw`
+      UPDATE dealer_wallets
+      SET balance_paise = ${nextBalance},
+          total_credited_paise = total_credited_paise + ${creditedIncrement},
+          total_consumed_paise = total_consumed_paise + ${consumedIncrement},
+          updated_at = NOW()
+      WHERE id = ${wallet.id}
+        AND balance_paise = ${wallet.balancePaise}
+        AND reserved_paise = ${wallet.reservedPaise}
+    `;
+    if (Number(updatedCount) !== 1) throw new WalletError("Wallet balance changed, please retry.", 409, "wallet_conflict");
+  }
 
   const transaction = await client.walletTransaction.create({
     data: {

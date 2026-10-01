@@ -326,7 +326,7 @@ export default function DealerBillsPanel({
               <p className="text-xs text-gray-500">{selectable.length} dispatched order{selectable.length === 1 ? '' : 's'} with unbilled value</p>
             </div>
             {canManageBills && (
-              <button type="button" onClick={openInvoice} className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-700">
+              <button type="button" onClick={openInvoice} className="inline-flex items-center gap-2 rounded-lg bg-[#00494B] px-3 py-2 text-sm font-semibold text-white hover:bg-[#007d7d]">
                 <Plus className="h-4 w-4" /> Add Invoice
               </button>
             )}
@@ -391,9 +391,9 @@ export default function DealerBillsPanel({
                               setPayment({ amount: String(balance), mode: 'NEFT', date: today(), reference: '' })
                               setModal('payment')
                             }}
-                            className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-[#00494B] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#007d7d] disabled:cursor-not-allowed disabled:opacity-50"
                           >
-                            <CreditCard className="h-3.5 w-3.5" /> Record Payment
+                            <CreditCard className="h-3.5 w-3.5" /> Add Payment
                           </button>
                         )}
                       </td>
@@ -449,7 +449,7 @@ export default function DealerBillsPanel({
       )}
 
       {modal === 'payment' && paymentBill && (
-        <Modal title="Record Payment" onClose={close}>
+        <Modal title="add Payment" onClose={close}>
           <form onSubmit={submitPayment} className="space-y-4">
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
               Invoice for order {formatDisplayOrderNumber(paymentBill.orderNumber)} · Due {formatAmount(Math.max(0, paymentBill.billAmount - paymentBill.paidAmount))}
@@ -474,7 +474,7 @@ export default function DealerBillsPanel({
               <span className={labelClass}>{payment.mode === 'Credit Note' ? 'Credit note reason' : 'Reference / Notes'}</span>
               <input value={payment.reference} onChange={(event) => setPayment((prev) => ({ ...prev, reference: event.target.value }))} className={inputClass} required={payment.mode === 'Credit Note'} />
             </label>
-            <Actions onCancel={close} busy={busy} label="Record Payment" tone="emerald" />
+            <Actions onCancel={close} busy={busy} label="add Payment" tone="emerald" />
           </form>
         </Modal>
       )}

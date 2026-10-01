@@ -4,7 +4,7 @@ import DateInput from "@/components/ui/date-input";
 import { FormEvent, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
 import {
   AlertCircle,
@@ -14,7 +14,6 @@ import {
   Download,
   FileText,
   Loader2,
-  Plus,
   Search,
   X,
 } from 'lucide-react'
@@ -38,6 +37,7 @@ type Dealer = {
   credit_period?: string | number
   Credit_Period?: string | number
   walletBalance?: string | number
+  pendingDues?: number
   accountBook?: AccountBook
 }
 
@@ -240,6 +240,7 @@ function isStaffLedgerSession() {
 
 export default function DealerLedgerShellPage() {
   const router = useRouter()
+  const queryClient = useQueryClient()
   const [redirectingStaff, setRedirectingStaff] = useState(() => isStaffLedgerSession())
   const [viewerRole, setViewerRole] = useState<string | null>(null)
   const [page, setPage] = useState(1)
@@ -523,6 +524,7 @@ export default function DealerLedgerShellPage() {
             : bill
         ),
       }))
+      queryClient.invalidateQueries({ queryKey: ['dealer-ledger-shell'] })
 
       closePaymentModal()
       showToast('success', 'Payment recorded')
@@ -671,7 +673,6 @@ export default function DealerLedgerShellPage() {
                         detail={dealerDetails[dealer.Dealer_Id]}
                         onExpand={() => handleExpand(dealer)}
                         canManageLedgerEntries={canManageLedgerEntries}
-                        onAddBill={() => openBillModal(dealer)}
                         onPayment={(bill) => openPaymentModal(dealer, bill)}
                         onViewPdfs={(bill) => setPdfTarget({ dealer, bill })}
                       />
@@ -876,12 +877,11 @@ export default function DealerLedgerShellPage() {
       )}
 
       {paymentTarget && (
-        <ModalShell title="Record Payment" onClose={closePaymentModal}>
+        <ModalShell title="Add Payment" onClose={closePaymentModal}>
           <form onSubmit={submitPayment} className="space-y-4">
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
               {paymentTarget.dealer.Dealer_Name} - Invoice for order {paymentTarget.bill.orderNumber}
             </div>
-
             <FormField
               label="Payment Amount"
               type="number"
@@ -951,10 +951,10 @@ export default function DealerLedgerShellPage() {
               <button
                 type="submit"
                 disabled={isSavingPayment}
-                className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#00494B] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#00494B]/90 disabled:opacity-60"
               >
                 {isSavingPayment && <Loader2 className="h-4 w-4 animate-spin" />}
-                Record Payment
+                Add Payment
               </button>
             </div>
           </form>
@@ -975,7 +975,6 @@ function FragmentRow({
   detail,
   onExpand,
   canManageLedgerEntries,
-  onAddBill,
   onPayment,
   onViewPdfs,
 }: {
@@ -989,7 +988,6 @@ function FragmentRow({
   detail?: DealerDetail
   onExpand: () => void
   canManageLedgerEntries: boolean
-  onAddBill: () => void
   onPayment: (bill: Bill) => void
   onViewPdfs: (bill: Bill) => void
 }) {
@@ -1050,17 +1048,17 @@ function FragmentRow({
                 {formatAmount(dealer.walletBalance)}
               </span>
             </div>
-          ) : canManageLedgerEntries ? (
-            <button
-              type="button"
-              onClick={onAddBill}
-              className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
-            >
-              <Plus className="h-4 w-4" />
-              Add Invoice
-            </button>
           ) : (
-            <span className="text-xs font-medium text-gray-400">View only</span>
+            <div className="inline-flex flex-col items-end">
+              <span className="text-[11px] font-medium uppercase tracking-wide text-gray-400">Pending dues</span>
+              <span
+                className={`text-sm font-semibold ${
+                  Number(dealer.pendingDues || 0) > 0 ? 'text-rose-600' : 'text-emerald-600'
+                }`}
+              >
+                {formatAmount(dealer.pendingDues)}
+              </span>
+            </div>
           )}
         </td>
       </tr>
@@ -1179,10 +1177,10 @@ function FragmentRow({
                                 type="button"
                                 onClick={() => onPayment(bill)}
                                 disabled={balance === 0}
-                                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex items-center gap-2 rounded-lg bg-[#00494B] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#00494B]/90 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <CreditCard className="h-3.5 w-3.5" />
-                                Record Payment
+                                Add Payment
                               </button>
                             ) : (
                               <span className="text-xs font-medium text-gray-400">Recorded payment only</span>

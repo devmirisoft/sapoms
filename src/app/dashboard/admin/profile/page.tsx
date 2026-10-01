@@ -178,10 +178,8 @@ export default function AdminProfilePage() {
             </h2>
             <label className="flex cursor-pointer items-center justify-between gap-4 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-4 py-4 text-sm text-gray-600 hover:border-indigo-300 hover:bg-indigo-50">
               <span className="flex items-center gap-2">
-                {imageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={imageUrl} alt="" className="h-10 w-10 rounded-full object-cover" />
-                )}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={imageUrl || "/image.png"} alt="" className="h-10 w-10 rounded-full object-cover" />
                 <Upload className="h-4 w-4" />
                 {image ? image.name : "Choose image"}
               </span>

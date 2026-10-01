@@ -460,6 +460,7 @@ function AddOrderPageInner() {
   const [wallet, setWallet] = useState<WalletSnapshot | null>(null);
   const [walletLoading, setWalletLoading] = useState(false);
   const [credit, setCredit] = useState<CreditSnapshot>(null);
+  const [walletVersion, setWalletVersion] = useState(0);
   const orderIdempotencyKey = useRef<string | null>(null);
   const [products, setProducts] = useState<any[]>([]);
   const [catalogueIndex, setCatalogueIndex] = useState<CatalogueIndex<CatalogueProduct> | null>(null);
@@ -1832,7 +1833,7 @@ function AddOrderPageInner() {
       .then((json) => { if (json.success) { setWallet(json); setCredit(json.credit ?? null); } })
       .catch(() => { setWallet(null); setCredit(null); })
       .finally(() => setWalletLoading(false));
-  }, [user?.Dealer_Id]);
+  }, [user?.Dealer_Id, walletVersion]);
 
   const saveOrderNoteForHistory = async (orderId: string) => {
     const note = orderNote.trim();
@@ -2245,9 +2246,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         }).catch((err) => console.error("[reorder-log] failed:", err));
       }
       toast.success(data.msg, { autoClose: 5000 });
-      if (data.wallet?.used) {
-        setWallet((current) => current ? { ...current, availableBalance: Number(data.wallet.balanceAfter) } : current);
-      }
+      setWalletVersion((v) => v + 1);
       orderIdempotencyKey.current = null;
       clearCart();
       seededRef.current = false;
@@ -2318,6 +2317,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         response: data,
       });
       toast.success(data.msg);
+      setWalletVersion((v) => v + 1);
     } catch (error) {
       logPhpExchange("importdata", {
         method: "POST",

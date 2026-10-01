@@ -390,6 +390,10 @@ export async function actorWhere(actor: OrdersActor, assignedDealerIds: Array<st
     // Sales Manager and ASM sit above the RSM step; only plain Staff wait for it.
     return actor.isAsm || actor.isSalesManager ? staffScope : { rsmApprovalStatus: "ACCEPTED", ...staffScope };
   }
+  // Accountant only sees orders that were accepted or have started dispatch.
+  if (actor.role === "accountant") {
+    return { OR: [{ acceptanceStatus: "ACCEPTED" }, { fulfilmentStatus: { not: "PENDING" } }] };
+  }
   return {};
 }
 

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
-import { isStaffLike } from "@/server/auth/sales-scope";
+import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
 import { normalizeDealerStatus, type DealerStatus, type DealerStatusDocument } from "@/lib/dealerStatus";
 
 export const runtime = "nodejs";
@@ -49,7 +49,7 @@ async function loadDealerById(dealerId: bigint) {
 }
 
 async function canReadDealer(actor: AuthActor, dealerId: bigint) {
-  if (actor.role === "ADMIN" || actor.role === "ACCOUNTANT") return true;
+  if (isAdminLike(actor) || actor.role === "ACCOUNTANT") return true;
   if (actor.role === "DEALER") return actor.dealerId === dealerId;
   if (isStaffLike(actor) && actor.staffId) {
     const assignment = await prisma.dealerStaffAssignment.findFirst({
@@ -62,7 +62,7 @@ async function canReadDealer(actor: AuthActor, dealerId: bigint) {
 }
 
 async function listReadableDealers(actor: AuthActor) {
-  if (actor.role === "ADMIN" || actor.role === "ACCOUNTANT") {
+  if (isAdminLike(actor) || actor.role === "ACCOUNTANT") {
     return prisma.dealerProfile.findMany({
       where: { deletedAt: null, user: { deletedAt: null } },
       select: { id: true, userId: true, user: { select: { status: true, updatedAt: true } } },

@@ -27,7 +27,7 @@ test("PostgreSQL branch uses JWT auth and Prisma delegates", () => {
   for (const field of ["actorUserId", "actorRole"]) assert.match(source.helper + source.status, new RegExp(field));
   assert.match(source.helper, /actor\.role === "DEALER"/);
   assert.match(source.helper, /isStaffLike\(actor\)/);
-  assert.match(source.helper, /actor\.role === "ADMIN"/);
+  assert.match(source.helper, /isAdminLike\(actor\)/);
   assert.match(source.helper, /dealerStaffAssignment\.findFirst/);
 });
 
@@ -65,6 +65,6 @@ test("permission coverage includes dealer ownership, assigned staff, denied staf
   assert.match(source.helper, /order\.assignedStaffId === actor\.staffId/);
   assert.match(source.helper, /dealerStaffAssignment\.findFirst/);
   assert.match(source.helper, /outside your assigned order scope/);
-  assert.match(source.helper, /actor\.role === "ADMIN"/);
+  assert.match(source.helper, /isAdminLike\(actor\)/);
 });
 

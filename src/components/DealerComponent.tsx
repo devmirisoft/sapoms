@@ -5,7 +5,7 @@ function DealerComponent() {
   
 
   const image =
-    "https://i.sstatic.net/l60Hf.png";
+    "/image.png";
   
     return (
       <div className=" bg-white rounded-md  overflow-hidden text-black">

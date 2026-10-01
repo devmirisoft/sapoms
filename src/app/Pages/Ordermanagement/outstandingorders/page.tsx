@@ -42,12 +42,11 @@ function resolveViewer(): { role: Role; id: string } | null {
   if (typeof window === 'undefined') return null
 
   try {
-    const accountantToken = localStorage.getItem('accountant_token')
-    if (accountantToken) {
-      const payload = decodeJWTPayload(accountantToken)
-      if (typeof payload?.sub === 'string' || localStorage.getItem('AccountantData')) {
-        return { role: 'accountant', id: String(payload?.sub ?? '') }
-      }
+    // Accountants use a cookie session; AccountantData is the client-side marker.
+    const accountantRaw = localStorage.getItem('AccountantData')
+    if (accountantRaw) {
+      const parsed = JSON.parse(accountantRaw)
+      return { role: 'accountant', id: String(parsed?.id ?? parsed?._id ?? '') }
     }
 
     const staffRaw = localStorage.getItem('staffData')

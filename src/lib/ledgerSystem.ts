@@ -3,7 +3,7 @@ import "server-only";
 import { OrderAcceptanceStatus, OrderFulfilmentStatus, OrderStatus, Prisma, WalletTransactionType } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
-import { isStaffLike } from "@/server/auth/sales-scope";
+import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
 import { applyWalletChange, fromPaise, roundMoney, toPaise } from "@/lib/postgresWallet";
 import { mapPostgresOrderToLegacy } from "@/lib/postgresOrders";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
@@ -267,7 +267,7 @@ function summaryFrom(orders: LedgerOrder[], transactions: Array<{ type: WalletTr
 }
 
 async function canAccessDealer(client: LedgerClient, actor: AuthActor, dealerId: bigint) {
-  if (actor.role === "ADMIN") return true;
+  if (isAdminLike(actor)) return true;
   if (actor.role === "ACCOUNTANT") return true;
   if (actor.role === "DEALER") return actor.dealerId === dealerId;
   if (isStaffLike(actor) && actor.staffId) {
@@ -282,7 +282,7 @@ async function canAccessDealer(client: LedgerClient, actor: AuthActor, dealerId:
 
 function dealerWhereForActor(actor: AuthActor): Prisma.DealerProfileWhereInput {
   const active = { deletedAt: null, user: { status: "ACTIVE" as const } };
-  if (actor.role === "ADMIN") return active;
+  if (isAdminLike(actor)) return active;
   if (actor.role === "ACCOUNTANT") return active;
   if (actor.role === "DEALER" && actor.dealerId) return { ...active, id: actor.dealerId };
   if (isStaffLike(actor) && actor.staffId) return { ...active, staffAssignments: { some: { staffId: actor.staffId, active: true } } };
@@ -313,16 +313,21 @@ export async function getCollectiveLedger(actor: AuthActor) {
     orderBy: { businessName: "asc" },
   });
   const dealerIds = dealers.map((dealer) => dealer.id);
-  const [orders, transactions] = dealerIds.length === 0 ? [[], []] : await Promise.all([
+  const [orders, transactions, bills] = dealerIds.length === 0 ? [[], [], []] : await Promise.all([
     prisma.order.findMany({ where: { dealerId: { in: dealerIds } }, include: orderInclude }),
     prisma.walletTransaction.findMany({ where: { dealerId: { in: dealerIds } } }),
+    prisma.ledgerBill.findMany({ where: { dealerId: { in: dealerIds } }, select: { dealerId: true, billAmountPaise: true, paidAmountPaise: true } }),
   ]);
 
   return dealers.map((dealer) => {
     const dealerOrders = orders.filter((order) => order.dealerId === dealer.id);
     const dealerTransactions = transactions.filter((tx) => tx.dealerId === dealer.id);
     const summary = summaryFrom(dealerOrders, dealerTransactions);
-    return { ...normalizeDealer(dealer, dealer.wallet), totalDebit: summary.totalDebit, totalCredit: summary.totalCredit, netBalance: summary.netBalance, accountBook: summary.accountBook };
+    // Bill balances still awaiting a recorded payment.
+    const pendingDuesPaise = bills
+      .filter((bill) => bill.dealerId === dealer.id && bill.billAmountPaise > bill.paidAmountPaise)
+      .reduce((sum, bill) => sum + (bill.billAmountPaise - bill.paidAmountPaise), BigInt(0));
+    return { ...normalizeDealer(dealer, dealer.wallet), totalDebit: summary.totalDebit, totalCredit: summary.totalCredit, netBalance: summary.netBalance, accountBook: summary.accountBook, pendingDues: money(pendingDuesPaise) };
   });
 }
 
@@ -510,7 +515,7 @@ export async function recordLedgerPayment(actor: AuthActor, rawDealerId: string,
   if (creditNote && !String(body.narration || "").trim()) throw Object.assign(new Error("Credit note reason is required."), { status: 400 });
 
   return prisma.$transaction(async (tx) => {
-    const dealer = await tx.dealerProfile.findFirst({ where: { id: dealerId, deletedAt: null, user: { status: "ACTIVE" } }, select: { id: true } });
+    const dealer = await tx.dealerProfile.findFirst({ where: { id: dealerId, deletedAt: null, user: { status: "ACTIVE" } }, select: { id: true, creditDays: true } });
     if (!dealer) throw Object.assign(new Error("Dealer not found"), { status: 404 });
 
     const bill = billId
@@ -532,6 +537,9 @@ export async function recordLedgerPayment(actor: AuthActor, rawDealerId: string,
       },
       actor: { userId: actor.userId, role: actor.role, displayName: actor.displayName },
       allowCreate: true,
+      // Credit-terms dealers pay down bills, not a wallet: bill.paidAmountPaise
+      // below is what frees their limit (see dealerCreditLimit.ts).
+      recordOnly: dealer.creditDays !== null,
     });
 
     if (result.duplicate) {

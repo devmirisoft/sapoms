@@ -137,7 +137,7 @@ type AppRole = "admin" | "staff" | "accountant"
 
 function getRole(): AppRole {
   if (typeof window === 'undefined') return 'admin'
-  if (localStorage.getItem('accountant_token')) return 'accountant'
+  if (localStorage.getItem('AccountantData')) return 'accountant'
   const rt = localStorage.getItem('roletype')
   if (rt === '1') return 'staff'
   return 'admin'

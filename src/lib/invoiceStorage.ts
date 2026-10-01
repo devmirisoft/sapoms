@@ -6,7 +6,7 @@ import { Prisma } from "@prisma/client";
 import { cloudinary } from "@/lib/cloudinary";
 import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
-import { isStaffLike } from "@/server/auth/sales-scope";
+import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
 import { fromPaise, toPaise } from "@/lib/postgresWallet";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
@@ -94,7 +94,7 @@ export async function resolveDealerId(rawDealerId: unknown): Promise<bigint> {
 }
 
 export async function canAccessDealer(actor: AuthActor, dealerId: bigint) {
-  if (actor.role === "ADMIN" || actor.role === "ACCOUNTANT") return true;
+  if (isAdminLike(actor) || actor.role === "ACCOUNTANT") return true;
   if (actor.role === "DEALER") return actor.dealerId === dealerId;
   if (isStaffLike(actor) && actor.staffId) {
     const assignment = await prisma.dealerStaffAssignment.findFirst({
@@ -113,6 +113,7 @@ async function assertDealerAccess(actor: AuthActor, dealerId: bigint) {
 // Dealers may read their own invoices but never create or delete them.
 function assertCanWriteInvoices(actor: AuthActor) {
   if (actor.role === "DEALER") throw httpError("Dealers cannot issue invoices.", 403);
+  if (actor.role === "NSM") throw httpError("NSM has read-only invoice access.", 403);
 }
 
 function uploadPdf(buffer: Buffer, folder: string, publicId: string) {
@@ -280,7 +281,7 @@ export async function listInvoicesForActor(actor: AuthActor, rawDealerId: unknow
   } else if (actor.role === "DEALER") {
     if (!actor.dealerId) throw httpError("Invoice access denied.", 403);
     where = { dealerId: actor.dealerId, deletedAt: null };
-  } else if (actor.role === "ADMIN" || actor.role === "ACCOUNTANT") {
+  } else if (isAdminLike(actor) || actor.role === "ACCOUNTANT") {
     where = { deletedAt: null };
   } else if (isStaffLike(actor) && actor.staffId) {
     // Staff see only the dealers actually assigned to them.

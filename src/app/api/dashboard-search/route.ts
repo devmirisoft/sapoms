@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
-import { isStaffLike } from "@/server/auth/sales-scope";
+import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
 import dashboardSearch from "@/lib/dashboardSearch.js";
 import { actorWhere, mapPostgresOrderToLegacy, orderInclude, type PostgresOrderRecord } from "@/lib/postgresOrders";
 import { orderActorFromAuth } from "@/lib/orderScopeServer";
@@ -145,7 +145,7 @@ async function getAssignedDealerIds(actor: AuthActor) {
 }
 
 async function buildOrderScope(actor: AuthActor, assignedDealerIds: bigint[]): Promise<Prisma.OrderWhereInput | null> {
-  if (actor.role === "ADMIN" || actor.role === "ACCOUNTANT") return {};
+  if (isAdminLike(actor) || actor.role === "ACCOUNTANT") return {};
   if (actor.role === "DEALER") return actor.dealerId ? { dealerId: actor.dealerId } : null;
   if (isStaffLike(actor)) {
     // Same scope as the order list: Sales Manager chain, RSM gate, warehouse.
@@ -236,7 +236,7 @@ export async function GET(req: NextRequest) {
           orderBy: { name: "asc" },
           take: SEARCH_LIMIT,
         });
-    const dealersPromise = actor.role === "ADMIN" || isStaffLike(actor)
+    const dealersPromise = isAdminLike(actor) || isStaffLike(actor)
       ? prisma.dealerProfile.findMany({
           where: isStaffLike(actor) && actor.staffId
             ? { AND: [buildDealerWhere(query), { staffAssignments: { some: { staffId: actor.staffId, active: true, removedAt: null } } }] }
@@ -246,7 +246,7 @@ export async function GET(req: NextRequest) {
           take: SEARCH_LIMIT,
         })
       : Promise.resolve([]);
-    const staffPromise = actor.role === "ADMIN"
+    const staffPromise = isAdminLike(actor)
       ? prisma.staffProfile.findMany({
           where: buildStaffWhere(query),
           include: { user: true },

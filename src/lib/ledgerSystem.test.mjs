@@ -37,7 +37,7 @@ test("ledger preserves temporary frontend response aliases", () => {
 
 test("ledger enforces admin accountant staff and dealer visibility from authenticated actor", () => {
   assert.match(allSources, /requireAuth\(\)/);
-  assert.match(ledgerSource, /actor\.role === "ADMIN"/);
+  assert.match(ledgerSource, /isAdminLike\(actor\)/);
   assert.match(ledgerSource, /actor\.role === "ACCOUNTANT"/);
   assert.match(ledgerSource, /actor\.role === "DEALER"/);
   assert.match(ledgerSource, /actor\.dealerId === dealerId/);
