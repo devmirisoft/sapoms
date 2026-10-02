@@ -53,6 +53,7 @@ type Order = {
   rsmReviewedBy?: string;
   rsm_reviewed_by?: string;
   staffname?: string;
+  rsmName?: string;
   acceptanceReviewedBy?: string;
 };
 type ApiResponse = { msg: string; count: number; status: boolean; data: Order[]; total?: number; last_page?: number };
@@ -2145,7 +2146,10 @@ export default function OrderHistoryPage() {
                                   <p className="mt-1 text-[10px] leading-tight font-semibold text-rose-700">RSM Disapproved{reviewedBy ? ` by ${reviewedBy}` : ""}</p>
                                 )}
                                 {rsmStatus === "AWAITING" && (
-                                  <p className="mt-1 text-[10px] leading-tight font-semibold text-amber-700">Awaiting RSM approval</p>
+                                  <>
+                                    <p className="mt-1 text-[10px] leading-tight font-semibold text-amber-700">Awaiting RSM approval{order.rsmName ? `: ${order.rsmName}` : ""}</p>
+                                    {order.staffname && <p className="text-[10px] leading-tight text-gray-500">Staff: {order.staffname}</p>}
+                                  </>
                                 )}
                               </td>
                               )}

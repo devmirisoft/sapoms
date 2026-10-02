@@ -3,7 +3,7 @@
 import DateInput from "@/components/ui/date-input";
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 import Link from "next/link";
-import { LayoutDashboard, UserRoundPlus, Users, SquareUser, Plus, ClipboardList, Search } from 'lucide-react';
+import { LayoutDashboard, UserRoundPlus, Users, SquareUser, Plus, ClipboardList, Search, Wallet, Calendar, CalendarCheck, ChevronDown, CreditCard, IndianRupee, FileText, ArrowUp, ArrowDown } from 'lucide-react';
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -226,6 +226,9 @@ type SaleSummaryResponse = {
     granularity: SalesGranularity;
     orderCount: number;
     total: number;
+    /** Ledger bills the accountant added, and the payments recorded against them, in scope. */
+    billed: number;
+    paid: number;
     series: Array<{ period: string; total: number }>;
   };
 };
@@ -234,6 +237,53 @@ const ASM_PAGE_SIZE = 20;
 
 function toDateInput(date: Date) {
   return date.toISOString().slice(0, 10);
+}
+
+type FinPeriod = "month" | "quarter" | "year" | "all";
+const FIN_PERIODS: Array<{ value: FinPeriod; label: string; previous: string }> = [
+  { value: "month", label: "This Month", previous: "last month" },
+  { value: "quarter", label: "This Quarter", previous: "last quarter" },
+  { value: "year", label: "This Year", previous: "last year" },
+  { value: "all", label: "All Time", previous: "" },
+];
+const FIN_PERIOD_MONTHS = { month: 1, quarter: 3, year: 12 } as const;
+
+/** Local calendar day; toDateInput is UTC and would put the 1st of a month in the previous one in IST. */
+function localDay(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/** The period to date, `back` periods ago. A previous period stops on the same day, so the comparison is like for like. */
+function finRange(period: Exclude<FinPeriod, "all">, back: number) {
+  const now = new Date();
+  const shift = FIN_PERIOD_MONTHS[period] * back;
+  const startMonth = period === "month" ? now.getMonth() : period === "quarter" ? now.getMonth() - (now.getMonth() % 3) : 0;
+  const endMonth = now.getMonth() - shift;
+  const lastDay = new Date(now.getFullYear(), endMonth + 1, 0).getDate();
+  return {
+    from: localDay(new Date(now.getFullYear(), startMonth - shift, 1)),
+    to: localDay(new Date(now.getFullYear(), endMonth, Math.min(now.getDate(), lastDay))),
+  };
+}
+
+function inr(value: number) {
+  return `₹${value.toLocaleString("en-IN")}`;
+}
+
+function pctChange(current: number, previous: number | undefined) {
+  return previous ? ((current - previous) / previous) * 100 : null;
+}
+
+function FinDelta({ change, vs, unit = "%" }: { change: number | null; vs: string; unit?: string }) {
+  if (change === null || !vs) return null;
+  const up = change >= 0;
+  return (
+    <span className={`fin-delta ${up ? "up" : "down"}`}>
+      {up ? <ArrowUp size={12} aria-hidden /> : <ArrowDown size={12} aria-hidden />}
+      <b>{up ? "+" : ""}{change.toFixed(1)}{unit}</b>
+      <span className="fin-vs">vs. {vs}</span>
+    </span>
+  );
 }
 
 const logoImage = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSpEaVwAg53quyQVTj-mv49IsltHY8yDluFOPemDksHkQ&s=10";
@@ -584,6 +634,34 @@ function AdminDashboardInner() {
     queryFn: () => fetchJson<SaleSummaryResponse>(`/api/admin/sales-summary?${saleQuery}`),
     placeholderData: keepPreviousData,
   });
+
+  // Financial overview: the chosen period to date, and the same span one period back for the deltas.
+  const [finPeriod, setFinPeriod] = useState<FinPeriod>("month");
+  const finCurrent = finPeriod === "all" ? { from: "", to: "" } : finRange(finPeriod, 0);
+  const finPrevious = finPeriod === "all" ? null : finRange(finPeriod, 1);
+  const finQ = useQuery<SaleSummaryResponse>({
+    queryKey: ["adminFinance", finCurrent.from, finCurrent.to],
+    queryFn: () => fetchJson<SaleSummaryResponse>(`/api/admin/sales-summary?from=${finCurrent.from}&to=${finCurrent.to}`),
+    placeholderData: keepPreviousData,
+  });
+  const finPrevQ = useQuery<SaleSummaryResponse>({
+    queryKey: ["adminFinance", finPrevious?.from, finPrevious?.to],
+    queryFn: () => fetchJson<SaleSummaryResponse>(`/api/admin/sales-summary?from=${finPrevious?.from}&to=${finPrevious?.to}`),
+    enabled: finPrevious !== null,
+  });
+  const fin = finQ.data?.data;
+  const finPrev = finPrevious ? finPrevQ.data?.data : undefined;
+  const finVs = FIN_PERIODS.find((period) => period.value === finPeriod)?.previous ?? "";
+  const finShow = (value: number | undefined) => (finQ.isPending ? "—" : inr(value ?? 0));
+  const finCollected = fin?.billed ? (fin.paid / fin.billed) * 100 : 0;
+  const finPrevCollected = finPrev?.billed ? (finPrev.paid / finPrev.billed) * 100 : null;
+  const finTiles = [
+    { label: "Total Billed", value: finShow(fin?.billed), change: pctChange(fin?.billed ?? 0, finPrev?.billed), unit: "%", icon: <IndianRupee size={16} />, tone: "green" },
+    { label: "Total Booking", value: finShow(fin?.total), change: pctChange(fin?.total ?? 0, finPrev?.total), unit: "%", icon: <CalendarCheck size={16} />, tone: "purple" },
+    { label: "Total Payment", value: finShow(fin?.paid), change: pctChange(fin?.paid ?? 0, finPrev?.paid), unit: "%", icon: <CreditCard size={16} />, tone: "blue" },
+    // Share of the billed amount already paid; its change is in percentage points.
+    { label: "Payment / Billed", value: finQ.isPending ? "—" : `${finCollected.toFixed(1)}%`, change: finPrevCollected === null ? null : finCollected - finPrevCollected, unit: " pts", icon: <FileText size={16} />, tone: "orange" },
+  ];
 
   // The oldest accepted order in the current scope: how far back the calendar goes.
   const saleEarliest = saleSummaryQ.data?.data.earliest ?? undefined;
@@ -968,8 +1046,69 @@ function AdminDashboardInner() {
           gap: 14px;
         }
         .metrics-left .metric-card { grid-column: auto; }
-        .metrics-left { grid-template-rows: auto auto 1fr; }
-        .metrics-left .staff-roles { grid-column: 1 / -1; }
+        .metrics-left { grid-template-rows: auto auto 1fr auto; }
+
+        .metrics-left .fin-overview { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 16px; container-type: inline-size; }
+        .metrics-left .fin-overview:hover { transform: none; }
+        .fin-head { display: flex; align-items: center; gap: 14px; }
+        .fin-icon {
+          display: grid; place-items: center; flex-shrink: 0;
+          width: 48px; height: 48px; border-radius: 14px;
+          background: linear-gradient(135deg, #4f7cff, #7b4dff); color: #fff;
+        }
+        .fin-heading { flex: 1; min-width: 0; }
+        .fin-title { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
+        .fin-sub { margin-top: 2px; color: var(--apple-secondary); font-size: 12.5px; }
+        .fin-period {
+          display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+          padding: 8px 12px; border-radius: 12px;
+          border: 1px solid var(--apple-line); background: var(--apple-surface-solid);
+          color: var(--apple-text); cursor: pointer;
+        }
+        .fin-period select { appearance: none; border: 0; background: none; color: inherit; font-size: 13px; font-weight: 600; cursor: pointer; outline: none; }
+        .fin-period:focus-within { border-color: var(--apple-blue); }
+        .fin-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+        .fin-pair { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; border: 1px solid; }
+        .fin-pair.blue { background: rgba(0, 122, 255, .045); border-color: rgba(0, 122, 255, .12); --fin-tone: #0a64d6; }
+        .fin-pair.green { background: rgba(52, 199, 89, .06); border-color: rgba(52, 199, 89, .16); --fin-tone: #1a8f3c; }
+        .fin-pair-head { display: flex; align-items: center; gap: 10px; font-size: 14px; font-weight: 650; }
+        .fin-pair .fin-chip { color: var(--fin-tone); background: color-mix(in srgb, var(--fin-tone) 12%, transparent); }
+        .fin-pair-value { font-size: 24px; font-weight: 750; letter-spacing: -.03em; line-height: 1.15; font-variant-numeric: tabular-nums; }
+        .fin-pair-value span { color: var(--apple-tertiary); font-weight: 500; }
+        .fin-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .fin-split > div { display: flex; flex-direction: column; gap: 4px; }
+        .fin-split > div + div { padding-left: 12px; border-left: 1px solid var(--apple-line); }
+        .fin-split span { color: var(--apple-secondary); font-size: 11.5px; }
+        .fin-split strong { font-size: 14px; font-variant-numeric: tabular-nums; }
+        .fin-trend { padding: 8px 10px; border-radius: 10px; background: rgba(255, 255, 255, .6); }
+        .fin-chip { display: inline-grid; place-items: center; flex-shrink: 0; width: 34px; height: 34px; border-radius: 999px; }
+        .fin-chip.green { color: #1a8f3c; background: rgba(52, 199, 89, .12); }
+        .fin-chip.purple { color: #8e3fc4; background: rgba(175, 82, 222, .12); }
+        .fin-chip.blue { color: #0a64d6; background: rgba(0, 122, 255, .1); }
+        .fin-chip.orange { color: #c46a00; background: rgba(255, 149, 0, .14); }
+        .fin-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); padding-top: 14px; border-top: 1px solid var(--apple-line); }
+        .fin-tile { display: flex; gap: 10px; min-width: 0; padding: 0 12px; }
+        .fin-tile:first-child { padding-left: 0; }
+        .fin-tile + .fin-tile { border-left: 1px solid var(--apple-line); }
+        .fin-tile-label { color: var(--apple-secondary); font-size: 11px; }
+        .fin-tile-value { margin: 2px 0 4px; font-size: 15px; font-weight: 700; font-variant-numeric: tabular-nums; }
+        .fin-delta { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 3px; font-size: 11px; }
+        .fin-delta b { font-weight: 650; }
+        .fin-delta.up { color: #1a8f3c; }
+        .fin-delta.down { color: #d70015; }
+        .fin-vs { margin-left: 4px; color: var(--apple-tertiary); }
+        @container (max-width: 640px) {
+          .fin-pairs { grid-template-columns: 1fr; }
+          .fin-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; }
+          .fin-tile:nth-child(odd) { padding-left: 0; border-left: 0; }
+        }
+
+        /* Staff by role: one scrolling row under the financial overview. */
+        .metrics-left .staff-roles { grid-column: 1 / -1; min-height: 0; display: flex; align-items: center; gap: 14px; padding: 12px 16px; }
+        .metrics-left .staff-roles:hover { transform: none; }
+        .staff-roles .metric-label { flex-shrink: 0; }
+        .staff-roles .role-pills { flex-wrap: nowrap; overflow-x: auto; margin-top: 0; scrollbar-width: thin; }
+        .staff-roles .role-pill { flex-shrink: 0; white-space: nowrap; }
         .role-pills { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
         .role-pill {
           display: inline-flex;
@@ -1337,6 +1476,64 @@ function AdminDashboardInner() {
               </div>
             </article>
 
+            <article className="metric-card fin-overview" aria-label="Financial overview">
+              <header className="fin-head">
+                <span className="fin-icon"><Wallet size={22} aria-hidden /></span>
+                <div className="fin-heading">
+                  <div className="fin-title">Financial Overview</div>
+                  <div className="fin-sub">Billed, Booking and Payment summary</div>
+                </div>
+                <label className="fin-period">
+                  <Calendar size={15} aria-hidden />
+                  <select value={finPeriod} onChange={(event) => setFinPeriod(event.target.value as FinPeriod)} aria-label="Period">
+                    {FIN_PERIODS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
+                  </select>
+                  <ChevronDown size={15} aria-hidden />
+                </label>
+              </header>
+
+              {finQ.isError && <div className="summary-error">Financial summary failed to load.</div>}
+
+              {/* Shown as "X / Y" pairs, not ratios. */}
+              <div className="fin-pairs">
+                <section className="fin-pair blue">
+                  <div className="fin-pair-head"><span className="fin-chip"><CalendarCheck size={17} aria-hidden /></span>Billed / Booking</div>
+                  <div className="fin-pair-value">{finShow(fin?.billed)} <span>/</span> {finShow(fin?.total)}</div>
+                  <div className="fin-split">
+                    <div><span>Total Billed</span><strong>{finShow(fin?.billed)}</strong></div>
+                    <div><span>Total Booking</span><strong>{finShow(fin?.total)}</strong></div>
+                  </div>
+                  {finTiles[0].change !== null && finVs && (
+                    <div className="fin-trend"><FinDelta change={finTiles[0].change} vs={finVs} /></div>
+                  )}
+                </section>
+                <section className="fin-pair green">
+                  <div className="fin-pair-head"><span className="fin-chip"><CreditCard size={17} aria-hidden /></span>Payment / Billed</div>
+                  <div className="fin-pair-value">{finShow(fin?.paid)} <span>/</span> {finShow(fin?.billed)}</div>
+                  <div className="fin-split">
+                    <div><span>Total Payment</span><strong>{finShow(fin?.paid)}</strong></div>
+                    <div><span>Total Billed</span><strong>{finShow(fin?.billed)}</strong></div>
+                  </div>
+                  {finTiles[2].change !== null && finVs && (
+                    <div className="fin-trend"><FinDelta change={finTiles[2].change} vs={finVs} /></div>
+                  )}
+                </section>
+              </div>
+
+              <div className="fin-tiles">
+                {finTiles.map((tile) => (
+                  <div key={tile.label} className="fin-tile">
+                    <span className={`fin-chip ${tile.tone}`}>{tile.icon}</span>
+                    <div>
+                      <div className="fin-tile-label">{tile.label}</div>
+                      <div className="fin-tile-value">{tile.value}</div>
+                      <FinDelta change={tile.change} vs={finVs} unit={tile.unit} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </article>
+
             <article className="metric-card staff-roles">
               <div className="metric-label">Staff by role</div>
               <div className="role-pills">
@@ -1377,14 +1574,13 @@ function AdminDashboardInner() {
                 </a>
               </div>
 
-              <div className="sale-total-label">Total Sale</div>
+              <div className="sale-total-label">Booking</div>
               <div className="sale-total">{saleSummaryQ.isPending ? "—" : `₹${(saleSummaryQ.data?.data.total ?? 0).toLocaleString("en-IN")}`}</div>
               <div className="sale-total-meta">
                 {saleSummaryQ.isError
                   ? "Sales summary failed to load."
                   : `${saleSummaryQ.data?.data.orderCount ?? 0} accepted orders · ${saleFrom || saleTo ? `${saleFrom || "start"} to ${saleTo || "today"}` : "all time"}${saleAsm ? ` · ${asmStates.join(", ") || "no states assigned"}` : ""}${saleCity ? ` · ${saleCity}` : ""}`}
               </div>
-
               <div className="sale-filters">
                 <SegmentedDropdown
                   label="Region"

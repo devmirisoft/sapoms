@@ -38,12 +38,14 @@ async function countsFor(actor: AuthActor) {
   } else {
     add("pendingOrders", async () => prisma.order.count({ where: { AND: [await orderScope(actor), { acceptanceStatus: "AWAITING", status: { notIn: ["CANCELLED", "DECLINED"] } }] } }));
 
-    // Discount approvals: admin reviews the RSM-cleared queue, an RSM their
-    // own region's unreviewed one, other staff only their own requests.
+    // Discount approvals: the NSM reviews large RSM-cleared asks, admin the
+    // RSM-cleared queue once any NSM stage is cleared, an RSM their own
+    // region's unreviewed one, other staff only their own requests.
     if (actor.role !== "ACCOUNTANT") {
       add("discountRequests", async () => {
         const where: Prisma.CustomDiscountRequestWhereInput = { status: "PENDING" };
-        if (isAdminLike(actor)) where.rsmApprovalStatus = "APPROVED";
+        if (actor.role === "NSM") Object.assign(where, { rsmApprovalStatus: "APPROVED", nsmApprovalStatus: "PENDING" });
+        else if (isAdminLike(actor)) Object.assign(where, { rsmApprovalStatus: "APPROVED", OR: [{ nsmApprovalStatus: null }, { nsmApprovalStatus: "APPROVED" }] });
         else if (actor.role === "RSM") Object.assign(where, await buildRsmDiscountRequestWhere(actor, prisma), { rsmApprovalStatus: "PENDING" });
         else if (isStaffLike(actor)) where.staffId = actor.staffId;
         else return 0;

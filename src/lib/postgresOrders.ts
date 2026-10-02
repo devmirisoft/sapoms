@@ -26,6 +26,8 @@ export const orderInclude = {
     },
   },
   assignedStaff: { select: { id: true, displayName: true, warehouse: true } },
+  // The RSM an order waits on is its Sales Manager's parent RSM.
+  salesManager: { select: { parentRsm: { select: { displayName: true } } } },
   items: { orderBy: { id: "asc" as const }, include: { dispatches: { select: { quantity: true } } } },
   // Bills carry paidAmountPaise, which is what wallet settlement moves. Without
   // them an order settled from advance still reads as fully unpaid.
@@ -261,6 +263,7 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     assignedstaff: order.assignedStaffId?.toString() || "",
     staffid: order.assignedStaffId?.toString() || "",
     staffname: order.assignedStaff?.displayName || "",
+    rsmName: order.salesManager?.parentRsm?.displayName || "",
     staffwarehouse: order.assignedStaff?.warehouse || "",
     staffwarehouses: Array.from(new Set([
       order.assignedStaff?.warehouse,

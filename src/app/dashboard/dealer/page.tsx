@@ -825,15 +825,17 @@ function DealerDashboardInner() {
 
             {/* Info Cards */}
             <div className="info-cards font-sans">
-              <div className="icard" style={wallet?.status === "active" ? { borderColor: "rgba(52,199,89,.28)", background: "rgba(52,199,89,.045)" } : undefined}>
-                <div className="icard-lbl">Wallet Balance</div>
-                <div className="icard-val">{walletLoading ? "—" : fmtCurrency(wallet?.availableBalance ?? 0)}</div>
-                <div className="icard-sub">Running balance after successful orders</div>
-                <div className={`icard-badge ${wallet?.status === "active" ? (Number(wallet.availableBalance) > 0 ? "badge-green" : "badge-red") : "badge-blue"}`}>
-                  {walletLoading ? "Loading" : wallet?.status === "active" ? (Number(wallet.availableBalance) > 0 ? "Active" : "Exhausted") : "Inactive"}
+              {!credit && (
+                <div className="icard" style={wallet?.status === "active" ? { borderColor: "rgba(52,199,89,.28)", background: "rgba(52,199,89,.045)" } : undefined}>
+                  <div className="icard-lbl">Wallet Balance</div>
+                  <div className="icard-val">{walletLoading ? "—" : fmtCurrency(wallet?.availableBalance ?? 0)}</div>
+                  <div className="icard-sub">Running balance after successful orders</div>
+                  <div className={`icard-badge ${wallet?.status === "active" ? (Number(wallet.availableBalance) > 0 ? "badge-green" : "badge-red") : "badge-blue"}`}>
+                    {walletLoading ? "Loading" : wallet?.status === "active" ? (Number(wallet.availableBalance) > 0 ? "Active" : "Exhausted") : "Inactive"}
+                  </div>
+                  {wallet?.status === "active" && <div className="icard-sub">Consumed: {fmtCurrency(wallet.totalConsumed ?? 0)}</div>}
                 </div>
-                {wallet?.status === "active" && <div className="icard-sub">Consumed: {fmtCurrency(wallet.totalConsumed ?? 0)}</div>}
-              </div>
+              )}
               <div className="icard" style={outstanding > 0 ? { borderColor: "rgba(255,59,48,.28)", background: "rgba(255,59,48,.04)" } : undefined}>
                 <div className="icard-lbl">Outstanding Balance</div>
                 <div className="icard-val">{agingLoading ? "—" : fmtCurrency(outstanding)}</div>

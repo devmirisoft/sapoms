@@ -1104,6 +1104,13 @@ model CustomDiscountRequest {
 
   rsmNote String? @map("rsm_note") @db.Text
 
+  // Between RSM and Admin, only for large asks (see requiresNsmReview); null = not needed.
+  nsmApprovalStatus   DiscountRequestStatus? @map("nsm_approval_status")
+  nsmReviewedByUserId BigInt?                @map("nsm_reviewed_by_user_id")
+  nsmReviewedByName   String?                @map("nsm_reviewed_by_name")
+  nsmReviewedAt       DateTime?              @map("nsm_reviewed_at") @db.Timestamptz(6)
+  nsmNote             String?                @map("nsm_note") @db.Text
+
   requestedDiscountPercent Decimal @default(0) @map("requested_discount_percent") @db.Decimal(7, 4)
 
   currentDiscountPercent Decimal @default(0) @map("current_discount_percent") @db.Decimal(7, 4)
@@ -1127,6 +1134,12 @@ model CustomDiscountRequest {
   orderSnapshot Json? @map("order_snapshot")
 
   adminNote String? @map("admin_note") @db.Text
+
+  // Optional supporting document the dealer attaches (stored in Cloudinary).
+  referenceFileUrl      String? @map("reference_file_url")
+  referenceFilePublicId String? @map("reference_file_public_id")
+  referenceFileName     String? @map("reference_file_name")
+  referenceFileType     String? @map("reference_file_type")
 
   allowReorder Boolean @default(false) @map("allow_reorder")
 

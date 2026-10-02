@@ -9,6 +9,7 @@ import {
 } from "@/lib/customDiscountRequests";
 import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
 import { ViewToggle, type ViewMode } from "@/components/ViewToggle";
+import { DiscountReferencePreview } from "@/components/DiscountReferencePreview";
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
 
@@ -57,6 +58,34 @@ function resolveAdminName() {
   }
 }
 
+/**
+ * Why the viewer can't act on this request yet, or null when it's theirs to
+ * decide. Large asks go RSM -> NSM -> Admin; the rest RSM -> Admin.
+ */
+function reviewBlocker(request: NormalizedCustomDiscountRequest, viewerIsNsm: boolean): string | null {
+  if (request.rsmApprovalStatus === "rejected") return "This request was rejected by the RSM.";
+  if (request.rsmApprovalStatus !== "approved") return "Waiting for RSM approval. This request becomes actionable once the RSM approves it.";
+  if (request.nsmApprovalStatus === "rejected") return "This request was rejected by the NSM.";
+  if (request.normalizedStatus !== "pending") return null;
+  if (viewerIsNsm) {
+    if (!request.nsmApprovalStatus) return "Within the RSM + Admin limit - no NSM review needed.";
+    if (request.nsmApprovalStatus === "approved") return "You approved this request. Waiting for Admin.";
+    return null;
+  }
+  if (request.nsmApprovalStatus === "pending") return "Waiting for NSM approval - the custom discount is above 5% on the net after base.";
+  return null;
+}
+
+function NsmStatusLine({ request, size }: { request: NormalizedCustomDiscountRequest; size: string }) {
+  if (!request.nsmApprovalStatus) return null;
+  const note = request.nsmNote ? ` - "${request.nsmNote}"` : "";
+  if (request.nsmApprovalStatus === "approved") {
+    return <p className={`${size} font-semibold text-emerald-700`}>NSM Approved{request.nsmReviewedBy ? ` by ${request.nsmReviewedBy}` : ""}{note}</p>;
+  }
+  if (request.nsmApprovalStatus === "rejected") return <p className={`${size} font-semibold text-red-600`}>NSM Rejected{note}</p>;
+  return <p className={`${size} font-semibold text-amber-600`}>Awaiting NSM Approval</p>;
+}
+
 function totalPieces(request: NormalizedCustomDiscountRequest) {
   return request.orderSnapshot.products.reduce((sum, product) => sum + Number(product.totalPieces || 0), 0);
 }
@@ -66,7 +95,8 @@ function DecisionPanel({
   note,
   onNoteChange,
   busy,
-  awaitingRsm,
+  blocker,
+  viewerIsNsm,
   onDecide,
   onToggleReorder,
 }: {
@@ -74,28 +104,25 @@ function DecisionPanel({
   note: string;
   onNoteChange: (value: string) => void;
   busy: boolean;
-  awaitingRsm: boolean;
+  blocker: string | null;
+  viewerIsNsm: boolean;
   onDecide: (status: ApprovalStatus) => void;
   onToggleReorder: () => void;
 }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
-      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Admin Note</label>
+      <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{viewerIsNsm ? "NSM Note" : "Admin Note"}</label>
       <textarea
         value={note}
         onChange={(e) => onNoteChange(e.target.value)}
         rows={4}
-        disabled={awaitingRsm || request.normalizedStatus !== "pending" || busy}
+        disabled={!!blocker || request.normalizedStatus !== "pending" || busy}
         placeholder="Add approval note (optional) or disapproval note (required)..."
         className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100 disabled:text-gray-500"
       />
 
-      {awaitingRsm ? (
-        <p className="mt-3 text-[12px] font-medium text-amber-700">
-          {request.rsmApprovalStatus === "rejected"
-            ? "This request was rejected by the RSM and is not available for Admin review."
-            : "Waiting for RSM approval. This request becomes actionable once the RSM approves it."}
-        </p>
+      {blocker ? (
+        <p className="mt-3 text-[12px] font-medium text-amber-700">{blocker}</p>
       ) : request.normalizedStatus === "pending" ? (
         <>
           <p className="mt-2 text-[11px] font-medium text-red-600">
@@ -112,7 +139,7 @@ function DecisionPanel({
             <button
               onClick={() => onDecide("rejected")}
               disabled={busy || !note.trim()}
-              title={!note.trim() ? "Add an admin note to disapprove" : undefined}
+              title={!note.trim() ? "Add a note to disapprove" : undefined}
               className="flex-1 rounded-xl bg-red-600 px-4 py-2.5 text-[13px] font-bold text-white hover:bg-red-700 disabled:opacity-50"
             >
               Reject
@@ -124,7 +151,7 @@ function DecisionPanel({
           <p className="mt-3 text-[12px] text-gray-500">
             Reviewed by {String(request.source?.reviewedBy || "Admin")} {request.reviewedAt ? `on ${new Date(request.reviewedAt).toLocaleString("en-IN")}` : ""}
           </p>
-          {request.normalizedStatus === "approved" && (
+          {request.normalizedStatus === "approved" && !viewerIsNsm && (
             <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2">
               <span className="text-[11px] text-gray-500">
                 {request.allowReorder ? "Approved order can be restored by the dealer." : "Dealer reorder is currently disabled."}
@@ -158,6 +185,7 @@ function RequestCard({
   note,
   onNoteChange,
   busy,
+  viewerIsNsm,
   onDecide,
   onToggleReorder,
 }: {
@@ -165,12 +193,13 @@ function RequestCard({
   note: string;
   onNoteChange: (value: string) => void;
   busy: boolean;
+  viewerIsNsm: boolean;
   onDecide: (status: ApprovalStatus) => void;
   onToggleReorder: () => void;
 }) {
-  const awaitingRsm = request.rsmApprovalStatus !== "approved";
+  const blocker = reviewBlocker(request, viewerIsNsm);
   return (
-    <div className={`flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-gray-300 hover:shadow-md ${awaitingRsm ? "opacity-60" : ""}`}>
+    <div className={`flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-gray-300 hover:shadow-md ${blocker ? "opacity-60" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -206,6 +235,7 @@ function RequestCard({
       ) : (
         <p className="text-[11px] font-semibold text-amber-600">Awaiting RSM Approval</p>
       )}
+      <NsmStatusLine request={request} size="text-[11px]" />
 
       {request.discountScope === "product" && request.targetProduct && (
         <p className="text-[11px] font-semibold text-indigo-700">
@@ -272,12 +302,15 @@ function RequestCard({
         <p><span className="font-bold uppercase tracking-wider text-gray-400">Customer Ref</span><br />{request.refno || "-"}</p>
       </div>
 
+      <DiscountReferencePreview requestId={request.id} file={request.source.referenceFile} />
+
       <DecisionPanel
         request={request}
         note={note}
         onNoteChange={onNoteChange}
         busy={busy}
-        awaitingRsm={awaitingRsm}
+        blocker={blocker}
+        viewerIsNsm={viewerIsNsm}
         onDecide={onDecide}
         onToggleReorder={onToggleReorder}
       />
@@ -299,6 +332,15 @@ export default function CustomDiscountApprovalsPage() {
   const [rsmFilter, setRsmFilter] = useState<"all" | "approved" | "pending" | "rejected">("all");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  // The NSM shares the admin portal (stored role "admin"), so ask the server.
+  const [viewerIsNsm, setViewerIsNsm] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((json) => setViewerIsNsm(String(json?.data?.role ?? "").toLowerCase() === "nsm"))
+      .catch(() => {});
+  }, []);
 
   const loadRequests = useCallback(async () => {
     setLoading(true);
@@ -372,7 +414,7 @@ export default function CustomDiscountApprovalsPage() {
     const adminNote = notes[request.id] ?? "";
     // A disapproval must always carry a reason the dealer can act on.
     if (status === "rejected" && !adminNote.trim()) {
-      setError("Add an admin note explaining the disapproval before rejecting this request.");
+      setError("Add a note explaining the disapproval before rejecting this request.");
       return;
     }
     setUpdating(request.id);
@@ -551,6 +593,7 @@ export default function CustomDiscountApprovalsPage() {
                 note={notes[request.id] ?? ""}
                 onNoteChange={(value) => setNotes((prev) => ({ ...prev, [request.id]: value }))}
                 busy={updating === request.id}
+                viewerIsNsm={viewerIsNsm}
                 onDecide={(status) => decide(request, status)}
                 onToggleReorder={() => toggleReorder(request)}
               />
@@ -559,11 +602,11 @@ export default function CustomDiscountApprovalsPage() {
         ) : (
           <div className="space-y-4">
             {filtered.map((request) => {
-              const awaitingRsm = request.rsmApprovalStatus !== "approved";
+              const blocker = reviewBlocker(request, viewerIsNsm);
               return (
               <div
                 key={request.id}
-                className={`rounded-2xl border border-gray-200 bg-white shadow-sm ${awaitingRsm ? "opacity-60" : ""}`}
+                className={`rounded-2xl border border-gray-200 bg-white shadow-sm ${blocker ? "opacity-60" : ""}`}
               >
                 <div className="flex flex-col gap-4 border-b border-gray-100 px-5 py-4 lg:flex-row lg:items-start lg:justify-between">
                   <div className="space-y-2">
@@ -600,6 +643,7 @@ export default function CustomDiscountApprovalsPage() {
                     ) : (
                       <p className="text-[12px] font-semibold text-amber-600">Awaiting RSM Approval</p>
                     )}
+                    <NsmStatusLine request={request} size="text-[12px]" />
                     {request.discountScope === "product" && request.targetProduct && (
                       <p className="text-[12px] font-semibold text-indigo-700">
                         Custom discount target: {request.targetProduct.displayName || request.targetProduct.variantCode || request.targetProduct.productname || "Selected product"}
@@ -728,6 +772,8 @@ export default function CustomDiscountApprovalsPage() {
                         <p className="mt-1 whitespace-pre-wrap text-[12px] text-gray-700">{request.refno || "-"}</p>
                       </div>
                     </div>
+
+                    <DiscountReferencePreview requestId={request.id} file={request.source.referenceFile} />
                   </div>
 
                   <DecisionPanel
@@ -735,7 +781,8 @@ export default function CustomDiscountApprovalsPage() {
                     note={notes[request.id] ?? ""}
                     onNoteChange={(value) => setNotes((prev) => ({ ...prev, [request.id]: value }))}
                     busy={updating === request.id}
-                    awaitingRsm={awaitingRsm}
+                    blocker={blocker}
+                    viewerIsNsm={viewerIsNsm}
                     onDecide={(status) => decide(request, status)}
                     onToggleReorder={() => toggleReorder(request)}
                   />
