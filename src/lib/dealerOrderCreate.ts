@@ -216,7 +216,8 @@ export async function createDealerOrder(
 
   const priced = await priceDealerOrder(tx, fields, dealer);
 
-  const wallet = await tx.dealerWallet.findUnique({ where: { dealerId: dealer.id } });
+  // Credit dealers order against their credit limit, never a wallet.
+  const wallet = dealer.creditDays === null ? await tx.dealerWallet.findUnique({ where: { dealerId: dealer.id } }) : null;
   if (wallet?.status === "ACTIVE" && !options.skipBalanceCheck) {
     const available = wallet.balancePaise - wallet.reservedPaise;
     if (available < priced.finalPayableAmountPaise) {

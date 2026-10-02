@@ -7,6 +7,7 @@ import {
   buildOrderApprovalSnapshot,
   buildDraftApprovalState,
   normalizeCustomDiscountScope,
+  requiresNsmReview,
   type CustomDiscountStatus,
 } from "@/lib/customDiscountRequests";
 
@@ -38,7 +39,7 @@ export function jsonValue(value: unknown): Prisma.InputJsonValue {
 
 export function assertDealerScope(actor: AuthActor | null, dealerId: bigint) {
   if (!actor) return;
-  if (actor.role === "ADMIN" || actor.role === "ACCOUNTANT") return;
+  if (actor.role === "ADMIN" || actor.role === "NSM" || actor.role === "ACCOUNTANT") return;
   if (actor.role === "DEALER" && actor.dealerId === dealerId) return;
   throw Object.assign(new Error("Forbidden"), { status: 403 });
 }
@@ -151,6 +152,10 @@ export function mapCustomDiscount(row: any) {
     rsm_reviewed_at: row.rsmReviewedAt?.toISOString?.() ?? null,
     rsmNote: row.rsmNote ?? "",
     rsm_note: row.rsmNote ?? "",
+    nsmApprovalStatus: row.nsmApprovalStatus ? String(row.nsmApprovalStatus).toLowerCase() : "",
+    nsmReviewedBy: row.nsmReviewedByName ?? "",
+    nsmReviewedAt: row.nsmReviewedAt?.toISOString?.() ?? null,
+    nsmNote: row.nsmNote ?? "",
     requestedDiscountPercent,
     currentDiscountPercent,
     requestedOrderDiscountPercent: row.requestedOrderDiscountPercent === null ? null : Number(row.requestedOrderDiscountPercent),
@@ -176,6 +181,7 @@ export function mapCustomDiscount(row: any) {
     lastReorderedAt: row.reorderLogs?.[0]?.createdAt?.toISOString?.() ?? null,
     lastReorderedOrderId: row.reorderLogs?.[0]?.orderId?.toString?.() ?? "",
     adminNote: row.adminNote ?? "",
+    referenceFile: row.referenceFileName ? { name: row.referenceFileName, type: row.referenceFileType ?? "" } : null,
     reviewedBy: row.reviewedByUserId?.toString?.() ?? "",
     reviewedAt: row.reviewedAt?.toISOString?.() ?? null,
     createdAt: row.createdAt.toISOString(),
@@ -219,6 +225,9 @@ export async function buildCustomDiscountCreate(body: Record<string, any>, deale
     orderDraftId,
     scope: scope === "product" ? "PRODUCT" as const : "ORDER" as const,
     status: "PENDING" as const,
+    nsmApprovalStatus: requiresNsmReview(currentDiscountPercent, orderSnapshot.products.map((product) => currentDiscountPercent + (product.requestedCustomDiscountPercent ?? 0)))
+      ? "PENDING" as const
+      : null,
     requestedDiscountPercent: new Prisma.Decimal(requestedDiscountPercent),
     currentDiscountPercent: new Prisma.Decimal(currentDiscountPercent),
     requestedOrderDiscountPercent: requestedOrderDiscountPercent === null ? null : new Prisma.Decimal(requestedOrderDiscountPercent),

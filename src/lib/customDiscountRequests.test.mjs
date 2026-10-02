@@ -151,3 +151,20 @@ test("source files keep the pending complete-order flow wired to orderDraftId", 
   assert.match(apiSource, /buildPendingRequestLookup/);
   assert.match(apiSource, /orderDraftId is required/);
 });
+
+test("custom discount asked on the net after base stacks onto base", () => {
+  // 50% base, then 10% off the remaining net = 55% of gross: 62,400 -> 31,200 -> 28,080.
+  assert.equal(helpers.stackDiscountOnNet(50, 10), 55);
+  assert.equal(Math.round(62400 * (1 - helpers.stackDiscountOnNet(50, 10) / 100)), 28080);
+  assert.equal(helpers.discountOnNet(50, 55), 10);
+  assert.equal(helpers.stackDiscountOnNet(50, 0), 50);
+  assert.equal(helpers.discountOnNet(100, 100), 0);
+});
+
+test("NSM review only for custom asks above 5% on the net after base", () => {
+  // 50% base: 5% on net = 52.5% total stays RSM -> Admin, anything above adds the NSM.
+  assert.equal(helpers.requiresNsmReview(50, [52.5]), false);
+  assert.equal(helpers.requiresNsmReview(50, [53]), true);
+  assert.equal(helpers.requiresNsmReview(50, [50, 51, 55]), true);
+  assert.equal(helpers.requiresNsmReview(50, []), false);
+});

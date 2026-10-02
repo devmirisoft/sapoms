@@ -5,7 +5,7 @@ import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
 import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
 import { applyWalletChange, fromPaise, roundMoney, toPaise } from "@/lib/postgresWallet";
-import { mapPostgresOrderToLegacy } from "@/lib/postgresOrders";
+import { mapPostgresOrderToLegacy, orderInclude as sharedOrderInclude } from "@/lib/postgresOrders";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
 
@@ -22,31 +22,11 @@ export type AccountBookSummary = {
   awaitingCount: number;
 };
 
+// Built from the shared include so mapPostgresOrderToLegacy always gets every
+// relation it reads; only the dealer's user is added for the ledger.
 const orderInclude = {
-  dealer: {
-    select: {
-      id: true,
-      businessName: true,
-      dealerCode: true,
-      phone: true,
-      city: true,
-      address: true,
-      pincode: true,
-      gstin: true,
-      discountPercent: true,
-      creditDays: true,
-      staffAssignments: { where: { active: true }, select: { staff: { select: { warehouse: true } } } },
-      user: { select: { email: true, status: true } },
-    },
-  },
-  assignedStaff: { select: { id: true, displayName: true, warehouse: true } },
-  // dispatches feed the order's Pending/Partial/Completed status in the mappers.
-  items: { orderBy: { id: "asc" as const }, include: { dispatches: { select: { quantity: true } } } },
-  // Required by mapPostgresOrderToLegacy, which derives the order's settled
-  // position from its bills.
-  ledgerBills: { orderBy: { billDate: "desc" as const } },
-  // Latest dispatch only; mapPostgresOrderToLegacy reads its remark.
-  dispatches: { orderBy: { createdAt: "desc" as const }, take: 1, select: { remark: true, createdAt: true } },
+  ...sharedOrderInclude,
+  dealer: { select: { ...sharedOrderInclude.dealer.select, user: { select: { email: true, status: true } } } },
 } satisfies Prisma.OrderInclude;
 
 type LedgerClient = Pick<Prisma.TransactionClient, "dealerProfile" | "dealerStaffAssignment" | "order" | "dealerWallet" | "walletTransaction" | "$executeRaw">;

@@ -145,7 +145,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         .dl-topbar {
           position: sticky;
           top: 0;
-          z-index: 20;
+          z-index: 25; /* above page sticky headers (z-20), below sidebar overlay (30) */
           height: 72px;
           padding: 0 22px;
           background: #333333;

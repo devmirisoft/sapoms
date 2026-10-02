@@ -76,7 +76,11 @@ export type CustomDiscountRequestRecord = Record<string, unknown> & {
   createdAt?: string | null;
   reviewedAt?: string | null;
   rsmNote?: string | null;
+  nsmApprovalStatus?: string | null;
+  nsmReviewedBy?: string | null;
+  nsmNote?: string | null;
   adminNote?: string | null;
+  referenceFile?: { name: string; type: string } | null;
   refno?: string | null;
   shipto?: string | null;
   orderNote?: string | null;
@@ -96,6 +100,10 @@ export type NormalizedCustomDiscountRequest = {
   rsmApprovalStatus: string;
   rsmReviewedBy: string;
   rsmReviewedAt: string | null;
+  /** "" when the request does not need NSM review. */
+  nsmApprovalStatus: string;
+  nsmReviewedBy: string;
+  nsmNote: string;
   discountScope: CustomDiscountScope;
   targetProduct: {
     productKey?: string;
@@ -148,6 +156,31 @@ function roundMoney(value: number) {
 
 function clampPercent(value: unknown, fallback = 0) {
   return Math.min(100, Math.max(0, roundMoney(toNumber(value, fallback))));
+}
+
+/**
+ * Custom discounts are asked as a % off the net left after the existing
+ * discount, but stored as a total % of gross (what pricing and approvals use):
+ * b% then c% off the rest = b + (100 - b) * c / 100 off gross.
+ */
+export function stackDiscountOnNet(basePercent: unknown, onNetPercent: unknown) {
+  const base = clampPercent(basePercent);
+  return clampPercent(base + (100 - base) * clampPercent(onNetPercent) / 100);
+}
+
+/** Inverse of stackDiscountOnNet: the on-net % a total-of-gross % represents. */
+export function discountOnNet(basePercent: unknown, totalPercent: unknown) {
+  const base = clampPercent(basePercent);
+  return base >= 100 ? 0 : clampPercent((clampPercent(totalPercent) - base) * 100 / (100 - base));
+}
+
+/** A custom ask above this % off the net after base goes RSM -> NSM -> Admin instead of RSM -> Admin. */
+export const NSM_REVIEW_ON_NET_PERCENT = 5;
+
+/** requestedTotalPercents are total-of-gross %s (order % and/or each product %); the largest decides. */
+export function requiresNsmReview(basePercent: unknown, requestedTotalPercents: unknown[]) {
+  const top = Math.max(0, ...requestedTotalPercents.map((value) => clampPercent(value)));
+  return discountOnNet(basePercent, top) > NSM_REVIEW_ON_NET_PERCENT;
 }
 
 function normalizeCount(value: unknown, fallback = 0) {
@@ -486,6 +519,9 @@ export function normalizeCustomDiscountRequestRecord(
     rsmApprovalStatus: cleanText(record.rsmApprovalStatus || record.rsm_approval_status) || "pending",
     rsmReviewedBy: cleanText(record.rsmReviewedBy || record.rsm_reviewed_by),
     rsmReviewedAt: cleanText(record.rsmReviewedAt || record.rsm_reviewed_at) || null,
+    nsmApprovalStatus: cleanText(record.nsmApprovalStatus).toLowerCase(),
+    nsmReviewedBy: cleanText(record.nsmReviewedBy),
+    nsmNote: cleanText(record.nsmNote),
     discountScope,
     targetProduct: record.targetProduct && typeof record.targetProduct === "object"
       ? {

@@ -49,7 +49,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deal
       remaining: creditStatus.remainingPaise === null ? null : fromPaise(creditStatus.remainingPaise),
       isOverdue: creditStatus.isOverdue,
     };
-    return NextResponse.json({ success: true, ...data, credit });
+    // A dealer is either advance (wallet) or credit, never both: a credit
+    // dealer's wallet is never active, whatever its row says.
+    return NextResponse.json({ success: true, ...data, ...(credit ? { status: "inactive" } : {}), credit });
   } catch (error) {
     console.error("[GET /api/wallet/[dealerId]]", error);
     const status = error instanceof Error && error.message === "Invalid dealer id." ? 400 : errorStatus(error);

@@ -1465,6 +1465,11 @@ export default function ViewOrderDealerPage() {
   }, undefined, { itemDiscountTotal: calculatedTotals.discount });
   const discountSummaryRows = getOrderDiscountSummaryRows(discountBreakdown);
   const additionalDiscountBadge = formatAdditionalDiscountBadge(discountBreakdown);
+  // Only rows discounted beyond the base % actually received the custom/slab share.
+  const itemAdditionalDiscountType = (pct: number) => {
+    const base = discountBreakdown.baseDiscountPercent;
+    return base === undefined || pct > base + 0.01 ? discountBreakdown.additionalDiscountType : null;
+  };
   const rowPricings = (() => {
     if (!overrideAmounts || closeTo(calculatedTotals.discount, totals.discount)) return baseRowPricings;
     return rebalanceRowDiscounts(baseRowPricings, totals.discount);
@@ -2210,10 +2215,11 @@ export default function ViewOrderDealerPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
               {displayOrders.map((o, idx) => {
                 const selectionKey = buildBulkDispatchLineKey(o);
+                const pricing = rowPricings[idx] ?? getRowPricing(o, packLookup, displayOrderMeta);
                 return (
                   <ItemCard key={o.orderdata_id} o={o} idx={idx}
-                    pricing={rowPricings[idx] ?? getRowPricing(o, packLookup, displayOrderMeta)}
-                    additionalDiscountType={discountBreakdown.additionalDiscountType}
+                    pricing={pricing}
+                    additionalDiscountType={itemAdditionalDiscountType(pricing.pct)}
                     dispatchLabel={canEditDispatchDetails ? "Update Dispatch" : "View Dispatch"}
                     selectable={showDispatchAllControl && dispatchableByKey.has(selectionKey)}
                     selected={selectedDispatchKeys.has(selectionKey)}
@@ -2246,6 +2252,7 @@ export default function ViewOrderDealerPage() {
                       const pricing = rowPricings[idx] ?? getRowPricing(o, packLookup, displayOrderMeta);
                       const left = pricing.left;
                       const isDeleted = o.del_status === "1";
+                      const rowDiscountType = itemAdditionalDiscountType(pricing.pct);
                       const selectionKey = buildBulkDispatchLineKey(o);
                       const selectable = showDispatchAllControl && dispatchableByKey.has(selectionKey);
                       const isPriority = hasPriorityTag(o.priority, o.isPriority, o.is_priority, o.remark, o.remarks);
@@ -2302,18 +2309,18 @@ export default function ViewOrderDealerPage() {
                           <td className="px-4 py-3.5 font-mono text-gray-900 font-semibold">₹{pricing.unitPrice.toLocaleString("en-IN")}</td>
                           <td className="px-4 py-3.5 font-mono text-gray-900">
                             <div>{pricing.pct}%</div>
-                            {discountBreakdown.additionalDiscountType && (
+                            {rowDiscountType && (
                               <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
-                                incl. {discountBreakdown.additionalDiscountType}
+                                incl. {rowDiscountType}
                               </div>
                             )}
                           </td>
                           <td className="px-4 py-3.5 font-mono text-gray-500 line-through text-[12px]">₹{pricing.gross.toLocaleString("en-IN")}</td>
                           <td className="px-4 py-3.5 font-mono text-amber-700 font-semibold">
                             <div>-&#8377;{pricing.discount.toLocaleString("en-IN")}</div>
-                            {discountBreakdown.additionalDiscountType && (
+                            {rowDiscountType && (
                               <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
-                                incl. {discountBreakdown.additionalDiscountType}
+                                incl. {rowDiscountType}
                               </div>
                             )}
                           </td>

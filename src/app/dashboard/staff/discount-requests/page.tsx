@@ -8,6 +8,7 @@ import { normalizeCustomDiscountRequestRecord } from "@/lib/customDiscountReques
 import { SegmentedTabs } from "@/components/SegmentedTabs";
 import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
 import { ViewToggle, type ViewMode } from "@/components/ViewToggle";
+import { DiscountReferencePreview } from "@/components/DiscountReferencePreview";
 
 type StaffUser = {
   staff_id: string;
@@ -48,7 +49,11 @@ type DiscountRequest = {
   rsmReviewedBy?: string;
   rsmReviewedAt?: string | null;
   rsmNote?: string;
+  /** "" when the request does not need NSM review. */
+  nsmApprovalStatus?: "pending" | "approved" | "rejected" | "";
+  nsmNote?: string;
   adminNote?: string;
+  referenceFile?: { name: string; type: string } | null;
   createdAt: string;
 };
 
@@ -272,7 +277,7 @@ export default function StaffDiscountRequestsPage() {
           <>
             <p className="mt-2 text-[12px] leading-5 text-gray-600">
               {rsmState === "approved"
-                ? "You approved this request. It is now with Admin for final approval."
+                ? `You approved this request. It is now with ${request.nsmApprovalStatus === "pending" ? "the NSM, then Admin," : "Admin"} for final approval.`
                 : rsmState === "rejected"
                   ? "This request was disapproved at RSM review."
                   : "RSM review is complete for this request."}
@@ -285,6 +290,9 @@ export default function StaffDiscountRequestsPage() {
             )}
             {request.rsmNote && (
               <p className="mt-2 text-[12px] text-gray-600">RSM note: {request.rsmNote}</p>
+            )}
+            {request.nsmNote && (
+              <p className="mt-2 text-[12px] text-gray-600">NSM note: {request.nsmNote}</p>
             )}
             {request.adminNote && (
               <p className="mt-2 text-[12px] text-gray-600">Admin note: {request.adminNote}</p>
@@ -400,7 +408,7 @@ export default function StaffDiscountRequestsPage() {
                   {rsmState === "approved" ? (
                     <p className="text-[11px] font-semibold text-emerald-700">
                       RSM Approved{request.rsmReviewedBy ? ` by ${request.rsmReviewedBy}` : ""}
-                      {request.status === "pending" ? " · With Admin" : ""}
+                      {request.status === "pending" ? (request.nsmApprovalStatus === "pending" ? " · With NSM" : " · With Admin") : ""}
                     </p>
                   ) : rsmState === "rejected" ? (
                     <p className="text-[11px] font-semibold text-red-600">RSM Rejected</p>
@@ -468,6 +476,8 @@ export default function StaffDiscountRequestsPage() {
                     </details>
                   )}
 
+                  <DiscountReferencePreview requestId={request.id} file={request.referenceFile} />
+
                   {reviewPanel(request)}
                 </div>
               );
@@ -497,7 +507,7 @@ export default function StaffDiscountRequestsPage() {
                       )}
                       {request.rsmApprovalStatus === "approved" && request.status === "pending" && (
                         <span className="rounded-full border border-sky-200 bg-sky-50 px-2.5 py-0.5 text-[11px] font-bold text-sky-700">
-                          With Admin
+                          {request.nsmApprovalStatus === "pending" ? "With NSM" : "With Admin"}
                         </span>
                       )}
                     </div>
@@ -633,6 +643,8 @@ export default function StaffDiscountRequestsPage() {
                         </details>
                       );
                     })()}
+
+                    <DiscountReferencePreview requestId={request.id} file={request.referenceFile} />
                   </div>
 
                   {reviewPanel(request)}

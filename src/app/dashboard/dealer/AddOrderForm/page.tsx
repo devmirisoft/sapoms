@@ -34,7 +34,9 @@ import {
 import {
   buildDraftApprovalState,
   buildOrderApprovalSnapshot,
+  discountOnNet,
   findLatestRequestForDraft,
+  stackDiscountOnNet,
   normalizeApprovalProductKey,
   normalizeCustomDiscountRequestRecord,
   type DraftApprovalState,
@@ -119,6 +121,9 @@ type CustomDiscountRequest = {
   createdAt?: string;
   reviewedAt?: string | null;
 };
+
+// Display only the product name, dropping any " - descriptor" suffix.
+const shortProductName = (name: string) => name.split(" - ")[0].trim();
 
 // ─── Product meta from nested_products.json ───────────────────────────────────
 type ProductMeta = { image: string | null; productName: string; packSize: number };
@@ -495,6 +500,7 @@ function AddOrderPageInner() {
   const [customDiscountProductKey, setCustomDiscountProductKey] = useState("");
   const [customDiscountSubmitting, setCustomDiscountSubmitting] = useState(false);
   const [showDiscountConfirm, setShowDiscountConfirm] = useState(false);
+  const [discountReferenceFile, setDiscountReferenceFile] = useState<File | null>(null);
   const [customDiscountRequests, setCustomDiscountRequests] = useState<CustomDiscountRequest[]>([]);
   const [reorderRequest, setReorderRequest] = useState<NormalizedCustomDiscountRequest | null>(null);
   const [perProductDiscountInputs, setPerProductDiscountInputs] = useState<Record<string, number>>({});
@@ -1232,7 +1238,12 @@ function AddOrderPageInner() {
         )
       ))
       : null;
-  const requestedCustomDiscountPercent = Math.min(100, Math.max(0, Number(customDiscountInput) || 0));
+  // The dealer asks for a % off the net left after the base discount; from here
+  // on requestedCustomDiscountPercent is the equivalent total % of gross.
+  const customDiscountOnNetPercent = Math.min(100, Math.max(0, Number(customDiscountInput) || 0));
+  const requestedCustomDiscountPercent = customDiscountOnNetPercent > 0
+    ? stackDiscountOnNet(baseDiscountPayload.baseDiscountPercent, customDiscountOnNetPercent)
+    : 0;
   const requestedProductDiscountRows = productRows
     .map((row) => {
       const productKey = getProductKey(row);
@@ -1242,8 +1253,9 @@ function AddOrderPageInner() {
     })
     .filter(({ percent }) => percent > (approvedCustomDiscountPercent ?? baseDiscountPayload.baseDiscountPercent));
   const hasRequestedProductDiscounts = requestedProductDiscountRows.length > 0;
-  const requestedCustomDiscountAmount = customDiscountBaseSubtotal * (requestedCustomDiscountPercent / 100);
-  const requestedCustomFinalPayable = Math.max(0, customDiscountBaseSubtotal - requestedCustomDiscountAmount);
+  const customDiscountNetSubtotal = customDiscountBaseSubtotal * (1 - baseDiscountPayload.baseDiscountPercent / 100);
+  const requestedCustomDiscountAmount = customDiscountNetSubtotal * (customDiscountOnNetPercent / 100);
+  const requestedCustomFinalPayable = Math.max(0, customDiscountNetSubtotal - requestedCustomDiscountAmount);
 
   // ── Unsent custom discount selection → "Request Discount" instead of "Place Order" ──
   const currentDiscountBaseline = approvedCustomDiscountPercent ?? baseDiscountPayload.baseDiscountPercent;
@@ -1254,7 +1266,7 @@ function AddOrderPageInner() {
     && (pendingOrderDiscountSelection || hasRequestedProductDiscounts);
   const discountSummaryRows = requestedProductDiscountRows.map(({ row, percent }) => ({
     key: row.key,
-    label: `${row.variantCode || row.productname} - ${row.displayName || "Product"}`,
+    label: `${row.variantCode || row.productname} - ${shortProductName(row.displayName || "Product")}`,
     percent,
     extraPaise: Math.round(rowSubtotalPaise(row) * (percent - currentDiscountBaseline) / 100),
   }));
@@ -1466,7 +1478,7 @@ function AddOrderPageInner() {
 
     setCustomDiscountSubmitting(true);
     try {
-      await submitCustomDiscountApproval({
+      const request = await submitCustomDiscountApproval({
         scope,
         requestedOrderDiscountPercent: scope === "order" ? requestedCustomDiscountPercent : null,
         requestedProductDiscounts,
@@ -1475,6 +1487,17 @@ function AddOrderPageInner() {
           : null,
       });
       setShowDiscountConfirm(false);
+      setDiscountReferenceFile(null);
+      if (discountReferenceFile) {
+        const fd = new FormData();
+        fd.append("file", discountReferenceFile);
+        const res = await fetch(`/api/custom-discount-requests/${encodeURIComponent(request.id)}/reference`, { method: "POST", body: fd });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok || !json.success) {
+          toast.error(`Request sent, but the document failed to upload: ${json.message ?? "upload failed"}`);
+          return;
+        }
+      }
       toast.success("Custom discount request sent to admin.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not request custom discount.");
@@ -2350,7 +2373,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
       {/* ── Discount Request Disclaimer ─────────────────────────────────────── */}
       {showDiscountConfirm && (
         <div className="fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[85vh] overflow-y-auto">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[68vh] overflow-y-auto" style={{ zoom: 1.25 }}>
             <h3 className="text-[15px] font-bold text-gray-900 mb-1">Request Custom Discount</h3>
             <p className="text-[12.5px] text-gray-500 mb-4">
               This order will not be placed now. It is sent to admin for discount approval and can be placed once approved.
@@ -2364,14 +2387,14 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               {pendingOrderDiscountSelection && (
                 <div className="flex items-center justify-between px-3 py-2">
                   <span className="text-gray-500">Requested (entire order)</span>
-                  <span className="font-mono font-bold text-indigo-700">{requestedCustomDiscountPercent}%</span>
+                  <span className="font-mono font-bold text-indigo-700">{customDiscountOnNetPercent}% on net</span>
                 </div>
               )}
               {discountSummaryRows.map((r) => (
                 <div key={r.key} className="flex items-start justify-between gap-3 px-3 py-2">
                   <span className="text-gray-600 truncate">{r.label}</span>
                   <span className="shrink-0 text-right">
-                    <span className="block font-mono font-bold text-indigo-700">{r.percent}%</span>
+                    <span className="block font-mono font-bold text-indigo-700">{discountOnNet(currentDiscountBaseline, r.percent)}% on net</span>
                     <span className="block font-mono text-[11px] text-emerald-600">−{fmt(r.extraPaise)}</span>
                   </span>
                 </div>
@@ -2386,6 +2409,25 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               Amounts shown are estimates. The final discount is whatever the admin approves, and the order stays locked until then.
             </p>
 
+            <label className="mt-3 block text-[12px] font-semibold text-gray-700">
+              Reference document <span className="font-normal text-gray-400">(optional · PDF, Word, Excel or image, max 10 MB)</span>
+              <input
+                type="file"
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.webp"
+                disabled={customDiscountSubmitting}
+                onChange={(e) => {
+                  const file = e.target.files?.[0] ?? null;
+                  if (file && file.size > 10 * 1024 * 1024) {
+                    toast.error("The file must be 10 MB or smaller.");
+                    e.target.value = "";
+                    return;
+                  }
+                  setDiscountReferenceFile(file);
+                }}
+                className="mt-1.5 block w-full text-[12px] text-gray-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-[12px] file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+              />
+            </label>
+
             <div className="flex gap-2 mt-4">
               <button
                 onClick={handleConfirmDiscountRequest}
@@ -2395,7 +2437,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 {customDiscountSubmitting ? "Sending..." : "Proceed"}
               </button>
               <button
-                onClick={() => setShowDiscountConfirm(false)}
+                onClick={() => { setShowDiscountConfirm(false); setDiscountReferenceFile(null); }}
                 disabled={customDiscountSubmitting}
                 className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-[13px] font-medium transition-colors cursor-pointer border-none disabled:opacity-40"
               >
@@ -3000,7 +3042,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 )}
                 {visibleCustomRequest?.discountScope === "product" && (
                   <p className="mt-2 text-[12px] font-semibold text-indigo-700">
-                    Product: {visibleCustomRequest.targetProduct?.displayName || visibleCustomRequest.targetProduct?.variantCode || "Selected product"}
+                    Product: {shortProductName(visibleCustomRequest.targetProduct?.displayName || "") ||visibleCustomRequest.targetProduct?.variantCode || "Selected product"}
                   </p>
                 )}
                 {visibleCustomRequest?.adminNote && (
@@ -3047,14 +3089,14 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     >
                       {productRows.map((row) => (
                         <option key={`${row.key}-${getProductKey(row)}`} value={getProductKey(row)}>
-                          {row.variantCode || row.productname} - {row.displayName || "Product"}
+                          {row.variantCode || row.productname} - {shortProductName(row.displayName || "Product")}
                         </option>
                       ))}
                     </select>
                   </div>
                 )}
                 <div>
-                  <label className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wider">Custom Discount %</label>
+                  <label className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wider">Custom Discount % (on net after base)</label>
                   <div className="mt-1 flex gap-2">
                     <input
                       type="number"
@@ -3064,7 +3106,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                       value={customDiscountInput}
                       onChange={(e) => setCustomDiscountInput(e.target.value)}
                       className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13.5px] font-mono font-semibold text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
-                      placeholder="e.g. 18"
+                      placeholder="e.g. 10"
                     />
 
                   </div>
@@ -3079,8 +3121,8 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                       value={requestedCustomDiscountAmount ? Number(requestedCustomDiscountAmount.toFixed(2)) : ""}
                       onChange={(e) => {
                         const amount = Math.max(0, Number(e.target.value) || 0);
-                        if (!customDiscountBaseSubtotal) return;
-                        const percent = Math.min(100, (amount / customDiscountBaseSubtotal) * 100);
+                        if (!customDiscountNetSubtotal) return;
+                        const percent = Math.min(100, (amount / customDiscountNetSubtotal) * 100);
                         setCustomDiscountInput(percent ? String(Number(percent.toFixed(4))) : "");
                       }}
                       className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 font-mono text-[13px] font-bold text-indigo-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
@@ -3129,8 +3171,8 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     <div className="mt-2 flex flex-wrap gap-2">
                       {requestedProductDiscountRows.map(({ row, productKey, normalizedKey, percent }) => (
                         <div key={`${row.key}-${normalizedKey}`} className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-gray-800">
-                          <span className="max-w-[260px] truncate">{row.variantCode || row.productname} - {row.displayName || "Product"}</span>
-                          <span className="font-mono font-bold text-indigo-700">{percent}%</span>
+                          <span className="max-w-[260px] truncate">{row.variantCode || row.productname} - {shortProductName(row.displayName || "Product")}</span>
+                          <span className="font-mono font-bold text-indigo-700">{discountOnNet(baseDiscountPayload.baseDiscountPercent, percent)}% on net</span>
                           <button
                             type="button"
                             onClick={() => removeCustomProductDiscount(productKey)}
@@ -3215,11 +3257,12 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     const globalPercent = approvedCustomDiscountPercent ?? baseDiscountPayload.baseDiscountPercent;
                     const approvedProductReq = getApprovedProductCustomRequest(row);
                     const approvedProductTotal = approvedProductReq ? Math.min(100, Math.max(0, Number(approvedProductReq.requestedDiscountPercent) || 0)) : 0;
-                    const productExtraPercent = approvedProductReq ? Math.max(0, approvedProductTotal - globalPercent) : 0;
+                    // Product discounts are shown and edited as a % off the net after globalPercent.
+                    const productExtraPercent = approvedProductReq ? discountOnNet(globalPercent, approvedProductTotal) : 0;
                     const pendingProductReq = getProductPendingRequest(row);
                     const isEditingThisRow = editingProductDiscountKey === productKey;
                     const currentProductInput = perProductDiscountInputs[productKey] ?? globalPercent;
-                    const rowDisplayName = row.displayName || selectedProduct?.name || meta?.productName || row.productname;
+                    const rowDisplayName = shortProductName(row.displayName || selectedProduct?.name || meta?.productName || row.productname);
 
                     return (
                       <tr key={row.key} className={`hover:bg-gray-50/50 transition-colors${pendingProductReq ? " border-l-2 border-amber-400" : ""}`}>
@@ -3439,18 +3482,18 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                                     type="button"
                                     onClick={() => setPerProductDiscountInputs((prev) => ({
                                       ...prev,
-                                      [productKey]: Math.max(globalPercent, (prev[productKey] ?? globalPercent) - 0.5),
+                                      [productKey]: stackDiscountOnNet(globalPercent, Math.max(0, discountOnNet(globalPercent, prev[productKey] ?? globalPercent) - 0.5)),
                                     }))} disabled={orderLockedByPendingApproval}
                                     className="w-7 h-[26px] flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-xs font-bold transition-colors border-none cursor-pointer"
                                   >−</button>
                                   <span className="w-10 h-[26px] flex items-center justify-center text-[11px] font-mono font-bold text-indigo-700 border-x border-indigo-200 bg-white">
-                                    {currentProductInput}
+                                    {discountOnNet(globalPercent, currentProductInput)}
                                   </span>
                                   <button
                                     type="button"
                                     onClick={() => setPerProductDiscountInputs((prev) => ({
                                       ...prev,
-                                      [productKey]: Math.min(100, (prev[productKey] ?? globalPercent) + 0.5),
+                                      [productKey]: stackDiscountOnNet(globalPercent, discountOnNet(globalPercent, prev[productKey] ?? globalPercent) + 0.5),
                                     }))} disabled={orderLockedByPendingApproval}
                                     className="w-7 h-[26px] flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-xs font-bold transition-colors border-none cursor-pointer"
                                   >+</button>

@@ -88,7 +88,9 @@ export async function GET(request: Request) {
 
     // `earliest` is the oldest record in this scope whatever the picked range, so the
     // date fields can be walked back as far as there is anything to show.
-    const [orders, oldest] = await prisma.$transaction([
+    // Billed is what the accountant invoiced in the ledger, paid what was recorded
+    // against those bills; both by bill date, since one bill can span several orders.
+    const [orders, oldest, bills] = await prisma.$transaction([
       prisma.order.findMany({
         where,
         select: { orderDate: true, finalPayableAmountPaise: true },
@@ -97,6 +99,13 @@ export async function GET(request: Request) {
       prisma.order.aggregate({
         where: { ...where, orderDate: undefined },
         _min: { orderDate: true },
+      }),
+      prisma.ledgerBill.aggregate({
+        where: {
+          ...(Object.keys(dealer).length ? { dealer } : {}),
+          ...(Object.keys(range).length ? { billDate: range } : {}),
+        },
+        _sum: { billAmountPaise: true, paidAmountPaise: true },
       }),
     ]);
 
@@ -122,6 +131,8 @@ export async function GET(request: Request) {
           granularity,
           orderCount: orders.length,
           total: rupees(totalPaise),
+          billed: rupees(bills._sum.billAmountPaise ?? BigInt(0)),
+          paid: rupees(bills._sum.paidAmountPaise ?? BigInt(0)),
           series: Array.from(buckets.entries())
             .sort(([left], [right]) => left.localeCompare(right))
             .map(([period, paise]) => ({ period, total: rupees(paise) })),

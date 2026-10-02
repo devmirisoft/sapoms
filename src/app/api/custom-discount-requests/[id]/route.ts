@@ -103,23 +103,33 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (actor.role === "RSM") await assertRsmDiscountScope(actor, existing.dealerId, existing.staffId);
     else assertDealerScope(actor, existing.dealerId);
 
+    // RSM and NSM post their decision as `status` too; it lands on their own stage.
+    const stageRole = actor.role === "RSM" || actor.role === "NSM";
     const rawStatus = text(body.status, 40);
     const rawRsmStatus = text(body.rsmStatus ?? body.rsmApprovalStatus ?? (actor.role === "RSM" ? body.status : ""), 40);
-    const nextStatus = rawStatus && actor.role !== "RSM" ? statusValue(rawStatus) : null;
+    const rawNsmStatus = text(body.nsmStatus ?? body.nsmApprovalStatus ?? (actor.role === "NSM" ? body.status : ""), 40);
+    const nextStatus = rawStatus && !stageRole ? statusValue(rawStatus) : null;
     const nextRsmStatus = rawRsmStatus ? statusValue(rawRsmStatus) : null;
+    const nextNsmStatus = rawNsmStatus ? statusValue(rawNsmStatus) : null;
     const orderId = text(body.orderId || body.order_id, 80);
     const hasOrderLink = !!orderId;
     const reviewUpdate = !!nextStatus;
     const rsmReviewUpdate = !!nextRsmStatus;
-    if (rawStatus && actor.role !== "RSM" && !nextStatus) return NextResponse.json({ success: false, message: "Invalid status" }, { status: 400 });
+    const nsmReviewUpdate = !!nextNsmStatus;
+    if (rawStatus && !stageRole && !nextStatus) return NextResponse.json({ success: false, message: "Invalid status" }, { status: 400 });
     if (rawRsmStatus && !nextRsmStatus) return NextResponse.json({ success: false, message: "Invalid RSM status" }, { status: 400 });
+    if (rawNsmStatus && !nextNsmStatus) return NextResponse.json({ success: false, message: "Invalid NSM status" }, { status: 400 });
     const wantsResubmit = text(body.action, 40).toLowerCase() === "resubmit" || body.orderSnapshot !== undefined || body.products !== undefined || body.requestedDiscountPercent !== undefined || body.requestedProductDiscounts !== undefined;
     if (reviewUpdate && actor?.role !== "ADMIN") throw Object.assign(new Error("Only Admin can review custom discounts"), { status: 403 });
     if (rsmReviewUpdate && actor?.role !== "RSM") throw Object.assign(new Error("Only RSM can perform RSM custom discount review"), { status: 403 });
+    if (nsmReviewUpdate && actor?.role !== "NSM") throw Object.assign(new Error("Only NSM can perform NSM custom discount review"), { status: 403 });
     if (reviewUpdate && existing.rsmApprovalStatus !== "APPROVED") throw Object.assign(new Error("RSM approval is required before Admin review"), { status: 409 });
+    if (reviewUpdate && existing.nsmApprovalStatus !== null && existing.nsmApprovalStatus !== "APPROVED") throw Object.assign(new Error("NSM approval is required before Admin review"), { status: 409 });
+    if (nsmReviewUpdate && existing.nsmApprovalStatus === null) throw Object.assign(new Error("This request does not need NSM review"), { status: 409 });
+    if (nsmReviewUpdate && existing.rsmApprovalStatus !== "APPROVED") throw Object.assign(new Error("RSM approval is required before NSM review"), { status: 409 });
     if (wantsResubmit && actor?.role === "ADMIN") throw Object.assign(new Error("Admin cannot resubmit dealer custom discounts"), { status: 403 });
     if (wantsResubmit && !["PENDING", "REJECTED"].includes(String(existing.status))) throw Object.assign(new Error("Only pending or rejected requests can be resubmitted"), { status: 409 });
-    if (!reviewUpdate && !rsmReviewUpdate && typeof body.allowReorder !== "boolean" && !hasOrderLink && !wantsResubmit) {
+    if (!reviewUpdate && !rsmReviewUpdate && !nsmReviewUpdate && typeof body.allowReorder !== "boolean" && !hasOrderLink && !wantsResubmit) {
       return NextResponse.json({ success: false, message: "No supported update supplied" }, { status: 400 });
     }
 
@@ -136,6 +146,19 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       if (nextRsmStatus === "REJECTED") {
         // A disapproval must always carry a reason the dealer can act on.
         if (!data.rsmNote) throw Object.assign(new Error("A disapproval note is required when rejecting a discount request"), { status: 400 });
+        data.status = "REJECTED";
+        data.allowReorder = false;
+      }
+    }
+    if (nsmReviewUpdate && nextNsmStatus) {
+      if (existing.nsmApprovalStatus !== "PENDING") throw Object.assign(new Error("NSM review is already complete"), { status: 409 });
+      data.nsmApprovalStatus = nextNsmStatus;
+      data.nsmReviewedByUserId = actor.userId;
+      data.nsmReviewedByName = actor.displayName || actor.email;
+      data.nsmReviewedAt = new Date();
+      data.nsmNote = text(body.nsmNote ?? body.adminNote ?? body.admin_note, 1500) || null;
+      if (nextNsmStatus === "REJECTED") {
+        if (!data.nsmNote) throw Object.assign(new Error("A disapproval note is required when rejecting a discount request"), { status: 400 });
         data.status = "REJECTED";
         data.allowReorder = false;
       }
@@ -165,7 +188,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         orderDraftId: body.orderDraftId ?? body.order_draft_id ?? existing.orderDraftId?.toString(),
       }, existing.dealerId, existing.staffId);
       await assertDraftBelongsToDealer(rebuilt.orderDraftId, existing.dealerId);
-      Object.assign(data, rebuilt, { status: "PENDING", rsmApprovalStatus: "PENDING", rsmReviewedByUserId: null, rsmReviewedByName: null, rsmReviewedAt: null, rsmNote: null, adminNote: null, reviewedByUserId: null, reviewedAt: null, allowReorder: false });
+      Object.assign(data, rebuilt, { status: "PENDING", rsmApprovalStatus: "PENDING", rsmReviewedByUserId: null, rsmReviewedByName: null, rsmReviewedAt: null, rsmNote: null, nsmReviewedByUserId: null, nsmReviewedByName: null, nsmReviewedAt: null, nsmNote: null, adminNote: null, reviewedByUserId: null, reviewedAt: null, allowReorder: false });
     }
 
     const updated = await prisma.$transaction(async (tx) => {
@@ -173,16 +196,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // A rejection can come from either stage, so the draft carries whichever
       // note was written. Both are surfaced structurally in rejection_notes and
       // flattened into order_note for anything that only reads the text.
-      if ((reviewUpdate && nextStatus === "REJECTED") || (rsmReviewUpdate && nextRsmStatus === "REJECTED")) {
-        const rejectedByRsm = rsmReviewUpdate && nextRsmStatus === "REJECTED";
-        const adminNoteText = rejectedByRsm ? "" : text(data.adminNote, 1500);
+      const rejectedBy = rsmReviewUpdate && nextRsmStatus === "REJECTED" ? "RSM"
+        : nsmReviewUpdate && nextNsmStatus === "REJECTED" ? "NSM"
+          : reviewUpdate && nextStatus === "REJECTED" ? "ADMIN"
+            : null;
+      if (rejectedBy) {
+        const rejectedByRsm = rejectedBy === "RSM";
+        const adminNoteText = rejectedBy === "ADMIN" ? text(data.adminNote, 1500) : "";
         const rsmNoteText = rejectedByRsm ? text(data.rsmNote, 1500) : text(existing.rsmNote, 1500);
-        const reasonText = (rejectedByRsm ? rsmNoteText : adminNoteText) || DEFAULT_REJECTION_NOTE;
+        const nsmNoteText = rejectedBy === "NSM" ? text(data.nsmNote, 1500) : rejectedBy === "ADMIN" ? text(existing.nsmNote, 1500) : "";
+        const reasonText = (rejectedBy === "RSM" ? rsmNoteText : rejectedBy === "NSM" ? nsmNoteText : adminNoteText) || DEFAULT_REJECTION_NOTE;
         const rejectionNotes = {
-          rejected_by: rejectedByRsm ? "RSM" : "ADMIN",
+          rejected_by: rejectedBy,
           rejected_at: new Date().toISOString(),
           admin_note: adminNoteText || null,
           rsm_note: rsmNoteText || null,
+          nsm_note: nsmNoteText || null,
           reason: reasonText,
         };
         const draft = await tx.orderDraft.create({
@@ -197,8 +226,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
                 text((existing.orderSnapshot as any)?.orderNote),
                 `--- ${rejectionNotes.rejected_by} REJECTION NOTE ---`,
                 reasonText,
-                // An RSM rejection never reached Admin, so there is no second note.
+                // An RSM rejection never reached a later stage, so there is no earlier note.
                 !rejectedByRsm && rsmNoteText ? `--- RSM NOTE ---\n${rsmNoteText}` : "",
+                rejectedBy === "ADMIN" && nsmNoteText ? `--- NSM NOTE ---\n${nsmNoteText}` : "",
                 "Please update your cart and resubmit.",
               ].filter(Boolean).join("\n\n"),
               rejection_notes: rejectionNotes,
@@ -240,8 +270,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // decision this call carried; a dealer edit is a change, not a review.
       const action = reviewUpdate
         ? nextStatus === "APPROVED" ? AUDIT_ACTION.APPROVE : nextStatus === "REJECTED" ? AUDIT_ACTION.REJECT : AUDIT_ACTION.STATUS_CHANGE
-        : rsmReviewUpdate
-          ? nextRsmStatus === "APPROVED" ? AUDIT_ACTION.APPROVE : AUDIT_ACTION.REJECT
+        : rsmReviewUpdate || nsmReviewUpdate
+          ? (nextRsmStatus ?? nextNsmStatus) === "APPROVED" ? AUDIT_ACTION.APPROVE : AUDIT_ACTION.REJECT
           : wantsResubmit
             ? AUDIT_ACTION.DISCOUNT_CHANGED
             : AUDIT_ACTION.UPDATE;
@@ -250,12 +280,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         {
           status: existing.status,
           rsmApprovalStatus: existing.rsmApprovalStatus,
+          nsmApprovalStatus: existing.nsmApprovalStatus,
           requestedDiscountPercent: existing.requestedDiscountPercent?.toString() ?? null,
           allowReorder: existing.allowReorder,
         },
         {
           status: row.status,
           rsmApprovalStatus: row.rsmApprovalStatus,
+          nsmApprovalStatus: row.nsmApprovalStatus,
           requestedDiscountPercent: row.requestedDiscountPercent?.toString() ?? null,
           allowReorder: row.allowReorder,
         },
@@ -270,9 +302,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...changes,
         metadata: {
           dealerId: row.dealerId.toString(),
-          stage: rsmReviewUpdate ? "rsm" : reviewUpdate ? "admin" : "dealer",
+          stage: rsmReviewUpdate ? "rsm" : nsmReviewUpdate ? "nsm" : reviewUpdate ? "admin" : "dealer",
           ...(row.adminNote ? { adminNote: row.adminNote } : {}),
           ...(row.rsmNote ? { rsmNote: row.rsmNote } : {}),
+          ...(row.nsmNote ? { nsmNote: row.nsmNote } : {}),
           ...(placedOrder ? { placedOrderNumber: placedOrder.orderNumber } : {}),
         },
       });

@@ -95,3 +95,19 @@ test("dashboard drops the sale, exposure and top-exposure tiles for the sale cha
   assert.match(page, /type="date"/);
   assert.match(page, /metrics-left/);
 });
+
+test("billed and paid come from ledger bills under the same dealer and date scope", () => {
+  assert.match(route, /prisma\.ledgerBill\.aggregate\(/);
+  assert.match(route, /\.\.\.\(Object\.keys\(range\)\.length \? \{ billDate: range \} : \{\}\)/);
+  assert.match(route, /_sum: \{ billAmountPaise: true, paidAmountPaise: true \}/);
+  assert.match(page, /Billed \/ Booking/);
+  assert.match(page, /Payment \/ Billed/);
+});
+
+test("financial overview replaces the staff-by-role card, which moves to one row under it", () => {
+  assert.match(page, /Financial Overview/);
+  assert.match(page, /\/api\/admin\/sales-summary\?from=\$\{finCurrent\.from\}&to=\$\{finCurrent\.to\}/);
+  assert.match(page, /enabled: finPrevious !== null/);
+  assert.ok(page.indexOf("fin-overview\" aria-label") < page.indexOf("metric-card staff-roles"));
+  assert.match(page, /\.staff-roles \.role-pills \{ flex-wrap: nowrap;/);
+});
