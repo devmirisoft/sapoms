@@ -10,6 +10,9 @@ import {
   requiresNsmReview,
   type CustomDiscountStatus,
 } from "@/lib/customDiscountRequests";
+import { findCatalogueEntry } from "@/lib/catalogue";
+import { couponPercent } from "@/lib/coupons";
+import { linePricing, loadCatalogue } from "@/server/modules/products/catalogue";
 
 export function text(value: unknown, max = 1000) {
   return String(value ?? "").trim().slice(0, max);
@@ -198,14 +201,41 @@ export const customDiscountInclude = {
   reorderLogs: { orderBy: { createdAt: "desc" as const }, take: 1 },
 };
 
+/**
+ * An approved request places its order straight from this snapshot, so prices,
+ * pack sizes and the base discount are the server's, exactly as in priceDealerOrder.
+ * Only the catalogue numbers, pack counts and the requested discount come from the body.
+ */
+async function serverPricedSnapshotProducts(rawProducts: unknown[]) {
+  const { index } = await loadCatalogue();
+  return rawProducts.map((raw) => {
+    const product = raw && typeof raw === "object" ? raw as Record<string, any> : {};
+    const catNo = text(product.sku ?? product.catalogueNumber ?? product.productKey, 160);
+    const entry = catNo ? findCatalogueEntry(index, catNo) : null;
+    const pricing = entry?.variant ? linePricing(entry.product, entry.variant) : null;
+    if (!entry?.variant || !pricing) throw Object.assign(new Error(`${catNo || "A product"} is not a priced catalogue item`), { status: 422 });
+    const quantity = Math.max(1, Math.trunc(num(product.quantity, 1)));
+    return {
+      ...product,
+      sku: entry.variant.sku,
+      catalogueNumber: entry.variant.sku,
+      quantity,
+      packSize: pricing.packSize,
+      unitPrice: pricing.unitPrice,
+      grossAmount: Math.round(pricing.packPrice * quantity * 100) / 100,
+    };
+  });
+}
+
 export async function buildCustomDiscountCreate(body: Record<string, any>, dealerId: bigint, staffId?: bigint | null) {
   const requestedDiscountPercent = percent(body.requestedDiscountPercent);
-  const currentDiscountPercent = percent(body.currentDiscountPercent);
+  const dealer = await prisma.dealerProfile.findUnique({ where: { id: dealerId }, select: { discountPercent: true } });
+  const currentDiscountPercent = percent(num(dealer?.discountPercent) + couponPercent(body.discountBreakdown?.couponCode ?? body.couponCode));
   const scope = normalizeCustomDiscountScope(body.discountScope);
   const requestedOrderDiscountPercent = scope === "order" ? requestedDiscountPercent : null;
   const requestedProductDiscounts = body.requestedProductDiscounts && typeof body.requestedProductDiscounts === "object" ? body.requestedProductDiscounts : {};
   const orderSnapshot = buildOrderApprovalSnapshot({
-    products: Array.isArray(body.orderSnapshot?.products) ? body.orderSnapshot.products : Array.isArray(body.products) ? body.products : [],
+    products: await serverPricedSnapshotProducts(Array.isArray(body.orderSnapshot?.products) ? body.orderSnapshot.products : Array.isArray(body.products) ? body.products : []),
     orderNote: body.orderSnapshot?.orderNote ?? body.orderNote,
     baseDiscountPercent: currentDiscountPercent,
     requestedOrderDiscountPercent,

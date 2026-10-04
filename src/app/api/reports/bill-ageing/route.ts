@@ -1,9 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/server/db/prisma";
 import { requireRole } from "@/server/auth/session";
-import { billAgeing } from "@/lib/dealerCreditLimit";
-import { fromPaise } from "@/lib/postgresWallet";
-import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
+import { listUnpaidBills } from "@/server/reports/billAgeing";
 import { csvRow } from "@/lib/csv";
 
 export const runtime = "nodejs";
@@ -17,34 +14,9 @@ export async function GET(request: Request) {
     const params = new URL(request.url).searchParams;
     const dealerId = /^\d+$/.test(params.get("dealerId") ?? "") ? BigInt(params.get("dealerId")!) : null;
 
-    const bills = await prisma.ledgerBill.findMany({
-      where: {
-        billAmountPaise: { gt: prisma.ledgerBill.fields.paidAmountPaise },
-        dealer: { deletedAt: null, ...(dealerId === null ? {} : { id: dealerId }) },
-      },
-      select: {
-        orderNumber: true, billDate: true, billAmountPaise: true, paidAmountPaise: true, extraCreditDays: true,
-        dealer: { select: { id: true, businessName: true, creditDays: true } },
-      },
-      orderBy: [{ dealer: { businessName: "asc" } }, { billDate: "asc" }, { id: "asc" }],
-    });
-
     const now = Date.now();
-    const rows = bills.map((bill) => {
-      // Dealers not on credit terms (creditDays unset) owe from the bill date.
-      const creditDays = bill.dealer.creditDays ?? 0;
-      const { ageDays, duePaise } = billAgeing(bill, creditDays, now);
-      return {
-        dealerId: bill.dealer.id.toString(),
-        name: bill.dealer.businessName,
-        creditDays: creditDays + bill.extraCreditDays,
-        billNo: bill.orderNumber.split(",").map((id) => formatDisplayOrderNumber(id)).join(", "),
-        billDate: bill.billDate.toISOString().slice(0, 10),
-        billAmount: fromPaise(bill.billAmountPaise),
-        age: ageDays,
-        dueAmount: fromPaise(duePaise),
-      };
-    });
+    const rows = (await listUnpaidBills(dealerId === null ? {} : { id: dealerId }, now))
+      .map(({ unpaidAmount: _unpaid, ...row }) => row);
 
     if (params.get("format") !== "csv") {
       return NextResponse.json({ success: true, data: rows }, { headers: { "Cache-Control": "no-store" } });

@@ -7,6 +7,7 @@ import DealerPasswordGate from "@/components/password/DealerPasswordGate";
 import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 import { Toaster } from "@/components/ui/toast";
+import AgentWidget from "@/components/agent/AgentWidget";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -33,6 +34,7 @@ export default function RootLayout({
             <DealerTermsGate />
             <DealerPasswordGate />
             {children}
+            <AgentWidget />
           </Toaster>
         </ReactQueryProvider>
       </body>

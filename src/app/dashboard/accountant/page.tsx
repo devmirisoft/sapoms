@@ -733,7 +733,7 @@ function AccountantDashboardInner() {
       <div className="charts-2">
         {[
           { title: "Top Orders by Value",    sub: "Highest order amounts",         data: cOrdData,  fill: "#006162", legend: "Order value" },
-          { title: "Top Dealers by Revenue", sub: "Best performing dealer accounts", data: cDealData, fill: "#8e8e93", legend: "Revenue" },
+          { title: "Top Dealers by Revenue", sub: "Best performing dealer accounts", data: cDealData, fill: "#ffa581", legend: "Revenue" },
         ].map(chart => (
           <div key={chart.title} className="panel">
             <div className="panel-header">

@@ -136,6 +136,7 @@ model User {
   rsmReviewedFundRequests  DealerFundRequest[]     @relation("FundRequestRsmReviewer")
   staffReviewedFundRequests DealerFundRequest[]    @relation("FundRequestStaffReviewer")
   fundedFundRequests       DealerFundRequest[]     @relation("FundRequestAccountant")
+  agentRequests            AgentRequest[]
 
   @@index([role, status])
   @@map("users")
@@ -397,6 +398,8 @@ model DealerProfile {
   invoices               Invoice[]
   orderExports           OrderExport[]
   fundRequests           DealerFundRequest[]
+  agentRequests          AgentRequest[]
+  agentDrafts            AgentDraft[]
 
   @@index([deletedAt])
   @@index([region])
@@ -1399,4 +1402,64 @@ model Courier {
 
   @@index([isActive, position])
   @@map("couriers")
+}
+
+// One row per assistant chat turn, for every role: the per-user rate limit counts
+// these, and they are the assistant's call and data-access log (tool names + args).
+// inFlightUserId is set while the turn runs and cleared when it ends; being unique
+// (NULLs never collide), it lets the database refuse a second concurrent turn.
+model AgentRequest {
+  id               BigInt    @id @default(autoincrement())
+  userId           BigInt    @map("user_id")
+  dealerId         BigInt?   @map("dealer_id")
+  inFlightUserId   BigInt?   @unique @map("in_flight_user_id")
+  startedAt        DateTime  @default(now()) @map("started_at") @db.Timestamptz(6)
+  finishedAt       DateTime? @map("finished_at") @db.Timestamptz(6)
+  model            String?
+  latencyMs        Int?      @map("latency_ms")
+  promptTokens     Int?      @map("prompt_tokens")
+  completionTokens Int?      @map("completion_tokens")
+  toolCalls        Json?     @map("tool_calls")
+  error            String?
+
+  user   User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  dealer DealerProfile? @relation(fields: [dealerId], references: [id], onDelete: Cascade)
+
+  @@index([userId, startedAt])
+  @@map("agent_requests")
+}
+
+enum AgentDraftStatus {
+  PENDING
+  CONFIRMING
+  CONFIRMED
+  CANCELLED
+}
+
+// An order the ordering assistant prepared and priced. The model can only create
+// these; the dealer's Confirm click (POST /api/agent/confirm) turns one into an
+// order, or into a custom-discount request when a discount was asked for.
+// CONFIRMING is the atomic claim that stops a double click placing two orders.
+model AgentDraft {
+  id                      String           @id @default(uuid())
+  dealerId                BigInt           @map("dealer_id")
+  status                  AgentDraftStatus @default(PENDING)
+  // What gets re-priced on confirm: [{ productId, packs }].
+  items                   Json
+  notes                   String?          @db.Text
+  // As the dealer asked it: { percent } off the net after their discount, or { amount } in rupees.
+  customDiscount          Json?            @map("custom_discount")
+  // The priced summary the dealer is looking at, and the figure they agree to pay.
+  summary                 Json
+  payablePaise            BigInt           @map("payable_paise")
+  orderId                 BigInt?          @unique @map("order_id")
+  customDiscountRequestId BigInt?          @unique @map("custom_discount_request_id")
+  expiresAt               DateTime         @map("expires_at") @db.Timestamptz(6)
+  createdAt               DateTime         @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt               DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  dealer DealerProfile @relation(fields: [dealerId], references: [id], onDelete: Cascade)
+
+  @@index([dealerId, createdAt])
+  @@map("agent_drafts")
 }

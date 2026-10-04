@@ -3,82 +3,32 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { requireAdmin } from "@/server/admin/admin-route";
 import { adminErrorResponse } from "@/server/admin/admin-errors";
-import { periodKey } from "@/server/modules/admin-dashboard/postgres-admin-dashboard.repository";
-import { SALES_REGION_OPTIONS, formatSalesRegionLabel, type SalesRegionOptionValue } from "@/lib/salesRegions";
+import { day, resolveSalesFilters, rupees, summarizeSales } from "@/server/modules/admin-dashboard/sales-summary";
+import { formatSalesRegionLabel } from "@/lib/salesRegions";
 import { csvRow } from "@/lib/csv";
 
 export const runtime = "nodejs";
-
-const DAY_MS = 86_400_000;
-
-/** A sale only counts once the RSM has approved it and the assigned staff has accepted it. */
-const ACCEPTED_ONLY = {
-  rsmApprovalStatus: "ACCEPTED",
-  acceptanceStatus: "ACCEPTED",
-  status: { notIn: ["CANCELLED", "DECLINED"] },
-} satisfies Prisma.OrderWhereInput;
 
 const REPORT_COLUMNS = [
   "Order No", "Order Date", "Dealer", "Dealer Code", "City", "State", "Region",
   "RSM", "ASM", "Sales Manager", "Amount (INR)",
 ];
 
-/** An unset bound means no bound, so a range nobody picked reads as all time. */
-function parseDay(value: string | null, endOfDay = false) {
-  const raw = String(value ?? "").trim();
-  if (!raw) return null;
-  const parsed = new Date(`${raw}T${endOfDay ? "23:59:59.999" : "00:00:00.000"}Z`);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function day(date: Date) {
-  return date.toISOString().slice(0, 10);
-}
-
-function rupees(paise: bigint) {
-  return Number(paise / BigInt(100));
-}
-
 export async function GET(request: Request) {
   try {
     await requireAdmin();
     const params = new URL(request.url).searchParams;
-
-    const from = parseDay(params.get("from"));
-    const to = parseDay(params.get("to"), true);
-
-    const regionParam = String(params.get("region") ?? "").trim().toUpperCase();
-    const region = SALES_REGION_OPTIONS.some((option) => option.value === regionParam)
-      ? (regionParam as SalesRegionOptionValue)
-      : undefined;
-    // The sales of an ASM are the sales of the states assigned to them. The states are
-    // read here rather than taken from the caller so an ASM with none scopes to nothing.
-    // ponytail: exact state match, mirrors how assigned_states is stored on the ASM.
-    const asmId = /^\d+$/.test(String(params.get("asm") ?? "").trim()) ? BigInt(params.get("asm")!.trim()) : null;
-    const asm = asmId === null ? null : await prisma.staffProfile.findFirst({
-      where: { id: asmId, user: { role: "ASM" } },
-      select: { displayName: true, assignedStates: true },
+    const filters = await resolveSalesFilters({
+      from: params.get("from"),
+      to: params.get("to"),
+      region: params.get("region"),
+      asm: params.get("asm"),
+      city: params.get("city"),
     });
 
-    const city = String(params.get("city") ?? "").trim();
-
-    const dealer = {
-      ...(region ? { region } : {}),
-      ...(asmId === null ? {} : { state: { in: asm?.assignedStates ?? [] } }),
-      ...(city ? { city: { equals: city, mode: "insensitive" as const } } : {}),
-    };
-
-    const range = { ...(from ? { gte: from } : {}), ...(to ? { lte: to } : {}) };
-    // ponytail: an unbounded range scans every accepted order, as the dashboard
-    // repository already does. Push the sum into SQL if the order table outgrows it.
-    const where: Prisma.OrderWhereInput = {
-      ...ACCEPTED_ONLY,
-      ...(Object.keys(dealer).length ? { dealer } : {}),
-      ...(Object.keys(range).length ? { orderDate: range } : {}),
-    };
-
     if (params.get("format") === "csv") {
-      return csvReport(where, {
+      const { from, to, region, asm, asmId, city } = filters;
+      return csvReport(filters.where, {
         region: region ? formatSalesRegionLabel(region) : "All regions",
         asm: asm?.displayName ?? (asmId === null ? "All ASMs" : "Unknown ASM"),
         city: city || "All cities",
@@ -86,58 +36,8 @@ export async function GET(request: Request) {
       });
     }
 
-    // `earliest` is the oldest record in this scope whatever the picked range, so the
-    // date fields can be walked back as far as there is anything to show.
-    // Billed is what the accountant invoiced in the ledger, paid what was recorded
-    // against those bills; both by bill date, since one bill can span several orders.
-    const [orders, oldest, bills] = await prisma.$transaction([
-      prisma.order.findMany({
-        where,
-        select: { orderDate: true, finalPayableAmountPaise: true },
-        orderBy: { orderDate: "asc" },
-      }),
-      prisma.order.aggregate({
-        where: { ...where, orderDate: undefined },
-        _min: { orderDate: true },
-      }),
-      prisma.ledgerBill.aggregate({
-        where: {
-          ...(Object.keys(dealer).length ? { dealer } : {}),
-          ...(Object.keys(range).length ? { billDate: range } : {}),
-        },
-        _sum: { billAmountPaise: true, paidAmountPaise: true },
-      }),
-    ]);
-
-    const spanFrom = from ?? orders[0]?.orderDate ?? new Date();
-    const spanTo = to ?? orders[orders.length - 1]?.orderDate ?? new Date();
-    const granularity = spanTo.getTime() - spanFrom.getTime() <= 62 * DAY_MS ? "day" : "month";
-    const buckets = new Map<string, bigint>();
-    let totalPaise = BigInt(0);
-
-    for (const order of orders) {
-      totalPaise += order.finalPayableAmountPaise;
-      const key = periodKey(order.orderDate, granularity);
-      buckets.set(key, (buckets.get(key) ?? BigInt(0)) + order.finalPayableAmountPaise);
-    }
-
     return NextResponse.json(
-      {
-        success: true,
-        data: {
-          from: from ? day(from) : null,
-          to: to ? day(to) : null,
-          earliest: oldest._min.orderDate ? day(oldest._min.orderDate) : null,
-          granularity,
-          orderCount: orders.length,
-          total: rupees(totalPaise),
-          billed: rupees(bills._sum.billAmountPaise ?? BigInt(0)),
-          paid: rupees(bills._sum.paidAmountPaise ?? BigInt(0)),
-          series: Array.from(buckets.entries())
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([period, paise]) => ({ period, total: rupees(paise) })),
-        },
-      },
+      { success: true, data: await summarizeSales(filters) },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

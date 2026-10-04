@@ -827,11 +827,11 @@ function ExecutiveDashboard() {
               <ChartPanel
                 title="Top Dealers"
                 sub="Dealer performance ranking"
-                legendColor="#8e8e93"
+                legendColor="#ffa581"
                 legendLabel="Total Value"
                 loading={topDealersQ.isLoading}
                 data={topDealersChartData}
-                barFill="#8e8e93"
+                barFill="#ffa581"
                 Tooltip={MoneyTooltip}
               />
             </div>

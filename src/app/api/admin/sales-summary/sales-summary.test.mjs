@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
-const route = readFileSync("src/app/api/admin/sales-summary/route.ts", "utf8");
+// The counting rules live in the shared module (the assistant's sales report uses them too).
+const route = readFileSync("src/app/api/admin/sales-summary/route.ts", "utf8")
+  + readFileSync("src/server/modules/admin-dashboard/sales-summary.ts", "utf8");
 const page = readFileSync("src/app/dashboard/admin/page.tsx", "utf8");
 const staffRepo = readFileSync("src/server/modules/admin/staff/staff.repository.ts", "utf8");
 const staffSchemas = readFileSync("src/server/modules/admin/staff/staff.schemas.ts", "utf8");

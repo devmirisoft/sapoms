@@ -3,6 +3,11 @@ import { applyWalletChange } from "@/lib/postgresWallet";
 import { reserveDealerCredit } from "@/lib/dealerCreditLimit";
 import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
 import { buildEditLogEntry, diffOrderRows, orderItemsToDraftRows, ORDER_REJECTION_SOURCE } from "@/lib/orderRejectionDraft.mjs";
+import { findCatalogueEntry, type CatalogueIndex } from "@/lib/catalogue";
+import { couponPercent } from "@/lib/coupons";
+import { normalizeApprovalProductKey } from "@/lib/customDiscountRequests";
+import discountUtils from "@/lib/discount";
+import { linePricing, loadCatalogue } from "@/server/modules/products/catalogue";
 
 /**
  * Order creation for a dealer submission.
@@ -74,39 +79,42 @@ async function nextOrderNumber(tx: Prisma.TransactionClient) {
   return `OM/${yearRange}/DMS-${sequence.lastValue.toString().padStart(3, "0")}`;
 }
 
-function parseItems(rows: Array<Record<string, unknown>>): ParsedItem[] {
+/** A percent share of a paise amount, rounded to the paisa. */
+function share(amountPaise: bigint, percent: number) { return BigInt(Math.round(Number(amountPaise) * percent / 100)); }
+
+/**
+ * Only the catalogue number and the pack count are the dealer's to choose. Unit
+ * price and pack size are looked up from the catalogue here, so an edited request
+ * cannot change what an order costs. Discounts are applied later, in priceDealerOrder.
+ */
+function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIndex): ParsedItem[] {
   const items: ParsedItem[] = [];
   for (const row of rows) {
-    const catNo = text(row.catNo ?? row.variantCode ?? row.productname, 160);
-    const productName = text(row.productName ?? row.productname, 300);
-    const quantityPacks = Math.trunc(num(row.quantityPacks) || (num(row.producQuanity) / Math.max(1, num(row.packSize) || 1)));
-    const submittedPackSize = Math.trunc(num(row.packSize) || 1);
-    if (!catNo || !productName || quantityPacks <= 0 || submittedPackSize <= 0) throw new OrderError("Order product quantity is invalid.", 422, "invalid_quantity");
+    const submittedCatNo = text(row.catNo ?? row.variantCode ?? row.productname, 160);
+    const entry = submittedCatNo ? findCatalogueEntry(catalogue, submittedCatNo) : null;
+    if (!entry?.variant) throw new OrderError(`${submittedCatNo || "A product"} is not in the catalogue.`, 422, "unknown_product");
+    const { product, variant } = entry;
+    const pricing = linePricing(product, variant);
+    if (!pricing) throw new OrderError(`${submittedCatNo} has no catalogue price.`, 422, "unpriced_product");
+    const { packSize } = pricing;
 
-    const packSize = submittedPackSize || 1;
-    const totalPieces = quantityPacks * packSize;
-    const unitPricePaise = paise(row.unitPrice ?? row.price);
-    const submittedListPricePaise = paise(row.listPriceTotal ?? row.grossAmount ?? row.subtotal);
-    const listPriceTotalPaise = submittedListPricePaise > BigInt(0) ? submittedListPricePaise : unitPricePaise * BigInt(totalPieces);
-    const discountPercent = clampPercent(row.discountPercent ?? row.totalDiscountPercent);
-    const submittedDiscountPaise = paise(row.discount ?? row.discountAmount);
-    const discountAmountPaise = submittedDiscountPaise > BigInt(0) ? submittedDiscountPaise : BigInt(Math.round(Number(listPriceTotalPaise) * (discountPercent / 100)));
-    const submittedFinalPaise = paise(row.afterDiscountPrice ?? row.finalAmount);
-    const calculatedFinalPaise = listPriceTotalPaise > discountAmountPaise ? listPriceTotalPaise - discountAmountPaise : BigInt(0);
-    const finalAmountPaise = submittedFinalPaise > BigInt(0) ? submittedFinalPaise : calculatedFinalPaise;
+    const quantityPacks = Math.trunc(num(row.quantityPacks) || (num(row.producQuanity) / packSize));
+    if (quantityPacks <= 0) throw new OrderError("Order product quantity is invalid.", 422, "invalid_quantity");
+    const productName = text(row.productName ?? row.productname, 300) || product.name;
+    const listPriceTotalPaise = paise(pricing.packPrice) * BigInt(quantityPacks);
 
     items.push({
       productname: text(row.productname ?? productName, 300),
       productName,
-      catNo,
+      catNo: variant.sku || submittedCatNo,
       quantityPacks,
       packSize,
-      totalPieces,
-      unitPricePaise,
+      totalPieces: quantityPacks * packSize,
+      unitPricePaise: paise(pricing.unitPrice),
       listPriceTotalPaise,
-      discountPercent,
-      discountAmountPaise,
-      finalAmountPaise,
+      discountPercent: 0,
+      discountAmountPaise: BigInt(0),
+      finalAmountPaise: listPriceTotalPaise,
       remarks: text(row.remarks, 1500),
       productNote: text(row.productNote ?? row.product_note ?? row.note, 1500),
       priority: row.isPriority === true || text(row.priority, 20) === "1" || text(row.isPriority, 20).toLowerCase() === "true",
@@ -139,32 +147,43 @@ export async function priceDealerOrder(
   fields: OrderFormFields,
   dealer: { id: bigint; discountPercent: Prisma.Decimal | null },
 ) {
-  const rows = parseProductOrder(fields);
-  const items = parseItems(rows);
+  const { index } = await loadCatalogue();
+  const items = parseItems(parseProductOrder(fields), index);
   const grossAmountPaise = items.reduce((sum, item) => sum + item.listPriceTotalPaise, BigInt(0));
-  const baseDiscountPercent = clampPercent(fields.baseDiscountPercent ?? fields.allocatedDiscountPercent ?? dealer.discountPercent ?? 0);
-  const baseDiscountAmountPaise = BigInt(Math.round(Number(grossAmountPaise) * (baseDiscountPercent / 100)));
+
+  // Every percent is decided here, never read from the submission: the dealer's own
+  // discount plus a re-validated coupon (one base percent, as the order form shows it),
+  // then either approved custom requests from the DB or the slab table.
+  const couponDiscountPercent = couponPercent(fields.coupon_code);
+  const baseDiscountPercent = clampPercent(num(dealer.discountPercent ?? 0) + couponDiscountPercent);
+  const baseDiscountAmountPaise = share(grossAmountPaise, baseDiscountPercent);
   const postBaseAmountPaise = grossAmountPaise - baseDiscountAmountPaise;
-  const additionalTypeText = text(fields.additionalDiscountType, 40).toLowerCase();
-  const additionalDiscountType = additionalTypeText === "custom" ? OrderDiscountType.CUSTOM : additionalTypeText === "slab" ? OrderDiscountType.SLAB : OrderDiscountType.NONE;
-  const slabDiscountPercent = additionalDiscountType === OrderDiscountType.SLAB ? clampPercent(fields.slabDiscountPercent) : 0;
-  const slabDiscountAmountPaise = additionalDiscountType === OrderDiscountType.SLAB ? BigInt(Math.round(Number(postBaseAmountPaise) * (slabDiscountPercent / 100))) : BigInt(0);
-  let customDiscountAmountPaise = additionalDiscountType === OrderDiscountType.CUSTOM ? paise(fields.customDiscountAmount ?? fields.additionalDiscountAmount) : BigInt(0);
-  let additionalDiscountAmountPaise = additionalDiscountType === OrderDiscountType.CUSTOM ? customDiscountAmountPaise : slabDiscountAmountPaise;
-  const couponDiscountPercent = clampPercent(fields.couponDiscountPercent);
-  let couponDiscountAmountPaise = BigInt(Math.round(Number(postBaseAmountPaise - additionalDiscountAmountPaise) * (couponDiscountPercent / 100)));
-  let totalDiscountAmountPaise = baseDiscountAmountPaise + additionalDiscountAmountPaise + couponDiscountAmountPaise;
-  let finalPayableAmountPaise = grossAmountPaise > totalDiscountAmountPaise ? grossAmountPaise - totalDiscountAmountPaise : BigInt(0);
-  let totalDiscountPercent = grossAmountPaise > BigInt(0) ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise) : 0;
 
   const customRequests = await validateCustomDiscounts(tx, fields, dealer.id);
-  if (additionalDiscountType === OrderDiscountType.CUSTOM) {
-    customDiscountAmountPaise = customRequests.reduce((sum, request) => sum + (request.requestedDiscountAmountPaise ?? BigInt(0)), BigInt(0));
-    additionalDiscountAmountPaise = customDiscountAmountPaise;
-    couponDiscountAmountPaise = BigInt(Math.round(Number(postBaseAmountPaise - additionalDiscountAmountPaise) * (couponDiscountPercent / 100)));
-    totalDiscountAmountPaise = baseDiscountAmountPaise + additionalDiscountAmountPaise + couponDiscountAmountPaise;
-    finalPayableAmountPaise = grossAmountPaise > totalDiscountAmountPaise ? grossAmountPaise - totalDiscountAmountPaise : BigInt(0);
-    totalDiscountPercent = grossAmountPaise > BigInt(0) ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise) : 0;
+  const customDiscountAmountPaise = customRequests.reduce((sum, request) => sum + (request.requestedDiscountAmountPaise ?? BigInt(0)), BigInt(0));
+  const slabDiscountPercent = customRequests.length ? 0 : discountUtils.getSlabPercent(fromPaise(postBaseAmountPaise));
+  const slabDiscountAmountPaise = share(postBaseAmountPaise, slabDiscountPercent);
+  const additionalDiscountType = customRequests.length ? OrderDiscountType.CUSTOM : slabDiscountPercent > 0 ? OrderDiscountType.SLAB : OrderDiscountType.NONE;
+  const additionalDiscountAmountPaise = customRequests.length ? customDiscountAmountPaise : slabDiscountAmountPaise;
+
+  const discountSum = baseDiscountAmountPaise + additionalDiscountAmountPaise;
+  const totalDiscountAmountPaise = discountSum < grossAmountPaise ? discountSum : grossAmountPaise;
+  const finalPayableAmountPaise = grossAmountPaise - totalDiscountAmountPaise;
+  const totalDiscountPercent = grossAmountPaise > BigInt(0) ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise) : 0;
+
+  // Row discounts mirror the order form: the base percent, raised to an approved
+  // order-wide or per-product custom percent (both are totals that include the base).
+  const orderCustomPercent = Math.max(0, ...customRequests
+    .filter((request) => request.scope === "ORDER")
+    .map((request) => num(request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)));
+  for (const item of items) {
+    const key = normalizeApprovalProductKey(item.catNo);
+    const productPercent = Math.max(0, ...customRequests
+      .filter((request) => request.scope === "PRODUCT")
+      .map((request) => num((request.requestedProductDiscounts as Record<string, unknown> | null)?.[key])));
+    item.discountPercent = clampPercent(Math.max(baseDiscountPercent, orderCustomPercent, productPercent));
+    item.discountAmountPaise = share(item.listPriceTotalPaise, item.discountPercent);
+    item.finalAmountPaise = item.listPriceTotalPaise - item.discountAmountPaise;
   }
 
   return {
@@ -172,7 +191,7 @@ export async function priceDealerOrder(
     grossAmountPaise, baseDiscountPercent, baseDiscountAmountPaise, postBaseAmountPaise,
     additionalDiscountType, slabDiscountPercent, slabDiscountAmountPaise,
     customDiscountAmountPaise, additionalDiscountAmountPaise,
-    couponDiscountPercent, couponDiscountAmountPaise,
+    couponDiscountPercent,
     totalDiscountAmountPaise, totalDiscountPercent, finalPayableAmountPaise,
   };
 }
@@ -250,7 +269,7 @@ export async function createDealerOrder(
       grossAmountPaise: priced.grossAmountPaise,
       allocatedDiscountPercent: new Prisma.Decimal(priced.baseDiscountPercent),
       couponDiscountPercent: new Prisma.Decimal(priced.couponDiscountPercent),
-      couponCode: text(fields.coupon_code, 80) || null,
+      couponCode: priced.couponDiscountPercent ? text(fields.coupon_code, 80) : null,
       baseDiscountPercent: new Prisma.Decimal(priced.baseDiscountPercent),
       baseDiscountAmountPaise: priced.baseDiscountAmountPaise,
       postBaseAmountPaise: priced.postBaseAmountPaise,

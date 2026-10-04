@@ -87,6 +87,17 @@ export function rsmTeamWhere(rsmId: bigint): Prisma.StaffProfileWhereInput {
 }
 
 /**
+ * The staff whose dealers count as "mine" on the staff dashboard (sales target) and in
+ * the assistant: RSM the whole team, ASM self + their executives, Staff only themselves.
+ */
+export function staffTeamWhere(actor: Pick<AuthActor, "role">, staffId: bigint): Prisma.StaffProfileWhereInput {
+  return actor.role === "RSM"
+    ? { OR: [{ id: staffId }, { parentRsmId: staffId }, { parentAsm: { parentRsmId: staffId } }] }
+    : actor.role === "ASM" ? { OR: [{ id: staffId }, { parentAsmId: staffId }] }
+    : { id: staffId };
+}
+
+/**
  * Every staff profile reporting into an RSM, at any depth.
  *
  * `parentRsmId` is denormalized on write: an ASM gets it from the RSM it is

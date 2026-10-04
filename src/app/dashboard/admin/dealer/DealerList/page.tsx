@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { CheckCircle2, Search, Trash2, Eye, EyeOff, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, X, UserPlus, Inbox } from 'lucide-react'
+import { CheckCircle2, Search, Trash2, Eye, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, X, UserPlus, Inbox } from 'lucide-react'
 import { confirmAlert } from 'react-confirm-alert'
 import { staffRoleBadge } from '@/lib/staffRoleLabel'
 import { showToast } from "@/components/ui/toast";
@@ -51,7 +51,6 @@ type Dealer = {
   Dealer_Address: string
   Dealer_Pincode: string
   Dealer_Username: string
-  Dealer_Password?: string
   Dealer_Dealercode: string
   Dealer_Notes: string
   Dealer_Image: string
@@ -290,7 +289,6 @@ export default function DealerListPage() {
   const [phoneSearchInput, setPhoneSearchInput] = useState("")
   const [phoneSearch, setPhoneSearch] = useState("")
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
-  const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(() => new Set())
   const [openMenu, setOpenMenu] = useState<FloatingMenuState>(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
   const [bulkActivating, setBulkActivating] = useState(false)
@@ -695,19 +693,9 @@ export default function DealerListPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const togglePassword = (dealerId: string) => {
-    setVisiblePasswords(prev => {
-      const next = new Set(prev)
-      if (next.has(dealerId)) next.delete(dealerId)
-      else next.add(dealerId)
-      return next
-    })
-  }
-
   const canManageDealers = role === "admin" || role === "staff"
-  const canViewDealerPasswords = role === "admin"
   const showStaffColumn = role !== "staff"
-  const tableColumnCount = 8 + (canViewDealerPasswords ? 1 : 0) + (showStaffColumn ? 1 : 0)
+  const tableColumnCount = 8 + (showStaffColumn ? 1 : 0)
   const startIndex = role === "staff" ? 1 : (page - 1) * ITEMS_PER_PAGE + 1
   const endIndex = role === "staff" ? data.length : Math.min(page * ITEMS_PER_PAGE, total)
   const activeFilterCount = [selectedStaffId, statusFilter, walletFilter, cityFilter, nameSearch, emailSearch, phoneSearch].filter(Boolean).length
@@ -1030,11 +1018,6 @@ export default function DealerListPage() {
                       )}
                     </div>
                   </th>
-                  {canViewDealerPasswords && (
-                    <th className="p-1.5 text-left">
-                      <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase tracking-wide">Password</div>
-                    </th>
-                  )}
                   {showStaffColumn && (
                     <th className="p-1.5 text-left">
                       <div className="relative">
@@ -1128,7 +1111,6 @@ export default function DealerListPage() {
                 {!isLoading && data.map((dealer, i) => {
                   const badge = statusBadge(dealer.status)
                   const walletActive = String(dealer.walletStatus ?? "").toLowerCase() === "active"
-                  const passwordVisible = visiblePasswords.has(dealer.Dealer_Id)
                   return (
                     <tr key={dealer.Dealer_Id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-4 text-gray-400 text-xs">{startIndex + i}</td>
@@ -1155,30 +1137,6 @@ export default function DealerListPage() {
 
                       <td className="px-4 py-4 text-gray-500 text-xs">{dealer.Dealer_Email || "-"}</td>
                       <td className="px-4 py-4 text-gray-600 text-xs">{dealer.Dealer_Number || "-"}</td>
-
-                      {canViewDealerPasswords && (
-                        <td className="px-4 py-4">
-                          <div className="flex items-center gap-2">
-                            <span className={`font-mono text-xs ${passwordVisible ? "text-gray-700 tracking-normal" : "text-gray-400 tracking-widest"}`}>
-                              {passwordVisible ? dealer.Dealer_Password || "-" : "********"}
-                            </span>
-                            {dealer.Dealer_Password && (
-                              <button
-                                type="button"
-                                onClick={() => togglePassword(dealer.Dealer_Id)}
-                                className={`p-1 rounded-md text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 ${pressable}`}
-                                aria-label={passwordVisible ? "Hide dealer password" : "Show dealer password"}
-                                title={passwordVisible ? "Hide password" : "Show password"}
-                              >
-                                {passwordVisible
-                                  ? <EyeOff className="w-3.5 h-3.5" />
-                                  : <Eye className="w-3.5 h-3.5" />
-                                }
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      )}
 
                       {showStaffColumn && (
                         <td className="px-4 py-4 text-xs text-gray-600">
