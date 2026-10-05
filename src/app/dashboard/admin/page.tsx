@@ -3,7 +3,7 @@
 import DateInput from "@/components/ui/date-input";
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 import Link from "next/link";
-import { LayoutDashboard, UserRoundPlus, Users, SquareUser, Plus, ClipboardList, Search, Wallet, Calendar, CalendarCheck, ChevronDown, CreditCard, IndianRupee, FileText, ArrowUp, ArrowDown } from 'lucide-react';
+import { LayoutDashboard, UserRoundPlus, Users, SquareUser, Plus, ClipboardList, Search, Wallet, Calendar, CalendarCheck,CreditCard, IndianRupee, FileText, ArrowUp, ArrowDown } from 'lucide-react';
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -1061,14 +1061,6 @@ function AdminDashboardInner() {
         .fin-heading { flex: 1; min-width: 0; }
         .fin-title { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
         .fin-sub { margin-top: 2px; color: var(--apple-secondary); font-size: 12.5px; }
-        .fin-period {
-          display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
-          padding: 8px 12px; border-radius: 12px;
-          border: 1px solid var(--apple-line); background: var(--apple-surface-solid);
-          color: var(--apple-text); cursor: pointer;
-        }
-        .fin-period select { appearance: none; border: 0; background: none; color: inherit; font-size: 13px; font-weight: 600; cursor: pointer; outline: none; }
-        .fin-period:focus-within { border-color: var(--apple-blue); }
         .fin-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .fin-pair { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; border: 1px solid; }
         .fin-pair.blue { background: rgba(0, 122, 255, .045); border-color: rgba(0, 122, 255, .12); --fin-tone: #0a64d6; }
@@ -1488,13 +1480,13 @@ function AdminDashboardInner() {
                   <div className="fin-title">Financial Overview</div>
                   <div className="fin-sub">Billed, Booking and Payment summary</div>
                 </div>
-                <label className="fin-period">
-                  <Calendar size={15} aria-hidden />
-                  <select value={finPeriod} onChange={(event) => setFinPeriod(event.target.value as FinPeriod)} aria-label="Period">
-                    {FIN_PERIODS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
-                  </select>
-                  <ChevronDown size={15} aria-hidden />
-                </label>
+                <SegmentedDropdown
+                  label="Period"
+                  value={finPeriod}
+                  onChange={(next) => setFinPeriod(next as FinPeriod)}
+                  className="shrink-0"
+                  items={FIN_PERIODS.map((period) => ({ value: period.value, label: period.label, icon: <Calendar size={13} aria-hidden /> }))}
+                />
               </header>
 
               {finQ.isError && <div className="summary-error">Financial summary failed to load.</div>}
@@ -1560,7 +1552,7 @@ function AdminDashboardInner() {
                 >
                   All time
                 </button>
-                <a className="sale-report" href={`/api/admin/sales-summary?${saleQuery}&format=csv`}>
+                <a className="sale-report" href={`/api/admin/sales-summary?${saleQuery}&format=xlsx`}>
                   Download report
                 </a>
               </div>

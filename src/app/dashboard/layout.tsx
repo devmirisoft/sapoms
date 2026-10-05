@@ -152,13 +152,13 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           box-shadow: none;
           display: flex;
           align-items: center;
-          gap: 14px;
+          gap: 12px;
           color: #fff;
         }
         .dl-hamburger {
           flex-shrink: 0;
-          width: 40px;
-          height: 40px;
+          width: 34px;
+          height: 34px;
           border-radius: 50%;
           border: 1px solid rgba(255,255,255,0.18);
           background: rgba(255,255,255,0.12);
@@ -172,12 +172,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         .dl-hamburger:hover { background: rgba(255,255,255,0.2); }
         .dl-divider {
           width: 1px;
-          height: 36px;
+          height: 31px;
           flex-shrink: 0;
           background: rgba(255,255,255,0.25);
         }
         .dl-title {
-          font-size: 17px;
+          font-size: 14.5px;
           font-weight: 700;
           color: #fff;
           white-space: nowrap;
@@ -185,7 +185,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           text-overflow: ellipsis;
         }
         .dl-sub {
-          font-size: 12.5px;
+          font-size: 10.5px;
           color: rgba(255,255,255,0.8);
           margin-top: 2px;
           white-space: nowrap;
@@ -196,7 +196,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           position: relative;
           flex: 1;
           min-width: 0;
-          max-width: 640px;
+          max-width: 544px;
           margin: 0 auto;
           display: flex;
         }
@@ -208,21 +208,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         .dl-search-area > div { max-width: none; }
         .dl-search-area form,
         .dl-search-area .ss-input-row {
-          height: 44px;
+          height: 37px;
           border-radius: 999px;
           background: rgba(255,255,255,0.16);
           border: 1px solid rgba(255,255,255,0.2);
           box-shadow: none;
-          padding-right: 88px;
+          padding-right: 75px;
         }
         .dl-search-area form { padding-left: 6px; }
-        .dl-search-area .ss-input-row { padding-left: 16px; }
+        .dl-search-area .ss-input-row { padding-left: 14px; }
         .dl-search-area form:focus-within,
         .dl-search-area .ss-input-row.focused {
           background: rgba(255,255,255,0.22);
           border-color: rgba(255,255,255,0.45);
         }
-        .dl-search-area input { font-size: 14px; }
+        .dl-search-area input { font-size: 12px; }
         .dl-search-area input::placeholder { color: rgba(255,255,255,0.85); }
         .dl-search-area form > div:first-child,
         .dl-search-area .ss-icon { color: #fff; }
@@ -232,23 +232,23 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           top: 50%;
           transform: translateY(-50%);
           pointer-events: none;
-          padding: 4px 9px;
-          border-radius: 8px;
+          padding: 3px 8px;
+          border-radius: 7px;
           background: rgba(255,255,255,0.18);
-          font: 600 12px/1.2 inherit;
+          font: 600 10px/1.2 inherit;
           color: #fff;
           white-space: nowrap;
         }
         .dl-actions {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8.5px;
           flex-shrink: 0;
         }
         .dl-icon-btn {
           position: relative;
-          width: 42px;
-          height: 42px;
+          width: 36px;
+          height: 36px;
           flex-shrink: 0;
           border-radius: 50%;
           background: rgba(255,255,255,0.12);
@@ -261,13 +261,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           transition: background .16s;
         }
         .dl-icon-btn:hover { background: rgba(255,255,255,0.22); }
+        .dl-icon-btn svg { width: 15px; height: 15px; }
+        .dl-help svg { width: 12px; height: 12px; }
         .dl-help span { display: none; }
         .dl-bell-dot {
           position: absolute;
-          top: 7px;
-          right: 9px;
-          width: 10px;
-          height: 10px;
+          top: 6px;
+          right: 8px;
+          width: 8.5px;
+          height: 8.5px;
           border-radius: 50%;
           background: #ef4444;
           box-shadow: 0 0 0 2px #333333;
@@ -276,7 +278,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         .dl-user {
           display: flex;
           align-items: center;
-          gap: 10px;
+          gap: 8.5px;
           padding: 0 4px 0 0;
           background: transparent;
           border: 0;
@@ -285,8 +287,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           font-family: inherit;
         }
         .dl-avatar {
-          width: 42px;
-          height: 42px;
+          width: 36px;
+          height: 36px;
           flex-shrink: 0;
           border-radius: 50%;
           border: 1px solid rgba(255,255,255,0.4);
@@ -297,8 +299,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           object-fit: cover;
         }
         .dl-user-name {
-          max-width: 140px;
-          font-size: 14px;
+          max-width: 120px;
+          font-size: 12px;
           font-weight: 700;
           white-space: nowrap;
           overflow: hidden;
@@ -388,7 +390,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         }
         @media (max-width: 680px) {
           .dl-welcome { display: none; }
-          .dl-icon-btn, .dl-avatar { width: 38px; height: 38px; }
+          .dl-icon-btn, .dl-avatar { width: 32px; height: 32px; }
         }
       `}</style>
 
@@ -468,7 +470,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img className="dl-avatar" src={String(user?.ADMIN_IMAGE || "/image.png")} alt="" />
                   <span className="dl-user-name">{displayName}</span>
-                  <ChevronDown size={16} />
+                  <ChevronDown size={14} />
                 </button>
 
                 {userMenu && (

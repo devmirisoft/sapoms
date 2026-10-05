@@ -6,6 +6,7 @@ import { adminErrorResponse } from "@/server/admin/admin-errors";
 import { day, resolveSalesFilters, rupees, summarizeSales } from "@/server/modules/admin-dashboard/sales-summary";
 import { formatSalesRegionLabel } from "@/lib/salesRegions";
 import { csvRow } from "@/lib/csv";
+import { buildSalesReport, type SalesReportScope } from "@/server/modules/admin-dashboard/sales-report";
 
 export const runtime = "nodejs";
 
@@ -26,13 +27,22 @@ export async function GET(request: Request) {
       city: params.get("city"),
     });
 
-    if (params.get("format") === "csv") {
+    const format = params.get("format");
+    if (format === "csv" || format === "xlsx") {
       const { from, to, region, asm, asmId, city } = filters;
-      return csvReport(filters.where, {
+      const scope = {
         region: region ? formatSalesRegionLabel(region) : "All regions",
         asm: asm?.displayName ?? (asmId === null ? "All ASMs" : "Unknown ASM"),
         city: city || "All cities",
         range: from || to ? `${from ? day(from) : "start"} to ${to ? day(to) : "today"}` : "All time",
+      };
+      if (format === "csv") return csvReport(filters.where, scope);
+      return new NextResponse(new Uint8Array(await buildSalesReport(filters, scope)), {
+        headers: {
+          "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+          "Content-Disposition": `attachment; filename="${reportName(scope)}.xlsx"`,
+          "Cache-Control": "no-store",
+        },
       });
     }
 
@@ -44,6 +54,14 @@ export async function GET(request: Request) {
     console.error("[GET /api/admin/sales-summary]", error);
     return adminErrorResponse(error, "Sales summary is temporarily unavailable");
   }
+}
+
+function reportName(scope: SalesReportScope) {
+  return ["sales", scope.region, scope.asm, scope.city, scope.range]
+    .join("_")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
 }
 
 /** One row per accepted order in scope, under a header naming the filters it was run with. */
@@ -108,17 +126,11 @@ async function csvReport(
     csvRow(["", "", "", "", "", "", "", "", "", "Total", rupees(totalPaise)]),
   ].join("\r\n");
 
-  const name = ["sales", scope.region, scope.asm, scope.city, scope.range]
-    .join("_")
-    .replace(/[^a-zA-Z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .toLowerCase();
-
   // The BOM keeps Excel on the rupee amounts and Indian names rather than mojibake.
   return new NextResponse(`﻿${csv}`, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${name}.csv"`,
+      "Content-Disposition": `attachment; filename="${reportName(scope)}.csv"`,
       "Cache-Control": "no-store",
     },
   });

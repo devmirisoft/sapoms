@@ -71,3 +71,6 @@ _*.bat
 *.sqlite3
 *.dump
 *.xlsx
+
+# seed reports (contain dealer/staff emails)
+/export/
