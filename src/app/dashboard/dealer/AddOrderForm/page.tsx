@@ -46,6 +46,7 @@ import { useDraft } from "@/lib/useDrafts";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
 import { buildPriorityRemarks } from "@/lib/orderPriority";
 import cataloguePricing from "@/lib/cataloguePricing";
+import { COUPONS } from "@/lib/coupons";
 import {
   buildOrderRemarks as buildLineRemarks,
 } from "@/lib/orderProductNotes.mjs";
@@ -342,12 +343,6 @@ function buildExpectedOrderNumber(lastOrderId: string | undefined | null): strin
   return formatDisplayOrderNumber(String(nextNumber));
 }
 
-// ─── Coupons ──────────────────────────────────────────────────────────────────
-const COUPONS: Record<string, number> = {
-  "test60": 60,
-  "SAVE50": 50,
-  "VIP80": 80,
-};
 
 
 type PhpExchangeLog = {

@@ -170,5 +170,7 @@
   }
   html {
     @apply font-sans;
+    /* App-wide 10% scale-down: Tailwind sizes are rem-based. */
+    font-size: 90%;
   }
 }

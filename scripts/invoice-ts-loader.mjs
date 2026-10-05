@@ -2,16 +2,18 @@
 // invoice PDF can be rendered outside the browser. Used by
 // verify-invoice-layout.mjs; not part of the app build.
 import ts from 'typescript';
-import { readFileSync, existsSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const ROOT = process.env.PROJ_ROOT;
 const EXTS = ['', '.ts', '.tsx', '.mjs', '.js', '/index.ts', '/index.tsx', '/index.js'];
 
+const isFile = (path) => statSync(path, { throwIfNoEntry: false })?.isFile() ?? false;
+
 const firstExisting = (base) => {
-  for (const ext of EXTS) if (existsSync(base + ext)) return base + ext;
+  for (const ext of EXTS) if (isFile(base + ext)) return base + ext;
   // a ".js" specifier that really points at a ".ts" source
-  if (base.endsWith('.js') && existsSync(`${base.slice(0, -3)}.ts`)) return `${base.slice(0, -3)}.ts`;
+  if (base.endsWith('.js') && isFile(`${base.slice(0, -3)}.ts`)) return `${base.slice(0, -3)}.ts`;
   return null;
 };
 
@@ -32,6 +34,10 @@ export function resolve(specifier, context, next) {
 }
 
 export function load(url, context, next) {
+  // Next lets TS import JSON without an import attribute; plain node does not.
+  if (url.startsWith('file:') && url.endsWith('.json')) {
+    return { format: 'module', source: `export default ${readFileSync(fileURLToPath(url), 'utf8')};`, shortCircuit: true };
+  }
   if (!/\.(ts|tsx)$/.test(url)) return next(url, context);
   const path = fileURLToPath(url);
   // jspdf ships CJS; outside the bundler the default import needs unwrapping.

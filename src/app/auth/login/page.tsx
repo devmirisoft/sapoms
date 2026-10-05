@@ -2,13 +2,43 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { Eye, EyeOff, RotateCcw } from "lucide-react"
+import Image from "next/image"
+import {
+  ChartColumnIncreasing,
+  Eye,
+  EyeOff,
+  Globe,
+  Handshake,
+  Lightbulb,
+  RotateCcw,
+  Settings,
+  ShieldCheck,
+  Users,
+  UsersRound,
+} from "lucide-react"
 import { persistAuthenticatedSession, type StoredUser } from "@/lib/roleAccess"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { cn } from "@/lib/utils"
 
 
 const LOGO_SRC = "/omsons_logo.jpeg"
+
+const PILLARS = [
+  { icon: Handshake, label: "Stronger Partnerships" },
+  { icon: ChartColumnIncreasing, label: "Better Business" },
+  { icon: Settings, label: "Efficient Operations" },
+  { icon: Users, label: "Shared Growth" },
+]
+
+const HIGHLIGHTS = [
+  { icon: Lightbulb, top: "Innovation for a", bottom: "Brighter Tomorrow" },
+  { icon: UsersRound, top: "Customer", bottom: "Satisfaction" },
+  { icon: Globe, top: "Delivering Quality to", bottom: "80+ Countries" },
+  { icon: ShieldCheck, top: "Trusted for", bottom: "40+ Years" },
+]
+
+const inputClass =
+  "h-12 w-full rounded-full bg-[#ebebeb] px-6 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-[#0a9bdb]"
 
 export default function Login() {
   const router = useRouter()
@@ -188,176 +218,219 @@ export default function Login() {
     }
   }
   return (
-    <main className="h-screen overflow-hidden text-slate-950">
-      <div className="flex h-full w-full">
-        <section className="grid w-full overflow-hidden bg-gray-100/50 lg:grid-cols-[0.86fr_1.14fr]">
+    <main className="relative h-screen overflow-hidden bg-[#f6f6f6] text-slate-950">
+      <Image src="/background.png" alt="" fill priority sizes="100vw" className="object-cover" />
 
-          {/* ── Form panel ─────────────────────────────────────────────── */}
-          <form
-            className="flex min-h-0 flex-col justify-center p-0"
-            onSubmit={handleLogin}
-          >
-            <div className="mx-auto w-full max-w-[330px] px-8">
+      <div className="relative flex h-full items-center gap-10 px-4 sm:px-10 xl:gap-14 xl:px-16">
 
-              {/* Header */}
-              <div className="mb-4">
-                <div className="mb-3 flex items-center gap-3">
-                  <img
-                    src={LOGO_SRC}
-                    alt="Omsons Logo"
-                    width={34}
-                    height={34}
-                    className="h-19 w-19  bg-[#] object-contain p-1"
-                  />
-                  <div>
-                  </div>
-                </div>
-                <h1 className="text-[22px] font-black leading-tight tracking-[-0.01em] text-slate-950">
-                  Login
-                </h1>
-                <p className="mt-1 text-[13px] text-slate-500">
-                  Sign in with your assigned account. Your role is detected automatically.
-                </p>
-              </div>
+        {/* ── Form card ──────────────────────────────────────────────── */}
+        <form
+          className="mx-auto w-full max-w-[400px] shrink-0 rounded-[2rem] bg-white px-8 py-9 shadow-[0_10px_40px_rgba(15,23,42,0.14)] lg:mx-0"
+          onSubmit={handleLogin}
+        >
+          {/* Header */}
+          {/* ponytail: hue-rotate recolors the transparent orange logo to brand blue; swap for a blue PNG if one is made */}
+          <Image
+            src="/Omsons_Logo.png"
+            alt="Omsons Germany"
+            width={7052}
+            height={4172}
+            sizes="120px"
+            className="h-auto w-[120px] hue-rotate-[185deg]"
+          />
+          <h1 className="mt-10 text-[34px] font-bold leading-none text-slate-900">Login</h1>
+          <p className="mt-3 text-[15px] leading-snug text-slate-400">
+            Sign in with your assigned account. Your role is detected automatically
+          </p>
 
-              {/* Fields */}
-              <div className="space-y-3">
-                <label className="block">
-                  <span className="mb-1.5 block text-[12px] font-semibold text-slate-700">Email or Username</span>
-                  <input
-                    type="text"
-                    placeholder="Enter your email or username"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    autoComplete="username"
-                    className="h-10 w-full rounded-full border border-slate-200 bg-white px-5 text-[13px] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-300 focus:border-[#5b3ff2] focus:ring-4 focus:ring-[#5b3ff2]/10"
-                  />
-                </label>
+          {/* Fields */}
+          <div className="mt-8 space-y-6">
+            <label className="block">
+              <span className="mb-2 block pl-2 text-[17px] text-[#0a9bdb]">Email or Username</span>
+              <input
+                type="text"
+                placeholder="Enter your email or username"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="username"
+                className={inputClass}
+              />
+            </label>
 
-                <label className="block">
-                  <span className="mb-1.5 block text-[12px] font-semibold text-slate-700">Password</span>
-                  <div className="relative">
-                    <input
-                      type={showPw ? "text" : "password"}
-                      placeholder="Enter your password"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      autoComplete="current-password"
-                      className="h-10 w-full rounded-full border border-slate-200 bg-white px-5 pr-12 text-[13px] text-slate-900 shadow-sm outline-none transition placeholder:text-slate-300 focus:border-[#5b3ff2] focus:ring-4 focus:ring-[#5b3ff2]/10"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPw((visible) => !visible)}
-                      className="absolute right-4 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full text-slate-400 transition hover:bg-slate-50 hover:text-slate-700"
-                      aria-label={showPw ? "Hide password" : "Show password"}
-                      title={showPw ? "Hide password" : "Show password"}
-                    >
-                      {showPw ? <EyeOff size={15} /> : <Eye size={15} />}
-                    </button>
-                  </div>
-                </label>
-              </div>
-
-              {/* Dealer second factor: slides open only after the password check passes. */}
-              <div
-                className={cn(
-                  "grid transition-all duration-300 ease-out",
-                  showOtp ? "mt-3 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
-                )}
-              >
-                  <div className="overflow-hidden">
-                    <span className="mb-1.5 block text-[12px] font-semibold text-slate-700">Verification Code</span>
-                    <InputOTP
-                      maxLength={6}
-                      value={otpCode}
-                      onChange={setOtpCode}
-                      onComplete={handleVerifyOtp}
-                      disabled={!showOtp || otpLoading}
-                      containerClassName="w-full"
-                      ref={otpInputRef}
-                    >
-                      <InputOTPGroup className="w-full justify-between gap-1.5">
-                        {[0, 1, 2, 3, 4, 5].map((slot) => (
-                          <InputOTPSlot
-                            key={slot}
-                            index={slot}
-                            className="h-10 w-9 rounded-xl border border-slate-200 bg-white text-[15px] font-bold text-slate-900 shadow-sm first:rounded-xl last:rounded-xl data-[active=true]:border-[#5b3ff2] data-[active=true]:ring-4 data-[active=true]:ring-[#5b3ff2]/10"
-                          />
-                        ))}
-                      </InputOTPGroup>
-                    </InputOTP>
-
-                    {notice && <p className="mt-2 text-[11px] text-slate-500">{notice}</p>}
-
-                    <div className="mt-2 flex items-center justify-between">
-                      <button
-                        type="button"
-                        onClick={resetOtp}
-                        className="text-[11px] font-semibold text-slate-500 hover:text-slate-800"
-                      >
-                        Use Password
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleRequestOtp}
-                        disabled={otpLoading}
-                        className="flex items-center gap-1.5 text-[11px] font-semibold text-[#00494B] hover:text-[#321fbd] disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <RotateCcw size={12} />
-                        Resend Code
-                      </button>
-                    </div>
-                  </div>
-              </div>
-
-              {/* Forgot password */}
-              <div className="mt-2 flex justify-end">
+            <label className="block">
+              <span className="mb-2 block pl-2 text-[17px] text-[#0a9bdb]">Password</span>
+              <div className="relative">
+                <input
+                  type={showPw ? "text" : "password"}
+                  placeholder="Enter your password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoComplete="current-password"
+                  className={cn(inputClass, "pr-14")}
+                />
                 <button
                   type="button"
-                  className="text-[11px] font-semibold text-[#00494B] hover:text-[#321fbd]"
+                  onClick={() => setShowPw((visible) => !visible)}
+                  className="absolute right-4 top-1/2 grid h-8 w-8 -translate-y-1/2 place-items-center rounded-full text-slate-400 transition hover:bg-white hover:text-slate-700"
+                  aria-label={showPw ? "Hide password" : "Show password"}
+                  title={showPw ? "Hide password" : "Show password"}
                 >
-                  Forgot Password?
+                  {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-
-              {/* Error message */}
-              {error && (
-                <p className="mt-3 rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-[12px] font-semibold text-red-600">
-                  {error}
-                </p>
-              )}
-
-              {/* Submit */}
-              <button
-                type="submit"
-                disabled={loading || otpLoading}
-                className="mt-4 h-10 w-full rounded-full bg-indigo-600 px-4 text-[13px] font-bold text-white shadow-[0_14px_28px_rgba(89,61,244,0.28)] transition hover:-translate-y-0.5 hover:bg-indigo-700 active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
-              >
-                {showOtp ? (otpLoading ? "Verifying..." : "Verify & Login") : loading ? "Signing in..." : "Login"}
-              </button>
-
-{/* Footer */}
-              <p className="mt-4 text-center text-[11px] text-slate-300">
-                ©2026 Omsons. All rights reserved.
-              </p>
-            </div>
-          </form>
-
-          {/* ── Image panel ────────────────────────────────────────────── */}
-          {/*
-            overflow-hidden on the section clips the image.
-            absolute inset-0 makes the img fill the div exactly.
-            object-cover + object-left-center covers without distortion,
-            cropping from the right side while keeping the subject visible.
-          */}
-          <div className="relative hidden bg-[#0150C6] lg:block">
-            <img
-              src="/login2.png"
-              alt="Omsons laboratory glassware"
-              className="absolute inset-0 h-full w-full object-cover"
-            />
+            </label>
           </div>
 
+          {/* Dealer second factor: slides open only after the password check passes. */}
+          <div
+            className={cn(
+              "grid transition-all duration-300 ease-out",
+              showOtp ? "mt-4 grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+            )}
+          >
+            <div className="overflow-hidden">
+              <span className="mb-2 block pl-2 text-[15px] text-[#0a9bdb]">Verification Code</span>
+              <InputOTP
+                maxLength={6}
+                value={otpCode}
+                onChange={setOtpCode}
+                onComplete={handleVerifyOtp}
+                disabled={!showOtp || otpLoading}
+                containerClassName="w-full"
+                ref={otpInputRef}
+              >
+                <InputOTPGroup className="w-full justify-between gap-1.5">
+                  {[0, 1, 2, 3, 4, 5].map((slot) => (
+                    <InputOTPSlot
+                      key={slot}
+                      index={slot}
+                      className="h-11 w-10 rounded-xl border-0 bg-[#ebebeb] text-[15px] font-bold text-slate-900 first:rounded-xl last:rounded-xl data-[active=true]:bg-white data-[active=true]:ring-2 data-[active=true]:ring-[#0a9bdb]"
+                    />
+                  ))}
+                </InputOTPGroup>
+              </InputOTP>
+
+              {notice && <p className="mt-2 text-[12px] text-slate-500">{notice}</p>}
+
+              <div className="mt-2 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={resetOtp}
+                  className="text-[12px] font-semibold text-slate-500 hover:text-slate-800"
+                >
+                  Use Password
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRequestOtp}
+                  disabled={otpLoading}
+                  className="flex items-center gap-1.5 text-[12px] font-semibold text-[#0a9bdb] hover:text-[#077bb0] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  <RotateCcw size={12} />
+                  Resend Code
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* Forgot password */}
+          <div className="mt-3 flex justify-end">
+            <button type="button" className="text-[13px] text-[#0a9bdb] hover:text-[#077bb0]">
+              Forgot Password?
+            </button>
+          </div>
+
+          {/* Error message */}
+          {error && (
+            <p className="mt-4 rounded-xl border border-red-100 bg-red-50 px-4 py-2.5 text-[12px] font-semibold text-red-600">
+              {error}
+            </p>
+          )}
+
+          {/* Submit */}
+          <div className="mt-10 flex justify-end">
+            <button
+              type="submit"
+              disabled={loading || otpLoading}
+              className="h-12 min-w-[150px] rounded-full bg-[#0a9bdb] px-8 text-[20px] font-semibold text-white shadow-[0_10px_24px_rgba(10,155,219,0.3)] transition hover:-translate-y-0.5 hover:bg-[#088bc6] active:translate-y-0 disabled:translate-y-0 disabled:cursor-not-allowed disabled:opacity-70"
+            >
+              {showOtp ? (otpLoading ? "Verifying..." : "Verify & Login") : loading ? "Signing in..." : "Login"}
+            </button>
+          </div>
+        </form>
+
+        {/* ── Brand panel ────────────────────────────────────────────── */}
+        <section className="relative hidden h-full min-w-0 flex-1 items-center lg:flex">
+          <div className="relative z-10 w-full max-w-[480px] shrink-0">
+            <h2 className="text-[clamp(2rem,3vw,3.25rem)] font-bold leading-[1.1] tracking-tight text-[#0a9bdb]">
+              Welcome to <br />
+              <span className="whitespace-nowrap text-[#2dbe60]">Dealer Management</span> <br />
+              Software
+            </h2>
+            <div className="mt-5 h-1 w-40 rounded-full bg-[#2dbe60]" />
+            <p className="mt-6 text-[17px] leading-relaxed text-slate-700">
+              Your partner in Laboratory Glassware, Filtration Products and Laboratory Solutions.
+            </p>
+
+            <ul className="mt-10 flex gap-6">
+              {PILLARS.map(({ icon: Icon, label }) => (
+                <li key={label} className="flex w-20 flex-col items-center text-center">
+                  <span className="grid h-16 w-16 place-items-center rounded-full bg-white/80 text-[#2dbe60] shadow-[0_4px_12px_rgba(15,23,42,0.15)]">
+                    <Icon size={30} strokeWidth={1.8} />
+                  </span>
+                  <span className="mt-3 text-[13px] leading-tight text-slate-600">{label}</span>
+                </li>
+              ))}
+            </ul>
+
+            <ul className="mt-12 grid grid-cols-2 gap-x-8 gap-y-8">
+              {HIGHLIGHTS.map(({ icon: Icon, top, bottom }) => (
+                <li key={bottom} className="flex items-center gap-3">
+                  <Icon size={44} strokeWidth={1.5} className="shrink-0 text-[#0a9bdb]" />
+                  <span className="text-[12px] leading-tight text-slate-700">
+                    {top}
+                    <span className="block text-[14px] font-semibold text-[#2dbe60]">{bottom}</span>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {/*
+            Products: cartridge, volumetric flask, hot plate. Everything is sized in --u (1% of the
+            hot plate's height), capped by viewport height and by the free width (1.3cqw ≈ 100/76.5,
+            the group being 76.5u wide). Margins are measured from the opaque pixels so the cartridge
+            body, flask bulb and beaker sit an equal 4u apart; the hot plate image starts its beaker
+            41% in, hence its large negative margin, and the flask sits in front of the plate base.
+          */}
+          <div className="hidden min-w-0 flex-1 self-stretch py-[4vh] [container-type:inline-size] xl:flex">
+            <div className="flex w-full items-end justify-end [--u:min(0.92vh,1.3cqw)]">
+              <Image
+                src="/cartridge.png"
+                alt="Omsons filtration cartridge"
+                width={1460}
+                height={3023}
+                sizes="15vw"
+                className="mb-[calc(var(--u)*17)] h-[calc(var(--u)*48)] w-auto"
+              />
+              <Image
+                src="/volumetric%20flask.png"
+                alt="Omsons volumetric flask"
+                width={1361}
+                height={4002}
+                sizes="15vw"
+                className="relative z-10 mb-[calc(var(--u)*15)] ml-[calc(var(--u)*1.5)] h-[calc(var(--u)*62)] w-auto"
+              />
+              <Image
+                src="/hot%20plate.png"
+                alt="Omsons hotplate with magnetic stirrer"
+                width={2593}
+                height={5616}
+                sizes="25vw"
+                className="ml-[calc(var(--u)*-15.5)] h-[calc(var(--u)*100)] w-auto"
+              />
+            </div>
+          </div>
         </section>
       </div>
 

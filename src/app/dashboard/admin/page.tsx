@@ -3,7 +3,7 @@
 import DateInput from "@/components/ui/date-input";
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 import Link from "next/link";
-import { LayoutDashboard, UserRoundPlus, Users, SquareUser, Plus, ClipboardList, Search, Wallet, Calendar, CalendarCheck, ChevronDown, CreditCard, IndianRupee, FileText, ArrowUp, ArrowDown } from 'lucide-react';
+import { LayoutDashboard, UserRoundPlus, Users, SquareUser, Plus, ClipboardList, Search, Wallet, Calendar, CalendarCheck,CreditCard, IndianRupee, FileText, ArrowUp, ArrowDown } from 'lucide-react';
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
@@ -836,6 +836,8 @@ function AdminDashboardInner() {
           width: min(100%, 1840px);
           margin: 0 auto;
           padding: 38px 34px 48px;
+          /* Styles here are px, so the root font-size scale misses them; shrink 25%. */
+          zoom: .75;
         }
 
         .dashboard-header {
@@ -1046,7 +1048,7 @@ function AdminDashboardInner() {
           gap: 14px;
         }
         .metrics-left .metric-card { grid-column: auto; }
-        .metrics-left { grid-template-rows: auto auto 1fr auto; }
+        .metrics-left { grid-template-rows: auto auto 1fr; }
 
         .metrics-left .fin-overview { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 16px; container-type: inline-size; }
         .metrics-left .fin-overview:hover { transform: none; }
@@ -1059,14 +1061,6 @@ function AdminDashboardInner() {
         .fin-heading { flex: 1; min-width: 0; }
         .fin-title { font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
         .fin-sub { margin-top: 2px; color: var(--apple-secondary); font-size: 12.5px; }
-        .fin-period {
-          display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
-          padding: 8px 12px; border-radius: 12px;
-          border: 1px solid var(--apple-line); background: var(--apple-surface-solid);
-          color: var(--apple-text); cursor: pointer;
-        }
-        .fin-period select { appearance: none; border: 0; background: none; color: inherit; font-size: 13px; font-weight: 600; cursor: pointer; outline: none; }
-        .fin-period:focus-within { border-color: var(--apple-blue); }
         .fin-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
         .fin-pair { display: flex; flex-direction: column; gap: 12px; padding: 16px; border-radius: 16px; border: 1px solid; }
         .fin-pair.blue { background: rgba(0, 122, 255, .045); border-color: rgba(0, 122, 255, .12); --fin-tone: #0a64d6; }
@@ -1097,15 +1091,18 @@ function AdminDashboardInner() {
         .fin-delta.up { color: #1a8f3c; }
         .fin-delta.down { color: #d70015; }
         .fin-vs { margin-left: 4px; color: var(--apple-tertiary); }
-        @container (max-width: 640px) {
+        @container (max-width: 420px) {
           .fin-pairs { grid-template-columns: 1fr; }
           .fin-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); row-gap: 14px; }
           .fin-tile:nth-child(odd) { padding-left: 0; border-left: 0; }
         }
+        @container (max-width: 640px) {
+          .fin-pair-value { font-size: 20px; }
+        }
 
         /* Staff by role: one scrolling row under the financial overview. */
-        .metrics-left .staff-roles { grid-column: 1 / -1; min-height: 0; display: flex; align-items: center; gap: 14px; padding: 12px 16px; }
-        .metrics-left .staff-roles:hover { transform: none; }
+        .metrics-grid .staff-roles { grid-column: 1 / -1; min-height: 0; display: flex; align-items: center; gap: 14px; padding: 12px 16px; }
+        .metrics-grid .staff-roles:hover { transform: none; }
         .staff-roles .metric-label { flex-shrink: 0; }
         .staff-roles .role-pills { flex-wrap: nowrap; overflow-x: auto; margin-top: 0; scrollbar-width: thin; }
         .staff-roles .role-pill { flex-shrink: 0; white-space: nowrap; }
@@ -1483,13 +1480,13 @@ function AdminDashboardInner() {
                   <div className="fin-title">Financial Overview</div>
                   <div className="fin-sub">Billed, Booking and Payment summary</div>
                 </div>
-                <label className="fin-period">
-                  <Calendar size={15} aria-hidden />
-                  <select value={finPeriod} onChange={(event) => setFinPeriod(event.target.value as FinPeriod)} aria-label="Period">
-                    {FIN_PERIODS.map((period) => <option key={period.value} value={period.value}>{period.label}</option>)}
-                  </select>
-                  <ChevronDown size={15} aria-hidden />
-                </label>
+                <SegmentedDropdown
+                  label="Period"
+                  value={finPeriod}
+                  onChange={(next) => setFinPeriod(next as FinPeriod)}
+                  className="shrink-0"
+                  items={FIN_PERIODS.map((period) => ({ value: period.value, label: period.label, icon: <Calendar size={13} aria-hidden /> }))}
+                />
               </header>
 
               {finQ.isError && <div className="summary-error">Financial summary failed to load.</div>}
@@ -1534,20 +1531,6 @@ function AdminDashboardInner() {
               </div>
             </article>
 
-            <article className="metric-card staff-roles">
-              <div className="metric-label">Staff by role</div>
-              <div className="role-pills">
-                {summaryLoading ? <span className="report-loading">Loading…</span>
-                  : staffByRole.length === 0 ? <span className="report-loading">No staff yet.</span>
-                  : staffByRole.map(([label, count]) => (
-                    <Link key={label} href="/dashboard/admin/staff/stafflist" className="role-pill">
-                      <span>{label}</span>
-                      <span className="role-count">{count}</span>
-                    </Link>
-                  ))}
-              </div>
-            </article>
-
           </div>
 
             <article className="panel sale-panel">
@@ -1569,7 +1552,7 @@ function AdminDashboardInner() {
                 >
                   All time
                 </button>
-                <a className="sale-report" href={`/api/admin/sales-summary?${saleQuery}&format=csv`}>
+                <a className="sale-report" href={`/api/admin/sales-summary?${saleQuery}&format=xlsx`}>
                   Download report
                 </a>
               </div>
@@ -1626,6 +1609,20 @@ function AdminDashboardInner() {
                 ) : (
                   <div className="empty-state">No accepted sales in this range.</div>
                 )}
+              </div>
+            </article>
+
+            <article className="metric-card staff-roles">
+              <div className="metric-label">Staff by role</div>
+              <div className="role-pills">
+                {summaryLoading ? <span className="report-loading">Loading…</span>
+                  : staffByRole.length === 0 ? <span className="report-loading">No staff yet.</span>
+                  : staffByRole.map(([label, count]) => (
+                    <Link key={label} href="/dashboard/admin/staff/stafflist" className="role-pill">
+                      <span>{label}</span>
+                      <span className="role-count">{count}</span>
+                    </Link>
+                  ))}
               </div>
             </article>
           </section>
@@ -1788,7 +1785,7 @@ function AdminDashboardInner() {
                   <div className="panel-title">Top Distributors</div>
                   <div className="panel-sub">Distributor performance by total value</div>
                 </div>
-                <span className="leg"><span className="leg-dot" style={{ background: "#8e8e93" }} />Total value</span>
+                <span className="leg"><span className="leg-dot" style={{ background: "#ffa581" }} />Total value</span>
               </div>
               <div className="chart-canvas compact">
                 {loading ? (

@@ -273,7 +273,8 @@ function mergeCatalogueProduct(
   };
 }
 
-function mergeCatalogueProducts(
+// Exported so the server (ordering agent) prices from the exact catalogue the order form sees.
+export function mergeCatalogueProducts(
   enrichedProducts: CatalogueProduct[],
   completeProducts: CatalogueProduct[],
   postgresProducts: CatalogueProduct[] = []

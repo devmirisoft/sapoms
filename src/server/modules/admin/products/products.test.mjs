@@ -20,7 +20,9 @@ test("product catalogue migration removes PHP product endpoints", () => {
 });
 
 test("catalogue read route is session authorized and hides inactive rows for dealer staff reads", () => {
-  const catalogueRoute = readFileSync("src/app/api/products/route.ts", "utf8");
+  // The query lives in postgres-catalogue.ts (shared with the ordering assistant); the route keeps the gate.
+  const catalogueRoute = readFileSync("src/app/api/products/route.ts", "utf8")
+    + readFileSync("src/server/modules/products/postgres-catalogue.ts", "utf8");
   assert.ok(catalogueRoute.includes('requireRole(["ADMIN", "STAFF", "DEALER"])'));
   assert.ok(catalogueRoute.includes('includeInactive = actor.role === "ADMIN"'));
   assert.ok(catalogueRoute.includes('active: true, variants: { some: { active: true } }'));
