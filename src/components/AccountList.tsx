@@ -13,7 +13,7 @@ import {
   HiOutlineFire,
   HiOutlineArrowRightOnRectangle,
 } from "react-icons/hi2"
-import { clearAuthStorage } from "@/lib/roleAccess"
+import { logout } from "@/lib/roleAccess"
 
 type UserData = {
   Dealer_Name?: string
@@ -74,11 +74,7 @@ function AccountList() {
     : role === "2" ? "/orders"
     : "/dashboard/staff/orderstatus"
 
-  const handleLogout = () => {
-    clearAuthStorage(localStorage)
-    window.dispatchEvent(new Event("omsons-auth-changed"))
-    window.location.href = "/auth/login"
-  }
+  const handleLogout = () => void logout()
 
   const linkStyle: React.CSSProperties = {
     display: "flex",

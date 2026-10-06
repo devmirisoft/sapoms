@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   QueryClient,
   QueryClientProvider,
@@ -11,7 +11,7 @@ import {
 import { CiSearch } from "react-icons/ci";
 import { useCartStore } from "@/Store/store";
 import PendingProductsPreview from "@/components/dashboard/PendingProductsPreview";
-import { clearAuthStorage } from "@/lib/roleAccess";
+import { logout } from "@/lib/roleAccess";
 import { buildDealerOrderView } from "@/lib/dealerOrderView";
 import { resolveStaffRoleKey, type StaffRoleKey } from "@/lib/staffRoleLabel";
 import {
@@ -274,7 +274,6 @@ export default function DealerDashboard() {
 }
 
 function DealerDashboardInner() {
-  const router   = useRouter();
   const pathname = usePathname();
   const cartItems = useCartStore((s) => s.cart);
 
@@ -520,7 +519,7 @@ function DealerDashboardInner() {
   const usagePct     = annualTarget > 0 ? Math.min(100, Math.round((currentLimit / annualTarget) * 100)) : 0;
   const initials     = dealer.Dealer_Name?.trim()?.charAt(0)?.toUpperCase() || dealer.Dealer_Email?.trim()?.charAt(0)?.toUpperCase() || "D";
 
-  const handleLogout = () => { clearAuthStorage(localStorage); window.dispatchEvent(new Event("omsons-auth-changed")); router.push("/auth/login"); };
+  const handleLogout = () => void logout();
 
   const [
     draftsQ,

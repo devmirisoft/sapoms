@@ -2,10 +2,11 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { CheckCircle2, Search, Trash2, Eye, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, X, UserPlus, Inbox } from 'lucide-react'
+import { CheckCircle2, Search, Trash2, Eye, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, X, UserPlus, Inbox, LogIn } from 'lucide-react'
 import { confirmAlert } from 'react-confirm-alert'
 import { staffRoleBadge } from '@/lib/staffRoleLabel'
 import { showToast } from "@/components/ui/toast";
+import { loginAsDealer } from "@/lib/roleAccess";
 import { type FloatingMenuState, isMenuOpen, openFloatingMenu, measureFloatingMenu } from "@/components/ui/floating-menu";
 type DealerStatus = "active" | "inactive" | "suspended"
 type DealerStatusFilter = "" | "ACTIVE" | "INACTIVE" | "SUSPENDED"
@@ -1197,6 +1198,14 @@ export default function DealerListPage() {
                                 <Link href={getDealerViewRoute(dealer.Dealer_Id)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                   <Eye className="h-3.5 w-3.5 text-gray-400" /> View
                                 </Link>
+                                {role === 'admin' && normalizeDealerStatus(dealer.status) === "active" && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setOpenMenu(null); loginAsDealer(dealer.Dealer_Id).catch((error) => showToast('error', error instanceof Error ? error.message : "Unable to sign in as this dealer")) }}
+                                    className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    <LogIn className="h-3.5 w-3.5 text-gray-400" /> Login as dealer
+                                  </button>
+                                )}
                                 {role === 'staff' && (
                                   <Link href={getStaffDealerRoute(dealer.Dealer_Id)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                     <Eye className="h-3.5 w-3.5 text-gray-400" /> View (staff) 

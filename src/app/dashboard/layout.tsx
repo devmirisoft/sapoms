@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ChevronDown, LogOut, Maximize, Minimize, Moon, Sun, UserRound } from "lucide-react";
-import { useRouter } from "next/navigation";
 
 import RouteGuard from "@/components/auth/RouteGuard";
 import DashboardSmartSearch from "@/components/dashboard/DashboardSmartSearch";
@@ -11,7 +10,7 @@ import DealerHelpButton from "@/components/dashboard/DealerHelpButton";
 import NotificationBell from "@/components/dashboard/NotificationBell";
 import SmartSearchBar from "@/components/SartSearchBar";
 import Sidebar from "@/components/layout/sidebar";
-import { clearAuthStorage, type AppRole, type StoredUser } from "@/lib/roleAccess";
+import { logout, type AppRole, type StoredUser } from "@/lib/roleAccess";
 import { useAuthSession } from "@/hooks/useAuthSession";
 
 let ledgerWarmupStarted = false;
@@ -23,7 +22,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userMenu, setUserMenu] = useState(false);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const auth = useAuthSession();
-  const router = useRouter();
 
   const user: StoredUser | null =
     !auth.loading && auth.session.status === "authenticated" ? auth.session.user : null;
@@ -131,13 +129,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     else void document.documentElement.requestFullscreen().catch(() => {});
   };
 
-  const handleLogout = () => {
-    void fetch("/api/auth/logout", { method: "POST", credentials: "include" }).finally(() => {
-      clearAuthStorage(localStorage);
-      window.dispatchEvent(new Event("omsons-auth-changed"));
-      router.push("/auth/login");
-    });
-  };
+  const handleLogout = () => void logout();
 
   return (
     <RouteGuard>

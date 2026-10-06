@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { logout } from "@/lib/roleAccess";
 
 const MIN_LENGTH = 10;
 
@@ -108,8 +109,7 @@ export default function DealerPasswordModal({ userName = "Dealer", onChanged }: 
   }
 
   async function handleSignOut() {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => undefined);
-    window.location.href = "/auth/login";
+    await logout();
   }
 
   return (
