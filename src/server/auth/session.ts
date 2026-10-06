@@ -106,6 +106,21 @@ export function setAuthCookies(response: NextResponse, accessToken: string, refr
 export function clearAuthCookies(response: NextResponse) {
   response.cookies.set(ACCESS_COOKIE, "", { ...cookieOptions(0, "lax", "/"), expires: new Date(0) });
   response.cookies.set(REFRESH_COOKIE, "", { ...cookieOptions(0, "strict", "/api/auth"), expires: new Date(0) });
+  response.cookies.set(IMPERSONATOR_COOKIE, "", { ...cookieOptions(0, "strict", "/api/auth"), expires: new Date(0) });
+}
+
+// While an admin is signed in as a dealer this holds "<dealer session id>.<admin refresh token>",
+// so logging out of that dealer session hands the admin their own session back.
+export const IMPERSONATOR_COOKIE = "omsons_impersonator";
+
+export function setImpersonatorCookie(response: NextResponse, dealerSessionId: string, adminRefreshToken: string) {
+  response.cookies.set(IMPERSONATOR_COOKIE, `${dealerSessionId}.${adminRefreshToken}`, cookieOptions(REFRESH_TTL_SECONDS, "strict", "/api/auth"));
+}
+
+export function readImpersonatorCookie(request: NextRequest) {
+  const value = request.cookies.get(IMPERSONATOR_COOKIE)?.value ?? "";
+  const dot = value.indexOf(".");
+  return dot > 0 ? { dealerSessionId: value.slice(0, dot), adminRefreshToken: value.slice(dot + 1) } : null;
 }
 
 export async function writeAuthAuditLog(input: {

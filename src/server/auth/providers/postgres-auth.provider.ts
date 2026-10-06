@@ -103,6 +103,15 @@ export async function findActivePostgresUserByLoginIdentifier(identifier: string
 
   return toAuthenticatedPostgresUser(user);
 }
+
+// For an admin signing in as a dealer: no password, so the caller must already be an admin.
+export async function findActivePostgresDealer(dealerId: bigint): Promise<AuthenticatedPostgresUser> {
+  const user = await prisma.user.findFirst({ where: { role: "DEALER", dealerProfile: { id: dealerId } }, include: authUserInclude });
+  if (!user || user.deletedAt || user.status !== "ACTIVE") throw new Error("Dealer account is not active");
+
+  return toAuthenticatedPostgresUser(user);
+}
+
 export class PrismaPostgresAuthenticationProvider implements PostgresAuthenticationProvider {
   async authenticate(input: { email: string; password: string; roleType?: string }): Promise<AuthenticatedPostgresUser> {
     const expectedRole = input.roleType ? LEGACY_ROLE_MAP[input.roleType as LegacyRoleType] : undefined;

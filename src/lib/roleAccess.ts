@@ -62,6 +62,31 @@ export function clearAuthStorage(storage: AuthStorage) {
   AUTH_KEYS.forEach((key) => storage.removeItem(key));
 }
 
+// Browser-only. An admin signed in as a dealer gets their admin session back from the
+// server instead of being logged out; a full page load drops the dealer's client state.
+export async function logout() {
+  const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => null);
+  const restored = (await res?.json().catch(() => null))?.data?.restored as StoredUser | undefined;
+  clearAuthStorage(localStorage);
+  if (restored) persistAuthenticatedSession(localStorage, restored);
+  window.location.href = restored ? "/dashboard/admin/dealer/DealerList" : LOGIN_ROUTE;
+}
+
+// Browser-only. Admin signs in as the dealer; logout() brings the admin back.
+export async function loginAsDealer(dealerId: string | number) {
+  const res = await fetch("/api/auth/impersonate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dealerId: String(dealerId) }),
+    credentials: "include",
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok || !data?.status) throw new Error(data?.message || "Unable to sign in as this dealer");
+  clearAuthStorage(localStorage);
+  persistAuthenticatedSession(localStorage, data.data as StoredUser);
+  window.location.href = "/home";
+}
+
 export function normalizeRoleFromProfile(profile: Record<string, unknown>): AppRole | null {
   const value = String(profile.role ?? "").trim().toLowerCase();
   if (value === "admin" || value === "staff" || value === "dealer" || value === "accountant") return value;

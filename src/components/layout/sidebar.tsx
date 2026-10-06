@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard, UserRoundPlus, Users, SquareUser,
   Plus, ClipboardList, Home, LogOut, Package, Images,
@@ -11,7 +11,7 @@ import {
   SquareChevronLeft, SquareChevronRight,
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { clearAuthStorage, type AppRole, type StoredUser } from "@/lib/roleAccess";
+import { logout, type AppRole, type StoredUser } from "@/lib/roleAccess";
 import { useAuthSession } from "@/hooks/useAuthSession";
 
 type NavItem = { label: string; href: string; icon: React.ReactNode; section?: string; badgeKey?: BadgeKey };
@@ -185,7 +185,6 @@ function useBadgeCounts(role: AppRole | undefined, pathname: string) {
 
 export default function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const pathname              = usePathname();
-  const router                = useRouter();
   const auth                  = useAuthSession();
   const mounted               = !auth.loading;
   const user                  =
@@ -231,13 +230,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     role === "accountant" ? "Finance Portal"    :
     "Staff Portal";
 
-  const handleLogout = () => {
-    void fetch("/api/auth/logout", { method: "POST", credentials: "include" }).finally(() => {
-      clearAuthStorage(localStorage);
-      window.dispatchEvent(new Event("omsons-auth-changed"));
-      router.push("/auth/login");
-    });
-  };
+  const handleLogout = () => void logout();
 
   const grouped: { section?: string; items: NavItem[] }[] = [];
   (role ? NAV[role] : []).forEach(item => {
