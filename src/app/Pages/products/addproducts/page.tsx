@@ -472,7 +472,7 @@
 //         .toast-err { background: #fff1f2; color: #be123c; border: 1px solid #fecdd3; }
 //         @keyframes spin { to { transform: rotate(360deg); } }
 //         @media (max-width: 1080px) { .product-grid { grid-template-columns: 1fr; } .summary-card { position: static; } }
-//         @media (max-width: 640px) { .ap-topbar { padding: 0 16px; } .ap-body { width: calc(100vw - 28px); padding-top: 18px; } .ap-heading { align-items: flex-start; flex-direction: column; } .info-grid, .category-custom { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
+//         @media (max-width: 640px) { .ap-topbar { padding: 0 16px; } .ap-body { width: calc(100% - 28px); padding-top: 18px; } .ap-heading { align-items: flex-start; flex-direction: column; } .info-grid, .category-custom { grid-template-columns: 1fr; } .wide { grid-column: auto; } }
 //         @media (prefers-reduced-motion: reduce) {
 //           .back-btn, .icon-btn, .small-btn, .category-badge, .variant-btn, .btn-submit, .btn-reset, .drag-handle, .variant-row, .col-header, .col-grip { transition: none; }
 //           .back-btn:active, .icon-btn:active, .small-btn:active, .category-badge:active, .variant-btn:active, .btn-submit:active, .btn-reset:active { transform: none; }
@@ -779,7 +779,8 @@ function parseStoredDescription(value: string) {
     }
 
     if (mode === 'specs') {
-      const [catalogueNumberPart, specsPart] = line.split(/\s+-\s+/, 2)
+      // First " - " only: spec values may contain " - " themselves.
+      const [, catalogueNumberPart, specsPart] = line.match(/^(.+?)\s+-\s+(.+)$/) ?? []
       const catalogueNumber = catalogueNumberPart?.trim()
       if (!catalogueNumber || !specsPart) continue
       const specs: Record<string, string> = {}
@@ -867,14 +868,22 @@ export default function AddProductPage() {
   // numbers without looping on our own writes.
   const variantOrderKey = variants.map((row) => row.id).join('|')
 
-  // SKU is the single source of truth for every catalogue number: it is
+  // SKU is the source of truth for every *new* catalogue number: it is
   // used as the prefix, and the position in the table (which updates as
   // rows are dragged, added, or removed) supplies the running suffix.
+  // Rows already saved (numeric DB id) keep their stored number — imported
+  // catalogue numbers like "OM285-020" are what orders and dealers know.
   useEffect(() => {
     setVariants((rows) => {
       let changed = false
+      const isSaved = (row: VariantRow) => /^\d+$/.test(row.id) && Boolean(row.values.catalogueNumber?.trim())
+      const taken = new Set(rows.filter(isSaved).map((row) => row.values.catalogueNumber))
       const next = rows.map((row, index) => {
-        const computed = catalogueNumberFor(productCode, index + 1)
+        if (isSaved(row)) return row
+        let position = index + 1
+        while (taken.has(catalogueNumberFor(productCode, position))) position++
+        const computed = catalogueNumberFor(productCode, position)
+        taken.add(computed)
         if (row.values.catalogueNumber === computed) return row
         changed = true
         return { ...row, values: { ...row.values, catalogueNumber: computed } }
@@ -896,7 +905,7 @@ export default function AddProductPage() {
     }
 
     Promise.all([
-      fetch('/api/admin/products?page=1&pageSize=1000', { cache: 'no-store' }).then((res) => res.ok ? res.json() : null).catch(() => null),
+      fetch('/api/admin/products?page=1&limit=5000', { cache: 'no-store' }).then((res) => res.ok ? res.json() : null).catch(() => null),
       fetch('/data/nested_omsons_products.json', { cache: 'force-cache' }).then((res) => res.ok ? res.json() : []).catch(() => []),
     ]).then(([adminPayload, cataloguePayload]) => {
       const adminItems = Array.isArray(adminPayload?.data?.items) ? adminPayload.data.items : Array.isArray(adminPayload?.items) ? adminPayload.items : []
@@ -1111,13 +1120,14 @@ export default function AddProductPage() {
       <style>{`
         *, *::before, *::after { box-sizing: border-box; }
         .ap-root { min-height: 100vh; background: #f8fafc; color: #0f172a; font-family: Outfit, Inter, system-ui, sans-serif; }
+        .ap-root > * { zoom: 0.8; }
         .ap-topbar { height: 60px; padding: 0 32px; background: #fff; border-bottom: 1px solid #e2e8f0; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 20; }
         .back-btn, .icon-btn, .small-btn, .btn-submit, .btn-reset { font: inherit; cursor: pointer; }
         .back-btn { display: inline-flex; align-items: center; gap: 6px; padding: 7px 12px; border: 1px solid #e2e8f0; border-radius: 7px; background: #fff; color: #475569; font-size: 12px; font-weight: 700; transition: background-color 120ms ease, border-color 120ms ease; }
         .back-btn:active { transform: scale(0.97); }
         .ap-topbar-title { font-size: 15px; font-weight: 800; }
         .ap-topbar-sub { font-size: 11.5px; color: #94a3b8; margin-top: 1px; }
-        .ap-body { width: min(1840px, calc(100vw - 48px)); margin: 0 auto; padding: 28px 0 44px; }
+        .ap-body { width: min(1840px, calc(100% - 48px)); margin: 0 auto; padding: 28px 0 44px; }
         .ap-heading { display: flex; justify-content: space-between; gap: 20px; align-items: flex-end; margin-bottom: 20px; }
         .ap-heading h1 { margin: 0; font-size: 24px; font-weight: 800; letter-spacing: 0; }
         .ap-heading p { margin: 4px 0 0; color: #64748b; font-size: 13px; }

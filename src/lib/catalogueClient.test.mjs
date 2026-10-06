@@ -1,18 +1,12 @@
 import assert from "node:assert/strict";
-import fs from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
-import ts from "typescript";
+import { createJiti } from "jiti";
 
-let importCounter = 0;
-
+// Fresh module per test (catalogueClient caches at module level); jiti resolves the "@/" alias.
 async function importCatalogueClient() {
-  const source = await fs.readFile(path.resolve("src/lib/catalogueClient.ts"), "utf8");
-  const output = ts.transpileModule(source, {
-    compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
-  }).outputText;
-  importCounter += 1;
-  return import(`data:text/javascript;base64,${Buffer.from(output).toString("base64")}#${importCounter}`);
+  const jiti = createJiti(import.meta.url, { alias: { "@": path.resolve("src") }, moduleCache: false });
+  return jiti.import(path.resolve("src/lib/catalogueClient.ts"));
 }
 
 test("loadCatalogueProducts merges complete nested variants into enriched catalogue products", async () => {
@@ -229,4 +223,41 @@ test("loadCatalogueProducts lets PostgreSQL products win duplicate catalogue SKU
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("mergeCatalogueProducts hides deleted PostgreSQL products and keeps JSON-only extras", async () => {
+  const { mergeCatalogueProducts } = await importCatalogueClient();
+  const json = (sku, extra = {}) => ({
+    id: sku, sku, name: `JSON ${sku}`, category: "Flasks",
+    categories: ["Flasks > Volumetric", "Flasks"],
+    images: [`/${sku}-1.jpg`, `/${sku}-2.jpg`],
+    variants: [{ id: `${sku}/1`, sku: `${sku}/1`, price: 10, pack: 1 }],
+    ...extra,
+  });
+  const pg = (sku, extra = {}) => ({
+    id: `pg-${sku}`, sku, name: `PG ${sku}`, category: "Flasks", imageUrl: `/${sku}-1.jpg`, active: true,
+    variants: [{ id: `v-${sku}`, sku: `${sku}/1`, catalogueNumber: `${sku}/1`, unitPricePaise: "2000", packSize: 1, active: true }],
+    ...extra,
+  });
+
+  const products = mergeCatalogueProducts(
+    [json("DEL"), json("EMPTY"), json("SAME"), json("MOVED")],
+    [],
+    [
+      pg("DEL", { active: false }),
+      pg("EMPTY", { variants: [] }),
+      pg("SAME"),
+      pg("MOVED", { category: "Beakers", imageUrl: "/new.jpg" }),
+    ],
+  );
+  const bySku = Object.fromEntries(products.map((product) => [product.sku, product]));
+
+  assert.equal(bySku.DEL, undefined, "deleted in admin must not fall back to JSON");
+  assert.equal(bySku.EMPTY, undefined, "no active variants must not fall back to JSON");
+  assert.equal(bySku.SAME.name, "PG SAME");
+  assert.equal(bySku.SAME.variants[0].price, 20);
+  assert.deepEqual(bySku.SAME.images, ["/SAME-1.jpg", "/SAME-2.jpg"]);
+  assert.deepEqual(bySku.SAME.categories, ["Flasks > Volumetric", "Flasks"]);
+  assert.deepEqual(bySku.MOVED.images, ["/new.jpg"]);
+  assert.deepEqual(bySku.MOVED.categories, ["Beakers"]);
 });

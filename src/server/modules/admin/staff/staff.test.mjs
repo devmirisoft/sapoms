@@ -273,3 +273,18 @@ test("only an admin may reach the staff update route", () => {
   const staffDetailRoute = readFileSync("src/app/api/admin/staff/[staffId]/route.ts", "utf8");
   assert.match(staffDetailRoute, /export async function PATCH[\s\S]*?requireAdminOnly\(\)/);
 });
+
+test("editing staff or the NSM saves their personal info", () => {
+  const updateSchema = staffSchemas.slice(staffSchemas.indexOf("const updateSchema"));
+  const helper = staffRepo.slice(staffRepo.indexOf("function personalData"), staffRepo.indexOf("const nsmInclude"));
+  const nsm = staffRepo.slice(staffRepo.indexOf("function nsmRecord"));
+  for (const field of ["mobileNo", "alternateNo", "permanentAddress", "localAddress", "gender", "nationality", "maritalStatus", "qualification", "emergencyContactNo1", "emergencyContactNo2"]) {
+    assert.ok(updateSchema.slice(0, updateSchema.indexOf("}).refine")).includes(`${field}: text(`), field);
+    assert.ok(helper.includes(`${field}: input.${field}`), field);
+    assert.ok(nsm.includes(`${field}: profile.${field}`), field);
+  }
+  assert.match(staffRepo, /async update\(staffId[\s\S]*?Object\.assign\(staffData, personalData\(input\)\)/);
+  assert.match(staffRepo, /async updateNsm\([\s\S]*?adminProfile\.update\(\{ where: \{ id: nsmId \}, data: \{ displayName: input\.name, \.\.\.personalData\(input\) \} \}\)/);
+  assert.match(staffRepo, /adminProfile\.create\(\{ data: \{ userId: user\.id, displayName: input\.name, \.\.\.personalData\(input\) \}/);
+  assert.doesNotMatch(staffRepo, /buildSyntheticRecord/);
+});

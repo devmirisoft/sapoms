@@ -267,6 +267,19 @@ model AdminProfile {
   displayName String  @map("display_name")
   phone       String?
   imageUrl    String? @map("image_url")
+  // Personal info, NSM only — mirrors StaffProfile.
+  location            String?
+  mobileNo            String?   @map("mobile_no")
+  alternateNo         String?   @map("alternate_no")
+  permanentAddress    String?   @map("permanent_address") @db.Text
+  localAddress        String?   @map("local_address") @db.Text
+  gender              String?
+  dob                 DateTime? @db.Date
+  nationality         String?
+  maritalStatus       String?   @map("marital_status")
+  qualification       String?
+  emergencyContactNo1 String?   @map("emergency_contact_no_1")
+  emergencyContactNo2 String?   @map("emergency_contact_no_2")
 
   user           User           @relation(fields: [userId], references: [id])
   managedRsms    StaffProfile[] @relation("StaffReportingManager")

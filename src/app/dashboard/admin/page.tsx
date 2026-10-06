@@ -1611,7 +1611,7 @@ function AdminDashboardInner() {
                   <div className="empty-state">No accepted sales in this range.</div>
                 )}
               </div>
-             
+           
             </article>
 
             <article className="metric-card staff-roles">
