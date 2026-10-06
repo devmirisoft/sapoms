@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { TermsDocument } from "@/components/terms/TermsDocument";
+import { DEFAULT_TERMS_BLOCKS, TermsDocument, type TermsBlock } from "@/components/terms/TermsDocument";
 
 interface TermsModalProps {
   userId?: string;
@@ -56,11 +56,19 @@ export default function TermsModal({
   const [isChecked, setIsChecked] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [blocks, setBlocks] = useState<TermsBlock[] | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    fetch("/api/terms/content", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((payload) => setBlocks(Array.isArray(payload?.data) ? payload.data : DEFAULT_TERMS_BLOCKS))
+      .catch(() => setBlocks(DEFAULT_TERMS_BLOCKS));
+  }, []);
+
+  useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || !blocks) return;
 
     const handleScroll = () => {
       const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 8;
@@ -70,7 +78,7 @@ export default function TermsModal({
     el.addEventListener("scroll", handleScroll);
     handleScroll();
     return () => el.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [blocks]);
 
   const canAccept = hasScrolledToBottom && isChecked;
 
@@ -110,8 +118,8 @@ export default function TermsModal({
           <p className="ml-12 text-sm text-slate-500">Dealer access is blocked until you read and accept the full document.</p>
         </div>
 
-        <div ref={scrollRef} className="flex-1 space-y-5 overflow-y-auto px-8 py-6 text-sm leading-relaxed text-slate-700">
-          <TermsDocument />
+        <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-8 py-6 text-sm leading-relaxed text-slate-700">
+          {blocks ? <TermsDocument blocks={blocks} /> : <p className="text-slate-400">Loading terms...</p>}
 
           {!hasScrolledToBottom && (
             <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-600">

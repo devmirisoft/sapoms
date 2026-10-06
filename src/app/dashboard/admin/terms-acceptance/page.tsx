@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
+import TermsEditor from "@/components/terms/TermsEditor";
 
 type TermsRow = {
   id: string;
@@ -76,6 +77,13 @@ export default function TermsAcceptancePage() {
             {!loading && !error ? ` ${acceptedCount} of ${rows.length} have accepted.` : ""}
           </p>
         </div>
+
+        <details className="mb-6 rounded border border-[#dfe3ec] bg-white shadow-sm">
+          <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">Edit Terms &amp; Conditions content</summary>
+          <div className="border-t border-[#eef1f6] p-4">
+            <TermsEditor />
+          </div>
+        </details>
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SegmentedTabs

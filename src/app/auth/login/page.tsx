@@ -21,7 +21,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { cn } from "@/lib/utils"
 
 
-const LOGO_SRC = "/omsons_logo.jpeg"
+const LOGO_SRC = "/Omsons_Logo.png"
 
 const PILLARS = [
   { icon: Handshake, label: "Stronger Partnerships" },
@@ -459,10 +459,11 @@ export default function Login() {
 
     {/* Icon */}
     <div className="mx-auto flex h-19 w-19 items-center justify-center rounded-full ">
+      {/* hue-rotate + brightness turns the orange logo sky blue (~#0891E2) */}
       <img
         src={LOGO_SRC}
         alt="Omsons Logo"
-        className="h-19 w-19 object-contain"
+        className="h-19 w-19 object-contain hue-rotate-[190deg] brightness-110"
       />
     </div>
 
