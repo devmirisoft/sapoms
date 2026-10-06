@@ -1611,12 +1611,7 @@ function AdminDashboardInner() {
                   <div className="empty-state">No accepted sales in this range.</div>
                 )}
               </div>
-              <p className="sale-note">
-                The data is sourced from the migrated Order List, which holds each order&apos;s Total Order Amount, Total Net Payable Amount and Discount Percentage.
-                Booking is the Net Payable of orders approved by the RSM and accepted by staff, by order date; cancelled and declined orders are left out.
-                Each point is one {saleSummaryQ.data?.data.granularity === "month" ? "month" : "day"} (daily up to 2 months, monthly beyond).
-                Region, ASM and City filter by the dealer&apos;s location.
-              </p>
+             
             </article>
 
             <article className="metric-card staff-roles">
