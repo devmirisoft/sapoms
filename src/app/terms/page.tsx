@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { TermsDocument } from "@/components/terms/TermsDocument";
+import { getTermsBlocks } from "@/server/terms-content";
 
-export default function TermsPage() {
+export const dynamic = "force-dynamic";
+
+export default async function TermsPage() {
+  const blocks = await getTermsBlocks();
+
   return (
     <main className="min-h-screen bg-slate-100 px-4 py-10 text-slate-900 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-4xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-sm">
@@ -13,8 +18,8 @@ export default function TermsPage() {
           </p>
         </div>
 
-        <div className="space-y-5 px-8 py-8 text-sm leading-relaxed text-slate-700">
-          <TermsDocument />
+        <div className="space-y-3 px-8 py-8 text-sm leading-relaxed text-slate-700">
+          <TermsDocument blocks={blocks} />
         </div>
 
         <div className="border-t border-slate-100 bg-slate-50 px-8 py-5 text-sm text-slate-500">

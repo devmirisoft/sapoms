@@ -1463,3 +1463,12 @@ model AgentDraft {
   @@index([dealerId, createdAt])
   @@map("agent_drafts")
 }
+
+// Admin-editable site content keyed by name ("terms" = the dealer T&C blocks).
+model AppSetting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  @@map("app_settings")
+}
