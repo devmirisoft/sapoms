@@ -25,7 +25,8 @@ test("catalogue read route is session authorized and hides inactive rows for dea
     + readFileSync("src/server/modules/products/postgres-catalogue.ts", "utf8");
   assert.ok(catalogueRoute.includes('requireRole(["ADMIN", "STAFF", "DEALER"])'));
   assert.ok(catalogueRoute.includes('includeInactive = actor.role === "ADMIN"'));
-  assert.ok(catalogueRoute.includes('active: true, variants: { some: { active: true } }'));
+  // Inactive variants are dropped; a deleted product comes back with none so the merge hides its JSON twin.
+  assert.ok(catalogueRoute.includes('variants: { where: includeInactive ? {} : { active: true }'));
   assert.match(catalogueRoute, /unitPricePaise/);
   assert.match(catalogueRoute, /packSize/);
   assert.doesNotMatch(catalogueRoute, /requireAdmin\(|php-compat|actorFromRequestHeaders|x-omsons-actor/i);

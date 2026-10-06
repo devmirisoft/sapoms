@@ -78,7 +78,8 @@ function parsePostgresDescription(description: string) {
     }
 
     if (mode === "specs") {
-      const [catalogueNumberPart, specsPart] = line.split(/\s+-\s+/, 2);
+      // First " - " only: spec values may contain " - " themselves.
+      const [, catalogueNumberPart, specsPart] = line.match(/^(.+?)\s+-\s+(.+)$/) ?? [];
       const catalogueNumber = textValue(catalogueNumberPart);
       if (!catalogueNumber || !specsPart) continue;
       const specs: Record<string, string> = {};
@@ -146,7 +147,8 @@ function normalizePostgresProduct(product: CatalogueProduct & Record<string, unk
     features: Array.isArray(product.features) && product.features.length
       ? product.features.map(textValue).filter(Boolean)
       : parsedDescription.features,
-    descriptionHtml: parsedDescription.descriptionHtml || rawDescription,
+    // No raw fallback: with no base text it would show the ABOUT/SPECIFICATIONS dump as the description.
+    descriptionHtml: parsedDescription.descriptionHtml,
     images,
     variants,
   });
@@ -310,7 +312,24 @@ export function mergeCatalogueProducts(
   };
 
   merged.forEach(addOrReplace);
-  postgresProducts.map(normalizePostgresProduct).forEach(addOrReplace);
+  for (const raw of postgresProducts) {
+    const product = normalizePostgresProduct(raw as CatalogueProduct & Record<string, unknown>);
+    const key = keyFor(product.sku || product.id);
+    if (!key) continue;
+    // Deleted or fully out of stock in admin: hide it, JSON twin included.
+    if ((raw as { active?: unknown }).active === false || !product.variants?.length) {
+      outputByKey.delete(key);
+      continue;
+    }
+    // Postgres holds one image and one category; keep the JSON gallery and
+    // sub-category paths until an admin actually changes them.
+    const json = outputByKey.get(key);
+    addOrReplace(json ? {
+      ...product,
+      images: json.images?.length && product.images?.[0] === json.images[0] ? json.images : product.images,
+      categories: json.categories?.length && product.category === json.category ? json.categories : product.categories,
+    } : product);
+  }
 
   return order.map((key) => outputByKey.get(key)).filter((product): product is CatalogueProduct => Boolean(product));
 }

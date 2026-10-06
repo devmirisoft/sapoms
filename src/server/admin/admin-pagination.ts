@@ -15,9 +15,9 @@ function parsePositiveInteger(value: string | null, fallback: number, maximum?: 
   return maximum ? Math.min(parsed, maximum) : parsed;
 }
 
-export function parseAdminPagination(searchParams: URLSearchParams): AdminListInput {
+export function parseAdminPagination(searchParams: URLSearchParams, maxPageSize = 100): AdminListInput {
   const page = parsePositiveInteger(searchParams.get("page"), 1);
-  const pageSize = parsePositiveInteger(searchParams.get("limit"), 20, 100);
+  const pageSize = parsePositiveInteger(searchParams.get("limit"), 20, maxPageSize);
   const search = String(searchParams.get("search") ?? "").trim();
 
   if (search.length > 200) {

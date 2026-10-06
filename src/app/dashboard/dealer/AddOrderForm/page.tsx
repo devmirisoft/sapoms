@@ -254,7 +254,10 @@ function mergeCatalogueSources(primaryProducts: CatalogueProduct[], fallbackProd
 
   for (const product of primaryProducts) {
     const key = String(product.sku || product.id || "").trim();
-    if (key) merged.set(key, product);
+    if (!key) continue;
+    // Deleted or fully out of stock in admin: drop it rather than fall back to the JSON copy.
+    if ((product as { active?: unknown }).active === false || !product.variants?.length) merged.delete(key);
+    else merged.set(key, product);
   }
 
   return Array.from(merged.values());

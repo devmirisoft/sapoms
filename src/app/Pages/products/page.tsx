@@ -103,7 +103,8 @@ function parseStoredDescription(value: string) {
     }
 
     if (mode === 'specs') {
-      const [catalogueNumberPart, specsPart] = line.split(/\s+-\s+/, 2)
+      // First " - " only: spec values may contain " - " themselves.
+      const [, catalogueNumberPart, specsPart] = line.match(/^(.+?)\s+-\s+(.+)$/) ?? []
       const catalogueNumber = catalogueNumberPart?.trim()
       if (!catalogueNumber || !specsPart) continue
 
@@ -298,7 +299,7 @@ function ProductListContent() {
   const { data: response, isLoading, isError, refetch } = useQuery<ProductResponse>({
     queryKey: ['products', page, search, selectedCategory],
     queryFn: async () => {
-      const res = await fetch('/api/admin/products?page=1&pageSize=1000', { cache: 'no-store' })
+      const res = await fetch('/api/admin/products?page=1&limit=5000', { cache: 'no-store' })
       if (!res.ok) throw new Error('Products unavailable')
       const json = await res.json()
       const adminItems = Array.isArray(json.data?.items)

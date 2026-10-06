@@ -64,10 +64,12 @@ function mapProduct(record: CatalogueRecord) {
   };
 }
 
-/** Admin-managed products in the legacy catalogue shape; the client merges these over the JSON catalogue. */
+/**
+ * Admin-managed products in the legacy catalogue shape; the client merges these over the JSON catalogue.
+ * Deleted / fully out-of-stock products still come back (with no variants) so the merge can hide their JSON twin.
+ */
 export async function listPostgresCatalogue({ includeInactive = false } = {}) {
   const products = await prisma.product.findMany({
-    where: includeInactive ? {} : { active: true, variants: { some: { active: true } } },
     include: { category: { select: { id: true, name: true, slug: true } }, variants: { where: includeInactive ? {} : { active: true }, orderBy: { id: "asc" } } },
     orderBy: { name: "asc" },
   });

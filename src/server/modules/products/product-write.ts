@@ -20,5 +20,5 @@ export function parseProductWriteInput(raw: unknown): ProductWriteInput {
     return { id: text(variant.id, 40) || undefined, sku, catalogueNumber: text(variant.catalogueNumber ?? variant.product_cat ?? sku, 160), unitName: text(variant.unitName ?? variant.product_unit, 80), packSize, unitPricePaise, packPricePaise, active: bool(variant.active, true) };
   });
   if (!variants.length || variants.every((variant) => !variant.sku && !variant.catalogueNumber)) throw new AdminRouteError("INVALID_REQUEST", "At least one catalogue number is required");
-  return { productCode: text(input.productCode ?? input.product_code, 160) || undefined, name, description: text(input.description ?? input.product_discription, 4000), imageUrl: text(input.imageUrl ?? input.product_image, 1000), categoryName: text(input.categoryName ?? input.category ?? input.product_category, 160) || undefined, active: bool(input.active, true), variants };
+  return { productCode: text(input.productCode ?? input.product_code, 160) || undefined, name, description: text(input.description ?? input.product_discription, 20000), imageUrl: text(input.imageUrl ?? input.product_image, 1000), categoryName: text(input.categoryName ?? input.category ?? input.product_category, 160) || undefined, active: bool(input.active, true), variants };
 }

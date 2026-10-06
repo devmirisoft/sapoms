@@ -91,33 +91,46 @@ function assertSubset(selected: string[], allowed: string[], code: string, label
   throw invalid(`Selected ${label} must be within the ${scope} scope`, code, { [label]: outside });
 }
 
-function buildSyntheticRecord(args: {
-  id: bigint;
-  displayName: string;
-  designation: string | null;
-  location: string | null;
-  staffRoleType: string | null;
-  salesRegion: AdminStaffRecord["salesRegion"];
-  user: AdminStaffRecord["user"];
-}): AdminStaffRecord {
+// Personal info shared by staff_profiles and the NSM's admin_profiles row.
+// Undefined keys are skipped by Prisma, so an update only touches what was sent.
+function personalData(input: CreateAdminStaffInput | UpdateAdminStaffInput) {
   return {
-    id: args.id,
-    displayName: args.displayName,
-    designation: args.designation,
-    location: args.location,
-    mobileNo: null,
-    alternateNo: null,
-    permanentAddress: null,
-    localAddress: null,
-    gender: null,
-    dob: null,
-    nationality: null,
-    maritalStatus: null,
-    qualification: null,
-    emergencyContactNo1: null,
-    emergencyContactNo2: null,
-    staffRoleType: args.staffRoleType,
-    salesRegion: args.salesRegion,
+    location: input.location,
+    mobileNo: input.mobileNo,
+    alternateNo: input.alternateNo,
+    permanentAddress: input.permanentAddress,
+    localAddress: input.localAddress,
+    gender: input.gender,
+    dob: input.dob,
+    nationality: input.nationality,
+    maritalStatus: input.maritalStatus,
+    qualification: input.qualification,
+    emergencyContactNo1: input.emergencyContactNo1,
+    emergencyContactNo2: input.emergencyContactNo2,
+  };
+}
+
+const nsmInclude = { user: { select: { id: true, email: true, username: true, status: true, role: true } } } satisfies Prisma.AdminProfileInclude;
+
+function nsmRecord(profile: Prisma.AdminProfileGetPayload<{ include: typeof nsmInclude }>): AdminStaffRecord {
+  return {
+    id: profile.id,
+    displayName: profile.displayName,
+    designation: "NSM",
+    location: profile.location,
+    mobileNo: profile.mobileNo,
+    alternateNo: profile.alternateNo,
+    permanentAddress: profile.permanentAddress,
+    localAddress: profile.localAddress,
+    gender: profile.gender,
+    dob: profile.dob,
+    nationality: profile.nationality,
+    maritalStatus: profile.maritalStatus,
+    qualification: profile.qualification,
+    emergencyContactNo1: profile.emergencyContactNo1,
+    emergencyContactNo2: profile.emergencyContactNo2,
+    staffRoleType: "NSM",
+    salesRegion: null,
     warehouse: null,
     parentRsmId: null,
     parentAsmId: null,
@@ -128,7 +141,7 @@ function buildSyntheticRecord(args: {
     parentAsm: null,
     rsmLinks: [],
     reportingManager: null,
-    user: args.user,
+    user: profile.user,
   };
 }
 
@@ -246,19 +259,11 @@ export class PostgresAdminStaffRepository {
   private async findNsmRecords(input: AdminStaffListInput): Promise<AdminStaffRecord[]> {
     const profiles = await prisma.adminProfile.findMany({
       where: buildNsmWhere(input),
-      include: { user: { select: { id: true, email: true, username: true, status: true, role: true } } },
+      include: nsmInclude,
       orderBy: { id: "desc" },
       take: 50,
     });
-    return profiles.map((profile) => buildSyntheticRecord({
-      id: profile.id,
-      displayName: profile.displayName,
-      designation: "NSM",
-      location: null,
-      staffRoleType: "NSM",
-      salesRegion: null,
-      user: profile.user,
-    }));
+    return profiles.map(nsmRecord);
   }
 
   async list(input: AdminStaffListInput): Promise<{ items: AdminStaffRecord[]; total: number }> {
@@ -288,18 +293,10 @@ export class PostgresAdminStaffRepository {
   async findNsmById(nsmId: bigint): Promise<AdminStaffRecord | null> {
     const profile = await prisma.adminProfile.findFirst({
       where: { id: nsmId, user: { role: "NSM", deletedAt: null } },
-      include: { user: { select: { id: true, email: true, username: true, status: true, role: true } } },
+      include: nsmInclude,
     });
     if (!profile) return null;
-    return buildSyntheticRecord({
-      id: profile.id,
-      displayName: profile.displayName,
-      designation: "NSM",
-      location: null,
-      staffRoleType: "NSM",
-      salesRegion: null,
-      user: profile.user,
-    });
+    return nsmRecord(profile);
   }
 
   async create(input: CreateAdminStaffInput, actor: AuthActor): Promise<AdminStaffRecord> {
@@ -362,20 +359,12 @@ export class PostgresAdminStaffRepository {
       });
 
       if (input.role === "NSM") {
-        const profile = await tx.adminProfile.create({ data: { userId: user.id, displayName: input.name } });
+        const profile = await tx.adminProfile.create({ data: { userId: user.id, displayName: input.name, ...personalData(input) }, include: nsmInclude });
         await audit(tx, actor, "ADMIN_NSM_CREATED", { userId: user.id.toString() }, {
           action: AUDIT_ACTION.CREATE,
           newValues: { name: input.name, email: input.email, role: "NSM" },
         });
-        return buildSyntheticRecord({
-          id: profile.id,
-          displayName: profile.displayName,
-          designation: "NSM",
-          location: null,
-          staffRoleType: "NSM",
-          salesRegion: null,
-          user: { id: user.id, email: user.email, username: user.username, status: user.status, role: user.role },
-        });
+        return nsmRecord(profile);
       }
 
       const staff = await tx.staffProfile.create({
@@ -431,8 +420,7 @@ export class PostgresAdminStaffRepository {
       if (input.role !== undefined) userData.role = input.role;
       if (input.name !== undefined) staffData.displayName = input.name;
       if (input.designation !== undefined) staffData.designation = input.designation;
-      if (input.location !== undefined) staffData.location = input.location;
-      if (input.dob !== undefined) staffData.dob = input.dob;
+      Object.assign(staffData, personalData(input));
       if (input.staffRoleType !== undefined) staffData.staffRoleType = input.staffRoleType;
       const nextRole = input.role ?? current.user.role;
       const nextStaffRoleType = nextRole === "ASM" ? "ASM" : nextRole === "RSM" ? "RSM" : input.staffRoleType ?? current.staffRoleType;
@@ -525,7 +513,7 @@ export class PostgresAdminStaffRepository {
   }
 
   // The NSM row lives in admin_profiles and holds no territory, hierarchy or
-  // staff-only fields, so an edit is just its name, login and status.
+  // staff-only fields, so an edit is its name, login, status and personal info.
   async updateNsm(nsmId: bigint, input: UpdateAdminStaffInput, actor: AuthActor): Promise<AdminStaffRecord> {
     return prisma.$transaction(async (tx) => {
       const current = await tx.adminProfile.findFirst({ where: { id: nsmId, user: { role: "NSM", deletedAt: null } }, include: { user: true } });
@@ -549,14 +537,14 @@ export class PostgresAdminStaffRepository {
         // Records that the password changed; the value itself is never captured.
         await audit(tx, actor, "ADMIN_NSM_PASSWORD_CHANGED", { nsmId: nsmId.toString() }, { action: AUDIT_ACTION.UPDATE });
       }
-      if (input.name !== undefined) await tx.adminProfile.update({ where: { id: nsmId }, data: { displayName: input.name } });
+      await tx.adminProfile.update({ where: { id: nsmId }, data: { displayName: input.name, ...personalData(input) } });
       await audit(tx, actor, "ADMIN_NSM_UPDATED", { nsmId: nsmId.toString() }, { action: AUDIT_ACTION.UPDATE });
 
       const updated = await tx.adminProfile.findUniqueOrThrow({
         where: { id: nsmId },
-        include: { user: { select: { id: true, email: true, username: true, status: true, role: true } } },
+        include: nsmInclude,
       });
-      return buildSyntheticRecord({ id: updated.id, displayName: updated.displayName, designation: "NSM", location: null, staffRoleType: "NSM", salesRegion: null, user: updated.user });
+      return nsmRecord(updated);
     });
   }
 
@@ -573,9 +561,9 @@ export class PostgresAdminStaffRepository {
 
       const updated = await tx.adminProfile.findUniqueOrThrow({
         where: { id: nsmId },
-        include: { user: { select: { id: true, email: true, username: true, status: true, role: true } } },
+        include: nsmInclude,
       });
-      return buildSyntheticRecord({ id: updated.id, displayName: updated.displayName, designation: "NSM", location: null, staffRoleType: "NSM", salesRegion: null, user: updated.user });
+      return nsmRecord(updated);
     });
   }
 
