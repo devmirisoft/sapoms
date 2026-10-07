@@ -1674,7 +1674,9 @@ export default function ViewOrderDealerPage() {
     (activeOrderHeader?.rsm_approval_status as string) ??
     (phpOrders[0] as Record<string, unknown> | undefined)?.rsmApprovalStatus ?? ""
   ).toUpperCase();
-  const canRsmReview = isRsm && !overlayState?.isCancelled && (rsmStatus === "AWAITING" || rsmStatus === "");
+  // The server sets rsm_cover when this NSM/Admin approves for an unavailable RSM.
+  const rsmCover = activeOrderHeader?.rsm_cover === true;
+  const canRsmReview = (isRsm || rsmCover) && !overlayState?.isCancelled && (rsmStatus === "AWAITING" || rsmStatus === "");
   // Staff acceptance opens only after the RSM has approved, mirroring the
   // server gate in updatePostgresOrderAcceptance.
   const canStaffAccept = authRole === "staff"
@@ -2361,6 +2363,11 @@ export default function ViewOrderDealerPage() {
                     ? "Approve to clear this order for staff acceptance, or disapprove with a reason."
                     : "Accept to confirm this order for dispatch, or decline with a reason."}
                 </p>
+                {canRsmReview && rsmCover ? (
+                  <p className="mt-1 text-[12px] font-semibold text-amber-700">
+                    RSM unavailable — you are approving on their behalf.
+                  </p>
+                ) : null}
               </div>
               <div className="flex items-center gap-3">
                 <button onClick={() => submitRsmReview(true)} disabled={rsmSaving}

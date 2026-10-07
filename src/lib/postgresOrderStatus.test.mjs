@@ -52,7 +52,7 @@ test("legacy accept_order and del_status remain response aliases only for Postgr
 test("orders flow up through the Sales Manager (reverse waterfall)", () => {
   // RSM sees only what its Sales Managers' dealers push, never its whole region.
   assert.match(postgresOrders, /if \(actor\.isRsm && actor\.userId\) return buildRsmOrderWhere\(actor\)/);
-  assert.match(postgresOrders, /return \{ salesManager: \{ parentRsmId: BigInt\(actor\.actorId\) \} \}/);
+  assert.match(postgresOrders, /return rsmOrderScope\(BigInt\(actor\.actorId\), BigInt\(actor\.userId \?\? 0\)\)/);
   assert.doesNotMatch(postgresOrders, /buildOrderRegionWhere/);
   // ASM through its Sales Managers; the Sales Manager through its own stamp.
   assert.match(postgresOrders, /\{ salesManagerId: me \}/);
@@ -60,7 +60,7 @@ test("orders flow up through the Sales Manager (reverse waterfall)", () => {
   // Only plain Staff wait for the RSM.
   assert.match(postgresOrders, /actor\.isAsm \|\| actor\.isSalesManager \? staffScope : \{ rsmApprovalStatus: "ACCEPTED", \.\.\.staffScope \}/);
   // RSM status actions use the same chain, not the region.
-  assert.match(source, /salesManager: \{ parentRsmId: actor\.staffId \}/);
+  assert.match(source, /\.\.\.rsmOrderScope\(actor\.staffId, actor\.userId\)/);
   assert.doesNotMatch(source, /buildOrderRegionWhere/);
 });
 

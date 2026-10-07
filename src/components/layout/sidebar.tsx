@@ -29,7 +29,11 @@ type SidebarUser = {
   staff_email?: string;
   staff_roletype?: string;
   ADMIN_IMAGE?: string;
+  authRole?: string;
 };
+
+// The NSM shares the admin portal but not these admin-only areas.
+const NSM_HIDDEN_SECTIONS = new Set(["Content", "Accountants", "Rewards", "System"]);
 
 const NAV: Record<AppRole, NavItem[]> = {
   admin: [
@@ -49,6 +53,7 @@ const NAV: Record<AppRole, NavItem[]> = {
    // {                         label: "Pending Orders",      href: "/Pages/Ordermanagement/outstandingorders",         icon: <ClipboardList size={15} />, badgeKey: "pendingOrders" },
     {                         label: "Pending Products",    href: "/dashboard/admin/pending-products",                icon: <Package size={15} />         },
     {                         label: "Discount Approvals",  href: "/dashboard/admin/custom-discount-approvals",       icon: <Receipt size={15} />, badgeKey: "discountRequests" },
+    {                         label: "Fund Requests",       href: "/dashboard/admin/fund-requests",                 icon: <Wallet size={15} />, badgeKey: "fundRequests" },
     {                         label: "Courier Services",    href: "/dashboard/admin/couriers",                        icon: <Truck size={15} />           },
     { section: "Content",     label: "Slider Images",      href: "/dashboard/admin/slider",                          icon: <Images size={15} />          },
     {                         label: "Hot Items",           href: "/dashboard/admin/hot-items",                       icon: <Images size={15} />          },
@@ -56,8 +61,6 @@ const NAV: Record<AppRole, NavItem[]> = {
     { section: "Reports",     label: "Dealer Category Report", href: "/dashboard/admin/reports/dealer-category",     icon: <TrendingUp size={15} />      },
     { section: "Accountants", label: "Manage Accountants", href: "/dashboard/admin/manageAccountants/add-account",   icon: <ShieldCheck size={15} />     },
     { section: "Rewards",     label: "Dealer Rewards",     href: "/dashboard/admin/rewards",                         icon: <Gift size={15} />            },
-    // Visible across the admin portal, but the API is ADMIN-only: an NSM opening
-    // this gets the access notice on the page rather than a blank table.
     { section: "System",      label: "Audit Logs",         href: "/dashboard/admin/audit-logs",                      icon: <ScrollText size={15} />      },
   ],
   dealer: [
@@ -65,7 +68,6 @@ const NAV: Record<AppRole, NavItem[]> = {
     {                      label: "Dashboard",         href: "/dashboard/dealer",              icon: <LayoutDashboard size={15} /> },
     {                      label: "Profile",           href: "/dashboard/dealer/profile",      icon: <SquareUser size={15} />      },
     { section: "Orders",   label: "My Order Status",  href: "/orders",         icon: <ClipboardList size={15} />, badgeKey: "orders" },
-    {                      label: "My Order History",  href: "/orders",                        icon: <ClipboardList size={15} /> },
     {                      label: "Pending Products",  href: "/dashboard/dealer/pending-products", icon: <Package size={15} /> },
     {                      label: "Add Order",         href: "/dashboard/dealer/AddOrderForm", icon: <Plus size={15} />          },
     {                      label: "Saved Drafts",      href: "/drafts",                        icon: <FileText size={15} />, badgeKey: "drafts" },
@@ -233,6 +235,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
   const handleLogout = () => void logout();
 
   const grouped: { section?: string; items: NavItem[] }[] = [];
+  const hiddenSections = user?.authRole === "nsm" ? NSM_HIDDEN_SECTIONS : null;
   (role ? NAV[role] : []).forEach(item => {
     if (item.section) {
       grouped.push({ section: item.section, items: [item] });
@@ -596,7 +599,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
 
         {/* Nav */}
         <nav className="sb-nav">
-          {grouped.map((group, gi) => {
+          {grouped.filter(group => !hiddenSections?.has(group.section ?? "")).map((group, gi) => {
             const lead = gi === 0 && !!group.section;
             const isOpen = !lead && !!group.section && openSection === group.section;
             const groupCount = group.items.reduce((sum, item) => sum + (item.badgeKey ? badgeCounts[item.badgeKey] ?? 0 : 0), 0);

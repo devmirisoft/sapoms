@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
-import { buildDealerRegionWhere, resolveRsmTeamStaffIds } from "@/server/auth/sales-scope";
+import { buildDealerRegionWhere, discountCovers, onBehalfName, resolveRsmTeamStaffIds } from "@/server/auth/sales-scope";
 import {
   assertDealerScope,
   assertDraftBelongsToDealer,
@@ -103,11 +103,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (actor.role === "RSM") await assertRsmDiscountScope(actor, existing.dealerId, existing.staffId);
     else assertDealerScope(actor, existing.dealerId);
 
-    // RSM and NSM post their decision as `status` too; it lands on their own stage.
-    const stageRole = actor.role === "RSM" || actor.role === "NSM";
+    // An NSM covers an unavailable RSM's stage; Admin covers it too, and the NSM
+    // stage, when there is no active NSM.
+    const cover = (await discountCovers(actor, prisma, existing.id)).get(existing.id.toString()) ?? null;
+    const rsmStage = actor.role === "RSM" || cover === "rsm";
+    const nsmStage = cover === "nsm" || (actor.role === "NSM" && !cover);
+    // RSM and NSM (or whoever covers them) post their decision as `status` too; it lands on their own stage.
+    const stageRole = rsmStage || nsmStage;
     const rawStatus = text(body.status, 40);
-    const rawRsmStatus = text(body.rsmStatus ?? body.rsmApprovalStatus ?? (actor.role === "RSM" ? body.status : ""), 40);
-    const rawNsmStatus = text(body.nsmStatus ?? body.nsmApprovalStatus ?? (actor.role === "NSM" ? body.status : ""), 40);
+    const rawRsmStatus = text(body.rsmStatus ?? body.rsmApprovalStatus ?? (rsmStage ? body.status : ""), 40);
+    const rawNsmStatus = text(body.nsmStatus ?? body.nsmApprovalStatus ?? (nsmStage ? body.status : ""), 40);
     const nextStatus = rawStatus && !stageRole ? statusValue(rawStatus) : null;
     const nextRsmStatus = rawRsmStatus ? statusValue(rawRsmStatus) : null;
     const nextNsmStatus = rawNsmStatus ? statusValue(rawNsmStatus) : null;
@@ -121,8 +126,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (rawNsmStatus && !nextNsmStatus) return NextResponse.json({ success: false, message: "Invalid NSM status" }, { status: 400 });
     const wantsResubmit = text(body.action, 40).toLowerCase() === "resubmit" || body.orderSnapshot !== undefined || body.products !== undefined || body.requestedDiscountPercent !== undefined || body.requestedProductDiscounts !== undefined;
     if (reviewUpdate && actor?.role !== "ADMIN") throw Object.assign(new Error("Only Admin can review custom discounts"), { status: 403 });
-    if (rsmReviewUpdate && actor?.role !== "RSM") throw Object.assign(new Error("Only RSM can perform RSM custom discount review"), { status: 403 });
-    if (nsmReviewUpdate && actor?.role !== "NSM") throw Object.assign(new Error("Only NSM can perform NSM custom discount review"), { status: 403 });
+    if (rsmReviewUpdate && !rsmStage) throw Object.assign(new Error("Only RSM can perform RSM custom discount review"), { status: 403 });
+    if (nsmReviewUpdate && !nsmStage) throw Object.assign(new Error("Only NSM can perform NSM custom discount review"), { status: 403 });
     if (reviewUpdate && existing.rsmApprovalStatus !== "APPROVED") throw Object.assign(new Error("RSM approval is required before Admin review"), { status: 409 });
     if (reviewUpdate && existing.nsmApprovalStatus !== null && existing.nsmApprovalStatus !== "APPROVED") throw Object.assign(new Error("NSM approval is required before Admin review"), { status: 409 });
     if (nsmReviewUpdate && existing.nsmApprovalStatus === null) throw Object.assign(new Error("This request does not need NSM review"), { status: 409 });
@@ -136,9 +141,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const data: any = { updatedAt: new Date() };
     if (rsmReviewUpdate && nextRsmStatus) {
       if (existing.rsmApprovalStatus !== "PENDING") throw Object.assign(new Error("RSM review is already complete"), { status: 409 });
+      // A covering Admin with the NSM stage also pending stands in for both.
+      const coversBoth = cover === "rsm" && actor.role === "ADMIN" && existing.nsmApprovalStatus === "PENDING";
       data.rsmApprovalStatus = nextRsmStatus;
       data.rsmReviewedByUserId = actor.userId;
-      data.rsmReviewedByName = actor.displayName || actor.email;
+      data.rsmReviewedByName = cover === "rsm" ? onBehalfName(actor, coversBoth ? "RSM and NSM" : "RSM") : actor.displayName || actor.email;
       data.rsmReviewedAt = new Date();
       // The RSM review UI posts its note as adminNote; keep it in its own column
       // so an RSM reason is never confused with, or overwritten by, an Admin one.
@@ -149,12 +156,21 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         data.status = "REJECTED";
         data.allowReorder = false;
       }
+      // One click clears both stages: the NSM covering the RSM is the NSM, and a
+      // covering Admin stands in for both. Admin's final review stays separate.
+      if (cover === "rsm" && nextRsmStatus === "APPROVED" && existing.nsmApprovalStatus === "PENDING") {
+        data.nsmApprovalStatus = "APPROVED";
+        data.nsmReviewedByUserId = actor.userId;
+        data.nsmReviewedByName = coversBoth ? data.rsmReviewedByName : actor.displayName || actor.email;
+        data.nsmReviewedAt = data.rsmReviewedAt;
+        data.nsmNote = data.rsmNote;
+      }
     }
     if (nsmReviewUpdate && nextNsmStatus) {
       if (existing.nsmApprovalStatus !== "PENDING") throw Object.assign(new Error("NSM review is already complete"), { status: 409 });
       data.nsmApprovalStatus = nextNsmStatus;
       data.nsmReviewedByUserId = actor.userId;
-      data.nsmReviewedByName = actor.displayName || actor.email;
+      data.nsmReviewedByName = cover === "nsm" ? onBehalfName(actor, "NSM") : actor.displayName || actor.email;
       data.nsmReviewedAt = new Date();
       data.nsmNote = text(body.nsmNote ?? body.adminNote ?? body.admin_note, 1500) || null;
       if (nextNsmStatus === "REJECTED") {

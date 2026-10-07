@@ -2,6 +2,7 @@ import "server-only";
 
 import { Prisma, type Warehouse } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
+import { rsmOrderScope } from "@/server/auth/sales-scope";
 import type { OrdersActor } from "@/lib/orderPagination";
 import { summarizeOrderSettlement } from "@/lib/orderSettlement";
 import { normalizeSku } from "@/lib/orderProductNotes.mjs";
@@ -400,9 +401,10 @@ export async function actorWhere(actor: OrdersActor, assignedDealerIds: Array<st
   return {};
 }
 
-// An RSM sees exactly the orders pushed up by its own Sales Managers.
+// An RSM sees the orders pushed up its own chain: through its Sales Managers,
+// else the dealer's ASM, else directly when the dealer has neither.
 async function buildRsmOrderWhere(actor: OrdersActor): Promise<Prisma.OrderWhereInput> {
-  return { salesManager: { parentRsmId: BigInt(actor.actorId) } };
+  return rsmOrderScope(BigInt(actor.actorId), BigInt(actor.userId ?? 0));
 }
 
 export async function listPostgresOrderHeaders(actor: OrdersActor, assignedDealerIds: Array<string | number> = []) {

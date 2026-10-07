@@ -2,6 +2,7 @@
 
 import DateInput from "@/components/ui/date-input";
 import { adultDobCutoff } from "@/lib/staffDob";
+import { normalizePhone, phoneInput, phoneInputProps } from "@/lib/fieldRules";
 import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
@@ -131,9 +132,9 @@ function InputField({
         required={required}
         disabled={disabled}
         max={max}
-        type={type}
+        {...(type === 'tel' ? phoneInputProps : { type })}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onChange(type === 'tel' ? phoneInput(event.target.value) : event.target.value)}
         placeholder={placeholder || label}
         className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition disabled:bg-gray-50 disabled:text-gray-500"
       />
@@ -401,8 +402,8 @@ export default function EditStaffPage() {
         setLocation(String(data.staff_location || data.location || ''))
         setUsername(String(data.staff_username || data.username || data.staff_email || data.email || ''))
 
-        setMobileNo(String(data.mobileNo || data.staff_mobile || data.mobile_no || ''))
-        setAlternateNo(String(data.alternateNo || data.alternate_no || ''))
+        setMobileNo(normalizePhone(data.mobileNo || data.staff_mobile || data.mobile_no))
+        setAlternateNo(normalizePhone(data.alternateNo || data.alternate_no))
         setPermanentAddress(String(data.permanentAddress || data.permanent_address || ''))
         const loadedPermanent = String(data.permanentAddress || data.permanent_address || '')
         const loadedLocal = String(data.localAddress || data.local_address || '')
@@ -413,8 +414,8 @@ export default function EditStaffPage() {
         setNationality(String(data.nationality || data.staff_nationality || ''))
         setMaritalStatus(String(data.maritalStatus || data.marital_status || ''))
         setQualification(String(data.qualification || data.staff_qualification || ''))
-        setEmergencyContactNo1(String(data.emergencyContactNo1 || data.emergency_contact_no_1 || ''))
-        setEmergencyContactNo2(String(data.emergencyContactNo2 || data.emergency_contact_no_2 || ''))
+        setEmergencyContactNo1(normalizePhone(data.emergencyContactNo1 || data.emergency_contact_no_1))
+        setEmergencyContactNo2(normalizePhone(data.emergencyContactNo2 || data.emergency_contact_no_2))
 
         setRole(toFormRole(data as { role?: string; staff_roletype?: string; staffRoleType?: string }))
         setSalesRegion(String(data.sales_region || data.salesRegion || ''))

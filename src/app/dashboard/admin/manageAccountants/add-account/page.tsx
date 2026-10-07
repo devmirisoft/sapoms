@@ -6,6 +6,7 @@ import {
   Users, Mail, Phone, ShieldCheck, Loader2, RefreshCw,
 } from "lucide-react";
 import { showToast } from "@/components/ui/toast";
+import { PHONE_ERROR, isValidPhone, phoneInput } from "@/lib/fieldRules";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 type Accountant = {
@@ -94,7 +95,7 @@ function AccountantModal({
   const [errors, setErrors] = useState<Partial<FormState>>({});
 
   const set = (key: keyof FormState) => (e: React.ChangeEvent<HTMLInputElement>) => {
-    setForm(f => ({ ...f, [key]: e.target.value }));
+    setForm(f => ({ ...f, [key]: key === "phone" ? phoneInput(e.target.value) : e.target.value }));
     setErrors(er => ({ ...er, [key]: "" }));
   };
 
@@ -108,6 +109,7 @@ function AccountantModal({
       else if (form.password.length < 6) e.password = "Min 6 characters";
     }
     if (!form.phone.trim()) e.phone = "Phone is required";
+    else if (!isValidPhone(form.phone)) e.phone = PHONE_ERROR;
     setErrors(e);
     return Object.keys(e).length === 0;
   };

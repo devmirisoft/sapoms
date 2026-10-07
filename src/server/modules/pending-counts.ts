@@ -1,7 +1,7 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
-import { buildRsmDiscountRequestWhere, isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
+import { buildRsmDiscountRequestWhere, coversNsmStage, coversRsmStage, dealerRequestCoverIds, isAdminLike, isStaffLike, orphanRsmDiscountWhere, orphanRsmFundWhere } from "@/server/auth/sales-scope";
 import { buildFundRequestScope, STAGE_REQUIRES } from "@/lib/dealerFundRequests";
 import { actorWhere } from "@/lib/postgresOrders";
 import { fetchStaffAssignedDealerIds, orderActorFromAuth } from "@/lib/orderScopeServer";
@@ -40,12 +40,17 @@ export async function countsFor(actor: AuthActor) {
 
     // Discount approvals: the NSM reviews large RSM-cleared asks, admin the
     // RSM-cleared queue once any NSM stage is cleared, an RSM their own
-    // region's unreviewed one, other staff only their own requests.
+    // region's unreviewed one, other staff only their own requests. The NSM
+    // also gets RSM-stage asks with no available RSM; Admin, with no active
+    // NSM, gets those and the NSM stage too.
     if (actor.role !== "ACCOUNTANT") {
       add("discountRequests", async () => {
         const where: Prisma.CustomDiscountRequestWhereInput = { status: "PENDING" };
-        if (actor.role === "NSM") Object.assign(where, { rsmApprovalStatus: "APPROVED", nsmApprovalStatus: "PENDING" });
-        else if (isAdminLike(actor)) Object.assign(where, { rsmApprovalStatus: "APPROVED", OR: [{ nsmApprovalStatus: null }, { nsmApprovalStatus: "APPROVED" }] });
+        const [rsmCover, nsmCover] = await Promise.all([coversRsmStage(actor, prisma), coversNsmStage(actor, prisma)]);
+        const nsmQueue: Prisma.CustomDiscountRequestWhereInput = { rsmApprovalStatus: "APPROVED", nsmApprovalStatus: "PENDING" };
+        const adminQueue: Prisma.CustomDiscountRequestWhereInput = { rsmApprovalStatus: "APPROVED", OR: [{ nsmApprovalStatus: null }, { nsmApprovalStatus: "APPROVED" }] };
+        if (actor.role === "NSM") Object.assign(where, { OR: [nsmQueue, ...(rsmCover ? [orphanRsmDiscountWhere] : [])] });
+        else if (isAdminLike(actor)) Object.assign(where, { OR: [adminQueue, ...(nsmCover ? [nsmQueue] : []), ...(rsmCover ? [orphanRsmDiscountWhere] : [])] });
         else if (actor.role === "RSM") Object.assign(where, await buildRsmDiscountRequestWhere(actor, prisma), { rsmApprovalStatus: "PENDING" });
         else if (isStaffLike(actor)) where.staffId = actor.staffId;
         else return 0;
@@ -63,15 +68,19 @@ export async function countsFor(actor: AuthActor) {
         const scope = await buildFundRequestScope(actor, prisma);
         return prisma.dealerFundRequest.count({ where: { ...scope, status: STAGE_REQUIRES[stage] } });
       });
+    } else if (isAdminLike(actor)) {
+      // RSM-stage requests the NSM/Admin approve for an unavailable RSM.
+      add("fundRequests", async () => (await coversRsmStage(actor, prisma)) ? prisma.dealerFundRequest.count({ where: orphanRsmFundWhere }) : 0);
     }
 
-    // Dealer requests: admin's queue, an RSM's team queue, others their own open ones.
+    // Dealer requests: admin's queue (plus RSM-stage ones with no available RSM),
+    // an RSM's team queue, others their own open ones.
     if (isAdminLike(actor) || isStaffLike(actor)) {
-      add("dealerRequests", () => prisma.dealerRequest.count({
+      add("dealerRequests", async () => (await prisma.dealerRequest.count({
         where: isAdminLike(actor) ? { status: "pending" }
           : actor.role === "RSM" ? { status: "rsm_pending", rsmUserId: actor.userId }
           : { status: { in: ["pending", "rsm_pending"] }, submittedById: actor.staffId?.toString() ?? "" },
-      }));
+      })) + (isAdminLike(actor) ? (await dealerRequestCoverIds(actor, prisma)).size : 0));
     }
 
     if (actor.role === "ACCOUNTANT") {

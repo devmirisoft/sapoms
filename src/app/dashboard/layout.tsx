@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, LogOut, Maximize, Minimize, Moon, Sun, UserRound } from "lucide-react";
+import { ChevronDown, LogOut, Maximize, Minimize, Moon, RefreshCw, Sun, UserRound } from "lucide-react";
 
 import RouteGuard from "@/components/auth/RouteGuard";
 import DashboardSmartSearch from "@/components/dashboard/DashboardSmartSearch";
@@ -134,6 +134,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <RouteGuard>
       <style>{`
+        /* Glyphs 20% larger without changing layout: font-size-adjust sets x-height = 0.62 x font-size (Arial native is ~0.519; 0.519 x 1.2 = 0.62). */
+        html { font-size-adjust: 0.62; }
         .dl-topbar {
           position: sticky;
           top: 0;
@@ -439,6 +441,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 title={fullscreen ? "Exit full screen" : "Full screen"}
               >
                 {fullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
+              </button>
+
+              <button
+                className="dl-icon-btn"
+                onClick={() => window.location.reload()}
+                aria-label="Refresh page"
+                title="Refresh"
+              >
+                <RefreshCw size={18} />
               </button>
 
               <button

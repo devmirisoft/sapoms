@@ -4,6 +4,7 @@ import { prisma } from "@/server/db/prisma";
 import { requireAuth } from "@/server/auth/session";
 import { mapDealerProfileAliases } from "@/server/modules/profiles/profile-aliases";
 import { staffRoleLabel, resolveStaffRoleKey } from "@/lib/staffRoleLabel";
+import { PHONE_ERROR, normalizePhone } from "@/lib/fieldRules";
 
 export const runtime = "nodejs";
 
@@ -131,6 +132,8 @@ export async function PATCH(request: NextRequest) {
     if (actor.role !== "DEALER" || !actor.dealerId) return NextResponse.json({ success: false, message: "Forbidden" }, { status: 403 });
     const body = await request.json().catch(() => ({}));
     const input = body && typeof body === "object" ? body as Record<string, unknown> : {};
+    const phone = normalizePhone(bodyText(input, ["Dealer_Number", "phone"]));
+    if (phone && phone.length !== 10) return NextResponse.json({ success: false, message: PHONE_ERROR }, { status: 400 });
     // Password changes go through POST /api/dealer/password only - it validates,
     // requires the current password, and revokes the dealer's other sessions.
     await prisma.$transaction(async (tx) => {
@@ -138,7 +141,7 @@ export async function PATCH(request: NextRequest) {
         where: { id: actor.dealerId },
         data: {
           businessName: bodyText(input, ["Dealer_Name", "name", "businessName"], 300),
-          phone: bodyText(input, ["Dealer_Number", "phone"], 80) || null,
+          phone: phone || null,
           city: bodyText(input, ["Dealer_City", "city"], 160) || null,
           address: bodyText(input, ["Dealer_Address", "address"], 1000) || null,
           pincode: bodyText(input, ["Dealer_Pincode", "pincode"], 40) || null,

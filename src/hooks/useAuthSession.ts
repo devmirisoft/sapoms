@@ -106,7 +106,8 @@ async function fetchCurrentSession(): Promise<AuthSession> {
     status: "authenticated",
     role,
     roletype: roleTypeForRole(role, user),
-    user: { ...user, role },
+    // authRole keeps the server role ("nsm") that the app role collapses into "admin".
+    user: { ...user, authRole: user.role, role },
   };
 }
 

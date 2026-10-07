@@ -1,7 +1,7 @@
 import { Prisma, type DealerRequest } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/server/auth/session";
-import { isAdminLike, isStaffLike, resolveDealerRequestRoute } from "@/server/auth/sales-scope";
+import { dealerRequestCoverIds, isAdminLike, isStaffLike, onBehalfName, resolveDealerRequestRoute } from "@/server/auth/sales-scope";
 import { errorStatus } from "@/server/http/auth-error";
 
 import { AdminRouteError } from "@/server/admin/admin-errors";
@@ -94,6 +94,9 @@ function buildDealerInputFromSnapshot(snapshot: ReturnType<typeof normalizeDeale
     secondaryContactEmail: snapshot.secondaryContactEmail,
     status: "ACTIVE",
     assignedStaffIds: snapshot.assignedStaffIds,
+    // The RSM link gives the dealer its region and RSM order routing.
+    rsmUserId: snapshot.rsmUserId,
+    region: snapshot.region,
     walletActive: snapshot.paymentType === "advance",
   });
 }
@@ -147,7 +150,8 @@ export async function GET(
       return buildResponseError("Invalid dealer request id", 400);
     }
 
-    const actor = actorFromAuth(await requireAuth());
+    const authActor = await requireAuth();
+    const actor = actorFromAuth(authActor);
 
     if (!actor || (actor.role !== "admin" && actor.role !== "staff")) {
       return buildResponseError("Dealer request access is restricted to admin and staff-like roles", 403);
@@ -160,7 +164,8 @@ export async function GET(
       return buildResponseError("Dealer request not found", 404);
     }
 
-    return NextResponse.json({ success: true, data: toDealerRequestDetail(doc) });
+    const rsmCover = (await dealerRequestCoverIds(authActor, prisma)).has(oid.toString());
+    return NextResponse.json({ success: true, data: { ...toDealerRequestDetail(doc), rsmCover } });
   } catch (error) {
     console.error("[GET /api/dealer-requests/[id]]", error);
     const authStatus = errorStatus(error, 0);
@@ -218,7 +223,10 @@ export async function PATCH(
     // A Sales Manager/ASM request is the RSM's to accept or reject before admin
     // sees it; the access query already limits an RSM to requests routed to it.
     const atRsmStage = current.status === "rsm_pending";
-    const canReview = atRsmStage ? actor.roletype === "RSM" : actor.role === "admin";
+    // With the request's RSM unavailable, the NSM (or Admin with no NSM) reviews it instead.
+    const rsmCover = atRsmStage && (await dealerRequestCoverIds(authActor, prisma)).has(oid.toString());
+    if (rsmCover) actor.actorName = onBehalfName(authActor, "RSM");
+    const canReview = atRsmStage ? actor.roletype === "RSM" || rsmCover : actor.role === "admin";
     if ((action === "accept" || action === "reject") && !canReview) {
       return buildResponseError(atRsmStage ? "This request is waiting for RSM review" : "Only admin can review this dealer request", 403);
     }

@@ -1,6 +1,11 @@
 import { z } from "zod";
+import { optionalPhoneSchema, requiredPhoneSchema } from "@/lib/fieldRules";
 import { AdminRouteError } from "@/server/admin/admin-errors";
 import { parseAdminPagination } from "@/server/admin/admin-pagination";
+import { normalizeSalesRegion, SALES_REGIONS } from "@/server/auth/sales-scope";
+
+// The form's sales region. Only used when no RSM is linked; an RSM always wins.
+const optionalRegion = z.preprocess((value) => normalizeSalesRegion(value), z.enum(SALES_REGIONS).optional());
 
 const staffId = z.preprocess(
   (value) => (value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim()),
@@ -110,7 +115,7 @@ const additionalContacts = z.preprocess(
   (value) => (value === undefined || value === null ? undefined : value),
   z.array(z.object({
     name: z.preprocess((value) => String(value ?? "").trim(), z.string().min(1).max(200)),
-    phone: z.preprocess((value) => String(value ?? "").trim(), z.string().min(1).max(30)),
+    phone: requiredPhoneSchema,
     email: z.preprocess((value) => String(value ?? "").trim().toLowerCase(), z.string().email().max(200)),
   })).max(20).optional(),
 );
@@ -144,6 +149,7 @@ function aliases(body: Record<string, unknown>) {
     status: body.status,
     assignedStaffIds: body.assignedStaffIds ?? body.assignedstaff,
     rsmUserId: body.rsmUserId ?? body.rsmId ?? body.regionalManagerId,
+    region: body.region,
     walletActive: body.walletActive ?? body.paymentType,
   };
 }
@@ -153,7 +159,7 @@ const createSchema = z.preprocess((value) => aliases((value && typeof value === 
   email: z.preprocess((value) => String(value ?? "").trim().toLowerCase(), z.string().email()),
   username: optionalUsername,
   password: z.string().min(10).max(200),
-  phone: text(30),
+  phone: optionalPhoneSchema,
   dealerCode: text(50),
   address: text(500),
   city: text(100),
@@ -168,13 +174,14 @@ const createSchema = z.preprocess((value) => aliases((value && typeof value === 
   priorityContact: optionalPriorityContact,
   contactName: text(200),
   secondaryContactName: text(200),
-  secondaryContactPhone: text(30),
+  secondaryContactPhone: optionalPhoneSchema,
   secondaryContactEmail: optionalEmail,
   additionalContacts,
   imageUrl: text(1000),
   status: z.enum(["ACTIVE", "INACTIVE", "SUSPENDED"]).optional(),
   assignedStaffIds: staffIds.default([]).refine((value) => value.length > 0, "Assign at least one staff member"),
   rsmUserId: optionalBigIntString,
+  region: optionalRegion,
   walletActive: optionalBoolean,
 }));
 
@@ -182,7 +189,7 @@ const updateSchema = z.preprocess((value) => aliases((value && typeof value === 
   businessName: text(200),
   email: z.preprocess((value) => value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim().toLowerCase(), z.string().email().optional()),
   username: optionalUsername,
-  phone: text(30),
+  phone: optionalPhoneSchema,
   dealerCode: text(50),
   address: text(500),
   city: text(100),
@@ -197,12 +204,13 @@ const updateSchema = z.preprocess((value) => aliases((value && typeof value === 
   priorityContact: optionalPriorityContact,
   contactName: text(200),
   secondaryContactName: text(200),
-  secondaryContactPhone: text(30),
+  secondaryContactPhone: optionalPhoneSchema,
   secondaryContactEmail: optionalEmail,
   additionalContacts,
   imageUrl: text(1000),
   assignedStaffIds: optionalStaffIds,
   rsmUserId: optionalBigIntString,
+  region: optionalRegion,
   walletActive: optionalBoolean,
 }).refine((value) => Object.values(value).some((entry) => entry !== undefined), "At least one field is required"));
 
@@ -214,6 +222,7 @@ const statusSchema = z.object({
 const staffReplaceSchema = z.object({
   staffIds,
   rsmUserId: optionalBigIntString,
+  region: optionalRegion,
 });
 
 function parseWith<T>(schema: z.ZodType<T>, body: unknown): T {

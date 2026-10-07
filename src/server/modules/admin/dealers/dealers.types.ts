@@ -85,6 +85,7 @@ export type CreateAdminDealerInput = {
   status?: UserStatus;
   assignedStaffIds: string[];
   rsmUserId?: string;
+  region?: SalesRegion;
   walletActive?: boolean;
 };
 
@@ -109,8 +110,12 @@ export interface AdminDealerRepository {
   updateStatus(dealerId: bigint, input: UpdateDealerStatusInput, actor: AuthActor): Promise<AdminDealerRecord>;
   softDelete(dealerId: bigint, actor: AuthActor): Promise<void>;
   getStaffAssignments(dealerId: bigint): Promise<AdminDealerStaffAssignment[]>;
-  replaceStaffAssignments(dealerId: bigint, staffIds: bigint[], actor: AuthActor, rsmUserId?: bigint): Promise<AdminDealerStaffAssignment[]>;
+  replaceStaffAssignments(dealerId: bigint, staffIds: bigint[], actor: AuthActor, routing?: DealerRoutingInput): Promise<AdminDealerStaffAssignment[]>;
 }
 
 
 
+
+// RSM link for a dealer. With `region` set, an absent rsmUserId clears the RSM
+// and the dealer keeps that region (a region with no active RSM).
+export type DealerRoutingInput = { rsmUserId?: bigint; region?: SalesRegion };

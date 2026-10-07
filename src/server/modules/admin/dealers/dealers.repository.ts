@@ -20,6 +20,7 @@ import type {
   AdminDealerStaffAssignment,
   AuthActor,
   CreateAdminDealerInput,
+  DealerRoutingInput,
   UpdateAdminDealerInput,
   UpdateDealerStatusInput,
 } from "./dealers.types";
@@ -224,7 +225,7 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
       secondaryContactEmail: cleanOptional(input.secondaryContactEmail),
       additionalContacts: input.additionalContacts ?? undefined,
       imageUrl: cleanOptional(input.imageUrl),
-      region: rsm?.region,
+      region: rsm?.region ?? input.region,
       rsmUserId: rsm?.rsmUserId,
       createdByUserId: actor.userId,
     } });
@@ -236,7 +237,7 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
         note: "Activated during dealer creation",
       });
     }
-    await audit(tx, actor, "ADMIN_DEALER_CREATED", { dealerId: dealer.id.toString(), assignedStaffIds: staffIds.map(String), rsmUserId: rsm?.rsmUserId?.toString(), region: rsm?.region, walletActive: Boolean(input.walletActive) }, {
+    await audit(tx, actor, "ADMIN_DEALER_CREATED", { dealerId: dealer.id.toString(), assignedStaffIds: staffIds.map(String), rsmUserId: rsm?.rsmUserId?.toString(), region: rsm?.region ?? input.region, walletActive: Boolean(input.walletActive) }, {
       action: AUDIT_ACTION.CREATE,
       newValues: { businessName: input.businessName, dealerCode: input.dealerCode, email: input.email, city: input.city, state: input.state },
     });
@@ -339,10 +340,10 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
             changedFields.push("walletActive");
           }
         }
-        if (input.rsmUserId !== undefined) {
+        if (input.rsmUserId !== undefined || input.region !== undefined) {
           const rsm = await resolveRsm(tx, input.rsmUserId ? BigInt(input.rsmUserId) : undefined);
           dealerData.regionalManager = rsm?.rsmUserId ? { connect: { id: rsm.rsmUserId } } : { disconnect: true };
-          dealerData.region = rsm?.region ?? null;
+          dealerData.region = rsm?.region ?? input.region ?? null;
           changedFields.push("rsmUserId", "region");
         }
         if (input.assignedStaffIds !== undefined) {
@@ -433,15 +434,16 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
     return prisma.dealerStaffAssignment.findMany({ where: { dealerId, active: true }, include: staffAssignmentInclude, orderBy: { assignedAt: "desc" } });
   }
 
-  async replaceStaffAssignments(dealerId: bigint, staffIds: bigint[], actor: AuthActor, rsmUserId?: bigint): Promise<AdminDealerStaffAssignment[]> {
+  async replaceStaffAssignments(dealerId: bigint, staffIds: bigint[], actor: AuthActor, routing: DealerRoutingInput = {}): Promise<AdminDealerStaffAssignment[]> {
+    const { rsmUserId, region } = routing;
     return prisma.$transaction(async (tx) => {
       const dealer = await tx.dealerProfile.findFirst({ where: { id: dealerId, deletedAt: null, user: { deletedAt: null } }, select: { id: true } });
       if (!dealer) throw notFound("Dealer not found", "DEALER_NOT_FOUND");
       const requested = Array.from(new Set(staffIds));
       await ensureStaff(tx, requested);
-      if (rsmUserId !== undefined) {
+      if (rsmUserId !== undefined || region !== undefined) {
         const rsm = await resolveRsm(tx, rsmUserId);
-        await tx.dealerProfile.update({ where: { id: dealerId }, data: { rsmUserId: rsm?.rsmUserId ?? null, region: rsm?.region ?? null } });
+        await tx.dealerProfile.update({ where: { id: dealerId }, data: { rsmUserId: rsm?.rsmUserId ?? null, region: rsm?.region ?? region ?? null } });
       }
       const now = new Date();
       const current = await tx.dealerStaffAssignment.findMany({ where: { dealerId } });

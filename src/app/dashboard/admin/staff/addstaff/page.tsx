@@ -2,6 +2,7 @@
 
 import DateInput from "@/components/ui/date-input";
 import { adultDobCutoff } from "@/lib/staffDob";
+import { phoneInput, phoneInputProps } from "@/lib/fieldRules";
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Eye, EyeOff } from 'lucide-react'
@@ -68,9 +69,9 @@ function InputField({ label, value, onChange, type = 'text', placeholder, requir
       ) : (
       <input
         required={required}
-        type={type}
+        {...(type === 'tel' ? phoneInputProps : { type })}
         value={value}
-        onChange={e => onChange(e.target.value)}
+        onChange={e => onChange(type === 'tel' ? phoneInput(e.target.value) : e.target.value)}
         placeholder={placeholder || label}
         readOnly={readOnly}
         className={`px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition ${readOnly ? 'bg-gray-100 text-gray-500 cursor-not-allowed' : 'bg-white'}`}

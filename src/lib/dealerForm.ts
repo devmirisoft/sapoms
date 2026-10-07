@@ -1,3 +1,5 @@
+import { PHONE_ERROR, isValidPhone } from "@/lib/fieldRules";
+
 export type StaffMember = {
   staff_id: string;
   id?: string;
@@ -57,6 +59,9 @@ export type DealerFormSnapshot = DealerFormValues & {
   assignedStaffIds: string[];
   staffNames: string;
   rsmUserId?: string;
+  // Sales region picked on the form. Kept for a region with no active RSM, where
+  // the region cannot be derived from rsmUserId on the server.
+  region?: string;
 };
 
 export const emptyDealerForm: DealerFormValues = {
@@ -158,6 +163,7 @@ export function normalizeDealerFormSnapshot(value: unknown): DealerFormSnapshot 
     assignedStaffIds: normalizeStaffIds(source.assignedStaffIds),
     staffNames: cleanText(source.staffNames),
     rsmUserId: cleanText(source.rsmUserId),
+    region: cleanText(source.region),
   };
 }
 
@@ -186,6 +192,11 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
     }
   }
 
+  if (!isValidPhone(snapshot.whatsapp)) return `WhatsApp number: ${PHONE_ERROR}`;
+
+  const discount = Number(snapshot.discount);
+  if (!(discount >= 0 && discount <= 100)) return "Discount % must be between 0 and 100";
+
   if (cleanText(snapshot.gstNo).length !== 15) {
     return "GST number must be 15 characters";
   }
@@ -211,6 +222,7 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
   if (snapshot.priorityPerson === "secondary" || hasSecondaryContact) {
     if (!cleanText(snapshot.secondaryContactName)) return "Second contact name is required";
     if (!cleanText(snapshot.secondaryContactPhone)) return "Second contact phone is required";
+    if (!isValidPhone(snapshot.secondaryContactPhone)) return `Second contact phone: ${PHONE_ERROR}`;
     if (!cleanText(snapshot.secondaryContactEmail)) return "Second contact email is required";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(snapshot.secondaryContactEmail)) {
       return "Enter a valid second contact email address";
@@ -221,6 +233,7 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
     const position = index + 3;
     if (!contact.name) return `Contact ${position} name is required`;
     if (!contact.phone) return `Contact ${position} phone is required`;
+    if (!isValidPhone(contact.phone)) return `Contact ${position} phone: ${PHONE_ERROR}`;
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact.email)) return `Enter a valid contact ${position} email address`;
   }
 
@@ -287,11 +300,140 @@ export function toDealerFormSnapshot(
   assignedStaffIds: string[],
   staffNames: string,
   rsmUserId = "",
+  region = "",
 ): DealerFormSnapshot {
   return normalizeDealerFormSnapshot({
     ...values,
     assignedStaffIds,
     staffNames,
     rsmUserId,
+    region,
   });
+}
+
+/* ---- Staff assignment (shared by Add Dealer and Edit Dealer) ----
+   The admin picks a region, then one sales person from it (lowest role first).
+   The slots above that person fill from their real parents; a region's RSM is
+   always linked so the dealer keeps its region and RSM approval routing. */
+
+export type AssignmentRoleKey = "rsm" | "asm" | "salesManager" | "executive";
+export type RoleAssignments = Record<AssignmentRoleKey, string>;
+export type SalesRoleKey = Exclude<AssignmentRoleKey, "executive">;
+type RoleOptions = Record<AssignmentRoleKey, StaffMember[]>;
+
+export const EMPTY_ROLE_ASSIGNMENTS: RoleAssignments = { rsm: "", asm: "", salesManager: "", executive: "" };
+
+// Lowest role first: the dropdown lists people in this order.
+export const SALES_ROLE_GROUPS: Array<{ key: SalesRoleKey; label: string }> = [
+  { key: "salesManager", label: "Sales Manager" },
+  { key: "asm", label: "ASM" },
+  { key: "rsm", label: "RSM" },
+];
+
+export function uniqueStaffIds(ids: string[]) {
+  return Array.from(new Set(ids.map((id) => String(id).trim()).filter(Boolean)));
+}
+
+export function normalizeStaffRole(staff: StaffMember): AssignmentRoleKey | null {
+  const role = String(staff.role ?? "").toUpperCase();
+  const roleType = String((staff as StaffMember & { staffRoleType?: string | number }).staffRoleType ?? staff.staff_roletype ?? "").toUpperCase();
+
+  if (role === "RSM") return "rsm";
+  if (role === "ASM") return "asm";
+  if (role === "STAFF" && (roleType === "1" || roleType === "EXECUTIVE")) return "salesManager";
+  if (role === "STAFF" && (roleType === "2" || roleType === "STAFF")) return "executive";
+
+  return null;
+}
+
+export function buildRoleOptions(staffList: StaffMember[]): RoleOptions {
+  return staffList.reduce<RoleOptions>((groups, staff) => {
+    const roleKey = normalizeStaffRole(staff);
+    if (roleKey) groups[roleKey].push(staff);
+    return groups;
+  }, { rsm: [], asm: [], salesManager: [], executive: [] });
+}
+
+export function getStaffUserId(staffId: string, staffList: StaffMember[]) {
+  const staff = staffList.find((entry) => String(entry.staff_id) === String(staffId));
+  return String(staff?.userId ?? staff?.id ?? "").trim();
+}
+
+export function findStaffByAnyId(id: string, staffList: StaffMember[]) {
+  const normalized = String(id ?? "").trim();
+  if (!normalized) return null;
+  return staffList.find((staff) => [staff.staff_id, staff.id, staff.userId].some((value) => String(value ?? "").trim() === normalized)) ?? null;
+}
+
+const parentRsmOf = (staff: StaffMember | null) => String(staff?.parentRsmId ?? staff?.parent_rsm_id ?? "");
+const parentAsmOf = (staff: StaffMember | null) => String(staff?.parentAsmId ?? staff?.parent_asm_id ?? "");
+
+// Only RSMs carry a region; ASMs and Sales Managers take their RSM's.
+export function getStaffRegion(staff: StaffMember | null, staffList: StaffMember[]) {
+  const own = String(staff?.sales_region ?? staff?.salesRegion ?? "").trim();
+  if (own || !staff) return own;
+  const rsm = findStaffByAnyId(parentRsmOf(staff), staffList);
+  return String(rsm?.sales_region ?? rsm?.salesRegion ?? "").trim();
+}
+
+export function regionRsmId(roleOptions: RoleOptions, staffList: StaffMember[], region: string) {
+  const rsm = region ? roleOptions.rsm.find((staff) => getStaffRegion(staff, staffList) === region) : null;
+  return rsm ? String(rsm.staff_id) : "";
+}
+
+export function buildRegionSalesOptions(roleOptions: RoleOptions, staffList: StaffMember[], region: string) {
+  if (!region) return [];
+  return SALES_ROLE_GROUPS
+    .map((group) => ({ ...group, staff: roleOptions[group.key].filter((staff) => getStaffRegion(staff, staffList) === region) }))
+    .filter((group) => group.staff.length > 0);
+}
+
+// A new region resets the sales chain to just that region's RSM (if any).
+export function selectRegion(prev: RoleAssignments, roleOptions: RoleOptions, staffList: StaffMember[], region: string): RoleAssignments {
+  return { ...EMPTY_ROLE_ASSIGNMENTS, executive: prev.executive, rsm: regionRsmId(roleOptions, staffList, region) };
+}
+
+// Picking a sales person fills their slot and the real parents above them.
+export function selectSalesPerson(prev: RoleAssignments, roleOptions: RoleOptions, staffList: StaffMember[], region: string, staffId: string): RoleAssignments {
+  const next = selectRegion(prev, roleOptions, staffList, region);
+  const staff = findStaffByAnyId(staffId, staffList);
+  const roleKey = staff ? normalizeStaffRole(staff) : null;
+  if (!staff || !roleKey || roleKey === "executive") return next;
+
+  next[roleKey] = String(staff.staff_id);
+  if (roleKey === "salesManager") {
+    const asm = findStaffByAnyId(parentAsmOf(staff), roleOptions.asm);
+    if (asm) next.asm = String(asm.staff_id);
+  }
+  if (roleKey !== "rsm") {
+    const rsm = findStaffByAnyId(parentRsmOf(staff), roleOptions.rsm);
+    if (rsm) next.rsm = String(rsm.staff_id);
+  }
+  return next;
+}
+
+// The single dropdown shows the lowest filled sales slot as selected.
+export function lowestSalesPerson(assignments: RoleAssignments) {
+  return assignments.salesManager || assignments.asm || assignments.rsm;
+}
+
+export function regionFromAssignments(assignments: RoleAssignments, staffList: StaffMember[]) {
+  for (const key of ["rsm", "asm", "salesManager"] as const) {
+    const region = getStaffRegion(findStaffByAnyId(assignments[key], staffList), staffList);
+    if (region) return region;
+  }
+  return "";
+}
+
+export function buildRoleAssignmentsFromIds(ids: string[], staffList: StaffMember[]): RoleAssignments {
+  const next = { ...EMPTY_ROLE_ASSIGNMENTS };
+  const staffById = new Map(staffList.map((staff) => [String(staff.staff_id), staff]));
+
+  uniqueStaffIds(ids).forEach((staffId) => {
+    const staff = staffById.get(staffId);
+    const roleKey = staff ? normalizeStaffRole(staff) : null;
+    if (roleKey && !next[roleKey]) next[roleKey] = staffId;
+  });
+
+  return next;
 }

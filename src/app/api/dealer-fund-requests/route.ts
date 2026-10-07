@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth } from "@/server/auth/session";
+import { coversRsmStage, isAdminLike, orphanRsmFundWhere } from "@/server/auth/sales-scope";
 import {
   buildFundRequestScope,
   mapFundRequest,
@@ -34,6 +35,11 @@ export async function GET(req: NextRequest) {
     // The tab filters are the RSM/Staff queue semantics; other roles list flat.
     if (tab && (actor.role === "RSM" || actor.role === "STAFF" || actor.role === "ASM")) {
       Object.assign(where, tabWhere(actor.role === "RSM" ? "rsm" : "staff", tab));
+    } else if (tab && isAdminLike(actor)) {
+      // The NSM/Admin see the RSM-stage view; "mine" is only what they approve
+      // for an unavailable RSM.
+      Object.assign(where, tabWhere("rsm", tab));
+      if (tab === "mine") Object.assign(where, (await coversRsmStage(actor, prisma)) ? orphanRsmFundWhere : { id: BigInt(-1) });
     }
     if (typeFilter === "ADVANCE_ORDER" || typeFilter === "ADDITIONAL_FUNDS") where.type = typeFilter;
 

@@ -1,10 +1,11 @@
 "use client"
 
 import { useEffect, useState } from "react";
+import { ChevronDown, ShoppingCart } from "lucide-react";
 import { GoLocation } from "react-icons/go";
-import { IoCartOutline } from "react-icons/io5";
 import AccountList from "@/components/AccountList";
 import Cart from "@/components/Cart";
+import CategoryNav from "@/components/CategoryNav";
 import HeaderSearchControl from "@/components/search/HeaderSearchControl";
 import Link from "next/link";
 import { useCartStore } from "@/Store/store";
@@ -103,6 +104,8 @@ function useLocationFromStorage() {
   return { city, pincode };
 }
 
+const navItem = "flex flex-col justify-center rounded px-2 py-1 leading-tight border border-transparent hover:border-white/40";
+
 export default function Header() {
   const router = useRouter();
   const pathname = usePathname();
@@ -134,13 +137,11 @@ export default function Header() {
   const locationBottom = city ? city : pincode ? pincode : "Update location";
 
   return (
-    <div>
-      <div className="w-full h-16 bg-linear-to-r from-[#1F4B8D] to-slate-950 text-white flex items-center px-2 py-2 gap-2">
-        <div className="flex items-center border border-transparent hover:border-white rounded px-2 py-1 cursor-pointer">
-          <Link href="/home">
-            <img src={logoImage} alt="Omsons Logo" className="h-12" />
-          </Link>
-        </div>
+    <header className="relative z-50">
+      <div className="flex h-16 w-full items-center gap-3 border-b border-white/10 bg-linear-to-r from-[#1F4B8D] to-slate-950 px-4 text-white">
+        <Link href="/home" className="shrink-0 px-2">
+          <img src={logoImage} alt="Omsons Logo" className="h-12" />
+        </Link>
 
         <div className="flex items-start gap-1 border border-transparent hover:border-white rounded px-2 py-1 cursor-pointer min-w-[120px]">
           <GoLocation className="text-xl mt-3 text-white" />
@@ -180,39 +181,42 @@ export default function Header() {
           <span className="text-sm font-bold">EN</span>
         </div>
 
-        <div className="flex flex-col border border-transparent hover:border-white rounded px-2 py-1 cursor-pointer relative group">
-          <div className="flex flex-col">
-            <span className="text-xs text-gray-300 flex">
-              Hello, <UserName />
-            </span>
-            <span className="text-sm font-bold">Account &amp; Lists</span>
-          </div>
-          <div className="absolute right-0 top-full mt-1 w-106 hidden group-hover:block z-60 bg-white shadow-lg border border-gray-200 rounded p-3 transition-all">
+        <div className={`${navItem} relative group cursor-pointer`}>
+          <span className="text-xs font-semibold">
+            Hello, <UserName />
+          </span>
+          <span className="flex items-center gap-1 text-sm font-semibold">
+            Account &amp; Lists <ChevronDown className="h-3.5 w-3.5" />
+          </span>
+          <div className="absolute right-0 top-full z-60 mt-1 hidden w-106 rounded border border-gray-200 bg-white p-3 text-black shadow-lg group-hover:block">
             <AccountList />
           </div>
         </div>
 
-        <div className="flex flex-col border border-transparent hover:border-white rounded px-2 py-1 cursor-pointer">
-          <span className="text-xs text-gray-300">Returns</span>
-          <Link href="/orders" className="text-sm font-bold">
-            &amp; Orders
-          </Link>
-        </div>
+        <Link href="/orders" className={navItem}>
+          <span className="text-xs font-semibold">Returns</span>
+          <span className="flex items-center gap-1 text-sm font-semibold">
+            &amp; Orders <ChevronDown className="h-3.5 w-3.5" />
+          </span>
+        </Link>
 
-        <div className="flex items-center gap-1 border border-transparent hover:border-white rounded px-2 py-1 cursor-pointer relative group">
-          <Link href="/Pages/Cart" className="relative" suppressHydrationWarning>
-            <IoCartOutline className="text-3xl text-white" />
-            {itemCount > 0 && (
-              <span className="absolute -top-1 -right-1 bg-[#54499d] text-white text-xs font-bold rounded-full w-4 h-4 flex items-center justify-center">
-                {itemCount}
-              </span>
-            )}
+        <div className={`${navItem} relative group`}>
+          <Link href="/Pages/Cart" className="relative" aria-label={`Cart, ${itemCount} items`} suppressHydrationWarning>
+            <ShoppingCart className="h-8 w-8" strokeWidth={1.75} />
+            <span
+              className="absolute -right-1.5 -top-1.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#1a73e8] px-1 text-[11px] font-bold"
+              suppressHydrationWarning
+            >
+              {itemCount}
+            </span>
           </Link>
-          <div className="absolute right-0 top-full mt-1 w-[440px] hidden group-hover:block z-[60] bg-white shadow-2xl border border-gray-200 rounded-xl text-black overflow-hidden">
+          <div className="absolute right-0 top-full z-[60] mt-1 hidden w-[440px] overflow-hidden rounded-xl border border-gray-200 bg-white text-black shadow-2xl group-hover:block">
             <Cart />
           </div>
         </div>
       </div>
-    </div>
+
+      <CategoryNav />
+    </header>
   );
 }

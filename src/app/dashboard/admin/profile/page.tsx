@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import axios from "axios";
 import { Save, Upload } from "lucide-react";
 import { showToast } from "@/components/ui/toast";
+import { normalizePhone, phoneInput, phoneInputProps } from "@/lib/fieldRules";
 
 const ADMIN_PROFILE_URL = "/api/admin/profile";
 
@@ -55,9 +56,9 @@ function Field({
       </label>
       <input
         required={required}
-        type={type}
+        {...(type === "tel" ? phoneInputProps : { type })}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onChange(type === "tel" ? phoneInput(event.target.value) : event.target.value)}
         className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
       />
     </div>
@@ -86,7 +87,7 @@ export default function AdminProfilePage() {
         // Prefer session/localStorage values first so recent client-side updates show immediately
         const data = admin || json.data || {};
         setName(data.ADMIN_NAME || data.name || "");
-        setPhone(data.ADMIN_PHONE || "");
+        setPhone(normalizePhone(data.ADMIN_PHONE));
         setEmail(data.ADMIN_EMAIL || data.email || "");
         setImageUrl(json.data?.ADMIN_IMAGE || "");
       } catch {
