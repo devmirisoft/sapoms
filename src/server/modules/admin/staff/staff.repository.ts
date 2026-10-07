@@ -43,11 +43,14 @@ const include = {
 
 const nsmWhereBase: Prisma.AdminProfileWhereInput = { user: { role: "NSM", status: "ACTIVE", deletedAt: null } };
 
+// The list shows an inactive NSM too (like inactive staff), so it can be reactivated.
+const nsmListWhere: Prisma.AdminProfileWhereInput = { user: { role: "NSM", deletedAt: null } };
+
 function buildNsmWhere(input: AdminStaffListInput): Prisma.AdminProfileWhereInput {
   const search = input.search.trim();
-  if (!search) return nsmWhereBase;
+  if (!search) return nsmListWhere;
   return {
-    ...nsmWhereBase,
+    ...nsmListWhere,
     OR: [
       { displayName: { contains: search, mode: "insensitive" } },
       { user: { email: { contains: search, mode: "insensitive" } } },
