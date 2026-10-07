@@ -8,7 +8,7 @@ import {
   ShieldCheck, Gift, Receipt, TrendingUp, BookOpen, FileText,
   Wallet, MapPinned, ChevronRight, Truck, ScrollText,
   Handshake, Box, FilePen, ChartColumn, Calculator, Settings,
-  SquareChevronLeft, SquareChevronRight,
+  SquareChevronLeft, SquareChevronRight, Percent,
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { logout, type AppRole, type StoredUser } from "@/lib/roleAccess";
@@ -57,6 +57,7 @@ const NAV: Record<AppRole, NavItem[]> = {
     {                         label: "Courier Services",    href: "/dashboard/admin/couriers",                        icon: <Truck size={15} />           },
     { section: "Content",     label: "Slider Images",      href: "/dashboard/admin/slider",                          icon: <Images size={15} />          },
     {                         label: "Hot Items",           href: "/dashboard/admin/hot-items",                       icon: <Images size={15} />          },
+    {                         label: "Today's Sale",        href: "/dashboard/admin/todays-sale",                     icon: <Percent size={15} />         },
     { section: "Forms",       label: "Filter Requirement Forms", href: "/dashboard/admin/forms",                    icon: <FileText size={15} />        },
     { section: "Reports",     label: "Dealer Category Report", href: "/dashboard/admin/reports/dealer-category",     icon: <TrendingUp size={15} />      },
     { section: "Accountants", label: "Manage Accountants", href: "/dashboard/admin/manageAccountants/add-account",   icon: <ShieldCheck size={15} />     },
@@ -204,7 +205,14 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     else delete root.dataset.sbPinned;
   }, [pinned]);
 
-  const togglePin = () => writePin(!pinned);
+  // Hovering the collapsed rail expands it over the page without pinning.
+  // Toggling clears it so closing from the icon collapses right away.
+  const [hovered, setHovered] = useState(false);
+  const expanded = pinned || hovered;
+  const togglePin = () => {
+    setHovered(false);
+    writePin(!pinned);
+  };
   // Accordion: at most one section open, and nothing open until clicked.
   const [openSection, setOpenSection] = useState<string | null>(null);
 
@@ -443,6 +451,8 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           /* Rail is permanent; only the toggle button opens it, and the page shifts with it. */
           .sb-panel { transform: none; width: 72px; }
           .sb-panel.pinned { width: 264px; }
+          /* Hover-expanded: floats over the page, which keeps its 72px margin. */
+          .sb-panel.peek { box-shadow: 8px 0 24px rgba(0,0,0,0.25); }
 
           .dl-shell { margin-left: 72px; }
           html[data-sb-pinned="1"] .dl-shell { margin-left: 264px; }
@@ -553,7 +563,11 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
       />
 
       {/* Panel */}
-      <aside className={`sb-panel${open ? " open" : ""}${pinned ? " pinned" : ""}`}>
+      <aside
+        className={`sb-panel${open ? " open" : ""}${expanded ? " pinned" : ""}${hovered && !pinned ? " peek" : ""}`}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+      >
 
         {/* Head */}
         <div className="sb-head">

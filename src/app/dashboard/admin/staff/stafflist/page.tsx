@@ -82,8 +82,8 @@ function statusBadge(status: StaffStatus) {
 }
 
 // Mirrors the hierarchy the staff repository writes: RSM reports to the NSM,
-// ASM to its RSM, a Sales Manager to its ASM, and plain Staff to every RSM it
-// is linked to (possibly none).
+// ASM to its RSM, a Sales Manager to its ASM (or straight to its RSM when it has
+// none), and plain Staff to every RSM it is linked to (possibly none).
 function managersOf(staff: StaffData): NonNullable<StaffRelation>[] {
   const authRole = String(staff.role ?? "").toUpperCase()
   const staffRoleType = String(staff.staff_roletype ?? "").toUpperCase()
@@ -91,7 +91,7 @@ function managersOf(staff: StaffData): NonNullable<StaffRelation>[] {
   if (authRole === "NSM") return []
   if (authRole === "RSM" || staffRoleType === "RSM") return one(staff.reportingManager)
   if (authRole === "ASM" || staffRoleType === "ASM") return one(staff.parentRsm)
-  if (staffRoleType === "1") return one(staff.parentAsm)
+  if (staffRoleType === "1") return one(staff.parentAsm ?? staff.parentRsm)
   return staff.rsms ?? []
 }
 

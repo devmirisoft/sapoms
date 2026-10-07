@@ -13,10 +13,11 @@ import { createAuditLog } from "@/server/audit/audit-log";
 import type { AdminStaffListInput, AdminStaffRecord, CreateAdminStaffInput, UpdateAdminStaffInput, UpdateStaffStatusInput } from "./staff.types";
 import { staffPageWindow } from "./staff.paging";
 import type { AuthActor } from "@/server/auth/session";
+import { getRegionStates } from "@/server/sales-region-states";
 
 function buildWhere(input: AdminStaffListInput): Prisma.StaffProfileWhereInput {
   const role: Prisma.StaffProfileWhereInput = input.role === "ASM"
-    ? { user: { role: "ASM" }, ...(input.salesRegion ? { parentRsm: { salesRegion: input.salesRegion } } : {}) }
+    ? { user: { role: "ASM" }, ...(input.salesRegion ? { OR: [{ parentRsm: { salesRegion: input.salesRegion } }, { salesRegion: input.salesRegion }] } : {}) }
     : {};
   const search = input.search.trim();
   if (!search) return role;
@@ -198,7 +199,7 @@ async function resolveRsm(tx: Prisma.TransactionClient, id: bigint | null) {
   if (!id) throw invalid("RSM parent is required", "RSM_PARENT_REQUIRED");
   const rsm = await tx.staffProfile.findFirst({
     where: { id, user: { role: "RSM", status: "ACTIVE", deletedAt: null } },
-    select: { id: true, assignedStates: true },
+    select: { id: true, assignedStates: true, salesRegion: true },
   });
   if (!rsm) throw invalid("Selected RSM was not found", "RSM_PARENT_INVALID", { rsmId: id.toString() });
   return rsm;
@@ -221,10 +222,42 @@ async function resolveAsm(tx: Prisma.TransactionClient, id: bigint | null) {
   if (!id) throw invalid("ASM parent is required", "ASM_PARENT_REQUIRED");
   const asm = await tx.staffProfile.findFirst({
     where: { id, user: { role: "ASM", status: "ACTIVE", deletedAt: null } },
-    select: { id: true, parentRsmId: true, assignedStates: true },
+    select: { id: true, parentRsmId: true, assignedStates: true, salesRegion: true, parentRsm: { select: { salesRegion: true } } },
   });
-  if (!asm?.parentRsmId) throw invalid("Selected ASM was not found or has no RSM parent", "ASM_PARENT_INVALID", { asmId: id.toString() });
-  return { id: asm.id, parentRsmId: asm.parentRsmId, assignedStates: asm.assignedStates };
+  // An ASM in a region with no RSM yet has no parent; it carries its own region.
+  if (!asm) throw invalid("Selected ASM was not found", "ASM_PARENT_INVALID", { asmId: id.toString() });
+  return { id: asm.id, parentRsmId: asm.parentRsmId, assignedStates: asm.assignedStates, region: asm.salesRegion ?? asm.parentRsm?.salesRegion ?? null };
+}
+
+/**
+ * Where an ASM or Sales Manager sits, and the states its territory is cut from.
+ * A named ASM or RSM wins; otherwise the region's active RSM is used. A region
+ * with no RSM leaves the person floating there - the NSM covers their approvals
+ * (sales-scope fallback) and the region's own state list is their territory
+ * until an RSM is created and adopts them (adoptFloatingStaff).
+ */
+async function resolveSalesParent(tx: Prisma.TransactionClient, asmId: bigint | null, rsmId: bigint | null, region: SalesRegion | null | undefined) {
+  if (asmId) {
+    const asm = await resolveAsm(tx, asmId);
+    return { parentAsmId: asm.id as bigint | null, parentRsmId: asm.parentRsmId, region: asm.region, scopeStates: asm.assignedStates };
+  }
+  const rsm = rsmId
+    ? await resolveRsm(tx, rsmId)
+    : region
+      ? await tx.staffProfile.findFirst({ where: { salesRegion: region, user: { role: "RSM", status: "ACTIVE", deletedAt: null } }, select: { id: true, assignedStates: true, salesRegion: true } })
+      : null;
+  if (rsm) return { parentAsmId: null as bigint | null, parentRsmId: rsm.id as bigint | null, region: rsm.salesRegion, scopeStates: rsm.assignedStates };
+  if (!region) throw invalid("Region is required", "STAFF_REGION_REQUIRED");
+  return { parentAsmId: null as bigint | null, parentRsmId: null as bigint | null, region, scopeStates: (await getRegionStates(tx))[region] ?? [] };
+}
+
+// A new or reactivated RSM takes in the ASMs and Sales Managers already floating in its region.
+async function adoptFloatingStaff(tx: Prisma.TransactionClient, rsmId: bigint, region: SalesRegion | null) {
+  if (!region) return;
+  await tx.staffProfile.updateMany({
+    where: { salesRegion: region, parentRsmId: null, staffRoleType: { in: ["ASM", "1"] } },
+    data: { parentRsmId: rsmId },
+  });
 }
 
 async function resolveNsm(tx: Prisma.TransactionClient, id: bigint | null) {
@@ -319,20 +352,23 @@ export class PostgresAdminStaffRepository {
       let rsmIds: bigint[] = [];
       let assignedStates = uniqueStrings(input.assignedStates);
       let assignedCities = uniqueStrings(input.assignedCities);
+      let salesRegion: SalesRegion | null = input.role === "RSM" ? input.salesRegion ?? null : null;
 
       if (input.role === "ASM") {
-        const rsm = await resolveRsm(tx, parseId(input.parentRsmId, "ASM_RSM_INVALID"));
-        assertSubset(assignedStates, rsm.assignedStates, "ASM_STATES_OUTSIDE_RSM_SCOPE");
-        parentRsmId = rsm.id;
+        const parent = await resolveSalesParent(tx, null, parseId(input.parentRsmId, "ASM_RSM_INVALID"), input.salesRegion);
+        assertSubset(assignedStates, parent.scopeStates, "ASM_STATES_OUTSIDE_RSM_SCOPE");
+        parentRsmId = parent.parentRsmId;
+        salesRegion = parent.region;
         assignedCities = [];
       } else if (input.role === "STAFF" && input.staffRoleType === "1") {
-        const asm = await resolveAsm(tx, parseId(input.parentAsmId, "EXECUTIVE_ASM_INVALID"));
-        parentAsmId = asm.id;
-        parentRsmId = asm.parentRsmId;
-        // A Sales Manager works a subset of the cities in its ASM's assigned
+        const parent = await resolveSalesParent(tx, parseId(input.parentAsmId, "EXECUTIVE_ASM_INVALID"), parseId(input.parentRsmId, "EXECUTIVE_RSM_INVALID"), input.salesRegion);
+        parentAsmId = parent.parentAsmId;
+        parentRsmId = parent.parentRsmId;
+        salesRegion = parent.region;
+        // A Sales Manager works a subset of the cities in its parent's assigned
         // states; its own states are derived from those cities.
-        assertSubset(assignedCities, citiesForStates(asm.assignedStates), "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities");
-        assignedStates = statesForCities(assignedCities, asm.assignedStates);
+        assertSubset(assignedCities, citiesForStates(parent.scopeStates), "EXECUTIVE_CITIES_OUTSIDE_SCOPE", "cities");
+        assignedStates = statesForCities(assignedCities, parent.scopeStates);
       } else if (input.role === "STAFF" && input.staffRoleType === "2") {
         rsmIds = await resolveRsmIds(tx, input.rsmIds);
         assignedStates = [];
@@ -387,7 +423,7 @@ export class PostgresAdminStaffRepository {
           emergencyContactNo1: cleanOptional(input.emergencyContactNo1),
           emergencyContactNo2: cleanOptional(input.emergencyContactNo2),
           staffRoleType: input.role === "RSM" ? "RSM" : input.role === "ASM" ? "ASM" : cleanOptional(input.staffRoleType),
-          salesRegion: input.role === "RSM" ? input.salesRegion : null,
+          salesRegion,
           warehouse: input.warehouse ?? null,
           assignedStates,
           assignedCities,
@@ -396,6 +432,7 @@ export class PostgresAdminStaffRepository {
         },
         include,
       });
+      if (input.role === "RSM" && staff.user.status === "ACTIVE") await adoptFloatingStaff(tx, staff.id, staff.salesRegion);
       await audit(tx, actor, input.role === "RSM" ? "ADMIN_RSM_CREATED" : "ADMIN_STAFF_CREATED", { staffId: staff.id.toString(), region: staff.salesRegion, parentRsmId: staff.parentRsmId?.toString(), parentAsmId: staff.parentAsmId?.toString(), reportingManagerId: staff.reportingManagerId?.toString() }, {
         action: AUDIT_ACTION.CREATE,
         newValues: { name: input.name, email: input.email, role: input.role, salesRegion: staff.salesRegion },
@@ -445,29 +482,39 @@ export class PostgresAdminStaffRepository {
           staffData.reportingManager = { connect: { id: nsm.id } };
         }
       } else if (nextRole === "ASM") {
-        const rsm = await resolveRsm(tx, parseId(input.parentRsmId ?? current.parentRsmId?.toString(), "ASM_RSM_INVALID"));
+        // A new region without an RSM named means "the region's RSM, or float there".
+        const rsmId = input.parentRsmId ?? (input.salesRegion !== undefined ? undefined : current.parentRsmId?.toString());
+        const parent = await resolveSalesParent(tx, null, parseId(rsmId, "ASM_RSM_INVALID"), input.salesRegion ?? current.salesRegion);
         const assignedStates = uniqueStrings(input.assignedStates ?? current.assignedStates);
-        assertSubset(assignedStates, rsm.assignedStates, "ASM_STATES_OUTSIDE_RSM_SCOPE");
+        assertSubset(assignedStates, parent.scopeStates, "ASM_STATES_OUTSIDE_RSM_SCOPE");
         staffData.staffRoleType = "ASM";
-        staffData.salesRegion = null;
+        staffData.salesRegion = parent.region;
         staffData.warehouse = null;
-        staffData.parentRsm = { connect: { id: rsm.id } };
+        staffData.parentRsm = parent.parentRsmId ? { connect: { id: parent.parentRsmId } } : { disconnect: true };
         staffData.parentAsm = { disconnect: true };
         staffData.assignedStates = assignedStates;
         staffData.assignedCities = [];
         staffData.reportingManager = { disconnect: true };
       } else if (nextRole === "STAFF" && nextStaffRoleType === "1") {
-        const asm = await resolveAsm(tx, parseId(input.parentAsmId ?? current.parentAsmId?.toString(), "EXECUTIVE_ASM_INVALID"));
-        // Re-validate against the ASM even when the cities were not edited: the
-        // ASM may have changed, or its own territory may have shrunk since.
+        // Naming only an RSM moves the Sales Manager directly under it (no ASM);
+        // naming only a region puts it under that region's RSM, or floats it there.
+        const newParent = input.parentAsmId !== undefined || input.parentRsmId !== undefined || input.salesRegion !== undefined;
+        const parent = await resolveSalesParent(
+          tx,
+          parseId(input.parentAsmId ?? (newParent ? undefined : current.parentAsmId?.toString()), "EXECUTIVE_ASM_INVALID"),
+          parseId(input.parentRsmId ?? (newParent ? undefined : current.parentRsmId?.toString()), "EXECUTIVE_RSM_INVALID"),
+          input.salesRegion ?? current.salesRegion,
+        );
+        // Re-validate against the parent even when the cities were not edited: the
+        // parent may have changed, or its own territory may have shrunk since.
         const assignedCities = uniqueStrings(input.assignedCities ?? current.assignedCities);
-        assertSubset(assignedCities, citiesForStates(asm.assignedStates), "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities");
+        assertSubset(assignedCities, citiesForStates(parent.scopeStates), "EXECUTIVE_CITIES_OUTSIDE_SCOPE", "cities");
         staffData.staffRoleType = "1";
-        staffData.salesRegion = null;
+        staffData.salesRegion = parent.region;
         staffData.warehouse = null;
-        staffData.parentAsm = { connect: { id: asm.id } };
-        staffData.parentRsm = { connect: { id: asm.parentRsmId } };
-        staffData.assignedStates = statesForCities(assignedCities, asm.assignedStates);
+        staffData.parentAsm = parent.parentAsmId ? { connect: { id: parent.parentAsmId } } : { disconnect: true };
+        staffData.parentRsm = parent.parentRsmId ? { connect: { id: parent.parentRsmId } } : { disconnect: true };
+        staffData.assignedStates = statesForCities(assignedCities, parent.scopeStates);
         staffData.assignedCities = assignedCities;
         staffData.reportingManager = { disconnect: true };
       } else if (nextRole === "STAFF" && nextStaffRoleType === "2") {
@@ -503,6 +550,9 @@ export class PostgresAdminStaffRepository {
         await audit(tx, actor, "ADMIN_STAFF_PASSWORD_CHANGED", { staffId: staffId.toString() }, { action: AUDIT_ACTION.UPDATE });
       }
       if (Object.keys(staffData).length) await tx.staffProfile.update({ where: { id: staffId }, data: staffData });
+      if (nextRole === "RSM" && (input.status ?? current.user.status) === "ACTIVE") {
+        await adoptFloatingStaff(tx, staffId, (staffData.salesRegion as SalesRegion | undefined) ?? current.salesRegion);
+      }
       const roleChanged = current.user.role !== nextRole;
       await audit(tx, actor, "ADMIN_STAFF_UPDATED", { staffId: staffId.toString(), role: nextRole }, {
         action: roleChanged ? AUDIT_ACTION.ROLE_CHANGE : AUDIT_ACTION.UPDATE,
@@ -617,6 +667,7 @@ export class PostgresAdminStaffRepository {
       const staff = await tx.staffProfile.findFirst({ where: { id: staffId, user: { deletedAt: null } }, include: { user: true } });
       if (!staff) throw notFound("Staff member not found", "STAFF_NOT_FOUND");
       await applyUserStatus(tx, staff.userId, input.status);
+      if (staff.user.role === "RSM" && input.status === "ACTIVE") await adoptFloatingStaff(tx, staff.id, staff.salesRegion);
       await audit(tx, actor, "ADMIN_STAFF_STATUS_CHANGED", { staffId: staffId.toString(), oldStatus: staff.user.status, newStatus: input.status, reason: input.reason }, {
         action: AUDIT_ACTION.STATUS_CHANGE,
         oldValues: { status: staff.user.status },

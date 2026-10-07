@@ -4,12 +4,20 @@ import path from "node:path";
 import test from "node:test";
 import ts from "typescript";
 
-const filePath = path.resolve("src/lib/dealerForm.ts");
-const transpiled = ts.transpileModule(await fs.readFile(filePath, "utf8"), {
-  compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
-  fileName: filePath,
-}).outputText;
-const form = await import(`data:text/javascript;base64,${Buffer.from(transpiled, "utf8").toString("base64")}`);
+// Transpile a TS module to a data: URL. data: modules cannot resolve "@/..." or bare
+// specifiers, so each import is rewritten to an absolute URL first.
+async function load(file, replacements = []) {
+  let source = await fs.readFile(path.resolve(file), "utf8");
+  for (const [from, to] of replacements) source = source.replaceAll(from, to);
+  const js = ts.transpileModule(source, {
+    compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 },
+    fileName: file,
+  }).outputText;
+  return `data:text/javascript;base64,${Buffer.from(js, "utf8").toString("base64")}`;
+}
+
+const fieldRulesUrl = await load("src/lib/fieldRules.ts", [['"zod"', JSON.stringify(import.meta.resolve("zod"))]]);
+const form = await import(await load("src/lib/dealerForm.ts", [['"@/lib/fieldRules"', JSON.stringify(fieldRulesUrl)]]));
 
 // Shaped like the live data: only RSMs carry a region.
 const staffList = [

@@ -5,9 +5,12 @@ import { STATE_OPTIONS } from "@/lib/places";
 import { SALES_REGION_OPTIONS, type SalesRegionOptionValue } from "@/lib/salesRegions";
 
 const ADMIN_STAFF_URL = "/api/admin/staff";
+const SALES_REGIONS_URL = "/api/admin/sales-regions";
 
 // A region's states are the states allotted to that region's RSM — one RSM per
 // region, so the RSM row is the single source of truth and this page edits it.
+// A region with no RSM yet keeps its own list (so ASMs / Sales Managers can be
+// given territory there); this page edits that list through SALES_REGIONS_URL.
 type RegionRsm = { id: string; name: string; email: string; assignedStates: string[] };
 type RegionRsms = Partial<Record<SalesRegionOptionValue, RegionRsm>>;
 
@@ -33,15 +36,16 @@ function mapRegionRsms(rows: unknown[]): RegionRsms {
   return byRegion;
 }
 
-function statesOf(rsms: RegionRsms) {
+function statesOf(rsms: RegionRsms, regionStates: Record<string, string[]>) {
   return SALES_REGION_OPTIONS.reduce<Record<string, string[]>>((acc, region) => {
-    acc[region.value] = rsms[region.value]?.assignedStates ?? [];
+    acc[region.value] = rsms[region.value]?.assignedStates ?? sortedStates(regionStates[region.value]);
     return acc;
   }, {});
 }
 
 export default function ManageRegionsPage() {
   const [rsms, setRsms] = useState<RegionRsms>({});
+  const [regionStates, setRegionStates] = useState<Record<string, string[]>>({});
   const [assignments, setAssignments] = useState<Record<string, string[]>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -50,7 +54,7 @@ export default function ManageRegionsPage() {
   const [saveMessage, setSaveMessage] = useState("");
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-  const savedAssignments = useMemo(() => statesOf(rsms), [rsms]);
+  const savedAssignments = useMemo(() => statesOf(rsms, regionStates), [rsms, regionStates]);
 
   const filteredPlaceOptions = useMemo(() => {
     const query = placeSearch.trim().toLowerCase();
@@ -60,17 +64,21 @@ export default function ManageRegionsPage() {
 
   const changedRegions = SALES_REGION_OPTIONS
     .map((region) => region.value)
-    .filter((region) => rsms[region] && JSON.stringify(assignments[region] ?? []) !== JSON.stringify(savedAssignments[region] ?? []));
+    .filter((region) => JSON.stringify(assignments[region] ?? []) !== JSON.stringify(savedAssignments[region] ?? []));
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${ADMIN_STAFF_URL}?page=1&limit=200`, { credentials: "include" })
-      .then((res) => res.json())
-      .then((json) => {
+    Promise.all([
+      fetch(`${ADMIN_STAFF_URL}?page=1&limit=200`, { credentials: "include" }).then((res) => res.json()),
+      fetch(SALES_REGIONS_URL, { credentials: "include" }).then((res) => res.json()),
+    ])
+      .then(([staffJson, regionsJson]) => {
         if (cancelled) return;
-        const next = mapRegionRsms(json?.data || []);
+        const next = mapRegionRsms(staffJson?.data || []);
+        const stored = regionsJson?.data && typeof regionsJson.data === "object" ? regionsJson.data : {};
         setRsms(next);
-        setAssignments(statesOf(next));
+        setRegionStates(stored);
+        setAssignments(statesOf(next, stored));
       })
       .catch(() => { if (!cancelled) setSaveMessage("Could not load RSMs."); })
       .finally(() => { if (!cancelled) setLoading(false); });
@@ -107,8 +115,19 @@ export default function ManageRegionsPage() {
     try {
       for (const region of changedRegions) {
         const rsm = rsms[region];
-        if (!rsm) continue;
         const assignedStates = assignments[region] ?? [];
+        if (!rsm) {
+          const response = await fetch(SALES_REGIONS_URL, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ region, states: assignedStates }),
+          });
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || payload?.success === false) throw new Error(payload?.message || `Could not update ${region}`);
+          setRegionStates((current) => ({ ...current, [region]: sortedStates(assignedStates) }));
+          continue;
+        }
         const response = await fetch(`${ADMIN_STAFF_URL}/${encodeURIComponent(rsm.id)}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -119,7 +138,7 @@ export default function ManageRegionsPage() {
         if (!response.ok || payload?.success === false) throw new Error(payload?.message || `Could not update ${rsm.name}`);
         setRsms((current) => ({ ...current, [region]: { ...rsm, assignedStates: sortedStates(assignedStates) } }));
       }
-      setSaveMessage("Region assignments saved to their RSMs.");
+      setSaveMessage("Region assignments saved.");
       window.setTimeout(() => setSaveMessage(""), 2500);
     } catch (error) {
       setSaveMessage(error instanceof Error ? error.message : "Could not save region assignments.");
@@ -134,7 +153,7 @@ export default function ManageRegionsPage() {
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <h1 className="text-2xl font-semibold">Manage Regions</h1>
-            <p className="mt-1 text-sm text-[#667085]">Each region has one RSM. The states you pick here are that RSM&apos;s allotted states.</p>
+            <p className="mt-1 text-sm text-[#667085]">Each region has one RSM. The states you pick here are that RSM&apos;s allotted states; a region with no RSM yet keeps them for its ASMs and Sales Managers.</p>
           </div>
           <div className="flex flex-col items-start gap-2 sm:items-end">
             <button type="button" onClick={handleSave} disabled={!changedRegions.length || saving} className="rounded bg-[#4f6eed] px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-[#3f5dd8] disabled:cursor-not-allowed disabled:bg-[#b9c4f8]">
@@ -157,10 +176,10 @@ export default function ManageRegionsPage() {
                   <div>
                     <h2 className="text-base font-semibold">{region.label}</h2>
                     <p className="mt-1 text-xs text-[#667085]">
-                      {rsm ? `${rsm.name} · ${selected.length} selected` : "No RSM assigned yet"}
+                      {rsm ? `${rsm.name} · ${selected.length} selected` : `No RSM yet · ${selected.length} selected`}
                     </p>
                   </div>
-                  <button type="button" onClick={() => clearRegion(region.value)} disabled={!rsm} className="rounded border border-[#d0d5dd] px-3 py-1.5 text-xs font-medium text-[#475467] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-50">
+                  <button type="button" onClick={() => clearRegion(region.value)} className="rounded border border-[#d0d5dd] px-3 py-1.5 text-xs font-medium text-[#475467] hover:bg-[#f8fafc] disabled:cursor-not-allowed disabled:opacity-50">
                     Clear
                   </button>
                 </div>
@@ -168,15 +187,14 @@ export default function ManageRegionsPage() {
                 <div className="relative mt-4" ref={isOpen ? dropdownRef : null}>
                   <button
                     type="button"
-                    disabled={!rsm}
                     onClick={() => {
                       setOpenRegion(isOpen ? null : region.value);
                       setPlaceSearch("");
                     }}
                     className="flex h-10 w-full items-center justify-between rounded border border-[#d0d5dd] bg-white px-3 text-left text-sm text-[#344054] focus:border-[#5d7df0] focus:outline-none focus:ring-2 focus:ring-[#dfe6ff] disabled:cursor-not-allowed disabled:bg-[#f8fafc] disabled:text-[#98a2b3]"
                   >
-                    <span>{rsm ? (selected.length ? `${selected.length} places selected` : "Select states / UTs") : "Create an RSM for this region first"}</span>
-                    <span className="text-xs text-[#667085]">{rsm ? (isOpen ? "Close" : "Open") : ""}</span>
+                    <span>{selected.length ? `${selected.length} places selected` : "Select states / UTs"}</span>
+                    <span className="text-xs text-[#667085]">{isOpen ? "Close" : "Open"}</span>
                   </button>
 
                   {isOpen ? (

@@ -24,9 +24,9 @@ const NAV_GROUPS: { label: string; categories: string[]; image?: string; shopHre
   { label: "More", categories: ["Education", "Desiccators", "Crucibles", "Hygrometers"] },
 ];
 
-// ponytail: deals/new releases have no data source yet, so they open the full listing.
+// ponytail: new releases have no data source yet, so it opens the full listing.
 const QUICK_LINKS = [
-  { label: "Today's Deals", href: "/Products" },
+  { label: "Today's Deals", href: "/home#todays-sale" },
   { label: "Best Sellers", href: "/home#hot-right-now" },
   { label: "New Releases", href: "/Products" },
 ];
