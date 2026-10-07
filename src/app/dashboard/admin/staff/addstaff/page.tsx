@@ -9,6 +9,8 @@ import { Eye, EyeOff } from 'lucide-react'
 import { STATE_OPTIONS, CITIES_BY_STATE, citiesForStates, statesForCities } from '@/lib/places'
 import { SALES_REGION_OPTIONS } from '@/lib/salesRegions'
 import { WAREHOUSE_OPTIONS } from '@/lib/warehouses'
+import { cityScopeStates, pickReportsTo, regionRsm, reportsToGroups } from '@/lib/staffHierarchy'
+import { RegionSelect, ReportsToSelect } from '@/components/staff/HierarchySelects'
 import { showToast } from "@/components/ui/toast";
 
 const roleOptions = [
@@ -24,7 +26,7 @@ const MARITAL_STATUS_OPTIONS = ['Single', 'Married', 'Divorced', 'Widowed'] as c
 const QUALIFICATION_OPTIONS = ['12th Pass', 'Bachelors', 'Masters', 'PhD'] as const
 
 type StaffFormRole = '' | typeof roleOptions[number]['value']
-type StaffOption = { id: string; name: string; email?: string; role: string; staffRoleType: string; salesRegion: string; parentRsmId?: string; assignedStates: string[]; assignedCities: string[]; parentRsm?: { id: string; name: string } | null }
+type StaffOption = { id: string; name: string; email?: string; role: string; staffRoleType: string; salesRegion: string; parentRsmId?: string; assignedStates: string[]; assignedCities: string[]; parentRsm?: { id: string; name: string } | null; status?: string }
 
 function getRoleOption(value: StaffFormRole) { return roleOptions.find((option) => option.value === value) }
 function displayStaff(option?: StaffOption) { return option ? `${option.name}${option.email ? ` (${option.email})` : ''}` : '' }
@@ -43,6 +45,7 @@ function mapStaffOption(value: unknown): StaffOption {
     assignedStates: Array.isArray(row.assignedStates) ? row.assignedStates.map(String) : Array.isArray(row.assigned_states) ? row.assigned_states.map(String) : [],
     assignedCities: Array.isArray(row.assignedCities) ? row.assignedCities.map(String) : Array.isArray(row.assigned_cities) ? row.assigned_cities.map(String) : [],
     parentRsm: row.parentRsm as StaffOption['parentRsm'],
+    status: String(row.status || '').toUpperCase(),
   }
 }
 
@@ -144,6 +147,9 @@ export default function AddStaffPage() {
   const [role, setRole] = useState<StaffFormRole>('')
   const [salesRegion, setSalesRegion] = useState('')
   const [warehouse, setWarehouse] = useState('')
+  // Region an ASM / Sales Manager belongs to; the RSM role keeps its own salesRegion.
+  const [region, setRegion] = useState('')
+  const [regionStates, setRegionStates] = useState<Record<string, string[]>>({})
   const [parentRsmId, setParentRsmId] = useState('')
   const [parentAsmId, setParentAsmId] = useState('')
   const [rsmIds, setRsmIds] = useState<string[]>([])
@@ -166,24 +172,24 @@ export default function AddStaffPage() {
   const asmOptions = useMemo(() => staffOptions.filter((staff) => staff.role === 'ASM' || staff.staffRoleType === 'ASM'), [staffOptions])
   const selectedRsm = rsmOptions.find((staff) => staff.id === parentRsmId)
   const selectedAsm = asmOptions.find((staff) => staff.id === parentAsmId)
-  const selectedAsmRsm = rsmOptions.find((staff) => staff.id === selectedAsm?.parentRsmId) || selectedAsm?.parentRsm || null
-  const asmStateOptions = useMemo(() => selectedRsm?.assignedStates?.length ? selectedRsm.assignedStates : [], [selectedRsm])
+  const reportsTo = useMemo(() => reportsToGroups(staffOptions, region), [staffOptions, region])
+  // An ASM's states come from its RSM, or from the region's own list when it has no RSM yet.
+  const asmStateOptions = useMemo(() => selectedRsm ? selectedRsm.assignedStates : regionStates[region] ?? [], [selectedRsm, regionStates, region])
   const rsmAssignedStates = role === 'RSM' ? placeOptions : asmStateOptions
   // Cities available to a Sales Manager being created: every city within the
-  // selected ASM's assigned states, grouped by state.
+  // states of whoever they report to (their ASM, or the RSM directly), by state.
   const smCitiesByState = useMemo(() => {
-    const scope = selectedAsm?.assignedStates?.length ? selectedAsm.assignedStates : []
-    return scope
+    return cityScopeStates(staffOptions, parentAsmId, parentRsmId, regionStates[region] ?? [])
       .map((state) => ({ state, cities: citiesByState[state] ?? [] }))
       .filter((group) => group.cities.length)
-  }, [selectedAsm, citiesByState])
-  // Reporting manager: ASM reports to its RSM, Executive ("Sales Manager") reports to its ASM.
+  }, [staffOptions, parentAsmId, parentRsmId, regionStates, region, citiesByState])
+  // Reporting manager: ASM reports to its RSM, Executive ("Sales Manager") to its ASM or straight to the RSM.
   // RSM has no parent staff record — its reporting manager is an NSM, picked explicitly below.
   // Staff are free and pick any number of RSMs instead.
   const reportingManagerLabel = role === 'ASM'
     ? selectedRsm?.name || ''
     : role === 'EXECUTIVE'
-      ? selectedAsm?.name || ''
+      ? selectedAsm?.name || selectedRsm?.name || ''
       : ''
 
   useEffect(() => {
@@ -200,27 +206,42 @@ export default function AddStaffPage() {
       .catch(() => setNsmOptions([]))
   }, [])
 
+  // Each region's states: its RSM's, or the list kept for a region with no RSM yet.
+  useEffect(() => {
+    fetch('/api/admin/sales-regions', { credentials: 'include' })
+      .then((res) => res.json())
+      .then((json) => setRegionStates(json?.data && typeof json.data === 'object' ? json.data : {}))
+      .catch(() => setRegionStates({}))
+  }, [])
+
   // A Sales Manager's base location must be one of the cities they cover.
   useEffect(() => {
     if (role !== 'EXECUTIVE') return
     setLocation((current) => (current && !assignedCities.includes(current) ? '' : current))
   }, [assignedCities, role])
 
-  const handleParentRsmChange = (nextParentRsmId: string) => {
-    setParentRsmId(nextParentRsmId)
-    if (role !== 'ASM') return
-    const validStates = new Set(rsmOptions.find((staff) => staff.id === nextParentRsmId)?.assignedStates || [])
-    setAssignedStates((current) => {
-      const next = current.filter((state) => validStates.has(state))
-      return next.length === current.length ? current : next
-    })
+  // Region first: an ASM takes the region's RSM, or floats there when it has none
+  // (its approvals go to the NSM); a Sales Manager then picks who they report to.
+  // Territory the new region / parent does not cover is dropped.
+  const handleRegionChange = (nextRegion: string) => {
+    const rsm = regionRsm(staffOptions, nextRegion)
+    setRegion(nextRegion)
+    setParentRsmId(rsm?.id ?? '')
+    if (role === 'ASM') {
+      const validStates = new Set(rsm ? rsm.assignedStates : regionStates[nextRegion] ?? [])
+      setAssignedStates((current) => current.filter((state) => validStates.has(state)))
+    }
+    handleReportsToChange('', nextRegion)
   }
 
-  const handleParentAsmChange = (nextParentAsmId: string) => {
-    setParentAsmId(nextParentAsmId)
+  const handleReportsToChange = (reportsToId: string, inRegion = region) => {
+    const next = pickReportsTo(staffOptions, reportsToId)
+    const nextRsmId = reportsToId ? next.parentRsmId : regionRsm(staffOptions, inRegion)?.id ?? ''
+    setParentAsmId(next.parentAsmId)
     if (role !== 'EXECUTIVE') return
-    // The city list is scoped to the newly selected ASM's states, so drop anything it does not cover.
-    const validCities = new Set(citiesForStates(asmOptions.find((staff) => staff.id === nextParentAsmId)?.assignedStates || []))
+    setParentRsmId(nextRsmId)
+    // The city list is scoped to the new parent's states (or the region's), so drop anything it does not cover.
+    const validCities = new Set(citiesForStates(cityScopeStates(staffOptions, next.parentAsmId, nextRsmId, regionStates[inRegion] ?? [])))
     setAssignedCities((current) => {
       const next = current.filter((city) => validCities.has(city))
       return next.length === current.length ? current : next
@@ -228,7 +249,7 @@ export default function AddStaffPage() {
     setLocation((current) => (validCities.has(current) ? current : ''))
   }
 
-  const resetHierarchy = () => { setParentRsmId(''); setParentAsmId(''); setRsmIds([]); setReportingManagerId(''); setAssignedStates([]); setAssignedCities([]); setLocation('') }
+  const resetHierarchy = () => { setRegion(''); setParentRsmId(''); setParentAsmId(''); setRsmIds([]); setReportingManagerId(''); setAssignedStates([]); setAssignedCities([]); setLocation('') }
   const resetForm = () => {
     setName(''); setPersonalState(''); setLocation(''); setEmail('')
     setMobileNo(''); setAlternateNo(''); setPermanentAddress(''); setLocalAddress(''); setSameAddress(false)
@@ -258,9 +279,11 @@ export default function AddStaffPage() {
       password,
       role: selectedRoleRef(),
       staffRoleType: selectedStaffRoleTypeRef(),
-      salesRegion: selectedAuthRoleRef() === 'RSM' ? salesRegion : undefined,
+      // An ASM / Sales Manager names its region too, so it can float in a region with no RSM yet.
+      salesRegion: selectedAuthRoleRef() === 'RSM' ? salesRegion : role === 'ASM' || role === 'EXECUTIVE' ? region : undefined,
       warehouse: role === 'FIELD_EXECUTIVE' ? warehouse : undefined,
-      parentRsmId: role === 'ASM' ? parentRsmId : undefined,
+      // A Sales Manager with no ASM reports straight to the RSM.
+      parentRsmId: role === 'ASM' || (role === 'EXECUTIVE' && !parentAsmId) ? parentRsmId : undefined,
       rsmIds: role === 'FIELD_EXECUTIVE' ? rsmIds : undefined,
       parentAsmId: role === 'EXECUTIVE' ? parentAsmId : undefined,
       assignedStates: role === 'ASM' || role === 'RSM' ? assignedStates : undefined,
@@ -325,7 +348,7 @@ export default function AddStaffPage() {
                     onChange={setLocation}
                     options={assignedCities}
                     required={false}
-                    placeholder={!parentAsmId ? 'Select ASM first' : assignedCities.length ? 'Select base city' : 'Select cities below first'}
+                    placeholder={!region ? 'Select region first' : assignedCities.length ? 'Select base city' : 'Select cities below first'}
                   />
                 ) : (
                   <>
@@ -453,23 +476,18 @@ export default function AddStaffPage() {
                   </div>
                 )}
 
-                {role === 'ASM' && (
-                  <div className="flex flex-col gap-1.5">
-                    <FieldLabel label="RSM" />
-                    <select
-                      required
-                      value={parentRsmId}
-                      onChange={e => handleParentRsmChange(e.target.value)}
-                      className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                    >
-                      <option value="" disabled>Select RSM</option>
-                      {rsmOptions.map((option) => <option key={option.id} value={option.id}>{displayStaff(option)}</option>)}
-                    </select>
-                  </div>
+                {(role === 'ASM' || role === 'EXECUTIVE') && (
+                  <RegionSelect value={region} onChange={handleRegionChange} />
                 )}
 
                 {role === 'ASM' && (
-                  <InputField label="Reporting Manager" value={reportingManagerLabel} onChange={() => {}} placeholder="Auto-filled from RSM" required={false} />
+                  <InputField
+                    label="RSM (Reporting Manager)"
+                    value={region && !selectedRsm ? 'No RSM yet — approvals go to the NSM' : reportingManagerLabel}
+                    onChange={() => {}}
+                    placeholder="Auto-filled from region"
+                    required={false}
+                  />
                 )}
 
                 {role === 'FIELD_EXECUTIVE' && (
@@ -489,20 +507,9 @@ export default function AddStaffPage() {
 
                 {role === 'EXECUTIVE' && (
                   <>
-                    <div className="flex flex-col gap-1.5">
-                      <FieldLabel label="ASM" />
-                      <select
-                        required
-                        value={parentAsmId}
-                        onChange={e => handleParentAsmChange(e.target.value)}
-                        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
-                      >
-                        <option value="" disabled>Select ASM</option>
-                        {asmOptions.map((option) => <option key={option.id} value={option.id}>{displayStaff(option)}</option>)}
-                      </select>
-                    </div>
-                    <InputField label="RSM" value={selectedAsmRsm?.name || ''} onChange={() => {}} placeholder="Auto-filled from ASM" required={false} />
-                    <InputField label="Reporting Manager" value={reportingManagerLabel} onChange={() => {}} placeholder="Auto-filled from ASM" required={false} />
+                    <ReportsToSelect region={region} groups={reportsTo} value={parentAsmId || parentRsmId} onChange={handleReportsToChange} />
+                    <InputField label="ASM" value={selectedAsm?.name || ''} onChange={() => {}} placeholder={parentRsmId ? 'None — reports to the RSM' : 'Auto-filled'} required={false} />
+                    <InputField label="RSM" value={selectedRsm?.name || ''} onChange={() => {}} placeholder="Auto-filled" required={false} />
                   </>
                 )}
 
@@ -515,7 +522,7 @@ export default function AddStaffPage() {
                           <input type="checkbox" checked={assignedStates.includes(state)} onChange={() => toggleState(state)} className="h-4 w-4 accent-indigo-600" />
                           <span className="text-black">{state}</span>
                         </label>
-                      )) : <p className="px-2 py-2 text-sm text-black">Select an RSM with assigned states.</p>}
+                      )) : <p className="px-2 py-2 text-sm text-black">{region ? 'This region has no states yet — set them in Manage Regions.' : 'Select a region to choose states.'}</p>}
                     </div>
                   </div>
                 )}
@@ -536,11 +543,11 @@ export default function AddStaffPage() {
                         </div>
                       )) : (
                         <p className="px-2 py-2 text-sm text-gray-900">
-                          {parentAsmId ? 'Selected ASM has no cities assigned.' : 'Select an ASM to choose cities.'}
+                          {!region ? 'Select a region to choose cities.' : parentAsmId || parentRsmId ? 'Who they report to has no states assigned.' : 'This region has no states yet — set them in Manage Regions.'}
                         </p>
                       )}
                     </div>
-                    <span className="text-[11px] text-gray-500">Limited to the cities assigned to the selected ASM.</span>
+                    <span className="text-[11px] text-gray-500">Limited to the states of whoever they report to.</span>
                   </div>
                 )}
               </div>

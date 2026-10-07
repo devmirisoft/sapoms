@@ -72,15 +72,15 @@ test("staff API accepts only staff-management roles and requires concrete STAFF 
   assert.match(staffSchemas, /STAFF_ROLE_TYPE_REQUIRED/);
 });
 
-test("RSM region is required and cleared for non-RSM staff choices", () => {
+test("RSM region is required; ASM / Sales Manager keep theirs, other roles drop it", () => {
   assert.match(staffSchemas, /value\.role === "RSM" && !value\.salesRegion/);
   assert.match(staffSchemas, /RSM_REGION_REQUIRED/);
-  assert.match(staffSchemas, /value\.role && value\.role !== "RSM"\) value\.salesRegion = undefined/);
+  assert.match(staffSchemas, /value\.role && !\(value\.role === "RSM" \|\| value\.role === "ASM" \|\| \(value\.role === "STAFF" && value\.staffRoleType === "1"\)\)\) value\.salesRegion = undefined/);
   assert.match(staffRepo, /input\.role === "ASM" \? "ASM"/);
   assert.match(staffRepo, /resolveRsm/);
   assert.match(staffRepo, /resolveAsm/);
   assert.match(staffRepo, /assertSubset/);
-  assert.match(staffRepo, /salesRegion: input\.role === "RSM" \? input\.salesRegion : null/);
+  assert.match(staffRepo, /let salesRegion: SalesRegion \| null = input\.role === "RSM" \? input\.salesRegion \?\? null : null;/);
   assert.match(staffRepo, /staffData\.staffRoleType = null/);
 });
 
@@ -100,25 +100,40 @@ test("staff directory route allows staff-like reads for dealer assignment withou
   assert.match(staffRoute, /const actor = await requireAdminOnly\(\)/);
 });
 
-test("ASM territory is states only, a subset of the parent RSM states, with no cities of its own", () => {
-  assert.match(staffRepo, /assertSubset\(assignedStates, rsm\.assignedStates, "ASM_STATES_OUTSIDE_RSM_SCOPE"\)/);
+test("ASM territory is states only, a subset of its RSM's (or its region's) states, with no cities of its own", () => {
+  assert.equal(staffRepo.match(/assertSubset\(assignedStates, parent\.scopeStates, "ASM_STATES_OUTSIDE_RSM_SCOPE"\)/g)?.length, 2);
   assert.match(staffSchemas, /ASM_STATES_REQUIRED/);
   assert.doesNotMatch(staffSchemas, /ASM_CITIES_REQUIRED/);
-  assert.match(staffRepo, /parentRsmId = rsm\.id;\r?\n\s*assignedCities = \[\];/);
+  assert.match(staffRepo, /salesRegion = parent\.region;\r?\n\s*assignedCities = \[\];/);
   assert.match(staffRepo, /staffData\.assignedStates = assignedStates;\r?\n\s*staffData\.assignedCities = \[\];/);
 });
 
-test("Sales Manager holds its own cities, carved out of its ASM's states and never wider", () => {
-  // Create and update both re-check against the ASM: it may have changed, or shrunk.
-  assert.equal(staffRepo.match(/assertSubset\(assignedCities, citiesForStates\(asm\.assignedStates\), "EXECUTIVE_CITIES_OUTSIDE_ASM_SCOPE", "cities"\)/g)?.length, 2);
-  assert.match(staffRepo, /select: \{ id: true, parentRsmId: true, assignedStates: true \}/);
+test("Sales Manager holds its own cities, carved out of its parent's states and never wider", () => {
+  // Create and update both re-check against the parent (ASM, or the RSM directly): it may have changed, or shrunk.
+  assert.equal(staffRepo.match(/assertSubset\(assignedCities, citiesForStates\(parent\.scopeStates\), "EXECUTIVE_CITIES_OUTSIDE_SCOPE", "cities"\)/g)?.length, 2);
+  assert.match(staffRepo, /select: \{ id: true, parentRsmId: true, assignedStates: true, salesRegion: true, parentRsm: \{ select: \{ salesRegion: true \} \} \}/);
   assert.match(staffSchemas, /EXECUTIVE_CITIES_REQUIRED/);
 });
 
 test("Sales Manager states are derived from its cities, not picked in the form", () => {
-  assert.match(staffRepo, /assignedStates = statesForCities\(assignedCities, asm\.assignedStates\)/);
-  assert.match(staffRepo, /staffData\.assignedStates = statesForCities\(assignedCities, asm\.assignedStates\)/);
-  assert.match(staffSchemas, /value\.staffRoleType === "1"\) \{ value\.parentRsmId = undefined; value\.assignedStates = undefined; \}/);
+  assert.match(staffRepo, /assignedStates = statesForCities\(assignedCities, parent\.scopeStates\)/);
+  assert.match(staffRepo, /staffData\.assignedStates = statesForCities\(assignedCities, parent\.scopeStates\)/);
+  assert.match(staffSchemas, /value\.staffRoleType === "1"\) \{ if \(value\.parentAsmId\) value\.parentRsmId = undefined; value\.assignedStates = undefined; \}/);
+});
+
+test("Sales Manager reports to an ASM, straight to an RSM, or floats in a region with neither", () => {
+  assert.match(staffSchemas, /!value\.parentAsmId && !value\.parentRsmId && !value\.salesRegion\) throw .*EXECUTIVE_PARENT_REQUIRED/);
+  assert.match(staffRepo, /async function resolveSalesParent/);
+  assert.match(staffRepo, /scopeStates: \(await getRegionStates\(tx\)\)\[region\] \?\? \[\]/);
+  assert.match(staffRepo, /staffData\.parentAsm = parent\.parentAsmId \? \{ connect: \{ id: parent\.parentAsmId \} \} : \{ disconnect: true \}/);
+  assert.match(staffListPage, /one\(staff\.parentAsm \?\? staff\.parentRsm\)/);
+});
+
+test("a new or reactivated RSM adopts the ASMs and Sales Managers floating in its region", () => {
+  assert.match(staffRepo, /async function adoptFloatingStaff/);
+  assert.match(staffRepo, /where: \{ salesRegion: region, parentRsmId: null, staffRoleType: \{ in: \["ASM", "1"\] \} \}/);
+  // create, edit, and the status endpoint
+  assert.equal(staffRepo.match(/await adoptFloatingStaff\(/g)?.length, 3);
 });
 
 test("staff subtype 2 keeps no territory of its own", () => {
@@ -145,7 +160,7 @@ test("Add and Edit Staff both offer ASM and Sales Manager city pickers from one 
     assert.doesNotMatch(source, /^import places from/m);
     assert.match(source, /smCitiesByState/);
     assert.match(source, /assignedCities: role === 'EXECUTIVE' \? assignedCities : undefined/);
-    assert.match(source, /Limited to the cities assigned to the selected ASM\./);
+    assert.match(source, /Limited to the states of whoever they report to\./);
   }
 });
 
@@ -211,7 +226,7 @@ test("Staff are free: zero or more RSMs from any region", () => {
   assert.match(salesScope, /\{ OR: \[\{ parentRsmId: rsmId \}, \{ rsmLinks: \{ some: \{ rsmId \} \} \}\] \}/);
   for (const source of [addStaffPage, editStaffPage]) {
     assert.match(source, /rsmIds: role === 'FIELD_EXECUTIVE' \? rsmIds : undefined/);
-    assert.match(source, /parentRsmId: role === 'ASM' \? parentRsmId : undefined/);
+    assert.match(source, /parentRsmId: role === 'ASM' \|\| \(role === 'EXECUTIVE' && !parentAsmId\) \? parentRsmId : undefined/);
   }
 });
 

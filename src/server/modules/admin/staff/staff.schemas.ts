@@ -137,12 +137,14 @@ const baseStaffSchema = {
 
 function requireValidRoleRegion<T extends { role?: string; salesRegion?: string; warehouse?: string; staffRoleType?: string; parentRsmId?: string; parentAsmId?: string; rsmIds?: string[]; assignedStates?: string[]; assignedCities?: string[]; reportingManagerId?: string }>(value: T) {
   if (value.role === "RSM" && !value.salesRegion) throw new AdminRouteError("INVALID_REQUEST", "RSM region is required", { code: "RSM_REGION_REQUIRED" });
-  if (value.role && value.role !== "RSM") value.salesRegion = undefined;
+  // RSMs hold a region; ASMs and Sales Managers name one too, so they can float
+  // in a region that has no RSM yet. Every other role drops it.
+  if (value.role && !(value.role === "RSM" || value.role === "ASM" || (value.role === "STAFF" && value.staffRoleType === "1"))) value.salesRegion = undefined;
   if (value.role === "STAFF" && value.staffRoleType !== "1" && value.staffRoleType !== "2") {
     throw new AdminRouteError("INVALID_REQUEST", "Staff role type is required", { code: "STAFF_ROLE_TYPE_REQUIRED" });
   }
-  if (value.role === "ASM" && !value.parentRsmId) throw new AdminRouteError("INVALID_REQUEST", "ASM must have a valid RSM parent", { code: "ASM_RSM_REQUIRED" });
-  if (value.role === "STAFF" && value.staffRoleType === "1" && !value.parentAsmId) throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must have a valid ASM parent", { code: "EXECUTIVE_ASM_REQUIRED" });
+  if (value.role === "ASM" && !value.parentRsmId && !value.salesRegion) throw new AdminRouteError("INVALID_REQUEST", "ASM needs a region or an RSM", { code: "ASM_RSM_REQUIRED" });
+  if (value.role === "STAFF" && value.staffRoleType === "1" && !value.parentAsmId && !value.parentRsmId && !value.salesRegion) throw new AdminRouteError("INVALID_REQUEST", "Sales Manager needs a region, ASM or RSM", { code: "EXECUTIVE_PARENT_REQUIRED" });
   if (value.role === "ASM" && value.assignedStates && !value.assignedStates.length) throw new AdminRouteError("INVALID_REQUEST", "ASM must cover at least one state", { code: "ASM_STATES_REQUIRED" });
   if (value.role === "STAFF" && value.staffRoleType === "1" && value.assignedCities && !value.assignedCities.length) throw new AdminRouteError("INVALID_REQUEST", "Sales Manager must cover at least one city", { code: "EXECUTIVE_CITIES_REQUIRED" });
   // Only a Staff member is pinned to a warehouse; every other role sees both.
@@ -151,9 +153,10 @@ function requireValidRoleRegion<T extends { role?: string; salesRegion?: string;
   if (value.role === "NSM") { value.staffRoleType = undefined; value.parentRsmId = undefined; value.parentAsmId = undefined; value.assignedStates = undefined; }
   if (value.role === "RSM") { value.staffRoleType = "RSM"; value.parentRsmId = undefined; value.parentAsmId = undefined; }
   if (value.role === "ASM") { value.staffRoleType = "ASM"; value.parentAsmId = undefined; }
-  // A Sales Manager's territory is a city list carved out of its ASM's cities; its
+  // A Sales Manager reports to an ASM (its RSM follows from it) or straight to an
+  // RSM. Its territory is a city list carved out of that parent's states; its
   // states are derived from those cities on write, never picked in the form.
-  if (value.role === "STAFF" && value.staffRoleType === "1") { value.parentRsmId = undefined; value.assignedStates = undefined; }
+  if (value.role === "STAFF" && value.staffRoleType === "1") { if (value.parentAsmId) value.parentRsmId = undefined; value.assignedStates = undefined; }
   if (value.role === "STAFF" && value.staffRoleType === "2") { value.parentAsmId = undefined; value.assignedStates = undefined; value.assignedCities = undefined; }
   // Staff are free: zero or more RSMs from any region, sent as rsmIds. A lone
   // legacy parentRsmId is still accepted as a one-item list.

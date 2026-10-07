@@ -12,6 +12,7 @@ import axios from "axios";
 import { OrderAmountSource, withDisplayOrderAmounts } from "@/lib/orderAmounts";
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 import { useAuthSession } from "@/hooks/useAuthSession";
+import type { SaleItem } from "@/lib/todaysSale";
 // import { getRecentlyViewed, pushRecentlyViewed, type RecentlyViewedItem } from "@/components/Header";
 
 import { getRecentlyViewed, pushRecentlyViewed, type RecentlyViewedItem } from "@/components/Header";
@@ -292,12 +293,45 @@ function ProductCardSkeleton() {
   );
 }
 
+// Card shared by "Today's Sale" and "Hot Right Now".
+function ProductTile({ product, badgeClass, onOpen }: { product: HotItemDisplay; badgeClass: string; onOpen: () => void }) {
+  return (
+    <button
+      onClick={onOpen}
+      className="group bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all hover:-translate-y-0.5 text-left w-full"
+    >
+      <div className="relative bg-gray-50 flex items-center justify-center p-3 aspect-square">
+        {product.image ? (
+          <img
+            src={product.image}
+            alt={product.Name}
+            className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
+            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
+          />
+        ) : (
+          <span className="text-4xl">📦</span>
+        )}
+        <span className={`absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full text-white shadow-sm ${badgeClass}`}>
+          {product.badge}
+        </span>
+      </div>
+      <div className="p-2">
+        <p className="text-xs font-medium text-slate-700 line-clamp-2 leading-tight">{product.Name}</p>
+        <span className="mt-1.5 inline-block text-xs text-rose-500 font-semibold group-hover:text-rose-600 transition-colors">
+          Shop now →
+        </span>
+      </div>
+    </button>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function Page() {
   const router = useRouter();
   const auth = useAuthSession();
   const [hotItems, setHotItems] = useState<HotItemDisplay[]>([]);
+  const [saleItems, setSaleItems] = useState<HotItemDisplay[]>([]);
   const [relatedProducts, setRelatedProducts] = useState<RelatedProductDisplay[]>([]);
   const [hotLoading, setHotLoading] = useState(true);
   const dealerId = !auth.loading && auth.session.status === "authenticated" && auth.session.role === "dealer"
@@ -325,27 +359,33 @@ export default function Page() {
       fetch("/api/hot-items", { cache: "no-store" })
         .then((r) => r.json())
         .catch(() => ({ success: false, data: { items: [] } })),
+      fetch("/api/todays-sale", { cache: "no-store" })
+        .then((r) => r.json())
+        .catch(() => ({ success: false })),
     ])
-      .then(([catalogRes, hotJson]) => {
+      .then(([catalogRes, hotJson, saleJson]) => {
         const { imageMap, nameMap, fallbackProducts, resolver } = buildCatalogLookups(catalogRes.data);
         setCatalogResolver(resolver);
         setRelatedProducts(buildRelatedProducts(bottleProducts, resolver));
+        const toDisplay = (item: { SKU: string; name: string; image: string }, badge: string): HotItemDisplay => {
+          const key = item.SKU.trim().toLowerCase();
+          return {
+            SKU: item.SKU,
+            Name: nameMap.get(key) || item.name,
+            badge,
+            image: imageMap.get(key) || (item.image && item.image !== PLACEHOLDER_IMAGE ? item.image : ""),
+          };
+        };
+
+        const saleData = saleJson.success && saleJson.data?.live ? (saleJson.data.items as SaleItem[]) : [];
+        setSaleItems(saleData.filter((item) => item.active).slice(0, 6).map((item) => toDisplay(item, `-${item.discountPercent}% OFF`)));
+
         const publishedItems = ((hotJson.success ? hotJson.data?.items : []) ?? []) as PublishedHotItem[];
         const adminItems = publishedItems.filter((item) => item.active);
         const hasConfiguredHotItems = hotJson.success && !hotJson.data?.isDefault && publishedItems.length > 0;
 
         if (adminItems.length > 0) {
-          setHotItems(
-            adminItems.slice(0, 6).map((item: PublishedHotItem) => {
-              const key = item.SKU.trim().toLowerCase();
-              return {
-                SKU: item.SKU,
-                Name: nameMap.get(key) || item.name,
-                badge: item.badge,
-                image: imageMap.get(key) || (item.image && item.image !== PLACEHOLDER_IMAGE ? item.image : ""),
-              };
-            })
-          );
+          setHotItems(adminItems.slice(0, 6).map((item) => toDisplay(item, item.badge)));
         } else if (hasConfiguredHotItems) {
           setHotItems([]);
         } else {
@@ -608,7 +648,29 @@ export default function Page() {
       )}
 
       {/* ══════════════════════════════════════════════════════════════════
-          SECTION 5 — Hot Right Now
+          SECTION 5 — Today's Sale (admin-managed, only on its sale date)
+          Always rendered so the header's "Today's Deals" link (#todays-sale) has a target.
+      ══════════════════════════════════════════════════════════════════ */}
+      <section id="todays-sale" className="max-w-[1840px] mx-auto px-4 py-12 border-t border-gray-200">
+        <SectionHeading title="Today's Sale" subtitle="Special prices, today only" badge="🏷️ Sale" />
+        {!hotLoading && saleItems.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-gray-200 bg-white py-8 text-center text-sm text-slate-500">
+            No deals today. Check back soon.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {hotLoading
+              ? Array.from({ length: 6 }).map((_, i) => <ProductCardSkeleton key={i} />)
+              : saleItems.map((product) => (
+                <ProductTile key={product.SKU} product={product} badgeClass="bg-emerald-600"
+                  onOpen={() => goToProduct(product.SKU, product.Name, product.image || undefined)} />
+              ))}
+          </div>
+        )}
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          SECTION 6 — Hot Right Now
       ══════════════════════════════════════════════════════════════════ */}
       <section id="hot-right-now" className="max-w-[1840px] mx-auto px-4 py-12 border-t border-gray-200">
         <SectionHeading
@@ -621,34 +683,9 @@ export default function Page() {
           {hotLoading
             ? Array.from({ length: 6 }).map((_, i) => <ProductCardSkeleton key={i} />)
             : hotItems.map((product) => (
-            <button
-              key={product.SKU}
-              onClick={() => goToProduct(product.SKU, product.Name, product.image || undefined)}
-              className="group bg-white rounded-lg border border-gray-100 shadow-sm overflow-hidden hover:shadow-md transition-all hover:-translate-y-0.5 text-left w-full"
-            >
-              <div className="relative bg-gray-50 flex items-center justify-center p-3 aspect-square">
-                {product.image ? (
-                  <img
-                    src={product.image}
-                    alt={product.Name}
-                    className="w-full h-full object-contain group-hover:scale-105 transition-transform duration-300"
-                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }}
-                  />
-                ) : (
-                  <span className="text-4xl">📦</span>
-                )}
-                <span className="absolute top-2 left-2 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white shadow-sm">
-                  {product.badge}
-                </span>
-              </div>
-              <div className="p-2">
-                <p className="text-xs font-medium text-slate-700 line-clamp-2 leading-tight">{product.Name}</p>
-                <span className="mt-1.5 inline-block text-xs text-rose-500 font-semibold group-hover:text-rose-600 transition-colors">
-                  Shop now →
-                </span>
-              </div>
-            </button>
-          ))}
+              <ProductTile key={product.SKU} product={product} badgeClass="bg-rose-500"
+                onOpen={() => goToProduct(product.SKU, product.Name, product.image || undefined)} />
+            ))}
         </div>
       </section>
 

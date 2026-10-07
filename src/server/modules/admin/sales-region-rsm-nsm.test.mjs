@@ -41,10 +41,10 @@ test("staff creation keeps staff-management choices separate from admin and acco
   assert.match(staffSchemas, /z\.enum\(\["NSM", "RSM", "ASM", "STAFF"\]\)/);
   assert.doesNotMatch(staffSchemas, /z\.enum\(\["ADMIN", "NSM", "ACCOUNTANT", "RSM", "STAFF"\]\)/);
   assert.match(staffSchemas, /value\.role === "RSM" && !value\.salesRegion/);
-  assert.match(staffSchemas, /value\.role && value\.role !== "RSM"\) value\.salesRegion = undefined/);
+  assert.match(staffSchemas, /value\.role && !\(value\.role === "RSM" \|\| value\.role === "ASM" \|\| \(value\.role === "STAFF" && value\.staffRoleType === "1"\)\)\) value\.salesRegion = undefined/);
   assert.match(staffSchemas, /value\.role === "STAFF" && value\.staffRoleType !== "1" && value\.staffRoleType !== "2"/);
   assert.match(staffRepo, /if \(input\.role === "NSM"\)/);
-  assert.match(staffRepo, /input\.role === "RSM" \? input\.salesRegion : null/);
+  assert.match(staffRepo, /let salesRegion: SalesRegion \| null = input\.role === "RSM" \? input\.salesRegion \?\? null : null;/);
   assert.match(staffUi, /value: 'EXECUTIVE', label: 'Sales Manager', authRole: 'STAFF', staffRoleType: '1'/);
   assert.match(staffUi, /value: 'FIELD_EXECUTIVE', label: 'Staff', authRole: 'STAFF', staffRoleType: '2'/);
   assert.match(staffUi, /value: 'RSM', label: 'RSM', authRole: 'RSM'/);
