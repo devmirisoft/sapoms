@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
-import { isAdminLike, isStaffLike, resolveDealerRequestRoute } from "@/server/auth/sales-scope";
+import { dealerRequestCoverIds, isAdminLike, isStaffLike, resolveDealerRequestRoute } from "@/server/auth/sales-scope";
 import { errorStatus } from "@/server/http/auth-error";
 import { prisma } from "@/server/db/prisma";
 
@@ -58,7 +58,8 @@ function isDuplicateKeyError(error: unknown) {
 
 export async function GET(request: NextRequest) {
   try {
-    const actor = actorFromAuth(await requireAuth());
+    const authActor = await requireAuth();
+    const actor = actorFromAuth(authActor);
 
     if (!actor || (actor.role !== "admin" && actor.role !== "staff")) {
       return buildResponseError("Dealer request access is restricted to admin and staff-like roles", 403);
@@ -94,9 +95,14 @@ export async function GET(request: NextRequest) {
       .limit(limit)
       .toArray();
 
+    // rsmCover: an RSM-stage request this NSM/Admin reviews for an unavailable RSM.
+    const coverIds = await dealerRequestCoverIds(authActor, prisma);
     return NextResponse.json({
       success: true,
-      data: rows.map(toDealerRequestListItem),
+      data: rows.map((row) => {
+        const item = toDealerRequestListItem(row);
+        return { ...item, rsmCover: coverIds.has(String(item.id)) };
+      }),
       total,
       page,
       limit,

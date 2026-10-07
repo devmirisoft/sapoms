@@ -12,7 +12,7 @@ import {
   updateDraftApprovalState,
 } from "@/lib/postgresDiscountDrafts";
 import { buildPendingRequestLookup } from "@/lib/customDiscountRequests";
-import { buildRsmDiscountRequestWhere, isStaffLike } from "@/server/auth/sales-scope";
+import { buildRsmDiscountRequestWhere, discountCovers, isStaffLike } from "@/server/auth/sales-scope";
 
 export const runtime = "nodejs";
 
@@ -52,7 +52,9 @@ export async function GET(req: NextRequest) {
     }
 
     const rows = await prisma.customDiscountRequest.findMany({ where, include: customDiscountInclude, orderBy: { createdAt: "desc" }, take: limit });
-    return NextResponse.json({ success: true, data: rows.map(mapCustomDiscount) });
+    // "rsm"/"nsm" marks a stage this NSM/Admin approves on an unavailable reviewer's behalf.
+    const covers = actor ? await discountCovers(actor, prisma) : new Map<string, "rsm" | "nsm">();
+    return NextResponse.json({ success: true, data: rows.map((row) => ({ ...mapCustomDiscount(row), cover: covers.get(row.id.toString()) ?? null })) });
   } catch (error) {
     console.error("custom-discount-requests GET failed", error);
     return jsonError(error, "Failed to load custom discount requests");

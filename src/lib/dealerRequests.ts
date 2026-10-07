@@ -82,6 +82,8 @@ export type PublicDealerRequest = {
   updatedAt: string;
   auditTrail: DealerRequestAuditEntry[];
   formSnapshot?: DealerFormSnapshot;
+  // Set when the viewer (NSM, or Admin with no NSM) reviews for an unavailable RSM.
+  rsmCover?: boolean;
 };
 
 export type DealerCandidate = {

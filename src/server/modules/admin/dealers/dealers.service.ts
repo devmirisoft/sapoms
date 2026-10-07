@@ -2,7 +2,7 @@ import { AdminRouteError } from "@/server/admin/admin-errors";
 import { adminDealerRepository } from "./dealers.repository";
 import { generatePostgresDealerCode } from "@/server/modules/dealers/dealer-code.service";
 import { mapAdminDealer, mapAdminDealerStaffAssignment } from "./dealers.mapper";
-import type { AdminDealerListInput, AuthActor, CreateAdminDealerInput, UpdateAdminDealerInput, UpdateDealerStatusInput } from "./dealers.types";
+import type { AdminDealerListInput, AuthActor, CreateAdminDealerInput, DealerRoutingInput, UpdateAdminDealerInput, UpdateDealerStatusInput } from "./dealers.types";
 
 export async function listAdminDealers(input: AdminDealerListInput) {
   const result = await adminDealerRepository.list(input);
@@ -44,6 +44,6 @@ export async function getAdminDealerStaffAssignments(dealerId: bigint) {
   return (await adminDealerRepository.getStaffAssignments(dealerId)).map(mapAdminDealerStaffAssignment);
 }
 
-export async function replaceAdminDealerStaffAssignments(dealerId: bigint, staffIds: bigint[], actor: AuthActor, rsmUserId?: bigint) {
-  return (await adminDealerRepository.replaceStaffAssignments(dealerId, staffIds, actor, rsmUserId)).map(mapAdminDealerStaffAssignment);
+export async function replaceAdminDealerStaffAssignments(dealerId: bigint, staffIds: bigint[], actor: AuthActor, routing?: DealerRoutingInput) {
+  return (await adminDealerRepository.replaceStaffAssignments(dealerId, staffIds, actor, routing)).map(mapAdminDealerStaffAssignment);
 }

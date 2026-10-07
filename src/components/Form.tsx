@@ -2,6 +2,7 @@
 
 import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
 import { ChevronDown, Plus, Search } from "lucide-react";
+import { phoneInput, phoneInputProps } from "@/lib/fieldRules";
 
 type Option = { label: string; value: string };
 type DecisionMaker = { name: string; designation: string; phone: string; email: string };
@@ -68,17 +69,19 @@ function TextBox({
   value,
   onChange,
   placeholder = "",
+  phone = false,
 }: {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
+  phone?: boolean;
 }) {
   return (
     <input
-      type="text"
+      {...(phone ? phoneInputProps : { type: "text" })}
       value={value}
       placeholder={placeholder}
-      onChange={(event) => onChange(event.target.value)}
+      onChange={(event) => onChange(phone ? phoneInput(event.target.value) : event.target.value)}
       className="min-h-6 w-full bg-transparent text-[14px] font-medium text-black outline-none placeholder:text-black/45"
     />
   );
@@ -560,7 +563,7 @@ export default function Form({
             <TextBox value={text.designation ?? ""} onChange={set("designation")} />
           </Row>
           <Row label="Mobile Number">
-            <TextBox value={text.mobile ?? ""} onChange={set("mobile")} />
+            <TextBox phone value={text.mobile ?? ""} onChange={set("mobile")} />
           </Row>
           <Row label="Email ID">
             <TextBox value={text.email ?? ""} onChange={set("email")} />
@@ -886,6 +889,7 @@ export default function Form({
                 placeholder="Designation"
               />
               <TextBox
+                phone
                 value={decisionMaker.phone}
                 onChange={(value) => setDecisionMaker((prev) => ({ ...prev, phone: value }))}
                 placeholder="Phone Number"

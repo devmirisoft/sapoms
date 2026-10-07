@@ -58,11 +58,18 @@ function resolveAdminName() {
   }
 }
 
+function coverOf(request: NormalizedCustomDiscountRequest): "rsm" | "nsm" | null {
+  const cover = (request.source as { cover?: unknown } | undefined)?.cover;
+  return cover === "rsm" || cover === "nsm" ? cover : null;
+}
+
 /**
  * Why the viewer can't act on this request yet, or null when it's theirs to
  * decide. Large asks go RSM -> NSM -> Admin; the rest RSM -> Admin.
  */
 function reviewBlocker(request: NormalizedCustomDiscountRequest, viewerIsNsm: boolean): string | null {
+  // The server marks a stage this viewer approves on an unavailable RSM/NSM's behalf.
+  if (coverOf(request) && request.normalizedStatus === "pending") return null;
   if (request.rsmApprovalStatus === "rejected") return "This request was rejected by the RSM.";
   if (request.rsmApprovalStatus !== "approved") return "Waiting for RSM approval. This request becomes actionable once the RSM approves it.";
   if (request.nsmApprovalStatus === "rejected") return "This request was rejected by the NSM.";
@@ -125,6 +132,15 @@ function DecisionPanel({
         <p className="mt-3 text-[12px] font-medium text-amber-700">{blocker}</p>
       ) : request.normalizedStatus === "pending" ? (
         <>
+          {coverOf(request) ? (
+            <p className="mt-2 text-[12px] font-semibold text-amber-700">
+              {coverOf(request) === "rsm"
+                ? request.nsmApprovalStatus === "pending"
+                  ? "RSM unavailable — you are approving on their behalf. This also clears the NSM stage."
+                  : "RSM unavailable — you are approving on their behalf."
+                : "NSM unavailable — you are approving on their behalf."}
+            </p>
+          ) : null}
           <p className="mt-2 text-[11px] font-medium text-red-600">
             Rejecting this request will save the full order snapshot back to a dealer draft for correction.
           </p>

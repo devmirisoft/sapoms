@@ -6,7 +6,7 @@ import ts from "typescript";
 
 const source = await fs.readFile(path.resolve("src/server/auth/sales-scope.ts"), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { resolveDealerRequestRoute } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
+const { resolveDealerRequestRoute, coversRsmStage, coversNsmStage, onBehalfName } = await import(`data:text/javascript;base64,${Buffer.from(js).toString("base64")}`);
 
 const prismaWith = (parentRsm) => ({ staffProfile: { findUnique: async () => ({ parentRsm }) } });
 const rsm = prismaWith({ userId: 7n });
@@ -27,6 +27,18 @@ test("plain Staff and non-sales roles cannot raise", async () => {
   }
 });
 
-test("SM/ASM with no RSM above is refused", async () => {
-  await assert.rejects(resolveDealerRequestRoute({ role: "ASM", staffId: 3n }, prismaWith(null)), { status: 403 });
+test("SM/ASM with no RSM above waits unrouted at the RSM stage (NSM/Admin covers it)", async () => {
+  assert.deepEqual(await resolveDealerRequestRoute({ role: "ASM", staffId: 3n }, prismaWith(null)), { status: "rsm_pending", rsmUserId: null });
+});
+
+test("NSM covers a missing RSM; Admin covers only when there is no active NSM", async () => {
+  const nsms = (count) => ({ user: { count: async () => count } });
+  assert.equal(await coversRsmStage({ role: "NSM" }, nsms(1)), true);
+  assert.equal(await coversRsmStage({ role: "ADMIN" }, nsms(1)), false);
+  assert.equal(await coversRsmStage({ role: "ADMIN" }, nsms(0)), true);
+  assert.equal(await coversRsmStage({ role: "RSM" }, nsms(0)), false);
+  assert.equal(await coversNsmStage({ role: "ADMIN" }, nsms(0)), true);
+  assert.equal(await coversNsmStage({ role: "ADMIN" }, nsms(1)), false);
+  assert.equal(await coversNsmStage({ role: "NSM" }, nsms(0)), false);
+  assert.equal(onBehalfName({ role: "NSM", displayName: "Susheel", email: "s@x" }, "RSM"), "Susheel (NSM, on behalf of unavailable RSM)");
 });

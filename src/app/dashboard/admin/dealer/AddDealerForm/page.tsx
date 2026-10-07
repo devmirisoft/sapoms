@@ -43,6 +43,7 @@ function dealerPayloadFromSnapshot(snapshot: DealerFormSnapshot) {
     status: "ACTIVE",
     assignedStaffIds: snapshot.assignedStaffIds,
     rsmUserId: snapshot.rsmUserId,
+    region: snapshot.region,
     walletActive: snapshot.paymentType === "advance",
   };
 }
@@ -57,6 +58,11 @@ function resolveMode(actor: DashboardActor | null, requestData: PublicDealerRequ
 
   if (actor.role === "admin" && requestData.status === "pending") {
     return "admin-review";
+  }
+
+  // The NSM (or Admin with no NSM) reviews for an unavailable RSM.
+  if (actor.role === "admin" && requestData.status === "rsm_pending" && requestData.rsmCover) {
+    return "rsm-review";
   }
 
   if (actor.role === "staff" && actor.roletype === "RSM" && requestData.status === "rsm_pending") {
@@ -197,7 +203,7 @@ function AddDealerPageContent() {
             ? "Dealer request approved and forwarded to admin."
             : "Dealer request resubmitted for approval.");
 
-      router.push(mode === "admin-review" ? ADMIN_REQUESTS_ROUTE : STAFF_REQUESTS_ROUTE);
+      router.push(actor.role === "admin" ? ADMIN_REQUESTS_ROUTE : STAFF_REQUESTS_ROUTE);
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "Something went wrong. Please try again.");
     } finally {
@@ -235,7 +241,7 @@ function AddDealerPageContent() {
       }
 
       showToast("success", "Dealer request rejected.");
-      router.push(mode === "rsm-review" ? STAFF_REQUESTS_ROUTE : ADMIN_REQUESTS_ROUTE);
+      router.push(actor.role === "admin" ? ADMIN_REQUESTS_ROUTE : STAFF_REQUESTS_ROUTE);
     } catch (error) {
       showToast("error", error instanceof Error ? error.message : "Failed to reject dealer request");
     } finally {
@@ -294,6 +300,9 @@ function AddDealerPageContent() {
           rejectionReason: requestData.rejectionReason || requestData.lastRejectionReason,
           submittedByName: requestData.submittedByName,
           submittedAt: requestData.submittedAt,
+          onBehalfNotice: mode === "rsm-review" && requestData.rsmCover
+            ? "RSM unavailable — you are approving on their behalf. Approving forwards it to admin."
+            : undefined,
         } : undefined}
       />
     </>

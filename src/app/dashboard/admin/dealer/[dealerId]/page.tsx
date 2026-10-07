@@ -14,19 +14,20 @@ import {
   FileText,
   Loader2,
 } from 'lucide-react'
-import { normalizeDealerContacts, type DealerContact, type StaffMember } from '@/lib/dealerForm'
-import { showToast } from "@/components/ui/toast";
 import {
   EMPTY_ROLE_ASSIGNMENTS,
-  RoleAssignmentPanel,
   buildRoleAssignmentsFromIds,
-  buildRoleOptions,
   getStaffUserId,
-  resolveNextRoleAssignments,
+  normalizeDealerContacts,
+  regionFromAssignments,
   uniqueStaffIds,
-  type AssignmentRoleKey,
+  type DealerContact,
   type RoleAssignments,
-} from "@/components/dealers/DealerFormCard";
+  type StaffMember,
+} from '@/lib/dealerForm'
+import { showToast } from "@/components/ui/toast";
+import { clampPercentInput, normalizePhone, phoneInput, phoneInputProps } from "@/lib/fieldRules";
+import { RoleAssignmentPanel } from "@/components/dealers/DealerFormCard";
 
 type DealerStatus = "active" | "inactive" | "suspended"
 
@@ -108,9 +109,9 @@ function InputField({
       </label>
       <input
         required={required}
-        type={type}
+        {...(type === "tel" ? phoneInputProps : { type })}
         value={value}
-        onChange={e => onChange(e.target.value)}
+        onChange={e => onChange(type === "tel" ? phoneInput(e.target.value) : e.target.value)}
         placeholder={placeholder || label}
         className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
       />
@@ -189,6 +190,8 @@ export default function EditDealerPage() {
   const [diagnosticRevoking, setDiagnosticRevoking] = useState(false)
   const [activeDiagnosticPassword, setActiveDiagnosticPassword] = useState<DiagnosticPassword | null>(null)
   const [roleAssignments, setRoleAssignments] = useState<RoleAssignments>(() => ({ ...EMPTY_ROLE_ASSIGNMENTS }))
+  const [region, setRegion] = useState("")
+  const [savedRegion, setSavedRegion] = useState("")
   // Untouched, the dealer's existing assignments are left exactly as stored.
   const [staffTouched, setStaffTouched] = useState(false)
   const [initialAssignedStaffIds, setInitialAssignedStaffIds] = useState<string[]>([])
@@ -209,7 +212,7 @@ export default function EditDealerPage() {
           const d = json.data
           setName(d.Dealer_Name        || "")
           setEmail(d.Dealer_Email       || "")
-          setNumber(d.Dealer_Number     || "")
+          setNumber(normalizePhone(d.Dealer_Number))
           setCity(d.Dealer_City         || "")
           setPincode(d.Dealer_Pincode   || "")
           setAddress(d.Dealer_Address   || "")
@@ -225,11 +228,12 @@ export default function EditDealerPage() {
           setPriorityPerson(d.priorityContact === "secondary" ? "secondary" : "primary")
           setContactName(d.contactName || d.Dealer_Name || "")
           setSecondaryContactName(d.secondaryContactName || "")
-          setSecondaryContactPhone(d.secondaryContactPhone || "")
+          setSecondaryContactPhone(normalizePhone(d.secondaryContactPhone))
           setSecondaryContactEmail(d.secondaryContactEmail || "")
           setAdditionalContacts(normalizeDealerContacts(d.additionalContacts))
           setExistingStaffNames(d.staffname || "")
           setInitialAssignedStaffIds(splitCsv(d.assignedstaff))
+          setSavedRegion(d.region || "")
           setStatus(normalizeDealerStatus(d.status))
           setWalletStatus(String(d.walletStatus || "").toLowerCase() === "active" ? "active" : "inactive")
         } else {
@@ -279,18 +283,20 @@ export default function EditDealerPage() {
 
   const isWalletActive = walletStatus === "active"
 
-  // Same picker as Add Dealer: choose the Sales Manager, ASM/RSM fill in.
-  const roleOptions = useMemo(() => buildRoleOptions(staffOptions), [staffOptions])
+  // Same picker as Add Dealer: region first, then a sales person, parents fill in.
   const assignedStaffIds = useMemo(() => uniqueStaffIds(Object.values(roleAssignments)), [roleAssignments])
 
   useEffect(() => {
     if (staffTouched) return
-    setRoleAssignments(buildRoleAssignmentsFromIds(initialAssignedStaffIds, staffOptions))
-  }, [initialAssignedStaffIds, staffOptions, staffTouched])
+    const assignments = buildRoleAssignmentsFromIds(initialAssignedStaffIds, staffOptions)
+    setRoleAssignments(assignments)
+    setRegion(regionFromAssignments(assignments, staffOptions) || savedRegion)
+  }, [initialAssignedStaffIds, staffOptions, staffTouched, savedRegion])
 
-  const handleAssignmentChange = (roleKey: AssignmentRoleKey, staffId: string) => {
+  const handleAssignmentChange = (nextRegion: string, nextAssignments: RoleAssignments) => {
     setStaffTouched(true)
-    setRoleAssignments(prev => resolveNextRoleAssignments(prev, roleOptions, roleKey, staffId))
+    setRegion(nextRegion)
+    setRoleAssignments(nextAssignments)
   }
 
   // Derive staffname string from current selection (matches what AddDealerForm does)
@@ -391,9 +397,14 @@ export default function EditDealerPage() {
     e.preventDefault()
     const normalizedStaffIds = [...assignedStaffIds].sort()
     const initialNormalizedStaffIds = uniqueStaffIds(initialAssignedStaffIds).sort()
-    const staffChanged = staffTouched && (normalizedStaffIds.length !== initialNormalizedStaffIds.length
+    const staffChanged = staffTouched && (region !== savedRegion
+      || normalizedStaffIds.length !== initialNormalizedStaffIds.length
       || normalizedStaffIds.some((id, index) => id !== initialNormalizedStaffIds[index]))
 
+    if (staffTouched && !region) {
+      showToast('error', "Select a region for this dealer.")
+      return
+    }
     if ((staffTouched || !initialNormalizedStaffIds.length) && !roleAssignments.executive) {
       showToast('error', "Select a Staff / Executive for this dealer.")
       return
@@ -455,13 +466,16 @@ export default function EditDealerPage() {
           credentials: "include",
           body: JSON.stringify({
             staffIds: normalizedStaffIds,
-            rsmUserId: getStaffUserId(roleAssignments.rsm, staffOptions) || undefined,
+            // Empty clears the RSM: a region with no active RSM keeps its region below.
+            rsmUserId: getStaffUserId(roleAssignments.rsm, staffOptions) || "",
+            region,
           }),
         })
         const staffPayload = await staffResponse.json()
         if (!staffResponse.ok || !staffPayload.success) throw new Error(staffPayload.message ?? "Failed to update staff assignments")
         setExistingStaffNames(getStaffNames())
         setInitialAssignedStaffIds(normalizedStaffIds)
+        setSavedRegion(region)
         setStaffTouched(false)
       }
       showToast('success', "Dealer updated successfully")
@@ -485,7 +499,7 @@ export default function EditDealerPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-100 pb-28">
+    <div className="min-h-screen bg-gray-100">
 
       {/* Toast */}
 
@@ -534,7 +548,7 @@ export default function EditDealerPage() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <InputField label="Person Name" value={contactName} onChange={setContactName} placeholder="Person name" />
-                    <InputField label="Phone No."   value={number}  onChange={setNumber} type="number" placeholder="10-digit number" />
+                    <InputField label="Phone No."   value={number}  onChange={setNumber} type="tel" placeholder="10-digit number" />
                     <InputField label="Email"       value={email}   onChange={setEmail}  type="email" placeholder="dealer@email.com" />
                   </div>
                 </div>
@@ -546,7 +560,7 @@ export default function EditDealerPage() {
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                     <InputField label="Second Person Name" value={secondaryContactName}  onChange={setSecondaryContactName}  required={false} placeholder="Second contact name" />
-                    <InputField label="Second Phone No."   value={secondaryContactPhone} onChange={setSecondaryContactPhone} required={false} type="number" placeholder="Second phone number" />
+                    <InputField label="Second Phone No."   value={secondaryContactPhone} onChange={setSecondaryContactPhone} required={false} type="tel" placeholder="Second phone number" />
                     <InputField label="Second Email"       value={secondaryContactEmail} onChange={setSecondaryContactEmail} required={false} type="email" placeholder="Second email" />
                   </div>
                 </div>
@@ -565,7 +579,7 @@ export default function EditDealerPage() {
                     </div>
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
                       <InputField label="Person Name" value={contact.name}  onChange={value => updateAdditionalContact(index, "name", value)}  placeholder="Contact name" />
-                      <InputField label="Phone No."   value={contact.phone} onChange={value => updateAdditionalContact(index, "phone", value)} type="number" placeholder="Phone number" />
+                      <InputField label="Phone No."   value={contact.phone} onChange={value => updateAdditionalContact(index, "phone", value)} type="tel" placeholder="Phone number" />
                       <InputField label="Email"       value={contact.email} onChange={value => updateAdditionalContact(index, "email", value)} type="email" placeholder="Email" />
                     </div>
                   </div>
@@ -691,7 +705,7 @@ export default function EditDealerPage() {
                 </div>
               )}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                <InputField label="Discount %"     value={discount}     onChange={setDiscount}     type="number" placeholder="e.g. 10" />
+                <InputField label="Discount %"     value={discount}     onChange={v => setDiscount(clampPercentInput(v))} type="number" placeholder="e.g. 10" />
                 <InputField label="Annual Target"  value={annualtarget} onChange={setAnnualtarget} type="number" placeholder="Amount in Rs" required={false} />
                 {!isWalletActive && (
                   <>
@@ -736,8 +750,9 @@ export default function EditDealerPage() {
               <div className="-mt-6">
                 <RoleAssignmentPanel
                   loading={staffLoading}
+                  staffList={staffOptions}
+                  region={region}
                   roleAssignments={roleAssignments}
-                  roleOptions={roleOptions}
                   onChange={handleAssignmentChange}
                 />
               </div>
@@ -763,7 +778,7 @@ export default function EditDealerPage() {
           </div>
 
           {/* Sticky actions bar */}
-          <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur border-t border-gray-200 px-6 py-4 flex items-center justify-end gap-3 z-40">
+          <div className="sticky bottom-0 mt-6 bg-white/95 backdrop-blur border border-gray-200 rounded-xl shadow-sm px-6 py-4 flex items-center justify-end gap-3 z-40">
             <button
               type="button"
               onClick={() => router.push(DEALER_LIST_ROUTE)}

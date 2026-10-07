@@ -27,7 +27,10 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     const id = parseBigIntRouteParam(dealerId, "dealerId");
     const input = parseReplaceDealerStaffInput(await request.json());
     const staffIds = input.staffIds.map((staffId) => BigInt(staffId));
-    const assignedStaff = await replaceAdminDealerStaffAssignments(id, staffIds, actor, input.rsmUserId ? BigInt(input.rsmUserId) : undefined);
+    const assignedStaff = await replaceAdminDealerStaffAssignments(id, staffIds, actor, {
+      rsmUserId: input.rsmUserId ? BigInt(input.rsmUserId) : undefined,
+      region: input.region,
+    });
     return NextResponse.json(adminMutationResponse("Dealer staff assignments updated successfully", { dealerId: id.toString(), assignedStaff }), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[PUT /api/admin/dealers/[dealerId]/staff]", error);

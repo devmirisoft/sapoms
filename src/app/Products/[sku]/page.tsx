@@ -748,7 +748,7 @@ export default function ProductDetailsPage() {
 
             {/* PURCHASE CARD — rail column, spanning the full page height so it
                 stays pinned while the variants table scrolls past. */}
-            <div style={{ gridColumn: 2, gridRow: "1 / span 2", background: "#fff", border: "2px solid #e2e8f0", borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 18, position: "sticky", top: SITE_HEADER_HEIGHT + 20, maxHeight: `calc(100vh - ${SITE_HEADER_HEIGHT + 40}px)`, overflow: "hidden" }}>
+            <div style={{ gridColumn: 2, gridRow: "1 / span 2", background: "#fff", border: "2px solid #e2e8f0", borderRadius: 16, padding: 22, display: "flex", flexDirection: "column", gap: 18, position: "sticky", top: SITE_HEADER_HEIGHT + 20, maxHeight: `calc(100vh - ${SITE_HEADER_HEIGHT + 40}px)`, overflowY: "auto" }}>
 
               {/* Price */}
               <div>
@@ -852,7 +852,7 @@ export default function ProductDetailsPage() {
                 </p>
               )}
               {selectedRows.length > 0 && (
-                <aside style={{ border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", minHeight: 0, flex: "1 1 auto" }}>
+                <aside style={{ border: "1px solid #e2e8f0", borderRadius: 12, background: "#fff", overflow: "hidden", display: "flex", flexDirection: "column", flexShrink: 0 }}>
                   <div style={{ padding: "12px 16px", borderBottom: "1px solid #e2e8f0", background: "#f8fafc", flexShrink: 0 }}>
                     <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: "#64748b", letterSpacing: ".07em", textTransform: "uppercase" }}>
                       Selected Variants
@@ -862,7 +862,7 @@ export default function ProductDetailsPage() {
                     </p>
                   </div>
 
-                  <div style={{ display: "flex", flexDirection: "column", overflowY: "auto", minHeight: 0, flex: "1 1 auto" }}>
+                  <div style={{ display: "flex", flexDirection: "column", overflowY: "auto", maxHeight: 390 }}>
                     {selectedRows.map(row => (
                       <div key={row.sku}
                         onClick={() => setSelectedVariantSKU(row.sku)}

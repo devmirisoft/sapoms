@@ -40,7 +40,6 @@ const NAV_ITEMS = [
   { label: "Add Dealer",      href: "/dashboard/admin/dealer/AddDealerForm",     icon: <UserRoundPlus size={15} /> },
   { label: "Dealer Category Report", href: "/dashboard/staff/reports/dealer-category", icon: <ClipboardList size={15} /> },
   { label: "Order List",      href: "/orders",                    icon: <ClipboardList size={15} /> },
-  { label: "Pending Orders",  href: "/Pages/Ordermanagement/outstandingorders",  icon: <ClipboardList size={15} /> },
   { label: "Discount Requests", href: "/dashboard/staff/discount-requests",      icon: <Receipt size={15} /> },
 ]
 

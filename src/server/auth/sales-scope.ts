@@ -60,6 +60,8 @@ export async function buildOrderRegionWhere(actor: Pick<AuthActor, "userId" | "r
  * Where a new dealer request lands. An RSM's goes straight to admin; an ASM's or
  * Sales Manager's goes to its parent RSM first. Plain Staff ("2") cannot raise one.
  * A STAFF user with no subtype counts as a Sales Manager, as in legacy-auth.mapper.
+ * With no RSM above the requester it still waits at the RSM stage, unrouted, and
+ * the NSM (or Admin) covers it - see orphanRsmDealerRequestWhere.
  */
 export async function resolveDealerRequestRoute(
   actor: Pick<AuthActor, "role" | "staffId" | "staffRoleType">,
@@ -73,9 +75,136 @@ export async function resolveDealerRequestRoute(
   const profile = actor.staffId
     ? await prisma.staffProfile.findUnique({ where: { id: actor.staffId }, select: { parentRsm: { select: { userId: true } } } })
     : null;
-  const rsmUserId = profile?.parentRsm?.userId;
-  if (!rsmUserId) throw Object.assign(new Error("No RSM is assigned above you to review this dealer request"), { status: 403 });
-  return { status: "rsm_pending", rsmUserId };
+  return { status: "rsm_pending", rsmUserId: profile?.parentRsm?.userId ?? null };
+}
+
+/* ---- RSM -> NSM -> Admin fallback ----
+   An RSM-stage item whose RSM is missing or inactive is an "orphan": the NSM
+   approves it instead, or Admin when there is no active NSM. Admin also takes the
+   NSM's own discount stage when there is no active NSM. Decided on read, never
+   stored, so pending and future items both follow it and go back to an RSM as
+   soon as one is active again. */
+
+const ACTIVE_USER = { status: "ACTIVE", deletedAt: null } satisfies Prisma.UserWhereInput;
+const ACTIVE_RSM_USER = { role: "RSM", ...ACTIVE_USER } satisfies Prisma.UserWhereInput;
+const ACTIVE_RSM = { user: ACTIVE_RSM_USER } satisfies Prisma.StaffProfileWhereInput;
+
+/**
+ * Orders an RSM handles. The order climbs through the lowest sales person the
+ * dealer has: its Sales Manager (stamped on the order), else the dealer's ASM,
+ * else straight to the dealer's RSM. Adding an SM later restamps pending orders
+ * (restampPendingOrders), which puts them back on the SM -> RSM path.
+ */
+export function rsmOrderScope(rsmStaffId: bigint, rsmUserId: bigint): Prisma.OrderWhereInput {
+  return {
+    OR: [
+      { salesManager: { parentRsmId: rsmStaffId } },
+      { salesManagerId: null, dealer: { staffAssignments: { some: { active: true, staff: { staffRoleType: "ASM", parentRsmId: rsmStaffId } } } } },
+      { salesManagerId: null, dealer: { rsmUserId } },
+    ],
+  };
+}
+
+// Same three paths as rsmOrderScope, with an active RSM at the end of the path.
+export const orphanRsmOrderWhere: Prisma.OrderWhereInput = {
+  rsmApprovalStatus: "AWAITING",
+  status: { notIn: ["CANCELLED", "DECLINED"] },
+  NOT: {
+    OR: [
+      { salesManager: { parentRsm: ACTIVE_RSM } },
+      { salesManagerId: null, dealer: { staffAssignments: { some: { active: true, staff: { staffRoleType: "ASM", parentRsm: ACTIVE_RSM } } } } },
+      { salesManagerId: null, dealer: { regionalManager: ACTIVE_RSM_USER } },
+    ],
+  },
+};
+
+// Mirrors buildRsmDiscountRequestWhere: the dealer's region RSM or the raiser's RSM.
+export const orphanRsmDiscountWhere: Prisma.CustomDiscountRequestWhereInput = {
+  status: "PENDING",
+  rsmApprovalStatus: "PENDING",
+  NOT: {
+    OR: [
+      { dealer: { regionalManager: ACTIVE_RSM_USER } },
+      { staff: ACTIVE_RSM },
+      { staff: { parentRsm: ACTIVE_RSM } },
+      { staff: { rsmLinks: { some: { rsm: ACTIVE_RSM } } } },
+    ],
+  },
+};
+
+// Mirrors buildFundRequestScope's RSM branch.
+export const orphanRsmFundWhere: Prisma.DealerFundRequestWhereInput = {
+  status: "REQUESTED",
+  NOT: {
+    OR: [
+      { regionalManager: ACTIVE_RSM_USER },
+      { staff: { parentRsm: ACTIVE_RSM } },
+      { staff: { rsmLinks: { some: { rsm: ACTIVE_RSM } } } },
+    ],
+  },
+};
+
+// Dealer requests carry a bare rsmUserId (no relation), so resolve active RSMs first.
+export async function orphanRsmDealerRequestWhere(prisma: Pick<Prisma.TransactionClient, "user">): Promise<Prisma.DealerRequestWhereInput> {
+  const active = await prisma.user.findMany({ where: ACTIVE_RSM_USER, select: { id: true } });
+  return { status: "rsm_pending", OR: [{ rsmUserId: null }, { rsmUserId: { notIn: active.map((user) => user.id) } }] };
+}
+
+/** Ids of RSM-stage dealer requests this NSM/Admin reviews for an unavailable RSM. */
+export async function dealerRequestCoverIds(
+  actor: Pick<AuthActor, "role">,
+  prisma: Pick<Prisma.TransactionClient, "user" | "dealerRequest">,
+): Promise<Set<string>> {
+  if (!isAdminLike(actor) || !(await coversRsmStage(actor, prisma))) return new Set();
+  const rows = await prisma.dealerRequest.findMany({ where: await orphanRsmDealerRequestWhere(prisma), select: { id: true } });
+  return new Set(rows.map((row) => row.id.toString()));
+}
+
+export async function activeNsmExists(prisma: Pick<Prisma.TransactionClient, "user">) {
+  return (await prisma.user.count({ where: { role: "NSM", ...ACTIVE_USER } })) > 0;
+}
+
+/** Whether this actor approves RSM-stage orphans: the NSM, or Admin when there is no active NSM. */
+export async function coversRsmStage(actor: Pick<AuthActor, "role">, prisma: Pick<Prisma.TransactionClient, "user">) {
+  if (actor.role === "NSM") return true;
+  return actor.role === "ADMIN" && !(await activeNsmExists(prisma));
+}
+
+/** Whether this actor approves the NSM discount stage on the NSM's behalf: Admin with no active NSM. */
+export async function coversNsmStage(actor: Pick<AuthActor, "role">, prisma: Pick<Prisma.TransactionClient, "user">) {
+  return actor.role === "ADMIN" && !(await activeNsmExists(prisma));
+}
+
+/**
+ * Which discount stage this NSM/Admin covers, by request id: "rsm" for an orphan
+ * at the RSM stage, "nsm" for the NSM stage when there is no active NSM.
+ * Pass `id` to check one request.
+ */
+export async function discountCovers(
+  actor: Pick<AuthActor, "role">,
+  prisma: Pick<Prisma.TransactionClient, "user" | "customDiscountRequest">,
+  id?: bigint,
+): Promise<Map<string, "rsm" | "nsm">> {
+  const covers = new Map<string, "rsm" | "nsm">();
+  if (!isAdminLike(actor)) return covers;
+  const scope = id === undefined ? {} : { id };
+  const [rsm, nsm] = await Promise.all([coversRsmStage(actor, prisma), coversNsmStage(actor, prisma)]);
+  const [rsmRows, nsmRows] = await Promise.all([
+    rsm ? prisma.customDiscountRequest.findMany({ where: { ...scope, ...orphanRsmDiscountWhere }, select: { id: true } }) : [],
+    nsm ? prisma.customDiscountRequest.findMany({ where: { ...scope, status: "PENDING", rsmApprovalStatus: "APPROVED", nsmApprovalStatus: "PENDING" }, select: { id: true } }) : [],
+  ]);
+  nsmRows.forEach((row) => covers.set(row.id.toString(), "nsm"));
+  rsmRows.forEach((row) => covers.set(row.id.toString(), "rsm"));
+  return covers;
+}
+
+/**
+ * Reviewer name recorded when someone approves on another role's behalf, so every
+ * screen that shows "approved by" also says who was unavailable.
+ * ponytail: lives in the existing *ReviewedByName columns; add a column if reports must filter on it.
+ */
+export function onBehalfName(actor: Pick<AuthActor, "role" | "displayName" | "email">, stages: "RSM" | "NSM" | "RSM and NSM") {
+  return `${actor.displayName || actor.email} (${actor.role}, on behalf of unavailable ${stages})`;
 }
 
 /**

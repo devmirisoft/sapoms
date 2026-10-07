@@ -4,8 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
 
 import {
+  EMPTY_ROLE_ASSIGNMENTS,
+  buildRegionSalesOptions,
+  buildRoleAssignmentsFromIds,
+  buildRoleOptions,
   getAssignedStaffNames,
+  getStaffUserId,
+  lowestSalesPerson,
   normalizeDealerFormSnapshot,
+  regionFromAssignments,
+  selectRegion,
+  selectSalesPerson,
+  uniqueStaffIds,
+  type AssignmentRoleKey,
+  type RoleAssignments,
   toDealerFormSnapshot,
   validateDealerFormSnapshot,
   type DealerContact,
@@ -13,7 +25,9 @@ import {
   type DealerFormValues,
   type StaffMember,
 } from "@/lib/dealerForm";
+import { clampPercentInput, phoneInput, phoneInputProps } from "@/lib/fieldRules";
 import { CITIES_BY_STATE, STATE_OPTIONS } from "@/lib/places";
+import { SALES_REGION_OPTIONS } from "@/lib/salesRegions";
 import { formatWarehouseLabel } from "@/lib/warehouses";
 
 const ADMIN_STAFF_URL = "/api/admin/staff";
@@ -21,15 +35,6 @@ const DEALER_CODE_PREFIX = "OM-";
 
 type DealerFormMode = "admin-create" | "staff-submit" | "admin-review" | "rsm-review" | "staff-resubmit";
 type DealerDetailsTab = "company" | "alternate" | "remarks";
-export type AssignmentRoleKey = "rsm" | "asm" | "salesManager" | "executive";
-export type RoleAssignments = Record<AssignmentRoleKey, string>;
-
-export const EMPTY_ROLE_ASSIGNMENTS: RoleAssignments = {
-  rsm: "",
-  asm: "",
-  salesManager: "",
-  executive: "",
-};
 
 async function fetchWithAuthRetry(input: RequestInfo | URL, init?: RequestInit) {
   const response = await fetch(input, { credentials: "include", cache: "no-store", ...init });
@@ -62,6 +67,8 @@ type DealerFormContext = {
     rejectionReason?: string;
     submittedByName?: string;
     submittedAt?: string;
+    // Shown when the reviewer stands in for an unavailable RSM.
+    onBehalfNotice?: string;
   };
 };
 
@@ -128,6 +135,7 @@ export default function DealerFormCard({
   const [formData, setFormData] = useState<DealerFormValues>(() => toFormValues(initialSnapshot));
   const [showPassword, setShowPassword] = useState(true);
   const [roleAssignments, setRoleAssignments] = useState<RoleAssignments>(() => ({ ...EMPTY_ROLE_ASSIGNMENTS }));
+  const [region, setRegion] = useState(() => initialSnapshot?.region ?? "");
   const [activeDetailsTab, setActiveDetailsTab] = useState<DealerDetailsTab>("company");
   const [dealerCodeLoading, setDealerCodeLoading] = useState(false);
   const [dealerCodeError, setDealerCodeError] = useState("");
@@ -154,8 +162,10 @@ export default function DealerFormCard({
             const status = String(staff.status ?? "").toUpperCase();
             return ["STAFF", "RSM", "ASM"].includes(role) && (!status || status === "ACTIVE");
           });
+          const assignments = buildRoleAssignmentsFromIds(initialSnapshot?.assignedStaffIds ?? [], activeStaff);
           setStaffList(activeStaff);
-          setRoleAssignments(buildRoleAssignmentsFromIds(initialSnapshot?.assignedStaffIds ?? [], activeStaff));
+          setRoleAssignments(assignments);
+          setRegion(regionFromAssignments(assignments, activeStaff) || initialSnapshot?.region || "");
           return;
         }
 
@@ -235,10 +245,9 @@ export default function DealerFormCard({
   ) => {
     const { name, value } = event.target;
     setInlineError("");
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({ ...prev, [name]: name === "whatsapp" || name === "secondaryContactPhone" ? phoneInput(value) : name === "discount" ? clampPercentInput(value) : value }));
   };
 
-  const roleOptions = useMemo(() => buildRoleOptions(staffList), [staffList]);
   const assignedStaffIds = useMemo(() => uniqueStaffIds(Object.values(roleAssignments)), [roleAssignments]);
   const selectedRsmUserId = useMemo(() => getStaffUserId(roleAssignments.rsm, staffList), [roleAssignments.rsm, staffList]);
 
@@ -291,9 +300,10 @@ export default function DealerFormCard({
     setFormData((prev) => ({ ...prev, additionalContacts: prev.additionalContacts.filter((_, position) => position !== index) }));
   };
 
-  const handleAssignmentChange = (roleKey: AssignmentRoleKey, staffId: string) => {
+  const handleAssignmentChange = (nextRegion: string, nextAssignments: RoleAssignments) => {
     setInlineError("");
-    setRoleAssignments((prev) => resolveNextRoleAssignments(prev, roleOptions, roleKey, staffId));
+    setRegion(nextRegion);
+    setRoleAssignments(nextAssignments);
   };
 
   const handlePaymentTermsChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
@@ -319,43 +329,37 @@ export default function DealerFormCard({
       nextForm.dealerCode = formData.dealerCode;
     }
     setFormData(nextForm);
-    setRoleAssignments(buildRoleAssignmentsFromIds(snapshot.assignedStaffIds, staffList));
+    const assignments = buildRoleAssignmentsFromIds(snapshot.assignedStaffIds, staffList);
+    setRoleAssignments(assignments);
+    setRegion(regionFromAssignments(assignments, staffList) || snapshot.region || "");
     setActiveDetailsTab("company");
     setInlineError("");
   };
 
+  // The validated snapshot, or null after showing why it is not valid yet.
+  const buildValidSnapshot = () => {
+    const staffNames = getAssignedStaffNames(assignedStaffIds, staffList) || initialSnapshot?.staffNames || "";
+    const snapshot = toDealerFormSnapshot(formData, assignedStaffIds, staffNames, selectedRsmUserId, region);
+    const validationError = !region
+      ? "Select a region for this dealer."
+      : !roleAssignments.executive
+        ? "Select a Staff / Executive for this dealer."
+        : validateDealerFormSnapshot(snapshot);
+
+    setInlineError(validationError ?? "");
+    return validationError ? null : snapshot;
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const staffNames = getAssignedStaffNames(assignedStaffIds, staffList) || initialSnapshot?.staffNames || "";
-    const snapshot = toDealerFormSnapshot(formData, assignedStaffIds, staffNames, selectedRsmUserId);
-    const validationError = !roleAssignments.executive
-      ? "Select a Staff / Executive for this dealer."
-      : validateDealerFormSnapshot(snapshot);
-
-    if (validationError) {
-      setInlineError(validationError);
-      return;
-    }
-
-    setInlineError("");
-    await onSubmit(snapshot);
+    const snapshot = buildValidSnapshot();
+    if (snapshot) await onSubmit(snapshot);
   };
 
   const handleSecondaryAction = async () => {
     if (!secondaryAction) return;
-    const staffNames = getAssignedStaffNames(assignedStaffIds, staffList) || initialSnapshot?.staffNames || "";
-    const snapshot = toDealerFormSnapshot(formData, assignedStaffIds, staffNames, selectedRsmUserId);
-    const validationError = !roleAssignments.executive
-      ? "Select a Staff / Executive for this dealer."
-      : validateDealerFormSnapshot(snapshot);
-
-    if (validationError) {
-      setInlineError(validationError);
-      return;
-    }
-
-    setInlineError("");
-    await secondaryAction.onAction(snapshot);
+    const snapshot = buildValidSnapshot();
+    if (snapshot) await secondaryAction.onAction(snapshot);
   };
 
   return (
@@ -380,6 +384,12 @@ export default function DealerFormCard({
                 <span className="font-semibold">Request Ref: {requestMeta.requestReference}</span>
                 {requestMeta.submittedByName ? <span className="ml-3">Submitted by {requestMeta.submittedByName}</span> : null}
                 {requestMeta.submittedAt ? <span className="ml-3">{new Date(requestMeta.submittedAt).toLocaleString("en-IN")}</span> : null}
+              </div>
+            ) : null}
+
+            {requestMeta?.onBehalfNotice ? (
+              <div className="mt-4 border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-700">
+                {requestMeta.onBehalfNotice}
               </div>
             ) : null}
 
@@ -408,7 +418,7 @@ export default function DealerFormCard({
                   <Field label="Phone No." required>
                     <div className="flex gap-3">
                       <input className="!w-16 text-center" value="+91" readOnly aria-label="Country code" />
-                      <input name="whatsapp" type="number" value={formData.whatsapp} onChange={handleInputChange} placeholder="Phone number" required />
+                      <input name="whatsapp" {...phoneInputProps} value={formData.whatsapp} onChange={handleInputChange} placeholder="10-digit phone number" required />
                     </div>
                   </Field>
                   <Field label="Email" required>
@@ -424,7 +434,7 @@ export default function DealerFormCard({
                   <Field label="Second Phone No.">
                     <div className="flex gap-3">
                       <input className="!w-16 text-center" value="+91" readOnly aria-label="Country code" />
-                      <input name="secondaryContactPhone" type="number" value={formData.secondaryContactPhone} onChange={handleInputChange} placeholder="Second phone number" />
+                      <input name="secondaryContactPhone" {...phoneInputProps} value={formData.secondaryContactPhone} onChange={handleInputChange} placeholder="Second phone number" />
                     </div>
                   </Field>
                   <Field label="Second Email">
@@ -441,7 +451,7 @@ export default function DealerFormCard({
                     <Field label="Phone No." required>
                       <div className="flex gap-3">
                         <input className="!w-16 text-center" value="+91" readOnly aria-label="Country code" />
-                        <input type="number" value={contact.phone} onChange={(event) => handleAdditionalContactChange(index, "phone", event.target.value)} placeholder="Phone number" required />
+                        <input {...phoneInputProps} value={contact.phone} onChange={(event) => handleAdditionalContactChange(index, "phone", phoneInput(event.target.value))} placeholder="10-digit phone number" required />
                       </div>
                     </Field>
                     <Field label="Email" required>
@@ -556,8 +566,9 @@ export default function DealerFormCard({
 
                     <RoleAssignmentPanel
                       loading={staffLoading}
+                      staffList={staffList}
+                      region={region}
                       roleAssignments={roleAssignments}
-                      roleOptions={roleOptions}
                       onChange={handleAssignmentChange}
                     />
                   </>
@@ -692,54 +703,99 @@ function Tab({ active = false, onClick, children }: { active?: boolean; onClick:
   );
 }
 
-// Shared with Edit Dealer: pick the Sales Manager, the ASM/RSM follow from it.
+// Shared with Edit Dealer: pick a region, then one sales person from it (lowest
+// role first). The slots above that person fill from their real parents, and the
+// region's RSM is always linked.
 export function RoleAssignmentPanel({
   loading,
+  staffList,
+  region,
   roleAssignments,
-  roleOptions,
   onChange,
 }: {
   loading: boolean;
+  staffList: StaffMember[];
+  region: string;
   roleAssignments: RoleAssignments;
-  roleOptions: Record<AssignmentRoleKey, StaffMember[]>;
-  onChange: (roleKey: AssignmentRoleKey, staffId: string) => void;
+  onChange: (region: string, roleAssignments: RoleAssignments) => void;
 }) {
+  const roleOptions = useMemo(() => buildRoleOptions(staffList), [staffList]);
+  const salesGroups = useMemo(() => buildRegionSalesOptions(roleOptions, staffList, region), [roleOptions, staffList, region]);
   const selectedRows = ASSIGNMENT_FIELDS.map((field) => {
     const staffId = roleAssignments[field.key];
     const staff = staffId ? roleOptions[field.key].find((entry) => String(entry.staff_id) === staffId) : null;
-    return { ...field, staffId, staff };
+    return { ...field, staff };
   });
-  // Staff (staffRoleType "2") are free of the RSM chain: every Staff member is
-  // offered whatever Sales Manager is picked. What matters for a Staff member
-  // is its warehouse, which decides the order list's warehouse tab.
-  const staffOptions = roleOptions.executive;
 
   return (
     <div className="mt-6">
       <label className="mb-2 block text-xs font-bold text-[#59677a]">
         Assign Staff<span className="ml-0.5 text-[#e25959]">*</span>
       </label>
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <AssignmentSelect
-          label="Sales Manager"
-          roleKey="salesManager"
-          value={roleAssignments.salesManager}
-          options={roleOptions.salesManager}
-          loading={loading}
-          placeholder="Select sales manager"
-          onChange={onChange}
-        />
-        <AssignmentSelect
-          label="Staff / Executive"
-          required
-          roleKey="executive"
-          value={roleAssignments.executive}
-          options={staffOptions}
-          loading={loading}
-          disabled={!roleAssignments.salesManager}
-          placeholder={roleAssignments.salesManager ? "Select staff" : "Select sales manager first"}
-          onChange={onChange}
-        />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="min-w-0">
+          <SelectLabel label="Region" required />
+          <select
+            value={region}
+            disabled={loading}
+            onChange={(event) => onChange(event.target.value, selectRegion(roleAssignments, roleOptions, staffList, event.target.value))}
+            className={SELECT_CLASS}
+          >
+            <option value="">{loading ? "Loading..." : "Select region"}</option>
+            {SALES_REGION_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>{option.label}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="min-w-0">
+          <SelectLabel label="Sales Person" />
+          <select
+            value={lowestSalesPerson(roleAssignments)}
+            disabled={loading || !region}
+            onChange={(event) => onChange(region, selectSalesPerson(roleAssignments, roleOptions, staffList, region, event.target.value))}
+            className={SELECT_CLASS}
+          >
+            <option value="">{!region ? "Select region first" : salesGroups.length ? "Select sales person" : "No active sales staff in this region"}</option>
+            {salesGroups.map((group) => (
+              <optgroup key={group.key} label={group.label}>
+                {group.staff.map((staff) => {
+                  const staffId = String(staff.staff_id);
+                  return (
+                    <option key={staffId} value={staffId}>
+                      {staff.staff_name || "Staff #" + staffId}
+                    </option>
+                  );
+                })}
+              </optgroup>
+            ))}
+          </select>
+        </div>
+
+        {/* Staff (staffRoleType "2") are free of the sales chain and the region;
+            what matters is their warehouse, which decides the order list's tab. */}
+        <div className="min-w-0">
+          <SelectLabel label="Staff / Executive" required />
+          <select
+            value={roleAssignments.executive}
+            disabled={loading}
+            onChange={(event) => onChange(region, { ...roleAssignments, executive: event.target.value })}
+            className={SELECT_CLASS}
+          >
+            <option value="">{loading ? "Loading..." : "Select staff"}</option>
+            {!loading && !roleOptions.executive.length ? <option value="" disabled>No active Staff / Executive found</option> : null}
+            {roleOptions.executive.map((staff) => {
+              const staffId = String(staff.staff_id);
+              const warehouse = formatWarehouseLabel(staff.warehouse);
+              return (
+                <option key={staffId} value={staffId}>
+                  {staff.staff_name || "Staff #" + staffId}
+                  {warehouse ? ` (${warehouse})` : ""}
+                </option>
+              );
+            })}
+          </select>
+        </div>
       </div>
 
       <div className="mt-3 grid grid-cols-1 gap-2 border border-[#d6dbe4] bg-white p-3 text-xs text-[#59677a] md:grid-cols-2 xl:grid-cols-4">
@@ -750,59 +806,22 @@ export function RoleAssignmentPanel({
           </div>
         ))}
       </div>
+      {region && !roleAssignments.rsm && !loading ? (
+        <p className="mt-2 text-[11px] text-amber-700">
+          This region has no active RSM. Approvals for this dealer go to the NSM, or to Admin if there is no NSM.
+        </p>
+      ) : null}
     </div>
   );
 }
 
-function AssignmentSelect({
-  label,
-  required = false,
-  roleKey,
-  value,
-  options,
-  loading,
-  disabled = false,
-  placeholder,
-  onChange,
-}: {
-  label: string;
-  required?: boolean;
-  roleKey: AssignmentRoleKey;
-  value: string;
-  options: StaffMember[];
-  loading: boolean;
-  disabled?: boolean;
-  placeholder: string;
-  onChange: (roleKey: AssignmentRoleKey, staffId: string) => void;
-}) {
+const SELECT_CLASS = "h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#344155] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff] disabled:cursor-not-allowed disabled:bg-[#f1f3f7] disabled:text-[#9aa5b5]";
+
+function SelectLabel({ label, required = false }: { label: string; required?: boolean }) {
   return (
-    <div className="min-w-0">
-      <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-[#6c7a8d]">
-        {label}
-        {required ? <span className="ml-0.5 text-[#e25959]">*</span> : null}
-      </div>
-      <select
-        value={value}
-        disabled={loading || disabled}
-        onChange={(event) => onChange(roleKey, event.target.value)}
-        className="h-9 w-full rounded border border-[#d6dbe4] bg-white px-3 text-sm text-[#344155] outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#dfe6ff] disabled:cursor-not-allowed disabled:bg-[#f1f3f7] disabled:text-[#9aa5b5]"
-      >
-        <option value="">{loading ? "Loading..." : placeholder}</option>
-        {!loading && !options.length ? <option value="" disabled>No active {label} found</option> : null}
-        {options.map((staff) => {
-          const staffId = String(staff.staff_id);
-          // Sales Managers are told apart by their area, Staff by their warehouse.
-          const detail = roleKey === "salesManager"
-            ? (staff.assignedCities ?? []).join(", ")
-            : formatWarehouseLabel(staff.warehouse);
-          return (
-            <option key={staffId} value={staffId}>
-              {staff.staff_name || "Staff #" + staffId}
-              {detail ? ` (${detail})` : ""}
-            </option>
-          );
-        })}
-      </select>
+    <div className="mb-1 text-[11px] font-bold uppercase tracking-wide text-[#6c7a8d]">
+      {label}
+      {required ? <span className="ml-0.5 text-[#e25959]">*</span> : null}
     </div>
   );
 }
@@ -814,130 +833,6 @@ const ASSIGNMENT_FIELDS: Array<{ key: AssignmentRoleKey; label: string }> = [
   { key: "executive", label: "Staff / Executive" },
 ];
 
-export function uniqueStaffIds(ids: string[]) {
-  return Array.from(new Set(ids.map((id) => String(id).trim()).filter(Boolean)));
-}
-
-function normalizeStaffRole(staff: StaffMember): AssignmentRoleKey | null {
-  const role = String(staff.role ?? "").toUpperCase();
-  const roleType = String((staff as StaffMember & { staffRoleType?: string | number }).staffRoleType ?? staff.staff_roletype ?? "").toUpperCase();
-
-  if (role === "RSM") return "rsm";
-  if (role === "ASM") return "asm";
-  if (role === "STAFF" && (roleType === "1" || roleType === "EXECUTIVE")) return "salesManager";
-  if (role === "STAFF" && (roleType === "2" || roleType === "STAFF")) return "executive";
-
-  return null;
-}
-
-export function buildRoleOptions(staffList: StaffMember[]): Record<AssignmentRoleKey, StaffMember[]> {
-  return staffList.reduce<Record<AssignmentRoleKey, StaffMember[]>>((groups, staff) => {
-    const roleKey = normalizeStaffRole(staff);
-    if (roleKey) groups[roleKey].push(staff);
-    return groups;
-  }, { rsm: [], asm: [], salesManager: [], executive: [] });
-}
-
-function normalizeHierarchyText(value: unknown) {
-  return String(value ?? "").trim().toLowerCase();
-}
-
-export function getStaffUserId(staffId: string, staffList: StaffMember[]) {
-  const staff = staffList.find((entry) => String(entry.staff_id) === String(staffId));
-  return String(staff?.userId ?? staff?.id ?? "").trim();
-}
-
-function findStaffByAnyId(id: string, staffList: StaffMember[]) {
-  const normalized = String(id).trim();
-  if (!normalized) return null;
-  return staffList.find((staff) => [staff.staff_id, staff.id, staff.userId].some((value) => String(value ?? "").trim() === normalized)) ?? null;
-}
-
-function getStaffLocation(staff: StaffMember | null) {
-  return normalizeHierarchyText(staff?.staff_location ?? staff?.location);
-}
-
-function getStaffRegion(staff: StaffMember | null) {
-  return normalizeHierarchyText(staff?.sales_region ?? staff?.salesRegion);
-}
-
-function findUniqueMatchingStaff(candidates: StaffMember[], predicate: (staff: StaffMember) => boolean) {
-  const matches = candidates.filter(predicate);
-  return matches.length === 1 ? String(matches[0].staff_id) : "";
-}
-
-function resolveParentAssignments(
-  next: RoleAssignments,
-  roleOptions: Record<AssignmentRoleKey, StaffMember[]>,
-  sourceStaff: StaffMember | null,
-) {
-  next.asm = "";
-  next.rsm = "";
-
-  const explicitAsm = findStaffByAnyId(
-    String(sourceStaff?.parentAsmId ?? sourceStaff?.parent_asm_id ?? sourceStaff?.asmId ?? ""),
-    roleOptions.asm,
-  );
-  if (explicitAsm) next.asm = String(explicitAsm.staff_id);
-
-  const sourceLocation = getStaffLocation(sourceStaff);
-  if (!next.asm && sourceLocation) {
-    next.asm = findUniqueMatchingStaff(roleOptions.asm, (staff) => getStaffLocation(staff) === sourceLocation);
-  }
-
-  const asm = findStaffByAnyId(next.asm, roleOptions.asm);
-  const explicitRsm = findStaffByAnyId(
-    String(sourceStaff?.parentRsmId ?? sourceStaff?.parent_rsm_id ?? sourceStaff?.rsmUserId ?? sourceStaff?.rsmId ?? asm?.parentRsmId ?? asm?.parent_rsm_id ?? ""),
-    roleOptions.rsm,
-  );
-  if (explicitRsm) next.rsm = String(explicitRsm.staff_id);
-
-  const region = getStaffRegion(sourceStaff) || getStaffRegion(asm);
-  if (!next.rsm && region) {
-    next.rsm = findUniqueMatchingStaff(roleOptions.rsm, (staff) => getStaffRegion(staff) === region);
-  }
-
-  if (!next.rsm && sourceLocation) {
-    next.rsm = findUniqueMatchingStaff(roleOptions.rsm, (staff) => getStaffLocation(staff) === sourceLocation);
-  }
-
-  return next;
-}
-
-export function resolveNextRoleAssignments(
-  prev: RoleAssignments,
-  roleOptions: Record<AssignmentRoleKey, StaffMember[]>,
-  roleKey: AssignmentRoleKey,
-  staffId: string,
-): RoleAssignments {
-  const next = { ...prev, [roleKey]: staffId };
-
-  if (roleKey === "salesManager") {
-    next.executive = "";
-    return resolveParentAssignments(next, roleOptions, findStaffByAnyId(staffId, roleOptions.salesManager));
-  }
-
-  // Staff hangs off the RSM the Sales Manager already resolved, so picking one
-  // is a leaf choice: it never rewrites asm/rsm.
-  if (roleKey === "executive") {
-    return next;
-  }
-
-  return resolveParentAssignments(next, roleOptions, findStaffByAnyId(next.salesManager, roleOptions.salesManager));
-}
-
-export function buildRoleAssignmentsFromIds(ids: string[], staffList: StaffMember[]): RoleAssignments {
-  const next = { ...EMPTY_ROLE_ASSIGNMENTS };
-  const staffById = new Map(staffList.map((staff) => [String(staff.staff_id), staff]));
-
-  uniqueStaffIds(ids).forEach((staffId) => {
-    const staff = staffById.get(staffId);
-    const roleKey = staff ? normalizeStaffRole(staff) : null;
-    if (roleKey && !next[roleKey]) next[roleKey] = staffId;
-  });
-
-  return next;
-}
 
 function Field({
   label,

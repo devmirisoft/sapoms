@@ -13,6 +13,7 @@ import { useCartStore } from "@/Store/store";
 import { fetchDealerStatus } from "@/lib/dealerStatus";
 import discountUtils from "@/lib/discount";
 import { createIdempotencyKey } from "@/lib/idempotency";
+import { clampPercentInput } from "@/lib/fieldRules";
 import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
 import {
   buildCatalogueIndex,
@@ -3102,7 +3103,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                       max={100}
                       step={0.5}
                       value={customDiscountInput}
-                      onChange={(e) => setCustomDiscountInput(e.target.value)}
+                      onChange={(e) => setCustomDiscountInput(clampPercentInput(e.target.value))}
                       className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13.5px] font-mono font-semibold text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
                       placeholder="e.g. 10"
                     />

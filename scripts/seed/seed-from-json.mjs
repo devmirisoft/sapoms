@@ -20,7 +20,8 @@ const ORDER_SEQUENCE_YEAR = 2026;
 const args = process.argv.slice(2);
 const mode = args.includes("--verify") ? "verify" : args.includes("--commit") ? "commit" : "dry-run";
 const onlyArg = args.find((a) => a.startsWith("--only="))?.slice(7);
-const only = new Set(onlyArg ? onlyArg.split(",") : ["staff", "dealers", "orders", "items", "pending", "discounts"]);
+// staff is opt-in (--only=staff): the seeded staff were removed on 2026-10-06 and must not come back by accident.
+const only = new Set(onlyArg ? onlyArg.split(",") : ["dealers", "orders", "items", "dispatches", "cancellations", "pending", "discounts"]);
 
 // Read before prisma.mjs runs dotenv, so .env can never pick the target.
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -130,17 +131,18 @@ const activeOrders = ordersJson.Orders;
 const cancelledOrders = ordersJson.Cancelled_Orders;
 const pendingRows = (await load("pending-orders")).Pending_Orders;
 const discountRows = (await load("discount-requests")).Discount_Requests;
-const allItemRows = JSON.parse(await readFile(`${DOCS}/allproductdata.json`, "utf8"));
+const itemRows = JSON.parse(await readFile(`${DOCS}/allproductdata.json`, "utf8"));
 
-// The item export repeats two orderdata_ids verbatim; keep the first of each.
-const seenItemIds = new Set();
-const duplicateItemIds = [];
-const itemRows = allItemRows.filter((row) => {
-  const id = text(row.orderdata_id);
-  if (seenItemIds.has(id)) { duplicateItemIds.push(id); return false; }
-  seenItemIds.add(id);
-  return true;
-});
+// The legacy mirror reuses an orderdata_id for separate lines of one order and tells
+// them apart by `occurrence`; the first keeps the bare id so existing keys stay stable.
+const itemKey = (row) => (Number(row.occurrence) > 1 ? `${text(row.orderdata_id)}#${row.occurrence}` : text(row.orderdata_id));
+{
+  const seen = new Set();
+  for (const row of itemRows) {
+    if (seen.has(itemKey(row))) throw new Error(`allproductdata.json: line ${itemKey(row)} appears twice`);
+    seen.add(itemKey(row));
+  }
+}
 const itemsByOrder = new Map();
 for (const row of itemRows) {
   const id = text(row.order_id);
@@ -158,7 +160,7 @@ const report = {
     dealers: ["Dealer_shipto (no column)", "Dealer_Image (empty)", "assignedstaff / staffname / dealerAddByStaff (left untagged by instruction)", "status (always '0'; dealer_status used)"],
     orders: ["staffid (assigned_staff_id left NULL; untagged)", "outstandingDate", "orderDate (date-only copy)", "readyquantity", "orderdata_item_quantity (no line items in source)", "priceSource", "has* flags", "customDiscountPercent", "gross/netPayable duplicates"],
     cancelledOrders: ["cancellation.cancelledBy (no column)", "source", "edits", "latestRevision", "originalOrderRef item row (single sample item, not seeded)"],
-    items: ["product_price (current catalogue price, not the ordered price)", "product_unit (no item column)", "orderdata_productid / order_item_description / orderdata_capacity / orderdata_item_unit (empty)", "del_status (only on items of cancelled orders; kept so the order shows what was ordered)", "dispatch fields (all pending, nothing dispatched)", "readyquantity (all 0)", "notification", "occurrence", "order_discount (header copy)"],
+    items: ["product_price (current catalogue price, not the ordered price)", "product_unit (no item column)", "orderdata_productid / order_item_description / orderdata_capacity / orderdata_item_unit (empty)", "del_status / order_cancelled (only on items of cancelled orders; kept so the order shows what was ordered)", "discount (blank or '0' on most rows; percent derived from orderdata_discount ÷ orderdata_totalprice)", "dispatchedQuantity / remainingQuantity / dispatchStatus (derived from dispatchHistory rows instead)", "dispatchHistory actorId (staff removed → actor_user_id NULL, actor_role kept)", "readyquantity (all 0)", "notification", "order_edited / originalLineId / mirrorRepaired* / displayRemark", "order_discount / accept_order / staffid (header copies)"],
     discountRequests: ["orderDraftId / rejectionDraftId (Mongo drafts not in DB → NULL)", "staffId / assignedStaffId (single FK; untagged)", "reviewedBy 'Admin' (not resolvable → NULL)", "products / draftProducts (duplicate of orderSnapshot)", "shipto", "refno", "discountBreakdown", "reorderCount / lastReordered*", "linkedOrderAt", "dealer contact copies"],
   },
   lineItems: "From docs/allproductdata.json (orderdata rows), plus approved discount-request snapshots for orders that have no item rows.",
@@ -181,7 +183,8 @@ async function upsertUser(tx, { email, username, role, status }, ctx) {
   const data = { email: text(email), username: orNull(username), normalizedUsername: lower(username) || null, role, status };
   if (!write) return { user: existing ?? { id: null }, created: !existing };
   const user = existing
-    ? await tx.user.update({ where: { id: existing.id }, data })
+    ? existing // an existing login (status, username, password) is managed in the app now
+
     : await tx.user.create({ data: { ...data, normalizedEmail, passwordHash: await disabledPasswordHash() } });
   return { user, created: !existing };
 }
@@ -254,10 +257,10 @@ async function seedDealers() {
         address: orNull(row.Dealer_Address), pincode: orNull(row.Dealer_Pincode), gstin: orNull(row.gst), notes: orNull(row.Dealer_Notes),
         discountPercent: percent(row.discount), creditDays: creditDays === null ? null : Number.parseInt(text(creditDays), 10),
         creditLimitPaise: toPaise(zeroAsNull(row.currentlimit)), annualTargetPaise: toPaise(zeroAsNull(row.annualtarget)),
-        rsmUserId: null, createdByUserId: null, region: null,
       };
       if (write) {
-        const dealer = await tx.dealerProfile.upsert({ where: { legacyPhpId: legacyId }, update: data, create: { legacyPhpId: legacyId, userId: res.user.id, ...data } });
+        // RSM / region / creator are tagged in the app later: set empty on create, never touched on re-run.
+        const dealer = await tx.dealerProfile.upsert({ where: { legacyPhpId: legacyId }, update: data, create: { legacyPhpId: legacyId, userId: res.user.id, rsmUserId: null, createdByUserId: null, region: null, ...data } });
         idMap.dealers[legacyId] = { userId: res.user.id.toString(), dealerProfileId: dealer.id.toString() };
       }
       count("dealers", existing ? "updated" : "inserted");
@@ -292,7 +295,9 @@ function activeOrderData(row) {
     acceptanceStatus: accepted ? "ACCEPTED" : "AWAITING",
     rsmApprovalStatus: accepted ? "ACCEPTED" : "AWAITING",
     acceptedAt: accepted ? legacyDate(row.orderdata_datetime) ?? orderDate : null,
-    fulfilmentStatus: lower(row.mtstatus) === "inprocess" ? "IN_PROCESS" : "PENDING",
+    // Base state only: the dispatches step derives fulfilment from the dispatch rows
+    // (legacy mtstatus is "InProcess" on every order, dispatched or not).
+    fulfilmentStatus: "PENDING", dispatchedAt: null,
     cancelledAt: null, cancellationReason: null,
   };
 }
@@ -385,9 +390,13 @@ async function seedOrders() {
       }
       if (BigInt(legacyId) > maxLegacyId) maxLegacyId = BigInt(legacyId);
       if (write) {
+        // Once an order exists the app owns its workflow (staff tagging, accept/decline,
+        // dispatch); a re-run only refreshes the legacy facts: number, date and amounts.
+        const { assignedStaffId, salesManagerId, status, acceptanceStatus, rsmApprovalStatus, acceptedAt,
+          fulfilmentStatus, dispatchedAt, cancelledAt, cancellationReason, ...legacyFacts } = data;
         const order = await tx.order.upsert({
           where: { legacyPhpId: legacyId },
-          update: data,
+          update: legacyFacts,
           create: { legacyPhpId: legacyId, idempotencyKey: `legacy-php-order:${legacyId}`, ...data },
         });
         idMap.orders[legacyId] = { orderId: order.id.toString(), orderNumber: order.orderNumber, dealerProfileId: dealerId.toString() };
@@ -409,26 +418,33 @@ function legacyItemData(row) {
   const description = text(row.product_discription);
   const unitPrice = toPaise(row.orderdata_price);
   const packSize = Number.parseInt(text(row.packSize), 10) || 1;
+  const pieces = Number.parseInt(text(row.orderdata_item_quantity), 10) || 0;
+  const total = toPaise(row.orderdata_totalprice) ?? 0n;
+  const discount = toPaise(row.orderdata_discount) ?? 0n;
+  // Line totals are what the order headers add up to; a unit price that disagrees is reported, not "fixed".
+  if (unitPrice * BigInt(pieces) !== total) report.warnings.push({ entity: "item", legacyId: itemKey(row), legacyOrderId: text(row.order_id), warning: `qty ${pieces} × price ${row.orderdata_price} ≠ total ${row.orderdata_totalprice}; total kept` });
   return {
-    legacyPhpOrderItemId: text(row.orderdata_id),
+    legacyPhpOrderItemId: itemKey(row),
     productId: null, productVariantId: null,
     productNameSnapshot: (description ? `${name} - ${description}` : name) || text(row.orderdata_cat_no),
     catalogueNumberSnapshot: text(row.orderdata_cat_no),
     skuSnapshot: orNull(row.orderdata_cat_no),
-    categorySnapshot: null,
+    categorySnapshot: orNull(row.category),
     quantityPacks: Number.parseInt(text(row.packs), 10) || 0,
     packSize,
-    totalPieces: Number.parseInt(text(row.orderdata_item_quantity), 10) || 0, // legacy prices per piece: qty × price = total on every row
+    totalPieces: pieces,
     unitPricePaise: unitPrice,
     packPricePaise: unitPrice * BigInt(packSize),
-    listPriceTotalPaise: toPaise(row.orderdata_totalprice),
-    discountPercent: percent(row.discount) ?? "0",
-    discountAmountPaise: toPaise(row.orderdata_discount) ?? 0n,
+    listPriceTotalPaise: total,
+    // The row's `discount` is blank or "0" on most lines even when money was taken off.
+    discountPercent: ratioPercent(discount, total),
+    discountAmountPaise: discount,
     finalAmountPaise: toPaise(row.orderdata_afterDisPrice) ?? 0n,
     isPriority: false,
-    remarks: orNull(row.remarks),
-    productNote: null,
-    createdAt: legacyDate(row.orderdata_datetime),
+    remarks: orNull(row.remarks) ?? orNull(row.remark),
+    productNote: orNull(row.fallbackProductNote),
+    // The mirror's "restored" lines carry no timestamp; they date from the order's placed day.
+    createdAt: legacyDate(row.orderdata_datetime) ?? placedDate(null, row.order_date),
   };
 }
 
@@ -471,7 +487,6 @@ async function seedItems() {
     ...cancelledOrders.map((r) => [text(r.orderId), text(r.dealerId)]),
     ...itemOnlyOrders.map(([id, rows]) => [id, text(rows[0].dealer_id)]),
   ]);
-  for (const id of duplicateItemIds) report.warnings.push({ entity: "item", legacyId: id, warning: "orderdata_id repeated in allproductdata.json; first copy kept" });
 
   // Rows to write: every legacy item row, plus the snapshot of an approved discount request
   // for an order that has no item rows and whose snapshot total equals the order's gross.
@@ -490,9 +505,7 @@ async function seedItems() {
     products.forEach((p, i) => planned.push({ legacyOrderId, legacyDealer: text(req.dealerId), data: snapshotItemData(legacyOrderId, p, i, order?.orderDate ?? legacyDate(req.linkedOrderAt)), source: "discount-snapshot" }));
   }
 
-  const existing = new Set((await prisma.orderItem.findMany({ where: { legacyPhpOrderItemId: { in: planned.map((p) => p.data.legacyPhpOrderItemId) } }, select: { legacyPhpOrderItemId: true } })).map((r) => r.legacyPhpOrderItemId));
   const toCreate = [];
-  const toUpdate = [];
   for (const p of planned) {
     const ctx = { entity: "item", legacyId: p.data.legacyPhpOrderItemId, legacyOrderId: p.legacyOrderId };
     const order = orderByLegacy.get(p.legacyOrderId);
@@ -500,25 +513,141 @@ async function seedItems() {
     if (!orderDealer) { report.skipped.push({ ...ctx, reason: "order not seeded" }); count("items", "skipped"); continue; }
     // Isolation: an item only joins an order of the same dealer.
     if (orderDealer !== p.legacyDealer) { report.skipped.push({ ...ctx, reason: `item dealer ${p.legacyDealer} ≠ order dealer ${orderDealer}` }); count("items", "skipped"); continue; }
-    const row = { ...p.data, orderId: order?.id };
-    (existing.has(p.data.legacyPhpOrderItemId) ? toUpdate : toCreate).push(row);
-    count("items", existing.has(p.data.legacyPhpOrderItemId) ? "updated" : "inserted");
+    toCreate.push({ ...p.data, orderId: order?.id });
     count("items", p.source);
   }
-  const withoutItems = [...knownOrderIds].filter((id) => !itemsByOrder.has(id) && !planned.some((p) => p.legacyOrderId === id));
-  report.ordersWithoutItems = withoutItems;
+  report.ordersWithoutItems = [...knownOrderIds, ...itemOnlyOrders.map(([id]) => id)].filter((id) => !planned.some((p) => p.legacyOrderId === id));
+
+  // The file is the whole truth for each order it covers, so those orders' items are
+  // replaced outright: lines dropped in a legacy edit don't linger. Replacing cascades to
+  // dispatches and product notes, so refuse if the app has recorded any of its own.
+  const coveredOrderIds = [...new Set(toCreate.map((r) => r.orderId).filter(Boolean))];
+  const replaced = coveredOrderIds.length ? await prisma.orderItem.count({ where: { orderId: { in: coveredOrderIds } } }) : 0;
+  report.counts.items = { ...report.counts.items, existingReplaced: replaced, toWrite: toCreate.length };
+  const appData = coveredOrderIds.length ? {
+    dispatches: await prisma.orderItemDispatch.count({ where: { orderId: { in: coveredOrderIds }, NOT: { legacySource: DISPATCH_SOURCE } } }),
+    productNotes: await prisma.orderProductNote.count({ where: { orderId: { in: coveredOrderIds } } }),
+  } : { dispatches: 0, productNotes: 0 };
+  if (appData.dispatches || appData.productNotes) {
+    throw new Error(`Refusing to replace items: the app has recorded ${appData.dispatches} dispatch(es) and ${appData.productNotes} product note(s) on these orders. Seed only new orders instead.`);
+  }
 
   if (write) {
     await prisma.$transaction(async (tx) => {
+      await tx.orderItem.deleteMany({ where: { orderId: { in: coveredOrderIds } } });
       for (let i = 0; i < toCreate.length; i += 500) {
-        await tx.orderItem.createMany({ data: toCreate.slice(i, i + 500), skipDuplicates: true });
-      }
-      for (const row of toUpdate) {
-        const { legacyPhpOrderItemId, ...data } = row;
-        await tx.orderItem.update({ where: { legacyPhpOrderItemId }, data });
+        await tx.orderItem.createMany({ data: toCreate.slice(i, i + 500) });
       }
     }, TX);
   }
+}
+
+// ── dispatches ──────────────────────────────────────────────────────────────
+const DISPATCH_SOURCE = "legacy-dispatch-history";
+const DISPATCH_STATUS = { successful: "DISPATCHED", packing: "IN_PROCESS" }; // as scripts/import-legacy-order-state.mjs
+
+// Same rules as src/lib/postgresOrderDispatch.ts (fulfilmentFromTotals / orderStatusForFulfilment).
+const fulfilmentFromTotals = (ordered, dispatched) => (dispatched <= 0 ? "PENDING" : dispatched < ordered ? "IN_PROCESS" : "DISPATCHED");
+const ORDER_STATUS_FOR_FULFILMENT = { PENDING: "ACCEPTED", IN_PROCESS: "PROCESSING", DISPATCHED: "DISPATCHED" };
+
+/** Legacy history counts pieces; the app counts packs (quantityPacks × packSize = pieces). */
+function dispatchRowsFor(row) {
+  const packSize = Number.parseInt(text(row.packSize), 10) || 1;
+  const quantityPacks = Number.parseInt(text(row.packs), 10) || 0;
+  const pieces = Number.parseInt(text(row.orderdata_item_quantity), 10) || 0;
+  const out = [];
+  let piecesSoFar = 0;
+  let packsSoFar = 0;
+  for (const h of [...row.dispatchHistory].sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)))) {
+    piecesSoFar += Number(h.quantity);
+    let packs;
+    // A line ordered in loose pieces (packs × size ≠ pieces) is only ever dispatched whole.
+    if (piecesSoFar >= pieces) packs = quantityPacks - packsSoFar;
+    else if (Number(h.quantity) % packSize === 0) packs = Number(h.quantity) / packSize;
+    else {
+      packs = Math.round(Number(h.quantity) / packSize);
+      report.warnings.push({ entity: "dispatch", legacyId: text(h.id), legacyItem: itemKey(row), warning: `${h.quantity} pieces is not whole packs of ${packSize}; stored ${packs} pack(s)` });
+    }
+    packsSoFar += packs;
+    const status = DISPATCH_STATUS[lower(h.status)];
+    if (!status) throw new Error(`dispatch ${h.id}: unknown status ${h.status}`);
+    out.push({ quantity: packs, status, remark: orNull(h.remark), actorRole: lower(h.actorRole) === "staff" ? "STAFF" : lower(h.actorRole) === "admin" ? "ADMIN" : null, legacyId: text(h.id), createdAt: legacyDate(h.createdAt) });
+  }
+  return out;
+}
+
+async function seedDispatches() {
+  const items = await prisma.orderItem.findMany({ where: { legacyPhpOrderItemId: { in: itemRows.map(itemKey) } }, select: { id: true, orderId: true, legacyPhpOrderItemId: true } });
+  const itemByKey = new Map(items.map((i) => [i.legacyPhpOrderItemId, i]));
+  const creates = [];
+  for (const row of itemRows) {
+    if (!row.dispatchHistory?.length) continue;
+    const item = itemByKey.get(itemKey(row));
+    if (!item && mode !== "dry-run") { report.skipped.push({ entity: "dispatch", legacyItem: itemKey(row), reason: "item not seeded" }); count("dispatches", "skipped"); continue; }
+    for (const d of dispatchRowsFor(row)) {
+      creates.push({ ...d, orderId: item?.orderId, orderItemId: item?.id, actorUserId: null, legacySource: DISPATCH_SOURCE });
+      count("dispatches", d.status);
+    }
+  }
+
+  if (!write) return;
+  await prisma.$transaction(async (tx) => {
+    await tx.orderItemDispatch.deleteMany({ where: { legacySource: DISPATCH_SOURCE } });
+    for (let i = 0; i < creates.length; i += 500) await tx.orderItemDispatch.createMany({ data: creates.slice(i, i + 500) });
+
+    // Fulfilment follows the dispatch rows, the same way the app's dispatch action sets it.
+    const orders = await tx.order.findMany({
+      where: { legacyPhpId: { not: null }, status: { notIn: ["CANCELLED", "DECLINED", "COMPLETED"] } },
+      select: { id: true, legacyPhpId: true, status: true, fulfilmentStatus: true, acceptanceStatus: true, dispatchedAt: true, items: { select: { quantityPacks: true, dispatches: { select: { quantity: true, createdAt: true } } } } },
+    });
+    for (const o of orders) {
+      const ordered = o.items.reduce((s, i) => s + i.quantityPacks, 0);
+      const dispatches = o.items.flatMap((i) => i.dispatches);
+      const fulfilmentStatus = fulfilmentFromTotals(ordered, dispatches.reduce((s, d) => s + d.quantity, 0));
+      if (o.acceptanceStatus !== "ACCEPTED") {
+        if (dispatches.length) report.warnings.push({ entity: "order", legacyId: o.legacyPhpId, warning: "has dispatches but is not accepted; status left as is" });
+        continue;
+      }
+      const status = ORDER_STATUS_FOR_FULFILMENT[fulfilmentStatus];
+      const dispatchedAt = fulfilmentStatus === "DISPATCHED" ? new Date(Math.max(...dispatches.map((d) => d.createdAt.getTime()))) : null;
+      count("fulfilment", fulfilmentStatus);
+      if (o.status === status && o.fulfilmentStatus === fulfilmentStatus && (o.dispatchedAt?.getTime() ?? null) === (dispatchedAt?.getTime() ?? null)) continue;
+      await tx.order.update({ where: { id: o.id }, data: { status, fulfilmentStatus, dispatchedAt } });
+    }
+  }, TX);
+}
+
+// ── cancellations: the app's Cancelled Orders tab lists order_overlays rows of type "cancel" ──
+const CANCEL_SOURCE = "legacy-cancelled-orders";
+async function seedCancellations() {
+  const orders = await prisma.order.findMany({ where: { legacyPhpId: { in: cancelledOrders.map((r) => text(r.orderId)) } }, select: { id: true, legacyPhpId: true, status: true } });
+  const orderByLegacy = new Map(orders.map((o) => [o.legacyPhpId, o]));
+  const dealerUsers = new Map((await prisma.dealerProfile.findMany({ where: { legacyPhpId: { not: null } }, select: { legacyPhpId: true, userId: true } })).map((d) => [d.legacyPhpId, d.userId]));
+  const creates = [];
+  for (const row of cancelledOrders) {
+    const legacyId = text(row.orderId);
+    const order = orderByLegacy.get(legacyId);
+    if (!order && mode !== "dry-run") { report.skipped.push({ entity: "cancellation", legacyId, reason: "order not seeded" }); count("cancellations", "skipped"); continue; }
+    if (order && order.status !== "CANCELLED") throw new Error(`order ${legacyId} is ${order.status}, expected CANCELLED`);
+    const by = row.cancellation?.cancelledBy ?? null;
+    const role = lower(by?.role);
+    const at = legacyDate(row.cancellation?.cancelledAt) ?? legacyDate(row.updatedAt);
+    creates.push({
+      orderId: order?.id, type: "cancel", status: "cancelled", value: "CANCELLED",
+      reason: text(row.cancellation?.reason) || "Cancelled in legacy system",
+      metadata: { source: CANCEL_SOURCE, legacyOverlaySource: row.source ?? null, cancelledBy: by, formattedOrderNumber: row.formattedOrderNumber ?? null },
+      actorUserId: role === "dealer" ? dealerUsers.get(text(by?.id)) ?? null : null,
+      actorRole: role === "dealer" ? "DEALER" : role === "admin" ? "ADMIN" : null,
+      legacySource: CANCEL_SOURCE, legacyId: text(row.id) || legacyId,
+      createdAt: at, updatedAt: at,
+    });
+    count("cancellations", role || "unknown-actor");
+  }
+  if (!write) return;
+  await prisma.$transaction(async (tx) => {
+    await tx.orderOverlay.deleteMany({ where: { legacySource: CANCEL_SOURCE } });
+    await tx.orderOverlay.createMany({ data: creates });
+  }, TX);
 }
 
 // ── pending orders: no table; confirm each one maps to an open seeded order ──
@@ -629,13 +758,28 @@ async function verify() {
   for (const r of cancelledOrders) if (dbOrders.get(text(r.orderId))?.dealer !== text(r.dealerId)) out.isolation.ordersWhoseDealerDiffersFromJson += 1;
   // Each legacy item must sit under an order of the dealer the item row names.
   const dbItems = await q(`SELECT i.legacy_php_order_item_id id, o.legacy_php_id order_id, d.legacy_php_id dealer FROM order_items i JOIN orders o ON o.id = i.order_id JOIN dealer_profiles d ON d.id = o.dealer_id`);
-  const itemJson = new Map(itemRows.map((r) => [text(r.orderdata_id), r]));
+  const itemJson = new Map(itemRows.map((r) => [itemKey(r), r]));
   out.isolation.itemsUnderWrongOrderOrDealer = dbItems.filter((i) => itemJson.has(i.id) && (itemJson.get(i.id).order_id !== i.order_id || itemJson.get(i.id).dealer_id !== i.dealer)).length;
   out.isolation.legacyItemsMissingFromDb = itemRows.length - dbItems.filter((i) => itemJson.has(i.id)).length;
   const [itemSums] = await q(`SELECT COALESCE(SUM(list_price_total_paise),0)::bigint gross, COALESCE(SUM(discount_amount_paise),0)::bigint discount, COALESCE(SUM(final_amount_paise),0)::bigint final FROM order_items WHERE legacy_php_order_item_id !~ '^discount-snapshot:'`);
   const jsonItemSums = { gross: sum(itemRows, (r) => toPaise(r.orderdata_totalprice)), discount: sum(itemRows, (r) => toPaise(r.orderdata_discount)), final: sum(itemRows, (r) => toPaise(r.orderdata_afterDisPrice)) };
   out.itemMoney = Object.fromEntries(Object.keys(jsonItemSums).map((k) => [k, { json: jsonItemSums[k].toString(), db: itemSums[k].toString(), match: jsonItemSums[k] === itemSums[k] }]));
-  out.ordersWhereItemsDifferFromHeader = (await q(`SELECT o.legacy_php_id id, o.gross_amount_paise::text header, SUM(i.list_price_total_paise)::text items FROM orders o JOIN order_items i ON i.order_id = o.id WHERE o.status <> 'CANCELLED' GROUP BY o.id HAVING SUM(i.list_price_total_paise) <> o.gross_amount_paise ORDER BY o.legacy_php_id::int`)).length;
+  const jsonDispatches = itemRows.flatMap((r) => r.dispatchHistory ?? []);
+  out.dispatches = {
+    rows: await n(`SELECT count(*) n FROM order_item_dispatches WHERE legacy_source = '${DISPATCH_SOURCE}'`), rowsJson: jsonDispatches.length,
+    itemsOverDispatched: await n(`SELECT count(*) n FROM (SELECT i.id FROM order_items i JOIN order_item_dispatches d ON d.order_item_id = i.id GROUP BY i.id HAVING SUM(d.quantity) > MAX(i.quantity_packs)) x`),
+    byFulfilment: await q(`SELECT fulfilment_status::text f, status::text s, count(*)::int n FROM orders WHERE legacy_php_id IS NOT NULL GROUP BY 1, 2 ORDER BY 1, 2`),
+  };
+  const dispatchedPieces = await q(`SELECT i.legacy_php_order_item_id id, LEAST(SUM(d.quantity) * MAX(i.pack_size), MAX(i.total_pieces))::int pieces FROM order_items i JOIN order_item_dispatches d ON d.order_item_id = i.id GROUP BY i.id`);
+  const dpMap = new Map(dispatchedPieces.map((r) => [r.id, r.pieces]));
+  // Pieces dispatched per line (packs × pack size, capped at the line) must equal the legacy dispatchedQuantity.
+  out.dispatches.linesWhosePiecesDiffer = itemRows.filter((r) => (r.dispatchedQuantity ?? 0) !== (dpMap.get(itemKey(r)) ?? 0)).length;
+  out.cancellations = {
+    overlays: await n(`SELECT count(*) n FROM order_overlays WHERE type = 'cancel' AND status = 'cancelled'`), cancelledOrdersJson: cancelledOrders.length,
+    cancelledOrdersWithoutOverlay: await n(`SELECT count(*) n FROM orders o WHERE o.status = 'CANCELLED' AND NOT EXISTS (SELECT 1 FROM order_overlays v WHERE v.order_id = o.id AND v.type = 'cancel' AND v.status = 'cancelled')`),
+    overlaysOnNonCancelledOrders: await n(`SELECT count(*) n FROM order_overlays v JOIN orders o ON o.id = v.order_id WHERE v.type = 'cancel' AND o.status <> 'CANCELLED'`),
+  };
+  out.ordersWhereItemsDifferFromHeader =(await q(`SELECT o.legacy_php_id id, o.gross_amount_paise::text header, SUM(i.list_price_total_paise)::text items FROM orders o JOIN order_items i ON i.order_id = o.id WHERE o.status <> 'CANCELLED' GROUP BY o.id HAVING SUM(i.list_price_total_paise) <> o.gross_amount_paise ORDER BY o.legacy_php_id::int`)).length;
 
   out.roles = {
     staffWithoutValidRole: await n(`SELECT count(*) n FROM staff_profiles s JOIN users u ON u.id = s.user_id WHERE u.role NOT IN ('NSM','RSM','ASM','STAFF')`),
@@ -696,11 +840,19 @@ try {
     if (only.has("dealers")) await step(seedDealers);
     if (only.has("orders")) await step(seedOrders);
     if (only.has("items")) await step(seedItems);
+    if (only.has("dispatches")) await step(seedDispatches);
+    if (only.has("cancellations")) await step(seedCancellations);
     if (only.has("pending")) await step(checkPending);
     if (only.has("discounts")) await step(seedDiscounts);
     await mkdir(EXPORT_DIR, { recursive: true });
     await writeFile(`${EXPORT_DIR}/seed-report.json`, `${JSON.stringify(report, null, 2)}\n`);
-    if (write) await writeFile(`${EXPORT_DIR}/id-map.json`, `${JSON.stringify(idMap, null, 2)}\n`);
+    if (write) {
+      // A partial --only run maps only the entities it touched; keep the rest from earlier runs.
+      let previous = {};
+      try { previous = JSON.parse(await readFile(`${EXPORT_DIR}/id-map.json`, "utf8")); } catch { /* first run */ }
+      const merged = Object.fromEntries(Object.keys(idMap).map((k) => [k, { ...previous[k], ...idMap[k] }]));
+      await writeFile(`${EXPORT_DIR}/id-map.json`, `${JSON.stringify(merged, null, 2)}\n`);
+    }
     console.log(JSON.stringify({ counts: report.counts, orderSequence: report.orderSequence, ordersWithoutItems: report.ordersWithoutItems, skipped: report.skipped, warnings: report.warnings, defaultedRoles: report.defaultedRoles, derivedCount: report.derived.length, lineItems: report.lineItems }, null, 2));
   }
 } finally {

@@ -49,7 +49,7 @@ function requestActionHref(scope: "admin" | "staff", request: PublicDealerReques
     return `/dashboard/admin/dealer/AddDealerForm?requestId=${encodeURIComponent(request.id)}`;
   }
 
-  if (scope === "staff" && request.status === "rsm_pending" && actor?.roletype === "RSM") {
+  if (request.status === "rsm_pending" && (actor?.roletype === "RSM" || request.rsmCover)) {
     return `/dashboard/admin/dealer/AddDealerForm?requestId=${encodeURIComponent(request.id)}`;
   }
 

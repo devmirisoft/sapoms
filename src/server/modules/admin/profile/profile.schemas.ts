@@ -1,4 +1,5 @@
 import { AdminRouteError } from "@/server/admin/admin-errors";
+import { PHONE_ERROR, normalizePhone } from "@/lib/fieldRules";
 import type { AdminProfileUpdateInput } from "./profile.types";
 
 function optionalText(value: unknown, max: number, label: string) {
@@ -26,6 +27,10 @@ export function parseAdminProfileUpdate(body: unknown): AdminProfileUpdateInput 
 
   if (parsed.email && !/^\S+@\S+\.\S+$/.test(parsed.email)) {
     throw new AdminRouteError("INVALID_REQUEST", "email is invalid");
+  }
+  if (parsed.phone) {
+    parsed.phone = normalizePhone(parsed.phone);
+    if (parsed.phone.length !== 10) throw new AdminRouteError("INVALID_REQUEST", PHONE_ERROR);
   }
   if (parsed.newPassword && parsed.newPassword.length < 8) {
     throw new AdminRouteError("INVALID_REQUEST", "newPassword must be at least 8 characters");

@@ -176,7 +176,7 @@ export function ApprovalTrail({ request }: { request: FundRequest }) {
   );
 }
 
-export default function FundRequestQueue({ stage, backHref }: { stage: "rsm" | "staff"; backHref: string }) {
+export default function FundRequestQueue({ stage, backHref, notice }: { stage: "rsm" | "staff"; backHref: string; notice?: string }) {
   const [requests, setRequests] = useState<FundRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -257,6 +257,7 @@ export default function FundRequestQueue({ stage, backHref }: { stage: "rsm" | "
               <div>
                 <h1 className="text-2xl font-bold tracking-tight text-gray-900">{heading}</h1>
                 <p className="mt-1 text-sm text-gray-500">{blurb}</p>
+                {notice ? <p className="mt-1 text-sm font-semibold text-amber-700">{notice}</p> : null}
               </div>
             </div>
           </div>

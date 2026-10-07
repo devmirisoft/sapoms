@@ -1,7 +1,7 @@
 import type { OrderAcceptanceStatus, OrderFulfilmentStatus, OrderStatus, Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
-import { isStaffLike } from "@/server/auth/sales-scope";
+import { coversRsmStage, isStaffLike, onBehalfName, orphanRsmOrderWhere, rsmOrderScope } from "@/server/auth/sales-scope";
 import { createOrderRejectionDraft, refundDeclinedOrderWallet } from "@/lib/orderRejectionDrafts";
 import { AUDIT_ENTITY, type AuditAction } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
@@ -118,14 +118,30 @@ function requiresRsmApprovalBeforeAcceptance(actor: AuthActor) {
   return isAssignedStaffRole(actor);
 }
 
-async function assertCanAct(actor: AuthActor, order: StatusOrder, permission: "read" | "acceptance" | "fulfilment" | "cancel") {
+/**
+ * Whether this actor takes the RSM step for an order whose RSM is unavailable:
+ * the NSM, or Admin when there is no active NSM either.
+ */
+export async function coversOrderRsmStep(actor: Pick<AuthActor, "role">, orderId: unknown) {
+  const lookup = normalizeLookup(orderId);
+  if (!lookup || !(await coversRsmStage(actor, prisma))) return false;
+  const id = /^\d+$/.test(lookup) ? BigInt(lookup) : null;
+  const match = await prisma.order.findFirst({
+    where: { AND: [orphanRsmOrderWhere, { OR: [...(id ? [{ id }] : []), { orderNumber: lookup }, { legacyPhpId: lookup }] }] },
+    select: { id: true },
+  });
+  return !!match;
+}
+
+async function assertCanAct(actor: AuthActor, order: StatusOrder, permission: "read" | "acceptance" | "fulfilment" | "cancel", rsmCover = false) {
   // Acceptance is a two-step chain: RSM approves first, then STAFF accepts.
-  if (permission === "acceptance" && actor.role !== "RSM" && actor.role !== "STAFF") {
+  // The NSM/Admin step in for the RSM only when that order's RSM is unavailable.
+  if (permission === "acceptance" && actor.role !== "RSM" && actor.role !== "STAFF" && !rsmCover) {
     throw new PostgresOrderStatusError(403, "forbidden", "Only RSM and Staff can approve or accept orders.");
   }
   if (actor.role === "ADMIN") return;
   if (actor.role === "NSM") {
-    if (permission === "read" || permission === "fulfilment") return;
+    if (permission === "read" || permission === "fulfilment" || rsmCover) return;
     throw new PostgresOrderStatusError(403, "forbidden", "NSM cannot cancel Dealer orders.");
   }
   if (actor.role === "DEALER") {
@@ -136,9 +152,9 @@ async function assertCanAct(actor: AuthActor, order: StatusOrder, permission: "r
     return;
   }
   if (actor.role === "RSM") {
-    // An RSM acts only on orders pushed up by its own Sales Managers.
+    // An RSM acts only on orders pushed up its own chain (SM, else ASM, else direct).
     const scoped = !!actor.staffId && await prisma.order.findFirst({
-      where: { id: order.id, salesManager: { parentRsmId: actor.staffId } },
+      where: { id: order.id, ...rsmOrderScope(actor.staffId, actor.userId) },
       select: { id: true },
     });
     if (!scoped) {
@@ -207,7 +223,8 @@ export async function updatePostgresOrderAcceptance(
 ) {
   const order = await findPostgresStatusOrder(orderId);
   if (!order) return null;
-  await assertCanAct(actor, order, "acceptance");
+  const rsmCover = actor.role !== "RSM" && actor.role !== "STAFF" && await coversOrderRsmStep(actor, order.id);
+  await assertCanAct(actor, order, "acceptance", rsmCover);
   if (order.status === "CANCELLED") throw new PostgresOrderStatusError(409, "order_already_cancelled", "Cancelled orders cannot be accepted or declined.");
   const now = new Date();
   // A decline is the one outcome the Dealer sees without further context, so it
@@ -217,7 +234,7 @@ export async function updatePostgresOrderAcceptance(
     throw new PostgresOrderStatusError(400, "note_required", "A note is required when declining an order.");
   }
 
-  if (actor.role === "RSM") {
+  if (actor.role === "RSM" || rsmCover) {
     if (order.rsmApprovalStatus !== "AWAITING" || (next !== "ACCEPTED" && next !== "DECLINED")) {
       throw new PostgresOrderStatusError(409, "invalid_transition", "RSM approval can move only from awaiting to approved or declined.");
     }
@@ -227,13 +244,13 @@ export async function updatePostgresOrderAcceptance(
         data: {
           rsmApprovalStatus: next,
           rsmReviewedByUserId: actor.userId,
-          rsmReviewedByName: actor.displayName || actor.email,
+          rsmReviewedByName: rsmCover ? onBehalfName(actor, "RSM") : actor.displayName || actor.email,
           rsmReviewedAt: now,
           rsmNote: reviewNote || null,
           status: next === "DECLINED" ? "DECLINED" : order.status,
         },
       });
-      await tx.orderOverlay.create({ data: { orderId: order.id, type: "rsm_acceptance", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, reason: reviewNote || null, metadata: { source: "postgres_status", stage: "rsm" } } });
+      await tx.orderOverlay.create({ data: { orderId: order.id, type: "rsm_acceptance", status: next.toLowerCase(), value: next, actorUserId: actor.userId, actorRole: actor.role, reason: reviewNote || null, metadata: { source: "postgres_status", stage: "rsm", ...(rsmCover ? { onBehalfOf: "RSM" } : {}) } } });
       await auditOrder(
         tx,
         actor,

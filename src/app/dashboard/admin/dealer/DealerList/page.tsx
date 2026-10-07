@@ -7,6 +7,7 @@ import { confirmAlert } from 'react-confirm-alert'
 import { staffRoleBadge } from '@/lib/staffRoleLabel'
 import { showToast } from "@/components/ui/toast";
 import { loginAsDealer } from "@/lib/roleAccess";
+import { useAuthSession } from "@/hooks/useAuthSession";
 import { type FloatingMenuState, isMenuOpen, openFloatingMenu, measureFloatingMenu } from "@/components/ui/floating-menu";
 type DealerStatus = "active" | "inactive" | "suspended"
 type DealerStatusFilter = "" | "ACTIVE" | "INACTIVE" | "SUSPENDED"
@@ -275,6 +276,10 @@ function getStaffId(): string {
 
 export default function DealerListPage() {
   const [role] = useState<AppRole>(() => getRole())
+  const auth = useAuthSession()
+  // Only the ADMIN role may sign in as a dealer; NSM also maps to client role "admin", so check the server role
+  // ("admin" vs "nsm"; RSM/ASM come through as "rsm"/"asm").
+  const canLoginAsDealer = auth.session?.status === "authenticated" && auth.session.user.authRole === "admin"
   const [staffId] = useState(() => getStaffId())
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState("")
@@ -1198,7 +1203,7 @@ export default function DealerListPage() {
                                 <Link href={getDealerViewRoute(dealer.Dealer_Id)} className="flex items-center gap-2.5 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                   <Eye className="h-3.5 w-3.5 text-gray-400" /> View
                                 </Link>
-                                {role === 'admin' && normalizeDealerStatus(dealer.status) === "active" && (
+                                {canLoginAsDealer && normalizeDealerStatus(dealer.status) === "active" && (
                                   <button
                                     onClick={(e) => { e.stopPropagation(); setOpenMenu(null); loginAsDealer(dealer.Dealer_Id).catch((error) => showToast('error', error instanceof Error ? error.message : "Unable to sign in as this dealer")) }}
                                     className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"

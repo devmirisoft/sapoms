@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { optionalPhoneSchema } from "@/lib/fieldRules";
 import { AdminRouteError } from "@/server/admin/admin-errors";
 import { parseAdminPagination } from "@/server/admin/admin-pagination";
 import { SALES_REGION_OPTIONS } from "@/lib/salesRegions";
@@ -111,8 +112,8 @@ const baseStaffSchema = {
   role: z.preprocess((value) => String(value ?? "STAFF").trim().toUpperCase(), createRole),
   designation: text(100),
   location: text(100),
-  mobileNo: text(30),
-  alternateNo: text(30),
+  mobileNo: optionalPhoneSchema,
+  alternateNo: optionalPhoneSchema,
   permanentAddress: text(1000),
   localAddress: text(1000),
   gender: text(20),
@@ -120,8 +121,8 @@ const baseStaffSchema = {
   nationality: text(100),
   maritalStatus: text(40),
   qualification: text(120),
-  emergencyContactNo1: text(30),
-  emergencyContactNo2: text(30),
+  emergencyContactNo1: optionalPhoneSchema,
+  emergencyContactNo2: optionalPhoneSchema,
   staffRoleType: text(30),
   salesRegion,
   warehouse,
@@ -201,16 +202,16 @@ const updateSchema = z.preprocess((value) => aliases((value && typeof value === 
   role: z.preprocess((value) => value === undefined || value === null || String(value).trim() === "" ? undefined : String(value).trim().toUpperCase(), updateRole.optional()),
   designation: text(100),
   location: text(100),
-  mobileNo: text(30),
-  alternateNo: text(30),
+  mobileNo: optionalPhoneSchema,
+  alternateNo: optionalPhoneSchema,
   permanentAddress: text(1000),
   localAddress: text(1000),
   gender: text(20),
   nationality: text(100),
   maritalStatus: text(40),
   qualification: text(120),
-  emergencyContactNo1: text(30),
-  emergencyContactNo2: text(30),
+  emergencyContactNo1: optionalPhoneSchema,
+  emergencyContactNo2: optionalPhoneSchema,
   // Only reachable through the admin-only PATCH route, so only an admin changes a DOB.
   dob: adultDob,
   staffRoleType: text(30),

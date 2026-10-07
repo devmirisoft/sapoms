@@ -5,6 +5,16 @@ import { fetchStaffAssignedDealerIds, orderActorFromAuth } from "@/lib/orderScop
 import { STAFF_ORDER_SCOPE_VERSION } from "@/lib/staffOrderScope.js";
 import { requireAuth } from "@/server/auth/session";
 import { serializePrismaValue } from "@/server/db/prisma-serialize";
+import { prisma } from "@/server/db/prisma";
+import { coversRsmStage, isAdminLike, orphanRsmOrderWhere } from "@/server/auth/sales-scope";
+import type { AuthActor } from "@/server/auth/session";
+
+// Order keys (id, number, legacy id) the NSM/Admin approves for an unavailable RSM.
+async function rsmCoverKeys(actor: AuthActor) {
+  if (!isAdminLike(actor) || !(await coversRsmStage(actor, prisma))) return new Set<string>();
+  const rows = await prisma.order.findMany({ where: orphanRsmOrderWhere, select: { id: true, orderNumber: true, legacyPhpId: true } });
+  return new Set(rows.flatMap((row) => [row.id.toString(), row.orderNumber, row.legacyPhpId ?? ""]).filter(Boolean));
+}
 
 export const runtime = "nodejs";
 
@@ -49,10 +59,11 @@ export async function GET(req: NextRequest) {
         warehouse: req.nextUrl.searchParams.get("warehouse") ?? "",
       },
     });
+    const coverKeys = await rsmCoverKeys(authActor);
     const response = NextResponse.json(serializePrismaValue({
       success: true,
       status: true,
-      data: page.items,
+      data: coverKeys.size ? page.items.map((row) => ({ ...row, rsm_cover: coverKeys.has(String(row.order_id ?? "")) })) : page.items,
       count: page.total,
       total: page.total,
       recordsTotal: page.total,

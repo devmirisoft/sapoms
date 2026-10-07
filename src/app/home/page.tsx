@@ -1,13 +1,11 @@
 "use client";
 
-import { GiHamburgerMenu } from "react-icons/gi";
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import moment from "moment";
 import { ImageSlider } from "@/components/ImageSlider";
 import { bottleProducts, CATEGORY_CARDS } from "@/Assets/dataset";
-import { SIDEBAR_CATEGORIES } from "@/lib/categories";
 import Footer from "@/components/Footer";
 import Link from "next/link";
 import axios from "axios";
@@ -24,16 +22,6 @@ const PLACEHOLDER_IMAGE =
   "https://omsonslabs.com/wp-content/uploads/Pycnometers-Class-A-Individual-Work-Certificate-product-image.webp";
 
 const HOT_BADGES = ["🔥 Bestseller", "⚡ Fast moving", "🔥 Trending", "⚡ Popular", "🔥 Top rated", "⚡ Hot pick"];
-
-const HOME_NAV_LINKS = [
-  { label: "Beakers", href: "/Products?cat=Beakers" },
-  { label: "Flasks", href: "/Products?cat=Flasks" },
-  { label: "Bottles", href: "/Products?cat=Bottles" },
-  { label: "Pipettes", href: "/Products?cat=Pipettes" },
-  { label: "Burettes", href: "/Products?cat=Burettes" },
-  { label: "Thermometers", href: "/Products?cat=Thermometers" },
-  { label: "Lab Instruments", href: "/Products?cat=Lab%20Instruments" },
-];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -309,7 +297,6 @@ function ProductCardSkeleton() {
 export default function Page() {
   const router = useRouter();
   const auth = useAuthSession();
-  const [navOpen, setNavOpen] = useState(false);
   const [hotItems, setHotItems] = useState<HotItemDisplay[]>([]);
   const [relatedProducts, setRelatedProducts] = useState<RelatedProductDisplay[]>([]);
   const [hotLoading, setHotLoading] = useState(true);
@@ -425,79 +412,6 @@ export default function Page() {
 
   return (
     <div className="w-full min-h-screen bg-gray-50 text-black">
-
-      {/* ── Categories Nav ── */}
-      <nav className="bg-[#032e66] relative min-h-10 flex items-center text-white text-sm w-full px-4">
-        <button
-          onClick={() => setNavOpen(!navOpen)}
-          className="flex shrink-0 items-center gap-2 px-3 py-1.5 rounded hover:bg-[#054080] transition-colors font-medium"
-        >
-          <GiHamburgerMenu className="h-4 w-4" />
-          All Categories
-          <svg
-            className="h-3 w-3 transition-transform duration-200"
-            style={{ transform: navOpen ? "rotate(180deg)" : "rotate(0deg)" }}
-            viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-          >
-            <path d="M6 9l6 6 6-6" />
-          </svg>
-        </button>
-
-        <div className="ml-2 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-          {HOME_NAV_LINKS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="shrink-0 rounded px-3 py-1.5 text-sm font-medium text-white/90 transition-colors hover:bg-[#054080] hover:text-white"
-            >
-              {item.label}
-            </Link>
-          ))}
-        </div>
-
-        {/* Backdrop */}
-        {navOpen && (
-          <div className="fixed inset-0 z-40" onClick={() => setNavOpen(false)} />
-        )}
-
-        {/* Dropdown panel */}
-        <div
-          className="absolute top-10 left-0 z-50 bg-white text-gray-800 shadow-2xl rounded-b-xl overflow-hidden"
-          style={{
-            width: 680,
-            maxHeight: navOpen ? 480 : 0,
-            opacity: navOpen ? 1 : 0,
-            transition: "max-height 0.25s ease, opacity 0.2s ease",
-            pointerEvents: navOpen ? "auto" : "none",
-          }}
-        >
-          <div className="p-4 overflow-y-auto" style={{ maxHeight: 480 }}>
-            <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3 px-1">Browse by Category</p>
-            <div className="grid grid-cols-3 gap-1">
-              {Object.keys(SIDEBAR_CATEGORIES).map(label => (
-                <Link
-                  key={label}
-                  href={`/Products?cat=${encodeURIComponent(label)}`}
-                  onClick={() => setNavOpen(false)}
-                  className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-700 hover:bg-indigo-50 hover:text-indigo-700 transition-colors"
-                >
-                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-400 shrink-0" />
-                  {label}
-                </Link>
-              ))}
-            </div>
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <Link
-                href="/Products"
-                onClick={() => setNavOpen(false)}
-                className="flex items-center gap-2 px-3 py-2 text-sm font-semibold text-indigo-600 hover:text-indigo-800 transition-colors"
-              >
-                View all products →
-              </Link>
-            </div>
-          </div>
-        </div>
-      </nav>
 
       {/* ── Hero Slider ── */}
       <div className="relative w-full bg-gradient-to-b from-slate-800 to-gray-50">

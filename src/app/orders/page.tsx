@@ -52,6 +52,8 @@ type Order = {
   rsm_approval_status?: string;
   rsmReviewedBy?: string;
   rsm_reviewed_by?: string;
+  // Set for the NSM/Admin when they approve for this order's unavailable RSM.
+  rsm_cover?: boolean;
   staffname?: string;
   rsmName?: string;
   acceptanceReviewedBy?: string;
@@ -1098,8 +1100,11 @@ export default function OrderHistoryPage() {
   const allOrders = data?.data ?? [];
   // The RSM "awaiting my approval" tab is a client-side view of the fetched
   // page; the server has no rsm_approval filter.
-  const orders = isRsm && rsmOnlyAwaiting ? allOrders.filter(o => rsmApprovalValue(o) === "AWAITING") : allOrders;
-  const awaitingApprovalCount = isRsm ? allOrders.filter(o => rsmApprovalValue(o) === "AWAITING").length : 0;
+  // The NSM/Admin get the same tab for orders they approve on an unavailable RSM's behalf.
+  const awaitsMe = (o: Order) => (isRsm ? rsmApprovalValue(o) === "AWAITING" : o.rsm_cover === true);
+  const hasApprovalQueue = isRsm || allOrders.some(o => o.rsm_cover === true);
+  const orders = hasApprovalQueue && rsmOnlyAwaiting ? allOrders.filter(awaitsMe) : allOrders;
+  const awaitingApprovalCount = hasApprovalQueue ? allOrders.filter(awaitsMe).length : 0;
   const cancelledData = cancelledResponse?.data ?? [];
 
   const overrideFor = (order: Order) =>
@@ -1672,7 +1677,7 @@ export default function OrderHistoryPage() {
               />
             )}
 
-            {isRsm && section === "active" && (
+            {hasApprovalQueue && section === "active" && (
               <SegmentedTabs
                 label="Approval scope"
                 value={rsmOnlyAwaiting ? "awaiting" : "all"}

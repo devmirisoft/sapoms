@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Mail, Phone, Save, Upload, Users } from "lucide-react";
 import { staffRoleBadge } from "@/lib/staffRoleLabel";
 import { showToast } from "@/components/ui/toast";
+import { normalizePhone, phoneInput, phoneInputProps } from "@/lib/fieldRules";
 
 type DealerSession = {
   Dealer_Id?: string;
@@ -128,9 +129,9 @@ function Field({
       </label>
       <input
         required
-        type={type}
+        {...(type === "tel" ? phoneInputProps : { type })}
         value={value}
-        onChange={(event) => onChange(event.target.value)}
+        onChange={(event) => onChange(type === "tel" ? phoneInput(event.target.value) : event.target.value)}
         className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
       />
     </div>
@@ -169,7 +170,7 @@ export default function DealerProfilePage() {
         const data = json.data || session || {};
         setName(data.Dealer_Name || "");
         setEmail(data.Dealer_Email || "");
-        setNumber(data.Dealer_Number || "");
+        setNumber(normalizePhone(data.Dealer_Number));
         setCity(data.Dealer_City || "");
         setAddress(data.Dealer_Address || "");
         setPincode(data.Dealer_Pincode || "");

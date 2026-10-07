@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { WalletTransactionType } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
+import { coversRsmStage, isAdminLike, onBehalfName, orphanRsmFundWhere } from "@/server/auth/sales-scope";
 import { applyWalletChange, fromPaise } from "@/lib/postgresWallet";
 import { createDealerOrder, text, type OrderFormFields } from "@/lib/dealerOrderCreate";
 import {
@@ -68,7 +69,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const requestId = BigInt(id);
 
     const actor = await requireAuth();
-    const stage = stageForRole(actor.role);
+    // The NSM (or Admin with no NSM) takes the RSM stage when the request's RSM is unavailable.
+    const rsmCover = isAdminLike(actor) && await coversRsmStage(actor, prisma)
+      && !!(await prisma.dealerFundRequest.findFirst({ where: { id: requestId, ...orphanRsmFundWhere }, select: { id: true } }));
+    const stage: FundRequestStage | null = rsmCover ? "rsm" : stageForRole(actor.role);
     if (!stage) {
       return NextResponse.json({ success: false, message: "Your role cannot action fund requests." }, { status: 403 });
     }
@@ -77,7 +81,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const body = await req.json();
     const action = text(body.action, 20).toLowerCase();
     const note = text(body.note, 1500) || null;
-    const reviewerName = actor.displayName || actor.email || null;
+    const reviewerName = rsmCover ? onBehalfName(actor, "RSM") : actor.displayName || actor.email || null;
 
     if (action === "reject") {
       if (stage === "accountant") {

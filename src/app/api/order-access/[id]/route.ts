@@ -3,6 +3,8 @@ import { resolveOrderAccess } from "@/lib/orderAccess";
 import { fetchStaffAssignedDealerIds, orderActorFromAuth } from "@/lib/orderScopeServer";
 import { serializePrismaValue } from "@/server/db/prisma-serialize";
 import { requireAuth } from "@/server/auth/session";
+import { isAdminLike } from "@/server/auth/sales-scope";
+import { coversOrderRsmStep } from "@/lib/postgresOrderStatus";
 
 export const runtime = "nodejs";
 
@@ -41,7 +43,9 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         : access.message;
       return NextResponse.json({ success: false, reason, message }, { status });
     }
-    return NextResponse.json(serializePrismaValue({ success: true, data: access.order }));
+    // The NSM (or Admin with no NSM) approves for an unavailable RSM.
+    const rsmCover = isAdminLike(authActor) && await coversOrderRsmStep(authActor, id);
+    return NextResponse.json(serializePrismaValue({ success: true, data: { ...access.order, rsm_cover: rsmCover } }));
   } catch (error) {
     if (error instanceof Error && error.message === "Unauthenticated") {
       return NextResponse.json({ success: false, message: "Authentication required." }, { status: 401 });
