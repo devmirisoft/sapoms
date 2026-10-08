@@ -2111,7 +2111,7 @@ export default function ViewOrderDealerPage() {
                   {additionalDiscountBadge}
                 </div>
               )}
-              <div className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 ${discountSummaryRows.length > 5 ? "xl:grid-cols-6" : "xl:grid-cols-5"}`}>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
                 {discountSummaryRows.map((row) => (
                   <div key={row.key} className="bg-white border border-gray-200 rounded-2xl px-5 py-4">
                     <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest">{row.label}</p>

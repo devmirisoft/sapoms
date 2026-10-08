@@ -287,7 +287,6 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     additionalDiscountAmount: rupees(order.additionalDiscountAmountPaise),
     slabDiscountPercent: percent(order.slabDiscountPercent),
     slabDiscountAmount: rupees(order.slabDiscountAmountPaise),
-    saleDiscountAmount: rupees(order.saleDiscountAmountPaise),
     customDiscountAmount: rupees(order.customDiscountAmountPaise),
     totalDiscountPercent: percent(order.totalDiscountPercent),
     note: order.note || "",

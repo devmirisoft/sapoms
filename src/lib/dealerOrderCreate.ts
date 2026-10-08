@@ -5,7 +5,7 @@ import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
 import { buildEditLogEntry, diffOrderRows, orderItemsToDraftRows, ORDER_REJECTION_SOURCE } from "@/lib/orderRejectionDraft.mjs";
 import { findCatalogueEntry, type CatalogueIndex } from "@/lib/catalogue";
 import { couponPercent } from "@/lib/coupons";
-import { normalizeApprovalProductKey, stackDiscountOnNet } from "@/lib/customDiscountRequests";
+import { normalizeApprovalProductKey } from "@/lib/customDiscountRequests";
 import discountUtils from "@/lib/discount";
 import { linePricing, loadCatalogue } from "@/server/modules/products/catalogue";
 import { liveSalePercents } from "@/server/todays-sale";
@@ -39,7 +39,6 @@ type ParsedItem = {
   productname: string;
   productName: string;
   catNo: string;
-  productSku: string;
   quantityPacks: number;
   packSize: number;
   totalPieces: number;
@@ -49,6 +48,7 @@ type ParsedItem = {
   discountAmountPaise: bigint;
   finalAmountPaise: bigint;
   saleDiscountPercent: number;
+  saleSavedPaise: bigint;
   remarks: string;
   productNote: string;
   priority: boolean;
@@ -89,8 +89,10 @@ function share(amountPaise: bigint, percent: number) { return BigInt(Math.round(
  * Only the catalogue number and the pack count are the dealer's to choose. Unit
  * price and pack size are looked up from the catalogue here, so an edited request
  * cannot change what an order costs. Discounts are applied later, in priceDealerOrder.
+ * A live Today's Sale lowers the product's own price here, so every discount after
+ * it (base, custom, slab) works on the sale price exactly as on a normal price.
  */
-function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIndex): ParsedItem[] {
+function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIndex, salePercents: Map<string, number>): ParsedItem[] {
   const items: ParsedItem[] = [];
   for (const row of rows) {
     const submittedCatNo = text(row.catNo ?? row.variantCode ?? row.productname, 160);
@@ -104,24 +106,33 @@ function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIn
     const quantityPacks = Math.trunc(num(row.quantityPacks) || (num(row.producQuanity) / packSize));
     if (quantityPacks <= 0) throw new OrderError("Order product quantity is invalid.", 422, "invalid_quantity");
     const productName = text(row.productName ?? row.productname, 300) || product.name;
-    const listPriceTotalPaise = paise(pricing.packPrice) * BigInt(quantityPacks);
+    const catNo = variant.sku || submittedCatNo;
+    const salePercent = salePercents.get(catNo.toLowerCase()) ?? salePercents.get(product.sku.toLowerCase()) ?? 0;
+    const packPricePaise = paise(pricing.packPrice);
+    const unitPricePaise = paise(pricing.unitPrice);
+    const listPriceTotalPaise = (packPricePaise - share(packPricePaise, salePercent)) * BigInt(quantityPacks);
+    const saleNote = salePercent > 0 ? `Today's Sale: ${salePercent}% off` : "";
+    const productNote = text(row.productNote ?? row.product_note ?? row.note, 1500);
 
     items.push({
       productname: text(row.productname ?? productName, 300),
       productName,
-      catNo: variant.sku || submittedCatNo,
-      productSku: product.sku,
+      catNo,
       quantityPacks,
       packSize,
       totalPieces: quantityPacks * packSize,
-      unitPricePaise: paise(pricing.unitPrice),
+      unitPricePaise: unitPricePaise - share(unitPricePaise, salePercent),
       listPriceTotalPaise,
       discountPercent: 0,
       discountAmountPaise: BigInt(0),
       finalAmountPaise: listPriceTotalPaise,
-      saleDiscountPercent: 0,
+      saleDiscountPercent: salePercent,
+      saleSavedPaise: share(packPricePaise, salePercent) * BigInt(quantityPacks),
       remarks: text(row.remarks, 1500),
-      productNote: text(row.productNote ?? row.product_note ?? row.note, 1500),
+      // The sale note leads, so trimming a long dealer note never drops it.
+      productNote: saleNote && !productNote.includes(saleNote)
+        ? [saleNote, productNote].filter(Boolean).join(" · ").slice(0, 1500)
+        : productNote,
       priority: row.isPriority === true || text(row.priority, 20) === "1" || text(row.isPriority, 20).toLowerCase() === "true",
       productId: optionalBigInt(row.productId),
       variantId: optionalBigInt(row.variantId),
@@ -153,7 +164,7 @@ export async function priceDealerOrder(
   dealer: { id: bigint; discountPercent: Prisma.Decimal | null },
 ) {
   const { index } = await loadCatalogue();
-  const items = parseItems(parseProductOrder(fields), index);
+  const items = parseItems(parseProductOrder(fields), index, await liveSalePercents(tx));
   const grossAmountPaise = items.reduce((sum, item) => sum + item.listPriceTotalPaise, BigInt(0));
 
   // Every percent is decided here, never read from the submission: the dealer's own
@@ -167,45 +178,32 @@ export async function priceDealerOrder(
   const customRequests = await validateCustomDiscounts(tx, fields, dealer.id);
   const customDiscountAmountPaise = customRequests.reduce((sum, request) => sum + (request.requestedDiscountAmountPaise ?? BigInt(0)), BigInt(0));
 
+  const slabDiscountPercent = customRequests.length ? 0 : discountUtils.getSlabPercent(fromPaise(postBaseAmountPaise));
+  const slabDiscountAmountPaise = share(postBaseAmountPaise, slabDiscountPercent);
+  const additionalDiscountType = customRequests.length ? OrderDiscountType.CUSTOM : slabDiscountPercent > 0 ? OrderDiscountType.SLAB : OrderDiscountType.NONE;
+  const additionalDiscountAmountPaise = customRequests.length ? customDiscountAmountPaise : slabDiscountAmountPaise;
+
+  const discountSum = baseDiscountAmountPaise + additionalDiscountAmountPaise;
+  const totalDiscountAmountPaise = discountSum < grossAmountPaise ? discountSum : grossAmountPaise;
+  const finalPayableAmountPaise = grossAmountPaise - totalDiscountAmountPaise;
+  const totalDiscountPercent = grossAmountPaise > BigInt(0) ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise) : 0;
+  // Already taken off the product prices, so it is a record here, not a discount.
+  const saleDiscountAmountPaise = items.reduce((sum, item) => sum + item.saleSavedPaise, BigInt(0));
+
   // Row discounts mirror the order form: the base percent, raised to an approved
   // order-wide or per-product custom percent (both are totals that include the base).
-  // Today's Sale then comes off what is left of the row, like an on-net custom discount.
-  const salePercents = await liveSalePercents(tx);
   const orderCustomPercent = Math.max(0, ...customRequests
     .filter((request) => request.scope === "ORDER")
     .map((request) => num(request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)));
-  let saleDiscountAmountPaise = BigInt(0);
   for (const item of items) {
     const key = normalizeApprovalProductKey(item.catNo);
     const productPercent = Math.max(0, ...customRequests
       .filter((request) => request.scope === "PRODUCT")
       .map((request) => num((request.requestedProductDiscounts as Record<string, unknown> | null)?.[key])));
-    const rowPercent = clampPercent(Math.max(baseDiscountPercent, orderCustomPercent, productPercent));
-    const rowDiscountPaise = share(item.listPriceTotalPaise, rowPercent);
-    const salePercent = salePercents.get(item.catNo.toLowerCase()) ?? salePercents.get(item.productSku.toLowerCase()) ?? 0;
-    const saleAmountPaise = share(item.listPriceTotalPaise - rowDiscountPaise, salePercent);
-    saleDiscountAmountPaise += saleAmountPaise;
-    item.saleDiscountPercent = salePercent;
-    item.discountPercent = stackDiscountOnNet(rowPercent, salePercent);
-    item.discountAmountPaise = rowDiscountPaise + saleAmountPaise;
+    item.discountPercent = clampPercent(Math.max(baseDiscountPercent, orderCustomPercent, productPercent));
+    item.discountAmountPaise = share(item.listPriceTotalPaise, item.discountPercent);
     item.finalAmountPaise = item.listPriceTotalPaise - item.discountAmountPaise;
-    const saleNote = salePercent > 0 ? `Today's Sale: ${salePercent}% off` : "";
-    if (saleNote && !item.productNote.includes(saleNote)) {
-      item.productNote = [saleNote, item.productNote].filter(Boolean).join(" · ").slice(0, 1500);
-    }
   }
-
-  // The volume slab is earned on what is still payable after the sale.
-  const postSaleAmountPaise = postBaseAmountPaise - saleDiscountAmountPaise;
-  const slabDiscountPercent = customRequests.length ? 0 : discountUtils.getSlabPercent(fromPaise(postSaleAmountPaise));
-  const slabDiscountAmountPaise = share(postSaleAmountPaise, slabDiscountPercent);
-  const additionalDiscountType = customRequests.length ? OrderDiscountType.CUSTOM : slabDiscountPercent > 0 ? OrderDiscountType.SLAB : OrderDiscountType.NONE;
-  const additionalDiscountAmountPaise = customRequests.length ? customDiscountAmountPaise : slabDiscountAmountPaise;
-
-  const discountSum = baseDiscountAmountPaise + saleDiscountAmountPaise + additionalDiscountAmountPaise;
-  const totalDiscountAmountPaise = discountSum < grossAmountPaise ? discountSum : grossAmountPaise;
-  const finalPayableAmountPaise = grossAmountPaise - totalDiscountAmountPaise;
-  const totalDiscountPercent = grossAmountPaise > BigInt(0) ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise) : 0;
 
   return {
     items, customRequests,

@@ -37,7 +37,6 @@ export type OrderAmountSource = Record<string, unknown> & {
   slab_discount_amount?: string | number;
   slabDiscountPercent?: string | number;
   slab_discount_percent?: string | number;
-  saleDiscountAmount?: string | number;
 };
 
 export type ResolvedOrderAmounts = {
@@ -58,7 +57,6 @@ export type ResolvedOrderDiscountBreakdown = ResolvedOrderAmounts & {
   customDiscountPercent?: number;
   customDiscountAmount: number;
   additionalDiscountAmount: number;
-  saleDiscountAmount: number;
   hasSlabDiscount: boolean;
   hasCustomDiscount: boolean;
   hasKnownBaseDiscount: boolean;
@@ -70,13 +68,13 @@ type ResolveOrderDiscountBreakdownOptions = {
 };
 
 type DiscountSummaryRow = {
-  key: "gross" | "base" | "sale" | "slab" | "custom" | "total" | "net";
+  key: "gross" | "base" | "slab" | "custom" | "total" | "net";
   label: string;
   amount: number;
 };
 
 export type CompactOrderDiscountRow = {
-  key: "base" | "sale" | "slab" | "custom" | "none" | "additional" | "total";
+  key: "base" | "slab" | "custom" | "none" | "additional" | "total";
   label: string;
   amount?: number;
 };
@@ -187,10 +185,7 @@ export function resolveOrderDiscountBreakdown(
 ): ResolvedOrderDiscountBreakdown {
   const amounts = resolveOrderAmounts(order, override);
   const grossAmount = amounts.gross;
-  // Today's Sale is stored on its own; the base/slab/custom inference below
-  // works on the rest of the discount, exactly as before the sale existed.
-  const saleDiscountAmount = clampMoney(firstMoney(override?.saleDiscountAmount, order.saleDiscountAmount));
-  const totalDiscountAmount = clampMoney(amounts.discountAmount - saleDiscountAmount);
+  const totalDiscountAmount = amounts.discountAmount;
   const netPayableAmount = amounts.netPayable;
 
   const explicitType = normalizeAdditionalDiscountType(
@@ -417,7 +412,6 @@ export function resolveOrderDiscountBreakdown(
     customDiscountPercent,
     customDiscountAmount,
     additionalDiscountAmount,
-    saleDiscountAmount,
     hasSlabDiscount: additionalDiscountType === "slab" && slabDiscountAmount > 0,
     hasCustomDiscount: additionalDiscountType === "custom" && customDiscountAmount > 0,
     hasKnownBaseDiscount: explicitBaseDiscountAmount !== undefined
@@ -443,10 +437,6 @@ export function getOrderDiscountSummaryRows(
       amount: breakdown.baseDiscountAmount,
     },
   ];
-
-  if (breakdown.saleDiscountAmount > 0) {
-    rows.push({ key: "sale", label: "Today's Sale", amount: breakdown.saleDiscountAmount });
-  }
 
   if (breakdown.additionalDiscountType === "slab" && breakdown.slabDiscountAmount > 0) {
     rows.push({
@@ -487,10 +477,6 @@ export function getCompactOrderDiscountRows(
     },
   ];
 
-  if (breakdown.saleDiscountAmount > 0) {
-    rows.push({ key: "sale", label: "Today's Sale", amount: breakdown.saleDiscountAmount });
-  }
-
   if (breakdown.additionalDiscountType === "slab" && breakdown.slabDiscountAmount > 0) {
     rows.push({
       key: "slab",
@@ -508,12 +494,12 @@ export function getCompactOrderDiscountRows(
   } else if (
     breakdown.hasKnownBaseDiscount &&
     !breakdown.hasKnownAdditionalDiscount &&
-    breakdown.discountAmount > breakdown.baseDiscountAmount + breakdown.saleDiscountAmount + 0.01
+    breakdown.discountAmount > breakdown.baseDiscountAmount + 0.01
   ) {
     rows.push({
       key: "additional",
       label: "Additional Discount",
-      amount: roundMoney(breakdown.discountAmount - breakdown.baseDiscountAmount - breakdown.saleDiscountAmount),
+      amount: roundMoney(breakdown.discountAmount - breakdown.baseDiscountAmount),
     });
   } else {
     rows.push({ key: "none", label: "No Additional Discount" });
@@ -593,7 +579,6 @@ export function withDisplayOrderAmounts<T extends OrderAmountSource>(
   customDiscountPercent?: number;
   slabDiscountAmount: number;
   slabDiscountPercent: number;
-  saleDiscountAmount: number;
   hasSlabDiscount: boolean;
   hasCustomDiscount: boolean;
   hasKnownBaseDiscount: boolean;
@@ -622,7 +607,6 @@ export function withDisplayOrderAmounts<T extends OrderAmountSource>(
     customDiscountPercent: amounts.customDiscountPercent,
     slabDiscountAmount: amounts.slabDiscountAmount,
     slabDiscountPercent: amounts.slabDiscountPercent,
-    saleDiscountAmount: amounts.saleDiscountAmount,
     hasSlabDiscount: amounts.hasSlabDiscount,
     hasCustomDiscount: amounts.hasCustomDiscount,
     hasKnownBaseDiscount: amounts.hasKnownBaseDiscount,
