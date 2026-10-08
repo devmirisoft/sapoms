@@ -5,9 +5,10 @@ import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
 import { buildEditLogEntry, diffOrderRows, orderItemsToDraftRows, ORDER_REJECTION_SOURCE } from "@/lib/orderRejectionDraft.mjs";
 import { findCatalogueEntry, type CatalogueIndex } from "@/lib/catalogue";
 import { couponPercent } from "@/lib/coupons";
-import { normalizeApprovalProductKey } from "@/lib/customDiscountRequests";
+import { normalizeApprovalProductKey, stackDiscountOnNet } from "@/lib/customDiscountRequests";
 import discountUtils from "@/lib/discount";
 import { linePricing, loadCatalogue } from "@/server/modules/products/catalogue";
+import { liveSalePercents } from "@/server/todays-sale";
 
 /**
  * Order creation for a dealer submission.
@@ -38,6 +39,7 @@ type ParsedItem = {
   productname: string;
   productName: string;
   catNo: string;
+  productSku: string;
   quantityPacks: number;
   packSize: number;
   totalPieces: number;
@@ -46,6 +48,7 @@ type ParsedItem = {
   discountPercent: number;
   discountAmountPaise: bigint;
   finalAmountPaise: bigint;
+  saleDiscountPercent: number;
   remarks: string;
   productNote: string;
   priority: boolean;
@@ -107,6 +110,7 @@ function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIn
       productname: text(row.productname ?? productName, 300),
       productName,
       catNo: variant.sku || submittedCatNo,
+      productSku: product.sku,
       quantityPacks,
       packSize,
       totalPieces: quantityPacks * packSize,
@@ -115,6 +119,7 @@ function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIn
       discountPercent: 0,
       discountAmountPaise: BigInt(0),
       finalAmountPaise: listPriceTotalPaise,
+      saleDiscountPercent: 0,
       remarks: text(row.remarks, 1500),
       productNote: text(row.productNote ?? row.product_note ?? row.note, 1500),
       priority: row.isPriority === true || text(row.priority, 20) === "1" || text(row.isPriority, 20).toLowerCase() === "true",
@@ -161,34 +166,51 @@ export async function priceDealerOrder(
 
   const customRequests = await validateCustomDiscounts(tx, fields, dealer.id);
   const customDiscountAmountPaise = customRequests.reduce((sum, request) => sum + (request.requestedDiscountAmountPaise ?? BigInt(0)), BigInt(0));
-  const slabDiscountPercent = customRequests.length ? 0 : discountUtils.getSlabPercent(fromPaise(postBaseAmountPaise));
-  const slabDiscountAmountPaise = share(postBaseAmountPaise, slabDiscountPercent);
-  const additionalDiscountType = customRequests.length ? OrderDiscountType.CUSTOM : slabDiscountPercent > 0 ? OrderDiscountType.SLAB : OrderDiscountType.NONE;
-  const additionalDiscountAmountPaise = customRequests.length ? customDiscountAmountPaise : slabDiscountAmountPaise;
-
-  const discountSum = baseDiscountAmountPaise + additionalDiscountAmountPaise;
-  const totalDiscountAmountPaise = discountSum < grossAmountPaise ? discountSum : grossAmountPaise;
-  const finalPayableAmountPaise = grossAmountPaise - totalDiscountAmountPaise;
-  const totalDiscountPercent = grossAmountPaise > BigInt(0) ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise) : 0;
 
   // Row discounts mirror the order form: the base percent, raised to an approved
   // order-wide or per-product custom percent (both are totals that include the base).
+  // Today's Sale then comes off what is left of the row, like an on-net custom discount.
+  const salePercents = await liveSalePercents(tx);
   const orderCustomPercent = Math.max(0, ...customRequests
     .filter((request) => request.scope === "ORDER")
     .map((request) => num(request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)));
+  let saleDiscountAmountPaise = BigInt(0);
   for (const item of items) {
     const key = normalizeApprovalProductKey(item.catNo);
     const productPercent = Math.max(0, ...customRequests
       .filter((request) => request.scope === "PRODUCT")
       .map((request) => num((request.requestedProductDiscounts as Record<string, unknown> | null)?.[key])));
-    item.discountPercent = clampPercent(Math.max(baseDiscountPercent, orderCustomPercent, productPercent));
-    item.discountAmountPaise = share(item.listPriceTotalPaise, item.discountPercent);
+    const rowPercent = clampPercent(Math.max(baseDiscountPercent, orderCustomPercent, productPercent));
+    const rowDiscountPaise = share(item.listPriceTotalPaise, rowPercent);
+    const salePercent = salePercents.get(item.catNo.toLowerCase()) ?? salePercents.get(item.productSku.toLowerCase()) ?? 0;
+    const saleAmountPaise = share(item.listPriceTotalPaise - rowDiscountPaise, salePercent);
+    saleDiscountAmountPaise += saleAmountPaise;
+    item.saleDiscountPercent = salePercent;
+    item.discountPercent = stackDiscountOnNet(rowPercent, salePercent);
+    item.discountAmountPaise = rowDiscountPaise + saleAmountPaise;
     item.finalAmountPaise = item.listPriceTotalPaise - item.discountAmountPaise;
+    const saleNote = salePercent > 0 ? `Today's Sale: ${salePercent}% off` : "";
+    if (saleNote && !item.productNote.includes(saleNote)) {
+      item.productNote = [saleNote, item.productNote].filter(Boolean).join(" · ").slice(0, 1500);
+    }
   }
+
+  // The volume slab is earned on what is still payable after the sale.
+  const postSaleAmountPaise = postBaseAmountPaise - saleDiscountAmountPaise;
+  const slabDiscountPercent = customRequests.length ? 0 : discountUtils.getSlabPercent(fromPaise(postSaleAmountPaise));
+  const slabDiscountAmountPaise = share(postSaleAmountPaise, slabDiscountPercent);
+  const additionalDiscountType = customRequests.length ? OrderDiscountType.CUSTOM : slabDiscountPercent > 0 ? OrderDiscountType.SLAB : OrderDiscountType.NONE;
+  const additionalDiscountAmountPaise = customRequests.length ? customDiscountAmountPaise : slabDiscountAmountPaise;
+
+  const discountSum = baseDiscountAmountPaise + saleDiscountAmountPaise + additionalDiscountAmountPaise;
+  const totalDiscountAmountPaise = discountSum < grossAmountPaise ? discountSum : grossAmountPaise;
+  const finalPayableAmountPaise = grossAmountPaise - totalDiscountAmountPaise;
+  const totalDiscountPercent = grossAmountPaise > BigInt(0) ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise) : 0;
 
   return {
     items, customRequests,
     grossAmountPaise, baseDiscountPercent, baseDiscountAmountPaise, postBaseAmountPaise,
+    saleDiscountAmountPaise,
     additionalDiscountType, slabDiscountPercent, slabDiscountAmountPaise,
     customDiscountAmountPaise, additionalDiscountAmountPaise,
     couponDiscountPercent,
@@ -278,6 +300,7 @@ export async function createDealerOrder(
       customDiscountAmountPaise: priced.customDiscountAmountPaise,
       slabDiscountPercent: new Prisma.Decimal(priced.slabDiscountPercent),
       slabDiscountAmountPaise: priced.slabDiscountAmountPaise,
+      saleDiscountAmountPaise: priced.saleDiscountAmountPaise,
       totalDiscountPercent: new Prisma.Decimal(priced.totalDiscountPercent),
       totalDiscountAmountPaise: priced.totalDiscountAmountPaise,
       finalPayableAmountPaise: priced.finalPayableAmountPaise,
@@ -305,6 +328,7 @@ export async function createDealerOrder(
         discountPercent: new Prisma.Decimal(item.discountPercent),
         discountAmountPaise: item.discountAmountPaise,
         finalAmountPaise: item.finalAmountPaise,
+        saleDiscountPercent: new Prisma.Decimal(item.saleDiscountPercent),
         isPriority: item.priority,
         remarks: item.remarks || null,
         productNote: item.productNote || null,
@@ -314,6 +338,18 @@ export async function createDealerOrder(
 
   if (priced.customRequests.length) {
     await tx.customDiscountRequest.updateMany({ where: { id: { in: priced.customRequests.map((r) => r.id) } }, data: { orderId: order.id } });
+  }
+
+  // The order page reads product notes from order_product_notes, so the dealer's
+  // note (and the automatic Today's Sale note) is filed there too. Nested creates
+  // insert in order, so ascending ids line up with priced.items.
+  if (priced.items.some((item) => item.productNote)) {
+    const createdItems = await tx.orderItem.findMany({ where: { orderId: order.id }, orderBy: { id: "asc" }, select: { id: true } });
+    await tx.orderProductNote.createMany({
+      data: priced.items.flatMap((item, index) => item.productNote && createdItems[index]
+        ? [{ orderId: order.id, orderItemId: createdItems[index].id, note: item.productNote.slice(0, 500), actorUserId: actor.userId, actorRole: actor.role as never }]
+        : []),
+    });
   }
 
   // A resubmitted rejected order is diffed against the order it replaces, so

@@ -48,6 +48,7 @@ import { SegmentedTabs } from "@/components/SegmentedTabs";
 import { buildPriorityRemarks } from "@/lib/orderPriority";
 import cataloguePricing from "@/lib/cataloguePricing";
 import { COUPONS } from "@/lib/coupons";
+import { useTodaysSale } from "@/hooks/useTodaysSale";
 import {
   buildOrderRemarks as buildLineRemarks,
 } from "@/lib/orderProductNotes.mjs";
@@ -504,6 +505,7 @@ function AddOrderPageInner() {
   const [reorderRequest, setReorderRequest] = useState<NormalizedCustomDiscountRequest | null>(null);
   const [perProductDiscountInputs, setPerProductDiscountInputs] = useState<Record<string, number>>({});
   const [editingProductDiscountKey, setEditingProductDiscountKey] = useState<string | null>(null);
+  const saleOf = useTodaysSale();
   const [perProductSubmitting, setPerProductSubmitting] = useState<string | null>(null);
   const [openRowMenuKey, setOpenRowMenuKey] = useState<number | null>(null);
   const [noteEditorRowKey, setNoteEditorRowKey] = useState<number | null>(null);
@@ -1180,18 +1182,26 @@ function AddOrderPageInner() {
     : 0;
   const activeAdditionalDiscountType = hasApprovedCustomCandidate ? "custom" : null;
 
+  // Today's Sale comes off each sale row's net after base/custom, as priceDealerOrder does.
+  const getRowSalePercent = (row: ProductRow) => saleOf(row.variantCode || row.productname);
+  const getRowTotalPercent = (row: ProductRow) => stackDiscountOnNet(getRowDiscountPercent(row), getRowSalePercent(row));
+  const saleDiscountAmountFromRows = roundRupees(productRows.reduce((acc, row) => (
+    acc + (rowSubtotalPaise(row) / 100) * (1 - getRowDiscountPercent(row) / 100) * (getRowSalePercent(row) / 100)
+  ), 0));
+  const postSaleAmountFromRows = roundRupees(Math.max(0, postBaseAmountFromRows - saleDiscountAmountFromRows));
+
   const slabPercentFromRows = activeAdditionalDiscountType === "custom"
     ? 0
-    : postBaseAmountFromRows >= 500000 ? 5
-      : postBaseAmountFromRows >= 250000 ? 2 : 0;
-  const slabAmountFromRows = roundRupees(postBaseAmountFromRows * (slabPercentFromRows / 100));
+    : postSaleAmountFromRows >= 500000 ? 5
+      : postSaleAmountFromRows >= 250000 ? 2 : 0;
+  const slabAmountFromRows = roundRupees(postSaleAmountFromRows * (slabPercentFromRows / 100));
   const additionalDiscountAmountFromRows = activeAdditionalDiscountType === "custom"
     ? customDiscountAmountFromRows
     : slabAmountFromRows;
 
   // Final payable after sequential application
-  const finalPayableFromRows = roundRupees(Math.max(0, postBaseAmountFromRows - additionalDiscountAmountFromRows));
-  const totalDiscountAmountFromRows = roundRupees(baseDiscountAmountFromRows + additionalDiscountAmountFromRows);
+  const finalPayableFromRows = roundRupees(Math.max(0, postSaleAmountFromRows - additionalDiscountAmountFromRows));
+  const totalDiscountAmountFromRows = roundRupees(baseDiscountAmountFromRows + saleDiscountAmountFromRows + additionalDiscountAmountFromRows);
   const effectiveDiscountPercent = subtotal > 0
     ? Number(payloadAmount((totalDiscountAmountFromRows / subtotal) * 100))
     : 0;
@@ -1200,7 +1210,8 @@ function AddOrderPageInner() {
     ...baseDiscountPayload,
     baseDiscountAmount: Number(payloadAmount(baseDiscountAmountFromRows)),
     postBaseAmount: Number(payloadAmount(postBaseAmountFromRows)),
-    amountBeforeSlab: Number(payloadAmount(postBaseAmountFromRows)),
+    amountBeforeSlab: Number(payloadAmount(postSaleAmountFromRows)),
+    saleDiscountAmount: Number(payloadAmount(saleDiscountAmountFromRows)),
     additionalDiscountType: activeAdditionalDiscountType ?? (slabPercentFromRows > 0 ? "slab" : null),
     additionalDiscountAmount: Number(payloadAmount(additionalDiscountAmountFromRows)),
     customDiscountAmount: Number(payloadAmount(customDiscountAmountFromRows)),
@@ -2091,7 +2102,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
       return;
     }
     const payload = arr1.filter(r => r.productname).map(r => {
-      const rowDiscountPercent = getRowDiscountPercent(r);
+      const rowDiscountPercent = getRowTotalPercent(r);
       const quantityPacks = safePositiveNumber(r.producQuanity);
       const packSize = safePositiveNumber(r.packSize) || 1;
       const totalPieces = quantityPacks * packSize;
@@ -2114,6 +2125,8 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         totalDiscountPercent: String(rowDiscountPercent),
         afterDiscountPrice: payloadAmount(Math.max(0, rowSubtotal - rowDiscountAmount)),
         remarks: buildOrderRemarks(r.variantCode, r.isPriority, orderNote),
+        // The server appends "Today's Sale: X% off" to this for sale rows.
+        productNote: String(r.productNote ?? "").trim(),
         priority: r.isPriority ? "1" : "0",
         isPriority: !!r.isPriority,
       };
@@ -2958,6 +2971,11 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               <p className="mt-1 font-mono text-[13px] font-bold text-brand-600">
                 {fmt(toPaise(discountPayload.postBaseAmount))}
               </p>
+              {discountPayload.saleDiscountAmount > 0 && (
+                <p className="mt-0.5 text-[10px] font-mono font-semibold text-emerald-700">
+                  Today&apos;s Sale −{fmt(toPaise(discountPayload.saleDiscountAmount))}
+                </p>
+              )}
               <p className="mt-0.5 text-[9px] text-brand-400">
                 {discountPayload.additionalDiscountType === "custom" ? "Custom discount applies from here" : "Slab discount is determined from this"}
               </p>
@@ -3242,7 +3260,8 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   {arr1.map((row, idx) => {
                     const listPrice = rowSubtotalPaise(row);
                     const baseListPrice = rowBaseListPrice(row);
-                    const rowDiscountPercent = getRowDiscountPercent(row);
+                    const rowSalePercent = getRowSalePercent(row);
+                    const rowDiscountPercent = getRowTotalPercent(row);
                     const discAmt = Math.round(listPrice * (rowDiscountPercent / 100));
                     const rowTotal = Math.max(0, listPrice - discAmt);
                     const totalUnits = safePositiveNumber(row.producQuanity) * (safePositiveNumber(row.packSize) || 1);
@@ -3464,6 +3483,11 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                                 </button>
                               )}
                             </div>
+                            {rowSalePercent > 0 && (
+                              <p className="text-[10px] font-mono font-semibold leading-tight text-emerald-700">
+                                Today&apos;s Sale: +{rowSalePercent}%
+                              </p>
+                            )}
                             <div className="border-t border-dashed border-gray-200 pt-0.5">
                               <span className={`font-mono text-[11px] font-bold ${rowDiscountPercent > 0 ? "text-emerald-600" : "text-gray-400"}`}>
                                 {rowDiscountPercent}% off
@@ -3664,6 +3688,11 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     <div className="rounded-xl border border-brand-200 bg-brand-50/60 px-4 py-3">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-brand-500">Post Base Amount</p>
                       <p className="mt-1 font-mono text-[14px] font-bold text-brand-600">{fmt(toPaise(discountPayload.postBaseAmount))}</p>
+                      {discountPayload.saleDiscountAmount > 0 && (
+                        <p className="mt-0.5 font-mono text-[11px] font-semibold text-emerald-700">
+                          Today&apos;s Sale −{fmt(toPaise(discountPayload.saleDiscountAmount))}
+                        </p>
+                      )}
                     </div>
                     <div className={`rounded-xl border px-4 py-3 ${discountPayload.additionalDiscountAmount > 0 ? "border-emerald-200 bg-emerald-50/60 text-emerald-700" : "border-gray-200 bg-white text-gray-500"}`}>
                       <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">

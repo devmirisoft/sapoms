@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
 import { useCartStore } from "@/Store/store";
+import { SalePrice, salePaise } from "@/components/SalePrice";
+import { useTodaysSale } from "@/hooks/useTodaysSale";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type ProductMeta = { image: string | null; productName: string; packSize: number; specSummary: string };
@@ -107,6 +109,7 @@ export default function CartPage() {
 
   const [lookup,    setLookup]    = useState<Record<string, ProductMeta>>({});
   const [removed,   setRemoved]   = useState<string[]>([]);
+  const saleOf = useTodaysSale();
 
   useEffect(() => {
     axios.get("/data/products.json")
@@ -128,6 +131,17 @@ export default function CartPage() {
     const ps = lookup[item.id]?.packSize ?? item.packSize ?? 1;
     return acc + item.price * item.quantity * ps;
   }, 0);
+  const saleSubtotalPaise = cart.reduce((acc, item) => {
+    const ps = lookup[item.id]?.packSize ?? item.packSize ?? 1;
+    return acc + salePaise(item.price * item.quantity * ps, saleOf(item.id));
+  }, 0);
+  const savedPaise = subtotalPaise - saleSubtotalPaise;
+  const subtotalText = savedPaise > 0 ? (
+    <>
+      <s style={{ fontSize: "0.7em", color: "#9ca3af", fontWeight: 400, marginRight: 6 }}>{fmt(subtotalPaise)}</s>
+      <span style={{ color: "#059669" }}>{fmt(saleSubtotalPaise)}</span>
+    </>
+  ) : fmt(subtotalPaise);
 
   const handleRemove = (id: string) => {
     setRemoved(prev => [...prev, id]);
@@ -222,6 +236,7 @@ export default function CartPage() {
               const varCode    = nameParts.length > 1 ? nameParts[nameParts.length - 1] : item.id;
               const isRemoving = removed.includes(item.id);
               const image      = item.image || meta?.image;
+              const sale       = saleOf(item.id);
 
               return (
                 <div
@@ -268,6 +283,11 @@ export default function CartPage() {
                       {item.isPriority && (
                         <span style={{ fontSize: 11, background: "#fee2e2", color: "#b91c1c", border: "1px solid #fecaca", borderRadius: 6, padding: "2px 8px", fontWeight: 700 }}>
                           Priority
+                        </span>
+                      )}
+                      {sale > 0 && (
+                        <span style={{ fontSize: 11, background: "#059669", color: "#fff", borderRadius: 6, padding: "2px 8px", fontWeight: 700 }}>
+                          Today&apos;s Deal: {sale}% OFF
                         </span>
                       )}
                     </div>
@@ -336,14 +356,14 @@ export default function CartPage() {
                   {/* Price */}
                   <div style={{ textAlign: "right", flexShrink: 0, minWidth: 100 }}>
                     <p style={{ fontSize: 16, fontWeight: 700, color: "#111827", marginBottom: 4 }}>
-                      {fmt(lineTotal)}
+                      <SalePrice paise={lineTotal} percent={sale} />
                     </p>
                     {item.quantity > 1 && (
-                      <p style={{ fontSize: 11, color: "#9ca3af" }}>{fmt(item.price * packSize)} / pack</p>
+                      <p style={{ fontSize: 11, color: "#9ca3af" }}>{fmt(salePaise(item.price * packSize, sale))} / pack</p>
                     )}
                     {packSize > 1 && (
                       <p style={{ fontSize: 11, color: "#9ca3af" }}>
-                        {fmt(item.price)} / Pc.
+                        {fmt(salePaise(item.price, sale))} / Pc.
                       </p>
                     )}
                   </div>
@@ -359,7 +379,7 @@ export default function CartPage() {
                 Subtotal ({cart.length} item{cart.length !== 1 ? "s" : ""}):
               </span>
               <span style={{ fontSize: 20, fontWeight: 700, color: "#111827", fontFamily: "monospace" }}>
-                {fmt(subtotalPaise)}
+                {subtotalText}
               </span>
             </div>
           )}
@@ -386,8 +406,14 @@ export default function CartPage() {
               <div style={{ height: 1, background: "#f3f4f6", margin: "4px 0" }} />
               <div style={{ display: "flex", justifyContent: "space-between", fontSize: 15, color: "#111827" }}>
                 <span style={{ fontWeight: 600 }}>Subtotal</span>
-                <span style={{ fontWeight: 700, fontFamily: "monospace" }}>{fmt(subtotalPaise)}</span>
+                <span style={{ fontWeight: 700, fontFamily: "monospace" }}>{subtotalText}</span>
               </div>
+              {savedPaise > 0 && (
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "#059669", fontWeight: 600 }}>
+                  <span>Today&apos;s Deal savings</span>
+                  <span style={{ fontFamily: "monospace" }}>−{fmt(savedPaise)}</span>
+                </div>
+              )}
             </div>
 
             <button

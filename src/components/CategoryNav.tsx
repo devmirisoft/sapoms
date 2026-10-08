@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ArrowRight, ChevronDown, ChevronRight, FlaskConical } from "lucide-react";
 import { useCatalogueProducts } from "@/hooks/useCatalogueProducts";
 import { compactCategoryList, matchesCategory } from "@/lib/categories";
@@ -24,11 +25,17 @@ const NAV_GROUPS: { label: string; categories: string[]; image?: string; shopHre
   { label: "More", categories: ["Education", "Desiccators", "Crucibles", "Hygrometers"] },
 ];
 
-// ponytail: new releases have no data source yet, so it opens the full listing.
-const QUICK_LINKS = [
-  { label: "Today's Deals", href: "/home#todays-sale" },
-  { label: "Best Sellers", href: "/home#hot-right-now" },
-  { label: "New Releases", href: "/Products" },
+type Tile = { SKU: string; name: string; image: string; badge: string };
+type ApiItem = { SKU: string; name: string; image: string; active?: boolean; badge?: string; discountPercent?: number };
+
+// Each quick link previews its home section on hover, fed by the same API the section uses.
+const QUICK_LINKS: { label: string; href: string; api: string; empty: string; badgeClass: string; pick: (data?: { live?: boolean; items?: ApiItem[] }) => ApiItem[] }[] = [
+  {
+    label: "Today's Deals", href: "/home#todays-sale", api: "/api/todays-sale", empty: "No deals today. Check back soon.", badgeClass: "bg-emerald-600",
+    pick: (data) => (data?.live ? data.items ?? [] : []).map((item) => ({ ...item, badge: `-${item.discountPercent}% OFF` })),
+  },
+  { label: "Best Sellers", href: "/home#hot-right-now", api: "/api/hot-items", empty: "No best sellers yet.", badgeClass: "bg-rose-500", pick: (data) => data?.items ?? [] },
+  { label: "New Releases", href: "/home#new-releases", api: "/api/new-releases", empty: "No new releases yet.", badgeClass: "bg-blue-600", pick: (data) => data?.items ?? [] },
 ];
 const catHref = (label: string) => `/Products?cat=${encodeURIComponent(label)}`;
 
@@ -39,6 +46,9 @@ export default function CategoryNav() {
   const [open, setOpen] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const group = NAV_GROUPS.find((item) => item.label === open);
+  const pathname = usePathname();
+  const [tiles, setTiles] = useState<Record<string, Tile[]>>({});
+  const quick = QUICK_LINKS.find((link) => link.label === open);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => event.key === "Escape" && setOpen(null);
@@ -71,6 +81,33 @@ export default function CategoryNav() {
   };
   const close = () => setOpen(null);
 
+  // Fetched on first hover only, then cached for the session.
+  const openQuick = (link: (typeof QUICK_LINKS)[number]) => {
+    setOpen(link.label);
+    if (tiles[link.label]) return;
+    const save = (items: ApiItem[]) => setTiles((prev) => ({
+      ...prev,
+      [link.label]: items.filter((item) => item.active !== false).slice(0, 6)
+        .map(({ SKU, name, image, badge }) => ({ SKU, name, image, badge: badge ?? "" })),
+    }));
+    fetch(link.api, { cache: "no-store" })
+      .then((r) => r.json())
+      .then((json) => save(json.success ? link.pick(json.data) : []))
+      .catch(() => save([]));
+  };
+  const imageFor = (tile: Tile) =>
+    products.find((product) => product.sku.toLowerCase() === tile.SKU.toLowerCase())?.images?.[0] || tile.image;
+
+  // Same-page hash links scroll smoothly; cross-page ones let Next jump after navigating.
+  const followLink = (event: React.MouseEvent, href: string) => {
+    close();
+    const [path, hash] = href.split("#");
+    if (!hash || pathname !== path) return;
+    event.preventDefault();
+    document.getElementById(hash)?.scrollIntoView({ behavior: "smooth" });
+    history.replaceState(null, "", href);
+  };
+
   return (
     <nav className="relative bg-[#242424] text-white" onMouseLeave={close}>
       <div className="flex min-h-12 flex-wrap items-stretch justify-between px-2 text-sm xl:text-[15px]">
@@ -98,14 +135,47 @@ export default function CategoryNav() {
             <Link
               key={link.label}
               href={link.href}
-              onMouseEnter={close}
-              onClick={close}
-              className="flex items-center whitespace-nowrap px-2 py-3 font-medium text-white/90 hover:text-white xl:px-3"
+              onMouseEnter={() => openQuick(link)}
+              onClick={(event) => followLink(event, link.href)}
+              className={`flex items-center whitespace-nowrap px-2 py-3 font-medium xl:px-3 ${
+                open === link.label ? "bg-brand-600 text-white" : "text-white/90 hover:text-white"
+              }`}
             >
               {link.label}
             </Link>
           ))}
       </div>
+
+      {quick && (
+        <div className="absolute right-4 top-full z-50 w-[min(56rem,calc(100%-2rem))] rounded-b-xl border border-slate-200 bg-white p-5 text-slate-800 shadow-2xl">
+          {!tiles[quick.label]?.length ? (
+            <p className="py-6 text-center text-sm text-slate-500">{tiles[quick.label] ? quick.empty : "Loading..."}</p>
+          ) : (
+            <div className="grid grid-cols-3 gap-4 lg:grid-cols-6">
+              {tiles[quick.label].map((tile) => (
+                <Link key={tile.SKU} href={`/Products/${encodeURIComponent(tile.SKU)}`} onClick={close} className="group text-sm">
+                  <div className="relative flex aspect-square items-center justify-center rounded-lg bg-slate-50 p-2">
+                    {imageFor(tile) && <img src={imageFor(tile)} alt="" className="max-h-full max-w-full object-contain" />}
+                    {tile.badge && (
+                      <span className={`absolute left-1.5 top-1.5 rounded-full px-1.5 py-0.5 text-[10px] font-bold text-white ${quick.badgeClass}`}>
+                        {tile.badge}
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1.5 line-clamp-2 text-xs leading-tight text-slate-700 group-hover:text-brand-500">{tile.name}</p>
+                </Link>
+              ))}
+            </div>
+          )}
+          <Link
+            href={quick.href}
+            onClick={(event) => followLink(event, quick.href)}
+            className="mt-4 inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-500 hover:underline"
+          >
+            See all {quick.label.toLowerCase()} <ArrowRight className="h-3.5 w-3.5" />
+          </Link>
+        </div>
+      )}
 
       {group && (
         <div className="absolute inset-x-4 top-full z-50 flex max-h-[75vh] overflow-hidden rounded-b-xl border border-slate-200 bg-white text-slate-800 shadow-2xl">

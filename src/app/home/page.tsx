@@ -332,6 +332,7 @@ export default function Page() {
   const auth = useAuthSession();
   const [hotItems, setHotItems] = useState<HotItemDisplay[]>([]);
   const [saleItems, setSaleItems] = useState<HotItemDisplay[]>([]);
+  const [newItems, setNewItems] = useState<HotItemDisplay[]>([]);
   const [relatedProducts, setRelatedProducts] = useState<RelatedProductDisplay[]>([]);
   const [hotLoading, setHotLoading] = useState(true);
   const dealerId = !auth.loading && auth.session.status === "authenticated" && auth.session.role === "dealer"
@@ -362,8 +363,11 @@ export default function Page() {
       fetch("/api/todays-sale", { cache: "no-store" })
         .then((r) => r.json())
         .catch(() => ({ success: false })),
+      fetch("/api/new-releases", { cache: "no-store" })
+        .then((r) => r.json())
+        .catch(() => ({ success: false })),
     ])
-      .then(([catalogRes, hotJson, saleJson]) => {
+      .then(([catalogRes, hotJson, saleJson, newJson]) => {
         const { imageMap, nameMap, fallbackProducts, resolver } = buildCatalogLookups(catalogRes.data);
         setCatalogResolver(resolver);
         setRelatedProducts(buildRelatedProducts(bottleProducts, resolver));
@@ -379,6 +383,9 @@ export default function Page() {
 
         const saleData = saleJson.success && saleJson.data?.live ? (saleJson.data.items as SaleItem[]) : [];
         setSaleItems(saleData.filter((item) => item.active).slice(0, 6).map((item) => toDisplay(item, `-${item.discountPercent}% OFF`)));
+
+        const newData = (newJson.success ? newJson.data?.items : []) as { SKU: string; name: string; image: string }[];
+        setNewItems(newData.map((item) => toDisplay(item, "New")));
 
         const publishedItems = ((hotJson.success ? hotJson.data?.items : []) ?? []) as PublishedHotItem[];
         const adminItems = publishedItems.filter((item) => item.active);
@@ -670,11 +677,11 @@ export default function Page() {
       </section>
 
       {/* ══════════════════════════════════════════════════════════════════
-          SECTION 6 — Hot Right Now
+          SECTION 6 — Best Sellers
       ══════════════════════════════════════════════════════════════════ */}
       <section id="hot-right-now" className="max-w-[1840px] mx-auto px-4 py-12 border-t border-gray-200">
         <SectionHeading
-          title="Hot Right Now"
+          title="Best sellers"
           subtitle="Top picks flying off the shelves"
           badge="🔥 Trending"
           action={{ label: "Shop all", href: "/Products" }}
@@ -687,6 +694,32 @@ export default function Page() {
                 onOpen={() => goToProduct(product.SKU, product.Name, product.image || undefined)} />
             ))}
         </div>
+      </section>
+
+      {/* ══════════════════════════════════════════════════════════════════
+          SECTION 7 — New Releases (newest active products)
+      ══════════════════════════════════════════════════════════════════ */}
+      <section id="new-releases" className="max-w-[1840px] mx-auto px-4 py-12 border-t border-gray-200">
+        <SectionHeading
+          title="New releases"
+          subtitle="Latest additions to the catalogue"
+          badge="✨ New"
+          action={{ label: "Shop all", href: "/Products" }}
+        />
+        {!hotLoading && newItems.length === 0 ? (
+          <p className="rounded-lg border border-dashed border-gray-200 bg-white py-8 text-center text-sm text-slate-500">
+            No new releases yet.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            {hotLoading
+              ? Array.from({ length: 6 }).map((_, i) => <ProductCardSkeleton key={i} />)
+              : newItems.map((product) => (
+                <ProductTile key={product.SKU} product={product} badgeClass="bg-blue-600"
+                  onOpen={() => goToProduct(product.SKU, product.Name, product.image || undefined)} />
+              ))}
+          </div>
+        )}
       </section>
 
       <Footer />

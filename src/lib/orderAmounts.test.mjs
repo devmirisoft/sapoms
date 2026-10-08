@@ -110,6 +110,29 @@ test("slab discount is not double-counted in summary rows", () => {
   assert.equal(rows.find((row) => row.key === "total")?.amount, 327138.48);
 });
 
+test("Today's Sale gets its own row and is not mistaken for slab/custom", () => {
+  // ₹312 at base 50%, then 10% sale on the ₹156 net = ₹15.60 → pays ₹140.40.
+  const breakdown = orderAmounts.resolveOrderDiscountBreakdown({
+    grossAmount: 312,
+    discountAmount: 171.6,
+    netPayableAmount: 140.4,
+    baseDiscountPercent: 50,
+    baseDiscountAmount: 156,
+    postBaseAmount: 156,
+    additionalDiscountType: "NONE",
+    slabDiscountAmount: 0,
+    customDiscountAmount: 0,
+    saleDiscountAmount: 15.6,
+  });
+
+  const rows = orderAmounts.getOrderDiscountSummaryRows(breakdown);
+  assert.deepEqual(rows.map((row) => [row.key, row.amount]), [
+    ["gross", 312], ["base", 156], ["sale", 15.6], ["total", 171.6], ["net", 140.4],
+  ]);
+  assert.equal(breakdown.additionalDiscountType, null);
+  assert.deepEqual(orderAmounts.getCompactOrderDiscountRows(breakdown).map((row) => row.key), ["base", "sale", "none", "total"]);
+});
+
 test("explicit base discount wins over row item discount total", () => {
   const breakdown = orderAmounts.resolveOrderDiscountBreakdown({
     grossAmount: 100000,
