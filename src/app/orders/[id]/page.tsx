@@ -2293,13 +2293,18 @@ export default function ViewOrderDealerPage() {
                           <td className="px-4 py-3.5 max-w-[160px]">
                             <span className="block truncate text-[13px] font-semibold text-gray-900">{o.product_name || "—"}</span>
                           </td>
-                          <td className="px-4 py-3.5 max-w-[140px]">
-                            <span className="block truncate text-[12px] text-gray-600">{o.product_discription || "—"}</span>
+                          <td
+                            className="px-4 py-3.5 max-w-[140px] cursor-help"
+                            title={[o.product_discription, o.fallbackProductNote && `Product Note: ${o.fallbackProductNote}`, o.remark, o.remarks].filter(Boolean).join("\n") || undefined}
+                          >
+                            {(o.product_discription || !(o.fallbackProductNote || o.remark || o.remarks)) && (
+                              <span className="block truncate text-[12px] text-gray-600">{o.product_discription || "—"}</span>
+                            )}
                             {o.fallbackProductNote && (
-                              <span className="mt-1 block text-[11px] leading-5 text-brand-600">Product Note: {o.fallbackProductNote}</span>
+                              <span className="mt-1 first:mt-0 block truncate text-[11px] leading-5 text-brand-600">Product Note: {o.fallbackProductNote}</span>
                             )}
                             {([o.remark, o.remarks].filter(Boolean).join(" | ")) && (
-                              <span className="mt-1 block text-[11px] leading-5 text-gray-500">{[o.remark, o.remarks].filter(Boolean).join(" | ")}</span>
+                              <span className="mt-1 first:mt-0 block truncate text-[11px] leading-5 text-gray-500">{[o.remark, o.remarks].filter(Boolean).join(" | ")}</span>
                             )}
                           </td>
                           <td className="px-4 py-3.5 font-mono font-bold text-gray-900">{pricing.packs}</td>

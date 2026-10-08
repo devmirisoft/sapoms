@@ -35,7 +35,7 @@ function text(value: unknown) {
   return String(value ?? "").trim();
 }
 
-function normalizedMtStatus(value: unknown) {
+export function normalizedMtStatus(value: unknown) {
   const key = text(value).toLowerCase().replace(/[\s_-]/g, "");
   if (key === "completed") return "Completed";
   // Legacy PHP rows carry "InProcess" for a part-dispatched order.
@@ -43,7 +43,7 @@ function normalizedMtStatus(value: unknown) {
   return "Pending";
 }
 
-function normalizedOrderStatus(value: unknown) {
+export function normalizedOrderStatus(value: unknown) {
   const key = text(value).toLowerCase().replace(/[\s_-]/g, "");
   if (key === "0" || key === "pending" || key === "awaiting") return "pending";
   if (key === "1" || key === "approved" || key === "accepted" || key === "completed") return "approved";

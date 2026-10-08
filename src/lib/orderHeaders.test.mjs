@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import ts from "typescript";
 
-const postgresOrdersStub = `data:text/javascript;base64,${Buffer.from("export async function listPostgresOrderHeaders(){ return []; }").toString("base64")}`;
+const postgresOrdersStub = `data:text/javascript;base64,${Buffer.from("export async function listPostgresOrderPage(){ return { rows: [], total: 0 }; }").toString("base64")}`;
 const source = (await fs.readFile(path.resolve("src/lib/orderHeaders.ts"), "utf8"))
   .replace(/from\s+["']@\/lib\/postgresOrders["']/g, `from "${postgresOrdersStub}"`);
 const output = ts.transpileModule(source, {

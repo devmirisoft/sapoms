@@ -1,5 +1,5 @@
-﻿import { listPostgresOrderHeaders } from "@/lib/postgresOrders";
-import type { OrdersActor } from "@/lib/orderPagination";
+﻿import { listPostgresOrderPage } from "@/lib/postgresOrders";
+import type { OrderFilters, OrdersActor } from "@/lib/orderPagination";
 
 export const ORDER_HEADER_SOURCES = new Set(["current", "pending", "staff-status"]);
 
@@ -16,16 +16,19 @@ type LoadOrderHeadersInput = {
   source: string;
   actor: OrdersActor;
   assignedDealerIds?: Array<string | number>;
-  skipLegacyMerge?: boolean;
+  filters?: OrderFilters;
+  page: number;
+  pageSize: number;
 };
 
+// One page of order headers; filtering and paging happen in the database.
 export async function loadOrderHeaders(input: LoadOrderHeadersInput) {
   const source = ORDER_HEADER_SOURCES.has(input.source) ? input.source : "current";
-  const postgresRows = await listPostgresOrderHeaders(input.actor, input.assignedDealerIds ?? []);
-  const rows = source === "pending" ? postgresRows.filter(isPendingOrderHeader) : postgresRows;
+  const { rows, total } = await listPostgresOrderPage({ ...input, pendingOnly: source === "pending" });
 
   return {
     rows,
+    total,
     truncated: false,
     totalIsExact: true,
     diagnostics: { upstreamCalls: 0, upstreamHeaders: 0, legacyUnavailable: false },
