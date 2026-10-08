@@ -58,8 +58,13 @@ function parseObject(storage: AuthStorage, key: string): StoredUser | null {
   return parsed as StoredUser;
 }
 
+// The cart is cached until logout, so it is cleared with the auth keys.
+// Not in AUTH_KEYS: persistAuthenticatedSession would wipe it on every re-persist.
+export const CART_STORAGE_KEY = "cart";
+
 export function clearAuthStorage(storage: AuthStorage) {
   AUTH_KEYS.forEach((key) => storage.removeItem(key));
+  storage.removeItem(CART_STORAGE_KEY);
 }
 
 // Browser-only. An admin signed in as a dealer gets their admin session back from the

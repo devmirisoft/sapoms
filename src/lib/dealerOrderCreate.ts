@@ -8,6 +8,7 @@ import { couponPercent } from "@/lib/coupons";
 import { normalizeApprovalProductKey } from "@/lib/customDiscountRequests";
 import discountUtils from "@/lib/discount";
 import { linePricing, loadCatalogue } from "@/server/modules/products/catalogue";
+import { liveSalePercents } from "@/server/todays-sale";
 
 /**
  * Order creation for a dealer submission.
@@ -46,6 +47,8 @@ type ParsedItem = {
   discountPercent: number;
   discountAmountPaise: bigint;
   finalAmountPaise: bigint;
+  saleDiscountPercent: number;
+  saleSavedPaise: bigint;
   remarks: string;
   productNote: string;
   priority: boolean;
@@ -86,8 +89,10 @@ function share(amountPaise: bigint, percent: number) { return BigInt(Math.round(
  * Only the catalogue number and the pack count are the dealer's to choose. Unit
  * price and pack size are looked up from the catalogue here, so an edited request
  * cannot change what an order costs. Discounts are applied later, in priceDealerOrder.
+ * A live Today's Sale lowers the product's own price here, so every discount after
+ * it (base, custom, slab) works on the sale price exactly as on a normal price.
  */
-function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIndex): ParsedItem[] {
+function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIndex, salePercents: Map<string, number>): ParsedItem[] {
   const items: ParsedItem[] = [];
   for (const row of rows) {
     const submittedCatNo = text(row.catNo ?? row.variantCode ?? row.productname, 160);
@@ -101,22 +106,33 @@ function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIn
     const quantityPacks = Math.trunc(num(row.quantityPacks) || (num(row.producQuanity) / packSize));
     if (quantityPacks <= 0) throw new OrderError("Order product quantity is invalid.", 422, "invalid_quantity");
     const productName = text(row.productName ?? row.productname, 300) || product.name;
-    const listPriceTotalPaise = paise(pricing.packPrice) * BigInt(quantityPacks);
+    const catNo = variant.sku || submittedCatNo;
+    const salePercent = salePercents.get(catNo.toLowerCase()) ?? salePercents.get(product.sku.toLowerCase()) ?? 0;
+    const packPricePaise = paise(pricing.packPrice);
+    const unitPricePaise = paise(pricing.unitPrice);
+    const listPriceTotalPaise = (packPricePaise - share(packPricePaise, salePercent)) * BigInt(quantityPacks);
+    const saleNote = salePercent > 0 ? `Today's Sale: ${salePercent}% off` : "";
+    const productNote = text(row.productNote ?? row.product_note ?? row.note, 1500);
 
     items.push({
       productname: text(row.productname ?? productName, 300),
       productName,
-      catNo: variant.sku || submittedCatNo,
+      catNo,
       quantityPacks,
       packSize,
       totalPieces: quantityPacks * packSize,
-      unitPricePaise: paise(pricing.unitPrice),
+      unitPricePaise: unitPricePaise - share(unitPricePaise, salePercent),
       listPriceTotalPaise,
       discountPercent: 0,
       discountAmountPaise: BigInt(0),
       finalAmountPaise: listPriceTotalPaise,
+      saleDiscountPercent: salePercent,
+      saleSavedPaise: share(packPricePaise, salePercent) * BigInt(quantityPacks),
       remarks: text(row.remarks, 1500),
-      productNote: text(row.productNote ?? row.product_note ?? row.note, 1500),
+      // The sale note leads, so trimming a long dealer note never drops it.
+      productNote: saleNote && !productNote.includes(saleNote)
+        ? [saleNote, productNote].filter(Boolean).join(" · ").slice(0, 1500)
+        : productNote,
       priority: row.isPriority === true || text(row.priority, 20) === "1" || text(row.isPriority, 20).toLowerCase() === "true",
       productId: optionalBigInt(row.productId),
       variantId: optionalBigInt(row.variantId),
@@ -148,7 +164,7 @@ export async function priceDealerOrder(
   dealer: { id: bigint; discountPercent: Prisma.Decimal | null },
 ) {
   const { index } = await loadCatalogue();
-  const items = parseItems(parseProductOrder(fields), index);
+  const items = parseItems(parseProductOrder(fields), index, await liveSalePercents(tx));
   const grossAmountPaise = items.reduce((sum, item) => sum + item.listPriceTotalPaise, BigInt(0));
 
   // Every percent is decided here, never read from the submission: the dealer's own
@@ -161,6 +177,7 @@ export async function priceDealerOrder(
 
   const customRequests = await validateCustomDiscounts(tx, fields, dealer.id);
   const customDiscountAmountPaise = customRequests.reduce((sum, request) => sum + (request.requestedDiscountAmountPaise ?? BigInt(0)), BigInt(0));
+
   const slabDiscountPercent = customRequests.length ? 0 : discountUtils.getSlabPercent(fromPaise(postBaseAmountPaise));
   const slabDiscountAmountPaise = share(postBaseAmountPaise, slabDiscountPercent);
   const additionalDiscountType = customRequests.length ? OrderDiscountType.CUSTOM : slabDiscountPercent > 0 ? OrderDiscountType.SLAB : OrderDiscountType.NONE;
@@ -170,6 +187,8 @@ export async function priceDealerOrder(
   const totalDiscountAmountPaise = discountSum < grossAmountPaise ? discountSum : grossAmountPaise;
   const finalPayableAmountPaise = grossAmountPaise - totalDiscountAmountPaise;
   const totalDiscountPercent = grossAmountPaise > BigInt(0) ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise) : 0;
+  // Already taken off the product prices, so it is a record here, not a discount.
+  const saleDiscountAmountPaise = items.reduce((sum, item) => sum + item.saleSavedPaise, BigInt(0));
 
   // Row discounts mirror the order form: the base percent, raised to an approved
   // order-wide or per-product custom percent (both are totals that include the base).
@@ -189,6 +208,7 @@ export async function priceDealerOrder(
   return {
     items, customRequests,
     grossAmountPaise, baseDiscountPercent, baseDiscountAmountPaise, postBaseAmountPaise,
+    saleDiscountAmountPaise,
     additionalDiscountType, slabDiscountPercent, slabDiscountAmountPaise,
     customDiscountAmountPaise, additionalDiscountAmountPaise,
     couponDiscountPercent,
@@ -278,6 +298,7 @@ export async function createDealerOrder(
       customDiscountAmountPaise: priced.customDiscountAmountPaise,
       slabDiscountPercent: new Prisma.Decimal(priced.slabDiscountPercent),
       slabDiscountAmountPaise: priced.slabDiscountAmountPaise,
+      saleDiscountAmountPaise: priced.saleDiscountAmountPaise,
       totalDiscountPercent: new Prisma.Decimal(priced.totalDiscountPercent),
       totalDiscountAmountPaise: priced.totalDiscountAmountPaise,
       finalPayableAmountPaise: priced.finalPayableAmountPaise,
@@ -305,6 +326,7 @@ export async function createDealerOrder(
         discountPercent: new Prisma.Decimal(item.discountPercent),
         discountAmountPaise: item.discountAmountPaise,
         finalAmountPaise: item.finalAmountPaise,
+        saleDiscountPercent: new Prisma.Decimal(item.saleDiscountPercent),
         isPriority: item.priority,
         remarks: item.remarks || null,
         productNote: item.productNote || null,
@@ -314,6 +336,18 @@ export async function createDealerOrder(
 
   if (priced.customRequests.length) {
     await tx.customDiscountRequest.updateMany({ where: { id: { in: priced.customRequests.map((r) => r.id) } }, data: { orderId: order.id } });
+  }
+
+  // The order page reads product notes from order_product_notes, so the dealer's
+  // note (and the automatic Today's Sale note) is filed there too. Nested creates
+  // insert in order, so ascending ids line up with priced.items.
+  if (priced.items.some((item) => item.productNote)) {
+    const createdItems = await tx.orderItem.findMany({ where: { orderId: order.id }, orderBy: { id: "asc" }, select: { id: true } });
+    await tx.orderProductNote.createMany({
+      data: priced.items.flatMap((item, index) => item.productNote && createdItems[index]
+        ? [{ orderId: order.id, orderItemId: createdItems[index].id, note: item.productNote.slice(0, 500), actorUserId: actor.userId, actorRole: actor.role as never }]
+        : []),
+    });
   }
 
   // A resubmitted rejected order is diffed against the order it replaces, so

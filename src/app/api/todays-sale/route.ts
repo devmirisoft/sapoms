@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { adminErrorResponse } from "@/server/admin/admin-errors";
 import { auditAdminAction, requestIdFrom, requireAdminOnly } from "@/server/admin/admin-route";
-import { isSaleLive, parseTodaysSale, todayIST, type TodaysSale } from "@/lib/todaysSale";
+import { isSaleLive, parseTodaysSale, type TodaysSale } from "@/lib/todaysSale";
+import { readTodaysSale, TODAYS_SALE_KEY as KEY } from "@/server/todays-sale";
 
 export const runtime = "nodejs";
-
-const KEY = "todays_sale";
 
 function toBody(sale: TodaysSale) {
   return { success: true, data: { ...sale, live: isSaleLive(sale) } };
@@ -15,9 +14,7 @@ function toBody(sale: TodaysSale) {
 // Public: the homepage reads it and shows the items only while `live`.
 export async function GET() {
   try {
-    const row = await prisma.appSetting.findUnique({ where: { key: KEY } });
-    const sale = (row ? parseTodaysSale(row.value) : null) ?? { saleDate: todayIST(), items: [] };
-    return NextResponse.json(toBody(sale), { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(toBody(await readTodaysSale()), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[GET /api/todays-sale]", error);
     return NextResponse.json({ success: false, message: "Unable to load today's sale" }, { status: 500 });

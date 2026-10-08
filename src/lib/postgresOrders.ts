@@ -202,6 +202,7 @@ export function mapPostgresOrderItemToLegacy(item: PostgresOrderLike["items"][nu
     order_amount: rupees(item.listPriceTotalPaise),
     grossAmount: rupees(item.listPriceTotalPaise),
     discountPercent: percent(item.discountPercent),
+    saleDiscountPercent: percent(item.saleDiscountPercent),
     discountAmount: rupees(item.discountAmountPaise),
     discountAmountPaise: item.discountAmountPaise.toString(),
     finalAmount: rupees(item.finalAmountPaise),

@@ -48,6 +48,8 @@ import { SegmentedTabs } from "@/components/SegmentedTabs";
 import { buildPriorityRemarks } from "@/lib/orderPriority";
 import cataloguePricing from "@/lib/cataloguePricing";
 import { COUPONS } from "@/lib/coupons";
+import { useTodaysSale } from "@/hooks/useTodaysSale";
+import { salePaise } from "@/components/SalePrice";
 import {
   buildOrderRemarks as buildLineRemarks,
 } from "@/lib/orderProductNotes.mjs";
@@ -504,6 +506,7 @@ function AddOrderPageInner() {
   const [reorderRequest, setReorderRequest] = useState<NormalizedCustomDiscountRequest | null>(null);
   const [perProductDiscountInputs, setPerProductDiscountInputs] = useState<Record<string, number>>({});
   const [editingProductDiscountKey, setEditingProductDiscountKey] = useState<string | null>(null);
+  const saleOf = useTodaysSale();
   const [perProductSubmitting, setPerProductSubmitting] = useState<string | null>(null);
   const [openRowMenuKey, setOpenRowMenuKey] = useState<number | null>(null);
   const [noteEditorRowKey, setNoteEditorRowKey] = useState<number | null>(null);
@@ -1038,8 +1041,19 @@ function AddOrderPageInner() {
     setArr(cartRows);
   }, [products, cartItems, variantLookup, catalogueIndex, draftIdParam, reorderIdParam, fromCart]);
 
+  // Today's Sale lowers the product's own price, as parseItems does on the server
+  // (pack price in paise, less the sale, times packs); discounts then apply to it.
+  const getRowSalePercent = (row: ProductRow) => saleOf(row.variantCode || row.productname);
+  const rowSalePackPaise = (row: ProductRow) => {
+    const packPaise = Math.round(rowBaseListPrice(row) * 100);
+    return packPaise - Math.round(packPaise * getRowSalePercent(row) / 100);
+  };
+  const rowPaise = (row: ProductRow) => getRowSalePercent(row) > 0
+    ? rowSalePackPaise(row) * safePositiveNumber(row.producQuanity)
+    : rowSubtotalPaise(row);
+
   // ── Discount ──────────────────────────────────────────────────────────────
-  const subtotalPaise = arr1.reduce((acc, row) => acc + rowSubtotalPaise(row), 0);
+  const subtotalPaise = arr1.reduce((acc, row) => acc + rowPaise(row), 0);
   const subtotal = subtotalPaise / 100;
   const dealerDiscount = safePositiveNumber(user?.discount);
   const couponDiscount = appliedCoupon?.pct ?? 0;
@@ -1061,7 +1075,7 @@ function AddOrderPageInner() {
   const selectedCustomDiscountProduct = productRows.find((r) => getProductKey(r) === customDiscountProductKey) ?? productRows[0] ?? null;
   const selectedCustomDiscountSignature = selectedCustomDiscountProduct ? buildProductSignature(selectedCustomDiscountProduct) : "";
   const customDiscountBaseSubtotal = customDiscountScope === "product" && selectedCustomDiscountProduct
-    ? rowSubtotalPaise(selectedCustomDiscountProduct) / 100
+    ? rowPaise(selectedCustomDiscountProduct) / 100
     : subtotal;
   const matchingCustomRequests = normalizedCustomDiscountRequests.filter(
     (r) => r.orderDraftId === "" && r.discountScope !== "product" && String((r.source as CustomDiscountRequest).orderSignature || "") === currentOrderSignature
@@ -1167,13 +1181,13 @@ function AddOrderPageInner() {
 
   // Per-row base-discount amounts (additional slab/custom is handled separately)
   const baseDiscountAmountFromRows = productRows.reduce((acc, row) => (
-    acc + (rowSubtotalPaise(row) / 100) * (baseDiscountPayload.baseDiscountPercent / 100)
+    acc + (rowPaise(row) / 100) * (baseDiscountPayload.baseDiscountPercent / 100)
   ), 0);
 
   const postBaseAmountFromRows = roundRupees(Math.max(0, subtotal - baseDiscountAmountFromRows));
   const customDiscountAmountFromRows = hasApprovedCustomCandidate
     ? roundRupees(productRows.reduce((acc, row) => {
-      const rowSubtotal = rowSubtotalPaise(row) / 100;
+      const rowSubtotal = rowPaise(row) / 100;
       const additionalPercent = Math.max(0, getRowDiscountPercent(row) - baseDiscountPayload.baseDiscountPercent);
       return acc + (rowSubtotal * (additionalPercent / 100));
     }, 0))
@@ -1267,7 +1281,7 @@ function AddOrderPageInner() {
     key: row.key,
     label: `${row.variantCode || row.productname} - ${shortProductName(row.displayName || "Product")}`,
     percent,
-    extraPaise: Math.round(rowSubtotalPaise(row) * (percent - currentDiscountBaseline) / 100),
+    extraPaise: Math.round(rowPaise(row) *(percent - currentDiscountBaseline) / 100),
   }));
   const discountSummaryExtraPaise = (pendingOrderDiscountSelection
     ? toPaise(subtotal * (requestedCustomDiscountPercent - currentDiscountBaseline) / 100)
@@ -2095,7 +2109,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
       const quantityPacks = safePositiveNumber(r.producQuanity);
       const packSize = safePositiveNumber(r.packSize) || 1;
       const totalPieces = quantityPacks * packSize;
-      const rowSubtotal = rowSubtotalPaise(r) / 100;
+      const rowSubtotal = rowPaise(r) / 100;
       const rowDiscountAmount = rowSubtotal * (rowDiscountPercent / 100);
       return {
         productname: r.productname,
@@ -2106,14 +2120,16 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         quantityPacks: String(quantityPacks),
         packSize: String(packSize),
         totalPieces: String(totalPieces),
-        price: String(r.price),
-        unitPrice: String(r.price),
+        price: String(salePaise(toPaise(r.price), getRowSalePercent(r)) / 100),
+        unitPrice: String(salePaise(toPaise(r.price), getRowSalePercent(r)) / 100),
         listPriceTotal: payloadAmount(rowSubtotal),
         discount: payloadAmount(rowDiscountAmount),
         discountPercent: String(rowDiscountPercent),
         totalDiscountPercent: String(rowDiscountPercent),
         afterDiscountPrice: payloadAmount(Math.max(0, rowSubtotal - rowDiscountAmount)),
         remarks: buildOrderRemarks(r.variantCode, r.isPriority, orderNote),
+        // The server appends "Today's Sale: X% off" to this for sale rows.
+        productNote: String(r.productNote ?? "").trim(),
         priority: r.isPriority ? "1" : "0",
         isPriority: !!r.isPriority,
       };
@@ -3240,8 +3256,9 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {arr1.map((row, idx) => {
-                    const listPrice = rowSubtotalPaise(row);
-                    const baseListPrice = rowBaseListPrice(row);
+                    const listPrice = rowPaise(row);
+                    const baseListPrice = rowSalePackPaise(row) / 100;
+                    const rowSalePercent = getRowSalePercent(row);
                     const rowDiscountPercent = getRowDiscountPercent(row);
                     const discAmt = Math.round(listPrice * (rowDiscountPercent / 100));
                     const rowTotal = Math.max(0, listPrice - discAmt);
@@ -3414,11 +3431,19 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                           <p className="text-[10px] text-gray-400 mt-0.5">pc{totalUnits !== 1 ? "s" : ""}</p>
                         </td>
                         <td className="px-3 py-2.5">
-                          <span className="font-mono text-[13px] font-semibold text-slate-700">
-                            {row.price > 0 ? fmt(toPaise(row.price)) : "—"}
+                          {rowSalePercent > 0 && row.price > 0 && (
+                            <span className="block font-mono text-[10px] text-gray-400 line-through">{fmt(toPaise(row.price))}</span>
+                          )}
+                          <span className={`font-mono text-[13px] font-semibold ${rowSalePercent > 0 ? "text-emerald-700" : "text-slate-700"}`}>
+                            {row.price > 0 ? fmt(salePaise(toPaise(row.price), rowSalePercent)) : "—"}
                           </span>
                           {row.price > 0 && (
                             <p className="text-[10px] text-gray-400 mt-0.5">per pc.</p>
+                          )}
+                          {rowSalePercent > 0 && (
+                            <span className="mt-0.5 inline-block rounded-full bg-emerald-600 px-1.5 py-0.5 text-[9px] font-bold text-white">
+                              Today&apos;s Sale −{rowSalePercent}%
+                            </span>
                           )}
                         </td>
                         <td className="px-3 py-2.5">

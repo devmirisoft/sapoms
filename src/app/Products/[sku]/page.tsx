@@ -11,6 +11,8 @@ import {
 } from '@/lib/catalogue';
 import { loadCatalogueProducts } from '@/lib/catalogueClient';
 import cataloguePricing from '@/lib/cataloguePricing';
+import { SalePrice, salePaise } from '@/components/SalePrice';
+import { useTodaysSale } from '@/hooks/useTodaysSale';
 
 // ─────────────────────────────────────────────────────────────
 // TYPES  (matches omsons_products_from_excel_with_images.json)
@@ -237,6 +239,7 @@ export default function ProductDetailsPage() {
   const [rowPacks,            setRowPacks]            = useState<Record<string, QuantityValue>>({});
   const [toast,               setToast]               = useState<{ name: string; sku: string; bulk?: boolean } | null>(null);
   const [assignedStaff,       setAssignedStaff]       = useState<AssignedStaff[]>([]);
+  const saleOf = useTodaysSale();
   // Drives the condensed title bar. It takes over once the product description
   // has scrolled off screen, so the name stays visible while you work the table.
   const [titleOutOfView,      setTitleOutOfView]      = useState(false);
@@ -250,17 +253,33 @@ export default function ProductDetailsPage() {
 
   const addToCart      = useCartStore(s => s.addToCart);
   const removeFromCart = useCartStore(s => s.removeFromCart);
+  const setQty         = useCartStore(s => s.setQty);
   const cart           = useCartStore(s => s.cart);
+  const prevCartIds    = useRef<string[]>([]);
 
-  // Sync row quantities from cart
+  // Sync row quantities from cart; variants that left the cart drop back to 0
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+    const removed = prevCartIds.current.filter(id => !cart.some(c => c.id === id));
+    prevCartIds.current = cart.map(c => c.id);
     setRowPacks(prev => {
       const u = { ...prev };
       cart.forEach(item => { if (item.id in u) u[item.id] = item.quantity ?? u[item.id]; });
+      removed.forEach(id => { if (id in u) u[id] = 0; });
       return u;
     });
   }, [cart]);
+
+  // Once a variant is in the cart its counters edit the cart quantity directly
+  const setPacks = (vSku: string, value: QuantityValue) => {
+    setRowPacks(prev => ({ ...prev, [vSku]: value }));
+    if (value !== "" && cart.some(c => c.id === vSku)) setQty(vSku, value);
+  };
+
+  // Counters already mirror in-cart quantities, so adding sets the qty instead of stacking it
+  const putInCart = (item: Parameters<typeof addToCart>[0] & { initialQty: number }) => {
+    if (cart.some(c => c.id === item.id)) setQty(item.id, item.initialQty);
+    else addToCart(item);
+  };
 
   // Fetch data
   useEffect(() => {
@@ -348,6 +367,10 @@ export default function ProductDetailsPage() {
 
   // ── Derived ───────────────────────────────────────────────
   const shipsFrom         = shipsFromLabel(assignedStaff);
+  // saleFor(null) is the product-level sale; variant SKUs already inherit it.
+  const saleFor = (variantSku?: string | null) => saleOf(variantSku ?? product?.sku);
+  const bestSale = Math.max(saleFor(null), ...(product?.variants ?? []).map(v => saleFor(v.sku)));
+  const selectedSale = saleFor(selectedVariantSKU);
   const selectedVariant   = product?.variants?.find(v => v.sku === selectedVariantSKU) ?? null;
   const selectedQuantityValue = selectedVariantSKU
     ? rowPacks[selectedVariantSKU] ?? ""
@@ -400,11 +423,13 @@ export default function ProductDetailsPage() {
         packSize,
         pieces: cartItem.quantity * packSize,
         totalPaise: packPaise * cartItem.quantity,
+        sale: saleFor(variant.sku),
       };
     })
     .filter((row): row is NonNullable<typeof row> => row !== null);
 
   const selectedTotalPaise = selectedRows.reduce((sum, row) => sum + row.totalPaise, 0);
+  const selectedSaleTotalPaise = selectedRows.reduce((sum, row) => sum + salePaise(row.totalPaise, row.sale), 0);
   const selectedTotalPieces = selectedRows.reduce((sum, row) => sum + row.pieces, 0);
 
   const related    = product ? getRelated(allProducts, product) : [];
@@ -432,24 +457,17 @@ export default function ProductDetailsPage() {
   ) => {
     if (!selectedVariantSKU) return;
 
-    setRowPacks((previous) => {
-      const current = quantityAsNumber(previous[selectedVariantSKU] ?? "");
+    const next =
+      typeof nextValue === "function"
+        ? nextValue(selectedQuantity)
+        : nextValue;
 
-      const next =
-        typeof nextValue === "function"
-          ? nextValue(current)
-          : nextValue;
-
-      return {
-        ...previous,
-        [selectedVariantSKU]: Math.max(0, Number.isFinite(next) ? Math.floor(next) : 0),
-      };
-    });
+    setPacks(selectedVariantSKU, Math.max(0, Number.isFinite(next) ? Math.floor(next) : 0));
   };
 
   // ── Cart actions ──────────────────────────────────────────
   const addVariant = (vSku: string, name: string, pricePaise: number, qty: number, packSize: number, image?: string) => {
-    addToCart({ id: vSku, name, price: pricePaise, packSize, image, initialQty: qty });
+    putInCart({ id: vSku, name, price: pricePaise, packSize, image, initialQty: qty });
     setToast({ name, sku: vSku });
   };
 
@@ -458,7 +476,7 @@ export default function ProductDetailsPage() {
     product.variants.forEach(v => {
       const { numPacks, packSize, unitPaise } = rowCalc(v.sku);
       if (unitPaise <= 0 || numPacks <= 0 || !v.inStock) return;
-      addToCart({ id: v.sku, name: v.name, price: unitPaise, packSize, image: getVariantImage(product, v), initialQty: numPacks });
+      putInCart({ id: v.sku, name: v.name, price: unitPaise, packSize, image: getVariantImage(product, v), initialQty: numPacks });
     });
     setToast({ name: product.name, sku: `${product.variants.length} variants`, bulk: true });
   };
@@ -510,7 +528,7 @@ export default function ProductDetailsPage() {
 
     const pricePerUnit = perUnitPaise;
 
-    addToCart({
+    putInCart({
       id: selectedVariantSKU,
       name: selectedVariant.name ?? product.name,
       price: pricePerUnit,
@@ -624,6 +642,17 @@ export default function ProductDetailsPage() {
               </span>
 
               <h1 style={{ fontSize: 26, fontWeight: 300, lineHeight: 1.3, margin: "0 0 16px" }}>{getCatalogueProductLabel(product)}</h1>
+
+              {bestSale > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "0 0 18px", padding: "10px 14px", background: "#ecfdf5", border: "1px solid #a7f3d0", borderRadius: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#fff", background: "#059669", padding: "3px 9px", borderRadius: 999 }}>
+                    {bestSale}% OFF
+                  </span>
+                  <span style={{ fontSize: 13.5, color: "#065f46", fontWeight: 600 }}>
+                    Today&apos;s Deal{product.variants && product.variants.length > 1 && saleFor(null) === 0 ? ": on selected variants" : ""}
+                  </span>
+                </div>
+              )}
 
               {/* Features / bullets */}
               {product.features?.length > 0 && (
@@ -758,7 +787,15 @@ export default function ProductDetailsPage() {
                 {packPricePaise !== null ? (
                   <>
                     <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                      <span style={{ fontSize: 28, fontWeight: 800, color: "#0f172a" }}>{fmt(packPricePaise)}</span>
+                      <span style={{ fontSize: 28, fontWeight: 800, color: selectedSale > 0 ? "#059669" : "#0f172a" }}>{fmt(salePaise(packPricePaise, selectedSale))}</span>
+                      {selectedSale > 0 && (
+                        <s style={{ fontSize: 15, color: "#94a3b8" }}>{fmt(packPricePaise)}</s>
+                      )}
+                      {selectedSale > 0 && (
+                        <span style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#059669", padding: "2px 8px", borderRadius: 999 }}>
+                          Today&apos;s Deal: {selectedSale}% OFF
+                        </span>
+                      )}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
                       {selectedPackSize > 1 && (
@@ -768,7 +805,7 @@ export default function ProductDetailsPage() {
                       )}
                       {perUnitPaise !== null && (
                         <span style={{ fontSize: 11.5, color: "#94a3b8" }}>
-                          = {fmt(perUnitPaise)} / unit
+                          = {fmt(salePaise(perUnitPaise, selectedSale))} / unit
                         </span>
                       )}
                     </div>
@@ -777,7 +814,7 @@ export default function ProductDetailsPage() {
                         {selectedPackSize > 1
                           ? `${selectedQuantity} packs × ${selectedPackSize} Pcs. = `
                           : `${selectedQuantity} Pcs. × `}
-                        <strong>{fmt(lineTotalPaise)}</strong>
+                        <strong>{fmt(salePaise(lineTotalPaise, selectedSale))}</strong>
                       </p>
                     )}
                   </>
@@ -815,10 +852,7 @@ export default function ProductDetailsPage() {
                     onChange={(e) => {
                       const rawValue = e.target.value;
                       if (!selectedVariantSKU) return;
-                      setRowPacks((previous) => ({
-                        ...previous,
-                        [selectedVariantSKU]: parseQuantityInput(rawValue),
-                      }));
+                      setPacks(selectedVariantSKU, parseQuantityInput(rawValue));
                     }} 
                     style={{ padding: "1px 1px", fontSize: 15, fontWeight: 700, borderLeft: "1px solid #e2e8f0", borderRight: "1px solid #e2e8f0", width:60, textAlign: "center" }} 
                     min={0}
@@ -868,7 +902,14 @@ export default function ProductDetailsPage() {
                         onClick={() => setSelectedVariantSKU(row.sku)}
                         style={{ padding: "11px 16px", borderBottom: "1px solid #f1f5f9", cursor: "pointer", background: row.sku === selectedVariantSKU ? "#fefce8" : "transparent", transition: "background .15s" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#d97706" }}>{row.sku}</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#d97706" }}>
+                            {row.sku}
+                            {row.sale > 0 && (
+                              <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: "#fff", background: "#059669", padding: "1px 6px", borderRadius: 999 }}>
+                                -{row.sale}%
+                              </span>
+                            )}
+                          </span>
                           <span style={{ fontSize: 12, fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap" }}>
                             × {row.packs}
                           </span>
@@ -880,12 +921,12 @@ export default function ProductDetailsPage() {
                           <span style={{ fontSize: 11, color: "#94a3b8" }}>
                             {row.packSize > 1 ? `${row.packs} × ${row.packSize} = ${row.pieces} Pcs.` : `${row.pieces} Pcs.`}
                           </span>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#15803d" }}>
-                            {row.totalPaise ? fmt(row.totalPaise) : "—"}
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#15803d", textAlign: "right" }}>
+                            {row.totalPaise ? <SalePrice paise={row.totalPaise} percent={row.sale} /> : "—"}
                           </span>
                         </div>
                         <button
-                          onClick={e => { e.stopPropagation(); removeFromCart(row.sku); setRowPacks(previous => ({ ...previous, [row.sku]: 0 })); }}
+                          onClick={e => { e.stopPropagation(); removeFromCart(row.sku); }}
                           style={{ marginTop: 6, padding: 0, border: "none", background: "none", color: "#94a3b8", fontSize: 11, cursor: "pointer", textDecoration: "underline" }}>
                           Remove
                         </button>
@@ -900,7 +941,12 @@ export default function ProductDetailsPage() {
                     </div>
                     <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 13 }}>
                       <span style={{ fontWeight: 700 }}>Subtotal</span>
-                      <span style={{ fontWeight: 800, color: "#15803d" }}>{fmt(selectedTotalPaise)}</span>
+                      <span style={{ fontWeight: 800, color: "#15803d" }}>
+                        {selectedSaleTotalPaise < selectedTotalPaise && (
+                          <s style={{ fontSize: 11, fontWeight: 400, color: "#94a3b8", marginRight: 6 }}>{fmt(selectedTotalPaise)}</s>
+                        )}
+                        {fmt(selectedSaleTotalPaise)}
+                      </span>
                     </div>
                   </div>
                 </aside>
@@ -977,6 +1023,11 @@ export default function ProductDetailsPage() {
                           {/* CAT NO */}
                           <td style={{ padding: "11px 16px", color: "#d97706", fontWeight: 700, whiteSpace: "nowrap" }}>
                             {v.sku}
+                            {saleFor(v.sku) > 0 && (
+                              <span style={{ marginLeft: 6, fontSize: 10, fontWeight: 800, color: "#fff", background: "#059669", padding: "1px 6px", borderRadius: 999 }}>
+                                -{saleFor(v.sku)}%
+                              </span>
+                            )}
                           </td>
 
                           {/* Spec columns */}
@@ -990,19 +1041,18 @@ export default function ProductDetailsPage() {
                           <td style={{ padding: "11px 16px" }} onClick={e => e.stopPropagation()}>
                             <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
                               <div style={{ display: "flex", alignItems: "center", border: "1px solid #e2e8f0", borderRadius: 6, overflow: "hidden" }}>
-                                <button onClick={() => setRowPacks((previous) => ({ ...previous, [v.sku]: Math.max(0, quantityAsNumber(previous[v.sku] ?? "") - 1) }))}
+                                <button onClick={() => setPacks(v.sku, Math.max(0, numPacks - 1))}
                                   style={{ padding: "4px 8px", border: "none", background: "#f8fafc", cursor: "pointer", fontSize: 14, color: "#374151" }}>−</button>
                                 <input
                                   type="number"
                                   value={quantityValue}
                                   onChange={(e) => {
-                                    const rawValue = e.target.value;
-                                    setRowPacks((previous) => ({ ...previous, [v.sku]: parseQuantityInput(rawValue) }));
+                                    setPacks(v.sku, parseQuantityInput(e.target.value));
                                   }}
                                   style={{ width: 48, padding: "4px 4px", fontSize: 12, fontWeight: 700, borderLeft: "1px solid #e2e8f0", borderRight: "1px solid #e2e8f0", border: "none", borderLeftStyle: "solid", borderLeftWidth: 1, borderLeftColor: "#e2e8f0", borderRightStyle: "solid", borderRightWidth: 1, borderRightColor: "#e2e8f0", textAlign: "center", outline: "none", MozAppearance: "textfield", background: "transparent" }}
                                   min={0}
                                 />
-                                <button onClick={() => setRowPacks((previous) => ({ ...previous, [v.sku]: quantityAsNumber(previous[v.sku] ?? "") + 1 }))}
+                                <button onClick={() => setPacks(v.sku, numPacks + 1)}
                                   style={{ padding: "4px 8px", border: "none", background: "#f8fafc", cursor: "pointer", fontSize: 14, color: "#374151" }}>+</button>
                               </div>
                               {(cartItem?.quantity ?? 0) > 0 && (
@@ -1021,11 +1071,13 @@ export default function ProductDetailsPage() {
                           </td>
 
                           <td style={{ padding: "11px 16px", color: "#1e1e1e", fontSize: 12 }}>
-                            {unitPaise ? fmt(unitPaise) : "—"}
+                            {unitPaise ? <SalePrice paise={unitPaise} percent={saleFor(v.sku)} /> : "—"}
                           </td>
 
                           <td style={{ padding: "11px 16px" }} onClick={e => e.stopPropagation()}>
-                            <span style={{ fontWeight: 700, color: totalPaise ? "#15803d" : "#94a3b8" }}>{totalPaise ? fmt(totalPaise) : "—"}</span>
+                            {totalPaise
+                              ? <span style={{ fontWeight: 700, color: "#15803d" }}><SalePrice paise={totalPaise} percent={saleFor(v.sku)} /></span>
+                              : <span style={{ fontWeight: 700, color: "#94a3b8" }}>—</span>}
                           </td>
 
                           <td style={{ padding: "11px 16px" }} onClick={e => e.stopPropagation()}>

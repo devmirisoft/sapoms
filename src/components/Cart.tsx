@@ -3,6 +3,8 @@ import { useCartStore } from "@/Store/store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import axios from "axios";
+import { SalePrice, salePaise } from "@/components/SalePrice";
+import { useTodaysSale } from "@/hooks/useTodaysSale";
 
 // Types
 type ProductMeta = {
@@ -122,6 +124,7 @@ export default function Cart() {
   const router    = useRouter();
 
   const [lookup, setLookup] = useState<Record<string, ProductMeta>>({});
+  const saleOf = useTodaysSale();
 
   // Load product meta once
   useEffect(() => {
@@ -135,6 +138,16 @@ export default function Cart() {
   const ps = lookup[item.id]?.packSize ?? item.packSize ?? 1;
   return acc + item.price * item.quantity * ps;
 }, 0);
+  const saleSubtotalPaise = cart.reduce((acc, item) => {
+    const ps = lookup[item.id]?.packSize ?? item.packSize ?? 1;
+    return acc + salePaise(item.price * item.quantity * ps, saleOf(item.id));
+  }, 0);
+  const subtotalText = saleSubtotalPaise < subtotalPaise ? (
+    <>
+      <s className="text-xs font-normal text-[#565959] mr-1">{fmt(subtotalPaise)}</s>
+      <span className="text-emerald-600">{fmt(saleSubtotalPaise)}</span>
+    </>
+  ) : fmt(subtotalPaise);
   const totalPacks    = cart.reduce((acc, item) => acc + item.quantity, 0);
   const totalUnits    = cart.reduce((acc, item) => {
     const ps = lookup[item.id]?.packSize ?? item.packSize ?? 1;
@@ -182,6 +195,7 @@ export default function Cart() {
                   const productName = nameParts[0] ?? item.name;
                   const variantCode = nameParts.length > 1 ? nameParts[nameParts.length - 1] : item.id;
                   const image = item.image || meta?.image;
+                  const sale = saleOf(item.id);
 
                   return (
                     <div
@@ -232,6 +246,11 @@ export default function Cart() {
                           {item.isPriority && (
                             <span className="inline-flex items-center px-2 py-0.5 bg-red-50 border border-red-200 text-red-700 rounded text-[11px] font-bold">
                               Priority
+                            </span>
+                          )}
+                          {sale > 0 && (
+                            <span className="inline-flex items-center px-2 py-0.5 bg-emerald-600 text-white rounded text-[11px] font-bold">
+                              Today&apos;s Deal: {sale}% OFF
                             </span>
                           )}
                         </div>
@@ -287,16 +306,16 @@ export default function Cart() {
                       {/* Price column */}
                       <div className="text-right shrink-0 flex flex-col items-end gap-1">
                         <p className="text-sm font-bold text-[#0F1111]">
-                          {fmt(lineTotal)}
+                          <SalePrice paise={lineTotal} percent={sale} />
                         </p>
                         {item.quantity > 1 && (
                           <p className="text-xs text-[#565959]">
-                            {fmt(unitPrice * packSize)} / pack
+                            {fmt(salePaise(unitPrice * packSize, sale))} / pack
                           </p>
                         )}
                         {packSize > 1 && (
                           <p className="text-xs text-[#565959]">
-                            {fmt(unitPrice)} / unit
+                            {fmt(salePaise(unitPrice, sale))} / unit
                           </p>
                         )}
                       </div>
@@ -318,7 +337,7 @@ export default function Cart() {
                 <div className="text-right text-base text-[#0F1111]">
                   Subtotal ({cart.length} item{cart.length !== 1 ? "s" : ""}):{" "}
                   <span className="font-bold text-lg">
-                    {fmt(subtotalPaise)}
+                    {subtotalText}
                   </span>
                 </div>
               </div>
@@ -331,7 +350,7 @@ export default function Cart() {
                           hover:shadow-[0_4px_20px_rgba(0,0,0,0.10)] hover:-translate-y-0.5">
             <p className="text-base text-[#0F1111] mb-1">
               Subtotal ({cart.length} item{cart.length !== 1 ? "s" : ""}):{" "}
-              <span className="font-bold text-lg">{fmt(subtotalPaise)}</span>
+              <span className="font-bold text-lg">{subtotalText}</span>
             </p>
             {totalUnits !== totalPacks && (
               <p className="text-xs text-[#565959] mb-3">{totalUnits} units across {totalPacks} packs</p>
