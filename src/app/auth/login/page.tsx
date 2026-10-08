@@ -221,7 +221,7 @@ export default function Login() {
     <main className="relative h-screen overflow-hidden bg-[#f6f6f6] text-slate-950">
       <Image src="/background.png" alt="" fill priority sizes="100vw" className="object-cover" />
 
-      <div className="relative flex h-full items-center gap-10 px-4 sm:px-10 xl:gap-14 xl:px-16">
+      <div className="relative flex h-full items-center justify-center gap-10 px-4 sm:px-10 xl:gap-14">
 
         {/* ── Form card ──────────────────────────────────────────────── */}
         <form
@@ -360,8 +360,8 @@ export default function Login() {
         </form>
 
         {/* ── Brand panel ────────────────────────────────────────────── */}
-        <section className="relative hidden h-full min-w-0 flex-1 items-center lg:flex">
-          <div className="relative z-10 w-full max-w-[480px] shrink-0">
+        <section className="relative hidden h-full min-w-0 items-center gap-10 lg:flex">
+          <div className="relative z-10 w-[480px] shrink-0">
             <h2 className="text-[clamp(2rem,3vw,3.25rem)] font-bold leading-[1.1] tracking-tight text-[#0a9bdb]">
               Welcome to <br />
               <span className="whitespace-nowrap text-[#2dbe60]">Dealer Management</span> <br />
@@ -398,13 +398,12 @@ export default function Login() {
 
           {/*
             Products: cartridge, volumetric flask, hot plate. Everything is sized in --u (1% of the
-            hot plate's height), capped by viewport height and by the free width (1.3cqw ≈ 100/76.5,
-            the group being 76.5u wide). Margins are measured from the opaque pixels so the cartridge
-            body, flask bulb and beaker sit an equal 4u apart; the hot plate image starts its beaker
-            41% in, hence its large negative margin, and the flask sits in front of the plate base.
+            hot plate's height), a fixed 5.5px so the group never rescales with the window. Margins are measured from the opaque pixels so the cartridge
+            body and flask bulb sit 4u apart, flask and beaker 8.5u; the hot plate image starts its beaker
+            41% in, hence its negative margin.
           */}
-          <div className="hidden min-w-0 flex-1 self-stretch py-[4vh] [container-type:inline-size] xl:flex">
-            <div className="flex w-full items-end justify-end [--u:min(0.92vh,1.3cqw)]">
+          <div className="hidden shrink-0 xl:flex">
+            <div className="flex items-end [--u:5.5px]">
               <Image
                 src="/cartridge.png"
                 alt="Omsons filtration cartridge"
@@ -427,7 +426,7 @@ export default function Login() {
                 width={2593}
                 height={5616}
                 sizes="25vw"
-                className="ml-[calc(var(--u)*-15.5)] h-[calc(var(--u)*100)] w-auto"
+                className="ml-[calc(var(--u)*-11)] h-[calc(var(--u)*100)] w-auto"
               />
             </div>
           </div>

@@ -37,7 +37,7 @@ export class PostgresAdminProductRepository {
   async list(input: AdminProductListInput): Promise<{ items: AdminProductRecord[]; total: number }> {
     const where = buildWhere(input);
     const { skip, take } = paginationToPrisma(input);
-    const [items, total] = await prisma.$transaction([
+    const [items, total] = await Promise.all([
       prisma.product.findMany({ where, include, orderBy: { id: "desc" }, skip, take }),
       prisma.product.count({ where }),
     ]);

@@ -6,7 +6,6 @@ import Header from "@/components/Header";
 // import Footer from "@/components/footer";
 // import Header from "@/components/Header";
 // import Header from "@/components/header";
-import Providers from "../providers";
 
 export const metadata: Metadata = {
   title: "Create Next App",
@@ -22,13 +21,11 @@ export default function RootLayout({
 
     <div
       className="antialiased">
-      <Providers>
-        <div className="sticky top-0 z-50">
-          <Header />
-        </div>
-        {children}
-        <Footer />
-      </Providers>
+      <div className="sticky top-0 z-50">
+        <Header />
+      </div>
+      {children}
+      <Footer />
     </div>
   );
 }
