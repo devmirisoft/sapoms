@@ -265,6 +265,13 @@ export function getPriorityPersonLabel(priorityPerson: "primary" | "secondary") 
   return PRIORITY_PERSON_LABELS[priorityPerson] ?? PRIORITY_PERSON_LABELS.primary;
 }
 
+// Dealer forms take rupees; the DB stores paise. Blank stays blank so optional fields remain unset.
+export function rupeesToPaise(value: string) {
+  const raw = String(value ?? "").trim().replace(/[\s,₹]/g, "");
+  const amount = Number(raw);
+  return raw && Number.isFinite(amount) ? String(Math.round(amount * 100)) : "";
+}
+
 export function buildDealerPhpFormData(snapshot: DealerFormSnapshot): FormData {
   const formData = new FormData();
 
