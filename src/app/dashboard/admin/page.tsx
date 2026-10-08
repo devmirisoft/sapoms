@@ -1161,13 +1161,13 @@ function AdminDashboardInner() {
           align-self: center;
           padding: 6px 12px;
           border-radius: 10px;
-          background: #00494B;
+          background: #02474C;
           color: #fff;
           font-size: 12px;
           font-weight: 650;
           text-decoration: none;
         }
-        .sale-report:hover { background: #007D7D; }
+        .sale-report:hover { background: #007C80; }
 
         .sale-field input {
           padding: 6px 10px;

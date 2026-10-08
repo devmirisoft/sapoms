@@ -130,15 +130,14 @@ export default function Header() {
     return () => window.clearTimeout(timeoutId);
   }, []);
 
-  const logoImage =
-    "https://omsonslabs.com/wp-content/uploads/elementor/thumbs/Logo-White-rjr8rdx3pqxz9p6ypfegb07hgtpvj3g22mnujlpa0w.png";
+  const logoImage = "/Omsons_Logo.png";
 
   const locationTop = city || pincode ? "Delivering to" : "Delivering to you";
   const locationBottom = city ? city : pincode ? pincode : "Update location";
 
   return (
     <header className="relative z-50">
-      <div className="flex h-16 w-full items-center gap-3 border-b border-white/10 bg-linear-to-r from-[#1F4B8D] to-slate-950 px-4 text-white">
+      <div className="flex h-16 w-full items-center gap-3 border-b border-white/10 bg-[#333333] px-4 text-white">
         <Link href="/home" className="shrink-0 px-2">
           <img src={logoImage} alt="Omsons Logo" className="h-12" />
         </Link>

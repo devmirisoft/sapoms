@@ -324,7 +324,7 @@ export default function Login() {
                   type="button"
                   onClick={handleRequestOtp}
                   disabled={otpLoading}
-                  className="flex items-center gap-1.5 text-[12px] font-semibold text-[#0a9bdb] hover:text-[#077bb0] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="flex items-center gap-1.5 text-[12px] font-semibold text-brand-600 hover:text-brand-500 disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <RotateCcw size={12} />
                   Resend Code
@@ -335,7 +335,7 @@ export default function Login() {
 
           {/* Forgot password */}
           <div className="mt-3 flex justify-end">
-            <button type="button" className="text-[13px] text-[#0a9bdb] hover:text-[#077bb0]">
+            <button type="button" className="text-[13px] text-brand-600 hover:text-brand-500">
               Forgot Password?
             </button>
           </div>

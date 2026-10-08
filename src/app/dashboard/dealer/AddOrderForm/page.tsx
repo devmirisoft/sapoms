@@ -2386,14 +2386,14 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               {pendingOrderDiscountSelection && (
                 <div className="flex items-center justify-between px-3 py-2">
                   <span className="text-gray-500">Requested (entire order)</span>
-                  <span className="font-mono font-bold text-indigo-700">{customDiscountOnNetPercent}% on net</span>
+                  <span className="font-mono font-bold text-brand-600">{customDiscountOnNetPercent}% on net</span>
                 </div>
               )}
               {discountSummaryRows.map((r) => (
                 <div key={r.key} className="flex items-start justify-between gap-3 px-3 py-2">
                   <span className="text-gray-600 truncate">{r.label}</span>
                   <span className="shrink-0 text-right">
-                    <span className="block font-mono font-bold text-indigo-700">{discountOnNet(currentDiscountBaseline, r.percent)}% on net</span>
+                    <span className="block font-mono font-bold text-brand-600">{discountOnNet(currentDiscountBaseline, r.percent)}% on net</span>
                     <span className="block font-mono text-[11px] text-emerald-600">−{fmt(r.extraPaise)}</span>
                   </span>
                 </div>
@@ -2423,7 +2423,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   }
                   setDiscountReferenceFile(file);
                 }}
-                className="mt-1.5 block w-full text-[12px] text-gray-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-[12px] file:font-semibold file:text-indigo-700 hover:file:bg-indigo-100"
+                className="mt-1.5 block w-full text-[12px] text-gray-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-[12px] file:font-semibold file:text-brand-600 hover:file:bg-brand-100"
               />
             </label>
 
@@ -2431,7 +2431,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               <button
                 onClick={handleConfirmDiscountRequest}
                 disabled={customDiscountSubmitting}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-[13px] font-semibold transition-colors cursor-pointer border-none"
+                className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-[13px] font-semibold transition-colors cursor-pointer border-none"
               >
                 {customDiscountSubmitting ? "Sending..." : "Proceed"}
               </button>
@@ -2463,7 +2463,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 if (e.key === "Escape") setShowNameModal(false);
               }}
               placeholder="e.g. Q2 Restock Order"
-              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-[13.5px] text-gray-900 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+              className="w-full border border-gray-200 rounded-xl px-4 py-2.5 text-[13.5px] text-gray-900 outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all"
             />
             <div className="flex gap-2 mt-4">
               <button
@@ -2522,7 +2522,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 disabled={orderLockedByPendingApproval}
                 maxLength={500}
                 placeholder="Add instructions for this product..."
-                className="mt-3 min-h-[120px] w-full resize-y rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100 disabled:text-gray-500"
+                className="mt-3 min-h-[120px] w-full resize-y rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-700 outline-none transition-colors placeholder:text-gray-400 focus:border-brand-400 focus:ring-2 focus:ring-brand-100 disabled:bg-gray-100 disabled:text-gray-500"
               />
               <div className="flex items-center justify-between mt-2">
                 <span className="text-[11px] text-gray-400">{(noteRow.productNote ?? "").length}/500</span>
@@ -2542,7 +2542,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
       {(loading || draftSaving || reorderLoading) && (
         <div className="fixed inset-0 z-[999] bg-black/35 backdrop-blur-sm flex items-center justify-center">
           <div className="bg-white rounded-2xl px-10 py-7 flex flex-col items-center gap-3 shadow-2xl">
-            <div className="w-9 h-9 border-[3px] border-gray-200 border-t-indigo-500 rounded-full animate-spin" />
+            <div className="w-9 h-9 border-[3px] border-gray-200 border-t-brand-500 rounded-full animate-spin" />
             <span className="text-sm font-medium text-gray-600">
               {reorderLoading ? "Loading reorder data..." : draftSaving ? "Saving draft…" : "Processing…"}
             </span>
@@ -2554,7 +2554,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
 
         {/* Draft loaded banner */}
         {draftBanner && (
-          <div className="flex items-center justify-between bg-indigo-50 border border-indigo-200 rounded-xl px-4 py-2.5 mb-5 text-[12.5px] text-indigo-700 font-medium">
+          <div className="flex items-center justify-between bg-brand-50 border border-brand-200 rounded-xl px-4 py-2.5 mb-5 text-[12.5px] text-brand-600 font-medium">
             <div className="flex items-center gap-2">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -2564,10 +2564,10 @@ const verifySubmittedProductNotes = async (orderId: string) => {
             </div>
             <div className="flex items-center gap-3">
               <button onClick={() => router.push("/drafts")}
-                className="text-indigo-500 hover:text-indigo-700 text-[11.5px] underline underline-offset-2 cursor-pointer">
+                className="text-brand-500 hover:text-brand-500 text-[11.5px] underline underline-offset-2 cursor-pointer">
                 All Drafts
               </button>
-              <button onClick={() => setDraftBanner(null)} className="text-indigo-400 hover:text-indigo-600 cursor-pointer">
+              <button onClick={() => setDraftBanner(null)} className="text-brand-400 hover:text-brand-500 cursor-pointer">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
@@ -2729,8 +2729,8 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   {activeApprovalRequest.requestReference || activeApprovalRequest.id}
                 </span>
               ) : (
-                <span className="inline-flex items-center gap-2 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-1.5 font-mono text-[12px] font-bold text-indigo-700">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Order No.</span>
+                <span className="inline-flex items-center gap-2 rounded-xl border border-brand-100 bg-brand-50 px-3 py-1.5 font-mono text-[12px] font-bold text-brand-600">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-brand-400">Order No.</span>
                   {expectedOrderLoading ? "Loading..." : expectedOrderNumber || "OM/..."}
                 </span>
               )}
@@ -2738,7 +2738,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
             <p className="text-sm text-gray-500 mt-1">{docDate} · {user.Dealer_Name}</p>
           </div>
           <button onClick={() => router.push("/drafts")}
-            className="inline-flex items-center gap-1.5 text-[12.5px] text-gray-400 hover:text-indigo-600 border border-gray-200 hover:border-indigo-200 hover:bg-indigo-50 px-3 py-2 rounded-xl transition-all cursor-pointer bg-white">
+            className="inline-flex items-center gap-1.5 text-[12.5px] text-gray-400 hover:text-brand-500 border border-gray-200 hover:border-brand-200 hover:bg-brand-50 px-3 py-2 rounded-xl transition-all cursor-pointer bg-white">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
               <polyline points="14 2 14 8 20 8" />
@@ -2770,7 +2770,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
             <div className="flex flex-col gap-1.5">
               <label className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wider">Ship To</label>
               <textarea
-                className="text-[13.5px] text-gray-800 bg-white border border-gray-200 rounded-xl px-3 py-2.5 outline-none resize-none min-h-[72px] focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all disabled:bg-gray-100 disabled:text-gray-500"
+                className="text-[13.5px] text-gray-800 bg-white border border-gray-200 rounded-xl px-3 py-2.5 outline-none resize-none min-h-[72px] focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all disabled:bg-gray-100 disabled:text-gray-500"
                 value={shipto} onChange={(e) => setShipto(e.target.value)}
                 disabled={orderLockedByPendingApproval}
               />
@@ -2791,7 +2791,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               <label className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wider">Customer Ref No.</label>
               <input type="text" placeholder="Enter reference number" value={refno} onChange={(e) => setRefno(e.target.value)}
                 disabled={orderLockedByPendingApproval}
-                className="text-[13.5px] text-gray-800 bg-white border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 transition-all placeholder:text-gray-300 disabled:bg-gray-100 disabled:text-gray-500" />
+                className="text-[13.5px] text-gray-800 bg-white border border-gray-200 rounded-xl px-3 py-2.5 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 transition-all placeholder:text-gray-300 disabled:bg-gray-100 disabled:text-gray-500" />
             </div>
             <div className="flex flex-col gap-1.5">
               <div className="flex items-center justify-between gap-2">
@@ -2803,7 +2803,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     setShowCustomDiscountEditor(true);
                   }}
                   disabled={orderLockedByPendingApproval}
-                  className="text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                  className="text-[11px] font-bold text-brand-600 hover:text-brand-500 bg-brand-50 hover:bg-brand-100 border border-brand-100 rounded-lg px-2 py-1 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   ✏️ Edit
                 </button>
@@ -2920,7 +2920,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   setShowCustomDiscountEditor((v) => !v);
                 }}
                 disabled={orderLockedByPendingApproval}
-                className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-xl border border-indigo-200 bg-white px-3 py-2 text-[12px] font-bold text-indigo-700 hover:bg-indigo-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-1"
+                className="col-span-2 inline-flex items-center justify-center gap-1.5 rounded-xl border border-brand-200 bg-white px-3 py-2 text-[12px] font-bold text-brand-600 hover:bg-brand-50 transition-colors disabled:cursor-not-allowed disabled:opacity-40 sm:col-span-1"
               >
                 <span>✏️</span>
                 Custom Discount
@@ -2953,12 +2953,12 @@ const verifySubmittedProductNotes = async (orderId: string) => {
             </div>
 
             {/* 3. Post Base Amount */}
-            <div className="rounded-xl border border-indigo-200 bg-indigo-50/50 px-3 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Post Base Amount</p>
-              <p className="mt-1 font-mono text-[13px] font-bold text-indigo-700">
+            <div className="rounded-xl border border-brand-200 bg-brand-50/50 px-3 py-2">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-brand-500">Post Base Amount</p>
+              <p className="mt-1 font-mono text-[13px] font-bold text-brand-600">
                 {fmt(toPaise(discountPayload.postBaseAmount))}
               </p>
-              <p className="mt-0.5 text-[9px] text-indigo-400">
+              <p className="mt-0.5 text-[9px] text-brand-400">
                 {discountPayload.additionalDiscountType === "custom" ? "Custom discount applies from here" : "Slab discount is determined from this"}
               </p>
             </div>
@@ -3003,7 +3003,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         </div>
 
         {(showCustomDiscountEditor || visibleCustomRequest) && (
-          <div className="bg-white border border-indigo-200 rounded-2xl p-5 mb-5">
+          <div className="bg-white border border-brand-200 rounded-2xl p-5 mb-5">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -3040,7 +3040,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   </p>
                 )}
                 {visibleCustomRequest?.discountScope === "product" && (
-                  <p className="mt-2 text-[12px] font-semibold text-indigo-700">
+                  <p className="mt-2 text-[12px] font-semibold text-brand-600">
                     Product: {shortProductName(visibleCustomRequest.targetProduct?.displayName || "") ||visibleCustomRequest.targetProduct?.variantCode || "Selected product"}
                   </p>
                 )}
@@ -3056,9 +3056,9 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   <p className="font-bold uppercase tracking-wider text-gray-400">Current</p>
                   <p className="mt-1 font-mono text-[13px] font-bold text-gray-900">{baseDiscountPayload.baseDiscountPercent}%</p>
                 </div>
-                <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2">
-                  <p className="font-bold uppercase tracking-wider text-indigo-500">Requested</p>
-                  <p className="mt-1 font-mono text-[13px] font-bold text-indigo-700">
+                <div className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
+                  <p className="font-bold uppercase tracking-wider text-brand-500">Requested</p>
+                  <p className="mt-1 font-mono text-[13px] font-bold text-brand-600">
                     {visibleCustomRequest?.requestedOrderDiscountPercent ?? visibleCustomRequest?.requestedDiscountPercent ?? requestedCustomDiscountPercent}%
                   </p>
                 </div>
@@ -3072,7 +3072,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   <select
                     value={customDiscountScope}
                     onChange={(e) => setCustomDiscountScope(e.target.value as CustomDiscountScope)}
-                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13.5px] font-semibold text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                    className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13.5px] font-semibold text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                   >
                     <option value="order">Entire order</option>
                     <option value="product">Individual product</option>
@@ -3084,7 +3084,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     <select
                       value={selectedCustomDiscountProduct ? getProductKey(selectedCustomDiscountProduct) : ""}
                       onChange={(e) => setCustomDiscountProductKey(e.target.value)}
-                      className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13.5px] font-semibold text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13.5px] font-semibold text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                     >
                       {productRows.map((row) => (
                         <option key={`${row.key}-${getProductKey(row)}`} value={getProductKey(row)}>
@@ -3104,7 +3104,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                       step={0.5}
                       value={customDiscountInput}
                       onChange={(e) => setCustomDiscountInput(clampPercentInput(e.target.value))}
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13.5px] font-mono font-semibold text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13.5px] font-mono font-semibold text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                       placeholder="e.g. 10"
                     />
 
@@ -3124,7 +3124,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                         const percent = Math.min(100, (amount / customDiscountNetSubtotal) * 100);
                         setCustomDiscountInput(percent ? String(Number(percent.toFixed(4))) : "");
                       }}
-                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 font-mono text-[13px] font-bold text-indigo-700 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 font-mono text-[13px] font-bold text-brand-600 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                       placeholder="e.g. 100"
                     />
                   </div>
@@ -3138,7 +3138,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     type="button"
                     onClick={handleRequestCustomDiscount}
                     disabled={customDiscountSubmitting || (customDiscountScope === "order" ? requestedCustomDiscountPercent <= baseDiscountPayload.baseDiscountPercent : !hasRequestedProductDiscounts)}
-                    className="inline-flex items-center justify-center rounded-xl bg-indigo-600 px-4 py-2.5 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-40"
+                    className="inline-flex items-center justify-center rounded-xl bg-brand-600 px-4 py-2.5 text-[13px] font-bold text-white shadow-sm transition-colors hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     {customDiscountSubmitting ? "Sending..." : "Request Approval"}
                   </button> */}
@@ -3156,7 +3156,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                         type="button"
                         onClick={addSelectedCustomProductDiscount}
                         disabled={customDiscountSubmitting || !selectedCustomDiscountProduct || requestedCustomDiscountPercent <= (approvedCustomDiscountPercent ?? baseDiscountPayload.baseDiscountPercent)}
-                        className="h-full w-auto py-2 px-2 my-auto shrink-0 rounded-xl border border-indigo-200 bg-indigo-50 text-[14px] text-indigo-700 transition-colors hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-40"
+                        className="h-full w-auto py-2 px-2 my-auto shrink-0 rounded-xl border border-brand-200 bg-brand-50 text-[14px] text-brand-600 transition-colors hover:bg-brand-100 disabled:cursor-not-allowed disabled:opacity-40"
                         aria-label="Add product custom discount"
                         title="Add product custom discount"
                       >
@@ -3165,13 +3165,13 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     )}
                 </div>
                 {customDiscountScope === "product" && requestedProductDiscountRows.length > 0 && (
-                  <div className="lg:col-span-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-3">
-                    <p className="text-[10.5px] font-bold uppercase tracking-wider text-indigo-500">Selected Product Discounts</p>
+                  <div className="lg:col-span-4 rounded-xl border border-brand-100 bg-brand-50/40 p-3">
+                    <p className="text-[10.5px] font-bold uppercase tracking-wider text-brand-500">Selected Product Discounts</p>
                     <div className="mt-2 flex flex-wrap gap-2">
                       {requestedProductDiscountRows.map(({ row, productKey, normalizedKey, percent }) => (
-                        <div key={`${row.key}-${normalizedKey}`} className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-gray-800">
+                        <div key={`${row.key}-${normalizedKey}`} className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-white px-2.5 py-1.5 text-[12px] font-semibold text-gray-800">
                           <span className="max-w-[260px] truncate">{row.variantCode || row.productname} - {shortProductName(row.displayName || "Product")}</span>
-                          <span className="font-mono font-bold text-indigo-700">{discountOnNet(baseDiscountPayload.baseDiscountPercent, percent)}% on net</span>
+                          <span className="font-mono font-bold text-brand-600">{discountOnNet(baseDiscountPayload.baseDiscountPercent, percent)}% on net</span>
                           <button
                             type="button"
                             onClick={() => removeCustomProductDiscount(productKey)}
@@ -3202,7 +3202,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 </div>
                 <p className="text-xs text-gray-400 mt-0.5">
                   {arr1.filter(r => r.productname).length} product{arr1.filter(r => r.productname).length !== 1 ? "s" : ""} selected
-                  {activeDraftId && <span className="ml-2 text-indigo-500 font-medium">· {draftName}</span>}
+                  {activeDraftId && <span className="ml-2 text-brand-500 font-medium">· {draftName}</span>}
                 </p>
               </div>
               <div className="flex items-center gap-2">
@@ -3317,7 +3317,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                                     </span>
                                   )}
                                   {!!(row.productNote ?? "").trim() && (
-                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-full text-[10px] font-bold">
+                                    <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-brand-50 border border-brand-200 text-brand-600 rounded-full text-[10px] font-bold">
                                       <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round">
                                         <path d="M17 3a2.85 2.85 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z" />
                                       </svg>
@@ -3351,7 +3351,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                                     <div
                                       className={`mx-1 my-1 rounded-xl border px-3 py-2.5 transition-all ${
                                         props.isFocused
-                                          ? "border-indigo-200 bg-indigo-50 shadow-sm"
+                                          ? "border-brand-200 bg-brand-50 shadow-sm"
                                           : props.isSelected
                                             ? "border-emerald-200 bg-emerald-50"
                                             : "border-transparent bg-white"
@@ -3408,7 +3408,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                           )}
                         </td>
                         <td className="px-3 py-2.5">
-                          <span className="inline-flex items-center px-2.5 py-1 bg-indigo-50 border border-indigo-200 text-indigo-700 rounded-lg text-[12px] font-bold font-mono">
+                          <span className="inline-flex items-center px-2.5 py-1 bg-brand-50 border border-brand-200 text-brand-600 rounded-lg text-[12px] font-bold font-mono">
                             {totalUnits}
                           </span>
                           <p className="text-[10px] text-gray-400 mt-0.5">pc{totalUnits !== 1 ? "s" : ""}</p>
@@ -3437,7 +3437,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                               Base Discount: {globalPercent}%
                             </p>
                             <div className="flex items-center gap-1">
-                              <span className={`text-[10px] font-mono leading-tight ${productExtraPercent > 0 ? "text-indigo-600 font-semibold" : "text-gray-400"}`}>
+                              <span className={`text-[10px] font-mono leading-tight ${productExtraPercent > 0 ? "text-brand-600 font-semibold" : "text-gray-400"}`}>
                                 Product: {productExtraPercent > 0 ? `+${productExtraPercent}` : "0"}%
                               </span>
                               {row.productname && (
@@ -3455,7 +3455,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                                     }
                                   }}
                                   disabled={orderLockedByPendingApproval}
-                                  className={`w-[18px] h-[18px] flex items-center justify-center rounded transition-colors ${isEditingThisRow ? "bg-indigo-100 text-indigo-700" : "text-indigo-400 hover:bg-indigo-50 hover:text-indigo-600"}`}
+                                  className={`w-[18px] h-[18px] flex items-center justify-center rounded transition-colors ${isEditingThisRow ? "bg-brand-100 text-brand-600" : "text-brand-400 hover:bg-brand-50 hover:text-brand-500"}`}
                                   title="Edit product discount"
                                 >
                                   <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -3476,16 +3476,16 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                             )}
                             {isEditingThisRow && (
                               <div className="pt-1.5 space-y-1.5">
-                                <div className="flex items-center border border-indigo-200 rounded-lg overflow-hidden w-fit bg-white shadow-sm">
+                                <div className="flex items-center border border-brand-200 rounded-lg overflow-hidden w-fit bg-white shadow-sm">
                                   <button
                                     type="button"
                                     onClick={() => setPerProductDiscountInputs((prev) => ({
                                       ...prev,
                                       [productKey]: stackDiscountOnNet(globalPercent, Math.max(0, discountOnNet(globalPercent, prev[productKey] ?? globalPercent) - 0.5)),
                                     }))} disabled={orderLockedByPendingApproval}
-                                    className="w-7 h-[26px] flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-xs font-bold transition-colors border-none cursor-pointer"
+                                    className="w-7 h-[26px] flex items-center justify-center bg-brand-50 hover:bg-brand-100 text-brand-600 text-xs font-bold transition-colors border-none cursor-pointer"
                                   >−</button>
-                                  <span className="w-10 h-[26px] flex items-center justify-center text-[11px] font-mono font-bold text-indigo-700 border-x border-indigo-200 bg-white">
+                                  <span className="w-10 h-[26px] flex items-center justify-center text-[11px] font-mono font-bold text-brand-600 border-x border-brand-200 bg-white">
                                     {discountOnNet(globalPercent, currentProductInput)}
                                   </span>
                                   <button
@@ -3494,14 +3494,14 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                                       ...prev,
                                       [productKey]: stackDiscountOnNet(globalPercent, discountOnNet(globalPercent, prev[productKey] ?? globalPercent) + 0.5),
                                     }))} disabled={orderLockedByPendingApproval}
-                                    className="w-7 h-[26px] flex items-center justify-center bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-xs font-bold transition-colors border-none cursor-pointer"
+                                    className="w-7 h-[26px] flex items-center justify-center bg-brand-50 hover:bg-brand-100 text-brand-600 text-xs font-bold transition-colors border-none cursor-pointer"
                                   >+</button>
                                 </div>
                                 <button
                                   type="button"
                                   onClick={() => handleRequestProductDiscount(row)}
                                   disabled={orderLockedByPendingApproval || currentProductInput <= globalPercent || perProductSubmitting === productKey}
-                                  className="inline-flex items-center gap-1 rounded-lg bg-indigo-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors border-none cursor-pointer"
+                                  className="inline-flex items-center gap-1 rounded-lg bg-brand-600 px-2.5 py-1 text-[10px] font-bold text-white hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors border-none cursor-pointer"
                                 >
                                   {perProductSubmitting === productKey ? "Sending…" : "Request ▸"}
                                 </button>
@@ -3600,8 +3600,8 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   <tr className="border-t border-dashed border-gray-100">
                     <td colSpan={10} className="px-6 py-3">
                       <button onClick={addRow} disabled={orderLockedByPendingApproval}
-                        className="inline-flex items-center gap-2 text-[15px] text-gray-400 hover:text-indigo-600 transition-colors cursor-pointer border-2 border-gray-200 rounded-lg px-3 py-1.5 hover:border-indigo-300 hover:bg-indig-600">
-                        <span className="w-6 h-6 rounded-md border border-gray-200 flex items-center justify-center text-sm hover:border-indigo-300 hover:bg-indigo-50 transition-colors">+</span>
+                        className="inline-flex items-center gap-2 text-[15px] text-gray-400 hover:text-brand-500 transition-colors cursor-pointer border-2 border-gray-200 rounded-lg px-3 py-1.5 hover:border-brand-300 hover:bg-indig-600">
+                        <span className="w-6 h-6 rounded-md border border-gray-200 flex items-center justify-center text-sm hover:border-brand-300 hover:bg-brand-50 transition-colors">+</span>
                         Add another product
                       </button>
                     </td>
@@ -3623,7 +3623,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   onChange={(e) => setOrderNote(e.target.value)}
                   disabled={orderLockedByPendingApproval}
                   placeholder="Add packing, dispatch, or billing instructions for this order..."
-                  className="min-h-[82px] w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[13px] text-gray-900 outline-none transition-all placeholder:text-gray-400 focus:border-indigo-500 focus:bg-white focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100 disabled:text-gray-500"
+                  className="min-h-[82px] w-full resize-none rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-[13px] text-gray-900 outline-none transition-all placeholder:text-gray-400 focus:border-brand-500 focus:bg-white focus:ring-2 focus:ring-brand-100 disabled:bg-gray-100 disabled:text-gray-500"
                 />
               </div>
             </div>
@@ -3661,9 +3661,9 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                         {discountPayload.baseDiscountAmount > 0 ? ` · −${fmt(toPaise(discountPayload.baseDiscountAmount))}` : ""}
                       </p>
                     </div>
-                    <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 px-4 py-3">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Post Base Amount</p>
-                      <p className="mt-1 font-mono text-[14px] font-bold text-indigo-700">{fmt(toPaise(discountPayload.postBaseAmount))}</p>
+                    <div className="rounded-xl border border-brand-200 bg-brand-50/60 px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-brand-500">Post Base Amount</p>
+                      <p className="mt-1 font-mono text-[14px] font-bold text-brand-600">{fmt(toPaise(discountPayload.postBaseAmount))}</p>
                     </div>
                     <div className={`rounded-xl border px-4 py-3 ${discountPayload.additionalDiscountAmount > 0 ? "border-emerald-200 bg-emerald-50/60 text-emerald-700" : "border-gray-200 bg-white text-gray-500"}`}>
                       <p className="text-[10px] font-bold uppercase tracking-wider opacity-70">
@@ -3743,7 +3743,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     ? "A custom discount is selected - this order needs approval before it can be placed"
                     : needsFundRequest ? `Wallet short by ${fmt(toPaise(discountPayload.finalPayableAmount - wallet!.availableBalance))} - request funds to proceed` : undefined)}
                   className={`inline-flex items-center gap-2 px-5 py-2.5 text-white rounded-xl text-[13.5px] font-semibold transition-all shadow-sm hover:shadow-md hover:-translate-y-px cursor-pointer border-none ${hasUnsentDiscountSelection
-                      ? "bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-700 hover:to-indigo-600"
+                      ? "bg-gradient-to-r from-brand-600 to-brand-500 hover:from-brand-700 hover:to-brand-600"
                       : needsFundRequest
                         ? "bg-gradient-to-r from-amber-600 to-amber-500 hover:from-amber-700 hover:to-amber-600"
                         : hasAnyDiscount
@@ -3769,8 +3769,8 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               {creditBlockReason && <p className="text-xs font-semibold text-red-600">{creditBlockReason}</p>}
 
               {hasUnsentDiscountSelection && (
-                <div className="flex items-center gap-3 rounded-xl border border-indigo-200/80 bg-indigo-50 px-3.5 py-3">
-  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-indigo-600 shadow-sm ring-1 ring-indigo-100">
+                <div className="flex items-center gap-3 rounded-xl border border-brand-200/80 bg-brand-50 px-3.5 py-3">
+  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white text-brand-600 shadow-sm ring-1 ring-brand-100">
     <svg
       className="h-4 w-4"
       viewBox="0 0 24 24"
@@ -3789,10 +3789,10 @@ const verifySubmittedProductNotes = async (orderId: string) => {
   </div>
 
   <div className="min-w-0">
-    <p className="text-[12px] font-semibold text-indigo-900">
+    <p className="text-[12px] font-semibold text-brand-900">
        approval required
     </p>
-    <p className="mt-0.5 text-[11.5px] leading-4.5 text-indigo-700">
+    <p className="mt-0.5 text-[11.5px] leading-4.5 text-brand-600">
       This order uses a custom discount and must be approved before placement.
     </p>
   </div>
@@ -3807,7 +3807,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               )}
 
               <button onClick={handleSaveDraft} disabled={draftSaving || orderLockedByPendingApproval}
-                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:bg-indigo-50 hover:border-indigo-300 hover:text-indigo-700 text-gray-600 rounded-xl text-[13.5px] font-medium transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
+                className="inline-flex items-center gap-2 px-4 py-2.5 bg-white border border-gray-200 hover:bg-brand-50 hover:border-brand-300 hover:text-brand-500 text-gray-600 rounded-xl text-[13.5px] font-medium transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
                   <polyline points="17 21 17 13 7 13 7 21" />
@@ -3833,7 +3833,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
             <h3 className="text-[15px] font-semibold text-gray-900 mb-1">Upload Excel File</h3>
             <p className="text-[13px] text-gray-400 mb-6">Place orders in bulk using a formatted Excel spreadsheet.</p>
             <form onSubmit={handleSubmitFile}>
-              <label className={`block border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 ${file ? "border-emerald-300 bg-emerald-50" : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30"
+              <label className={`block border-2 border-dashed rounded-2xl p-10 text-center cursor-pointer transition-all duration-200 ${file ? "border-emerald-300 bg-emerald-50" : "border-gray-200 hover:border-brand-300 hover:bg-brand-50/30"
                 }`}>
                 <input required type="file" accept=".xlsx,.xls,.csv" className="hidden" disabled={orderLockedByPendingApproval}
                   onChange={(e) => setFile(e.target.files?.[0] ?? null)} />

@@ -66,8 +66,8 @@ export default function OrderConfirmCard({ draft, outcome, onUpdate, onNotice }:
   }
 
   return (
-    <div className="rounded-xl border border-indigo-200 bg-white text-[12.5px] text-gray-800 shadow-sm">
-      <div className="border-b border-indigo-100 bg-indigo-50/60 px-3 py-2 font-semibold text-indigo-900">
+    <div className="rounded-xl border border-brand-200 bg-white text-[12.5px] text-gray-800 shadow-sm">
+      <div className="border-b border-brand-100 bg-brand-50/60 px-3 py-2 font-semibold text-brand-900">
         {discount ? "Draft order · discount request" : "Draft order · review and confirm"}
       </div>
 
@@ -104,7 +104,7 @@ export default function OrderConfirmCard({ draft, outcome, onUpdate, onNotice }:
         {!discount && draft.slabDiscount > 0 && <div className="flex justify-between text-emerald-700"><dt>Volume discount ({draft.slabDiscountPercent}%)</dt><dd className="whitespace-nowrap">−{money(draft.slabDiscount)}</dd></div>}
         {discount ? (
           <>
-            <div className="flex justify-between text-indigo-700"><dt>Extra discount asked ({discount.asked})</dt><dd className="whitespace-nowrap">−{money(discount.extraDiscount)}</dd></div>
+            <div className="flex justify-between text-brand-600"><dt>Extra discount asked ({discount.asked})</dt><dd className="whitespace-nowrap">−{money(discount.extraDiscount)}</dd></div>
             <div className="flex justify-between pt-1 text-[13.5px] font-semibold"><dt>Total if approved</dt><dd>{money(discount.totalIfApproved)}</dd></div>
             <p className="text-[11.5px] text-gray-500">Needs approval from {discount.approvers}.</p>
           </>
@@ -137,7 +137,7 @@ export default function OrderConfirmCard({ draft, outcome, onUpdate, onNotice }:
                   Cancel
                 </button>
                 <button type="button" onClick={() => void act("confirm")} disabled={busy !== null || expired}
-                  className="rounded-lg bg-indigo-600 px-3 py-1.5 font-medium text-white hover:bg-indigo-700 disabled:opacity-50">
+                  className="rounded-lg bg-brand-600 px-3 py-1.5 font-medium text-white hover:bg-brand-500 disabled:opacity-50">
                   {busy === "confirm" ? "Placing…" : discount ? "Send for approval" : "Confirm order"}
                 </button>
               </div>

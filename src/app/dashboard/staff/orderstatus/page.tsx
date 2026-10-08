@@ -75,7 +75,7 @@ function statusBadge(status: string) {
   switch (status) {
     case "0": return { bg: "bg-red-50",     text: "text-red-600",     label: "In Process" }
     case "1": return { bg: "bg-blue-50",    text: "text-blue-600",    label: "Packing" }
-    case "2": return { bg: "bg-indigo-50",  text: "text-indigo-600",  label: "Dispatched" }
+    case "2": return { bg: "bg-brand-50",  text: "text-brand-600",  label: "Dispatched" }
     case "3": return { bg: "bg-amber-50",   text: "text-amber-700",   label: "Not in Stock" }
     case "4": return { bg: "bg-emerald-50", text: "text-emerald-700", label: "Successful" }
     default:  return { bg: "bg-gray-100",   text: "text-gray-500",    label: "Unknown" }
@@ -274,7 +274,7 @@ export default function DispatchStatusPage() {
               placeholder="Search by catalogue number…"
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
-              className="pl-10 pr-4 py-2 px-8 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition w-full"
+              className="pl-10 pr-4 py-2 px-8 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition w-full"
             />
           </div>
         </div>
@@ -444,7 +444,7 @@ export default function DispatchStatusPage() {
                     onClick={() => handlePageChange(p)}
                     className={`px-3 py-1.5 text-sm rounded-lg border transition ${
                       p === page
-                        ? "bg-indigo-600 text-white border-indigo-600 font-medium"
+                        ? "bg-brand-600 text-white border-brand-600 font-medium"
                         : "border-gray-200 text-gray-600 hover:bg-gray-50"
                     }`}
                   >

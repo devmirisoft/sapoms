@@ -28,7 +28,7 @@ const ROLE_BADGES: Record<StaffRoleKey, { bg: string; text: string }> = {
   RSM: { bg: "bg-sky-50", text: "text-sky-700" },
   ASM: { bg: "bg-cyan-50", text: "text-cyan-700" },
   SALES_MANAGER: { bg: "bg-violet-50", text: "text-violet-700" },
-  STAFF: { bg: "bg-indigo-50", text: "text-indigo-700" },
+  STAFF: { bg: "bg-brand-50", text: "text-brand-600" },
   UNKNOWN: { bg: "bg-gray-100", text: "text-gray-500" },
 };
 

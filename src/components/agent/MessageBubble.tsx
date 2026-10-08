@@ -93,7 +93,7 @@ export default function MessageBubble({ message, onDraftUpdate, onNotice }: {
       <div className={`flex ${isUser ? "justify-end" : "justify-start"}`}>
         <div
           className={`max-w-[85%] break-words rounded-2xl px-3.5 py-2 text-[13.5px] leading-relaxed ${
-            isUser ? "whitespace-pre-wrap rounded-br-md bg-indigo-600 text-white" : "rounded-bl-md bg-gray-100 text-gray-800"
+            isUser ? "whitespace-pre-wrap rounded-br-md bg-brand-600 text-white" : "rounded-bl-md bg-gray-100 text-gray-800"
           }`}
         >
           {isUser ? message.content : <Markdown text={message.content} />}
@@ -105,7 +105,7 @@ export default function MessageBubble({ message, onDraftUpdate, onNotice }: {
       {/* Report exports the server attached; only same-origin API paths are ever rendered. */}
       {message.downloads?.filter((d) => d.url.startsWith("/api/")).map((d) => (
         <a key={d.url} href={d.url} download
-          className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-[12.5px] font-medium text-indigo-700 hover:bg-indigo-50">
+          className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-[12.5px] font-medium text-brand-600 hover:bg-brand-50">
           <Download className="h-3.5 w-3.5" /> {d.label}
         </a>
       ))}

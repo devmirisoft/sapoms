@@ -365,12 +365,12 @@ async function fetchOrders(page: number, pageSize: number, search: string, filte
 const statusConf: Record<number, { label: string; dot: string; text: string; bg: string }> = {
   0: { label: "In Process",   dot: "bg-amber-400",   text: "text-amber-800",   bg: "bg-amber-50 border-amber-200" },
   1: { label: "Packing",      dot: "bg-blue-400",    text: "text-blue-800",    bg: "bg-blue-50 border-blue-200" },
-  2: { label: "Dispatch",     dot: "bg-indigo-400",  text: "text-indigo-800",  bg: "bg-indigo-50 border-indigo-200" },
+  2: { label: "Dispatch",     dot: "bg-brand-400",  text: "text-brand-800",  bg: "bg-brand-50 border-brand-200" },
   3: { label: "Not in Stock", dot: "bg-red-400",     text: "text-red-800",     bg: "bg-red-50 border-red-200" },
   4: { label: "Successful",   dot: "bg-emerald-400", text: "text-emerald-800", bg: "bg-emerald-50 border-emerald-200" },
 };
 
-const pillCls = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold border";
+const pillCls = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[9.35px] font-semibold border";
 
 /** Wallet settlement applied to this order by the Accountant, if any. */
 function SettlementBadge({ settlement }: { settlement?: { status?: string } | null }) {
@@ -425,7 +425,7 @@ function MtStatusBadge({ status }: { status: string }) {
 }
 
 function CustomDiscountBadge({ progress }: { progress: CustomDiscountProgress | null | undefined }) {
-  if (!progress) return <span className="font-mono text-[12px] text-gray-500">—</span>;
+  if (!progress) return <span className="font-mono text-[10.2px] text-gray-500">—</span>;
   const [pill, dot] = progress === "accepted"
     ? ["bg-emerald-50 text-emerald-800 border-emerald-200", "bg-emerald-500"]
     : progress === "rejected"
@@ -442,7 +442,7 @@ function CustomDiscountBadge({ progress }: { progress: CustomDiscountProgress | 
 /** Removable chip summarising one active filter. */
 function FilterTag({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 text-[11px] font-semibold">
+    <span className="inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full bg-brand-50 text-brand-600 border border-brand-100 text-[9.35px] font-semibold">
       {label}
       <button type="button" onClick={onRemove} aria-label={`Remove filter ${label}`} className="opacity-70 hover:opacity-100">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -454,9 +454,9 @@ function FilterTag({ label, onRemove }: { label: string; onRemove: () => void })
 }
 
 const filterInputCls = (active: boolean) =>
-  `mt-1 block px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal rounded-md border outline-none transition-colors ${
-    active ? "border-indigo-400 bg-indigo-50 text-indigo-800" : "border-gray-200 bg-white text-gray-700"
-  } focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100`;
+  `mt-1 block px-1.5 py-0.5 text-[9.35px] font-medium normal-case tracking-normal rounded-md border outline-none transition-colors ${
+    active ? "border-brand-400 bg-brand-50 text-brand-800" : "border-gray-200 bg-white text-gray-700"
+  } focus:border-brand-400 focus:ring-2 focus:ring-brand-100`;
 
 function SkeletonRow({ cols }: { cols: number }) {
   return (
@@ -541,7 +541,7 @@ function RowActionsMenu({
 
   const accepted = order.accept_order === "1" || Number(order.orderdata_status ?? 0) >= 4 || Number(order.mtstatus ?? 0) >= 2 || String(order.mtstatus ?? "").toLowerCase().includes("completed");
   const itemCls = (hover: string, color = "text-gray-700") =>
-    `w-full text-left px-4 py-2.5 text-[12px] ${color} ${hover} flex items-center gap-3 transition-colors`;
+    `w-full text-left px-4 py-2.5 text-[10.2px] ${color} ${hover} flex items-center gap-3 transition-colors`;
 
   return (
     <>
@@ -552,7 +552,7 @@ function RowActionsMenu({
         aria-label="Order actions"
         aria-haspopup="menu"
         aria-expanded={!!menuPos}
-        className="flex items-center justify-center w-8 h-8 bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg transition-all shadow-sm disabled:opacity-50"
+        className="flex items-center justify-center w-8 h-8 bg-white border border-gray-200 hover:border-brand-300 hover:bg-brand-50 text-gray-600 hover:text-brand-500 rounded-lg transition-all shadow-sm disabled:opacity-50"
       >
         {loading
           ? <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -575,7 +575,7 @@ function RowActionsMenu({
             <button
               role="menuitem"
               onClick={() => { setMenuPos(null); onView(); }}
-              className={itemCls("hover:bg-indigo-50")}
+              className={itemCls("hover:bg-brand-50")}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -589,7 +589,7 @@ function RowActionsMenu({
                 role="menuitem"
                 onClick={dispatchDisabled ? undefined : () => { setMenuPos(null); onDispatch(); }}
                 disabled={dispatchDisabled}
-                className={`${itemCls("hover:bg-indigo-50", "text-indigo-700")} disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={`${itemCls("hover:bg-brand-50", "text-brand-600")} disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M9 12h6M12 9v6" />
@@ -597,7 +597,7 @@ function RowActionsMenu({
                 </svg>
                 <div>
                   <p className="font-semibold">Dispatch details</p>
-                  <p className="text-[10px] text-gray-400 mt-0.5">{dispatchDisabled ? "Accept order first" : "Update dispatch"}</p>
+                  <p className="text-[8.5px] text-gray-400 mt-0.5">{dispatchDisabled ? "Accept order first" : "Update dispatch"}</p>
                 </div>
               </button>
             )}
@@ -612,7 +612,7 @@ function RowActionsMenu({
               </svg>
               <div>
                 <p className="font-semibold">{accepted ? "Download Invoice" : "Download Purchase Order"}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">Save to device</p>
+                <p className="text-[8.5px] text-gray-400 mt-0.5">Save to device</p>
               </div>
             </button>
             <button role="menuitem" onClick={handleUpload} className={itemCls("hover:bg-emerald-50")}>
@@ -623,7 +623,7 @@ function RowActionsMenu({
               </svg>
               <div>
                 <p className="font-semibold">{accepted ? "Save to Cloud" : "Save PO to Cloud"}</p>
-                <p className="text-[10px] text-gray-400 mt-0.5">Save to cloud</p>
+                <p className="text-[8.5px] text-gray-400 mt-0.5">Save to cloud</p>
               </div>
             </button>
 
@@ -688,7 +688,7 @@ function ExportButton({ orders, dealerName, dealerId, isLoading = false, onExpor
         <button
           onClick={() => setShowMenu(!showMenu)}
           disabled={isLoading || isExporting || orders.length === 0}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold rounded-xl transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[11.05px] font-semibold rounded-xl transition-colors"
         >
           {isExporting ? (
             <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Exporting…</>
@@ -700,20 +700,20 @@ function ExportButton({ orders, dealerName, dealerId, isLoading = false, onExpor
           <>
             <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
             <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden py-1">
-              <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">PDF</p>
-              <button onClick={() => handleExport(false)} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[13px] text-gray-700 hover:bg-indigo-50 disabled:opacity-50 transition-colors flex items-center gap-3">
+              <p className="px-4 pt-2 pb-1 text-[8.5px] font-bold uppercase tracking-widest text-gray-400">PDF</p>
+              <button onClick={() => handleExport(false)} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[11.05px] text-gray-700 hover:bg-brand-50 disabled:opacity-50 transition-colors flex items-center gap-3">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                <div><p className="font-semibold">Download to device</p><p className="text-[11px] text-gray-500 mt-0.5">Save PDF locally</p></div>
+                <div><p className="font-semibold">Download to device</p><p className="text-[9.35px] text-gray-500 mt-0.5">Save PDF locally</p></div>
               </button>
-              <button onClick={() => handleExport(true)} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[13px] text-gray-700 hover:bg-indigo-50 disabled:opacity-50 transition-colors flex items-center gap-3">
+              <button onClick={() => handleExport(true)} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[11.05px] text-gray-700 hover:bg-brand-50 disabled:opacity-50 transition-colors flex items-center gap-3">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m0 5.08l-4.24 4.24M19.78 4.22l-4.24 4.24m0 5.08l4.24 4.24M1 12a11 11 0 0 1 22 0 11 11 0 0 1-22 0"/></svg>
-                <div><p className="font-semibold">Save to cloud</p><p className="text-[11px] text-gray-500 mt-0.5">Stored for later download</p></div>
+                <div><p className="font-semibold">Save to cloud</p><p className="text-[9.35px] text-gray-500 mt-0.5">Stored for later download</p></div>
               </button>
               <div className="my-1 border-t border-gray-100" />
-              <p className="px-4 pt-1 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">Spreadsheet</p>
-              <button onClick={() => { setShowMenu(false); onExportCsv(); }} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[13px] text-gray-700 hover:bg-indigo-50 disabled:opacity-50 transition-colors flex items-center gap-3">
+              <p className="px-4 pt-1 pb-1 text-[8.5px] font-bold uppercase tracking-widest text-gray-400">Spreadsheet</p>
+              <button onClick={() => { setShowMenu(false); onExportCsv(); }} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[11.05px] text-gray-700 hover:bg-brand-50 disabled:opacity-50 transition-colors flex items-center gap-3">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 13 2 3-2 3M15 13l-2 3 2 3"/></svg>
-                <div><p className="font-semibold">Export CSV</p><p className="text-[11px] text-gray-500 mt-0.5">{orders.length} row{orders.length === 1 ? "" : "s"} on this page</p></div>
+                <div><p className="font-semibold">Export CSV</p><p className="text-[9.35px] text-gray-500 mt-0.5">{orders.length} row{orders.length === 1 ? "" : "s"} on this page</p></div>
               </button>
             </div>
           </>
@@ -749,11 +749,11 @@ function DeleteModal({ orderId, onConfirm, onClose }: { orderId: string; onConfi
               <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6m5 0V4h4v2"/>
             </svg>
           </div>
-          <h3 className="text-[15px] font-bold text-gray-900">Delete Order #{orderId}?</h3>
-          <p className="text-[13px] text-gray-600 mt-1">Order stays in history with your reason. This cannot be undone.</p>
+          <h3 className="text-[12.75px] font-bold text-gray-900">Delete Order #{orderId}?</h3>
+          <p className="text-[11.05px] text-gray-600 mt-1">Order stays in history with your reason. This cannot be undone.</p>
         </div>
         <div className="px-6 py-4">
-          <label className="text-[11px] font-bold text-gray-600 uppercase tracking-widest block mb-2">
+          <label className="text-[9.35px] font-bold text-gray-600 uppercase tracking-widest block mb-2">
             Reason <span className="text-red-500">*</span>
           </label>
           <textarea
@@ -762,15 +762,15 @@ function DeleteModal({ orderId, onConfirm, onClose }: { orderId: string; onConfi
             placeholder="e.g. Duplicate order, wrong items, customer cancelled…"
             rows={3}
             disabled={deleting}
-            className={`w-full px-4 py-3 text-[13px] text-gray-900 border rounded-xl outline-none resize-none transition-all placeholder:text-gray-400 ${
-              err ? "border-red-300 bg-red-50/30 focus:ring-2 focus:ring-red-100" : "border-gray-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+            className={`w-full px-4 py-3 text-[11.05px] text-gray-900 border rounded-xl outline-none resize-none transition-all placeholder:text-gray-400 ${
+              err ? "border-red-300 bg-red-50/30 focus:ring-2 focus:ring-red-100" : "border-gray-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
             }`}
           />
-          {err && <p className="text-[11px] text-red-600 mt-1.5">{err}</p>}
+          {err && <p className="text-[9.35px] text-red-600 mt-1.5">{err}</p>}
         </div>
         <div className="px-6 pb-6 flex gap-2">
-          <button onClick={onClose} disabled={deleting} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-[13px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">Cancel</button>
-          <button onClick={submit} disabled={deleting || !reason.trim()} className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-[13px] font-semibold transition-colors flex items-center justify-center gap-2">
+          <button onClick={onClose} disabled={deleting} className="flex-1 py-2.5 border border-gray-200 rounded-xl text-[11.05px] font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors">Cancel</button>
+          <button onClick={submit} disabled={deleting || !reason.trim()} className="flex-1 py-2.5 bg-red-500 hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-[11.05px] font-semibold transition-colors flex items-center justify-center gap-2">
             {deleting && <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
             {deleting ? "Deleting…" : "Delete Order"}
           </button>
@@ -1491,7 +1491,7 @@ export default function OrderHistoryPage() {
 
   const colCount = 12 + (showDealerCol ? 1 : 0) + (showCustomDiscount ? 1 : 0) + (showActions ? 1 : 0);
   const cancelledColCount = showDealerCol ? 8 : 7;
-  const thCls = "px-2 py-2 text-left text-[11px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap";
+  const thCls = "px-2 py-2 text-left text-[9.35px] font-bold uppercase tracking-wider text-gray-600 whitespace-nowrap";
   // Only the selected tab carries a count — the other section's query is
   // disabled, so its total isn't loaded.
 
@@ -1505,52 +1505,52 @@ export default function OrderHistoryPage() {
         .dispatch-overlay { position: fixed; inset: 0; z-index: 80; background: rgba(15, 23, 42, 0.28); backdrop-filter: blur(5px); display: flex; justify-content: flex-end; }
         .dispatch-drawer { width: min(1120px, 100%); height: 100%; background: #f8fafc; box-shadow: -18px 0 40px rgba(15, 23, 42, 0.16); display: flex; flex-direction: column; }
         .dispatch-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 24px 28px 20px; border-bottom: 1px solid #e2e8f0; background: #fff; }
-        .dispatch-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #64748b; margin-bottom: 8px; }
-        .dispatch-title { font-size: 22px; font-weight: 700; color: #0f172a; line-height: 1.15; }
-        .dispatch-subtitle { font-size: 13px; color: #64748b; margin-top: 4px; }
+        .dispatch-kicker { font-size: 9.35px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: #64748b; margin-bottom: 8px; }
+        .dispatch-title { font-size: 18.7px; font-weight: 700; color: #0f172a; line-height: 1.15; }
+        .dispatch-subtitle { font-size: 11.05px; color: #64748b; margin-top: 4px; }
         .dispatch-close { width: 38px; height: 38px; border-radius: 12px; border: 1px solid #e2e8f0; background: #fff; color: #475569; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; }
         .dispatch-close:hover { background: #f8fafc; color: #0f172a; border-color: #cbd5e1; }
         .dispatch-layout { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(340px, 0.92fr); gap: 20px; padding: 20px 28px 28px; overflow: hidden; }
         .dispatch-products, .dispatch-editor { min-height: 0; display: flex; flex-direction: column; gap: 14px; }
         .dispatch-section-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-        .dispatch-section-head h3 { font-size: 15px; font-weight: 700; color: #0f172a; }
-        .dispatch-section-head span { font-size: 11px; color: #64748b; font-family: 'JetBrains Mono', monospace; }
+        .dispatch-section-head h3 { font-size: 12.75px; font-weight: 700; color: #0f172a; }
+        .dispatch-section-head span { font-size: 9.35px; color: #64748b; font-family: 'JetBrains Mono', monospace; }
         .dispatch-product-list, .dispatch-history-list { overflow-y: auto; display: flex; flex-direction: column; gap: 12px; padding-right: 4px; }
         .dispatch-product-card, .dispatch-form-card, .dispatch-history-card { background: #fff; border: 1px solid #e2e8f0; border-radius: 18px; box-shadow: 0 2px 10px rgba(15, 23, 42, 0.04); }
         .dispatch-product-card { padding: 16px; display: flex; flex-direction: column; gap: 14px; }
         .dispatch-product-card.is-selected { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.14); }
         .dispatch-product-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-        .dispatch-product-index { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 24px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 11px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
-        .dispatch-cat-pill, .dispatch-line-id, .dispatch-history-status { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+        .dispatch-product-index { display: inline-flex; align-items: center; justify-content: center; min-width: 30px; height: 24px; border-radius: 999px; background: #f1f5f9; color: #475569; font-size: 9.35px; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+        .dispatch-cat-pill, .dispatch-line-id, .dispatch-history-status { display: inline-flex; align-items: center; padding: 4px 9px; border-radius: 999px; font-size: 9.35px; font-weight: 600; }
         .dispatch-cat-pill { background: #fef3c7; color: #92400e; }
         .dispatch-line-id { background: #eef2ff; color: #4338ca; font-family: 'JetBrains Mono', monospace; }
         .dispatch-history-status { background: #eff6ff; color: #1d4ed8; }
-        .dispatch-product-name { font-size: 14px; font-weight: 700; color: #111827; }
-        .dispatch-product-desc { font-size: 12px; color: #64748b; margin-top: 4px; line-height: 1.5; }
+        .dispatch-product-name { font-size: 11.9px; font-weight: 700; color: #111827; }
+        .dispatch-product-desc { font-size: 10.2px; color: #64748b; margin-top: 4px; line-height: 1.5; }
         .dispatch-product-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
-        .dispatch-product-grid span, .dispatch-history-meta span { font-size: 11px; color: #475569; font-family: 'JetBrains Mono', monospace; }
+        .dispatch-product-grid span, .dispatch-history-meta span { font-size: 9.35px; color: #475569; font-family: 'JetBrains Mono', monospace; }
         .dispatch-original-note { margin-top: 12px; padding: 12px; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0; }
-        .dispatch-original-note-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; margin-bottom: 6px; }
-        .dispatch-original-note p { font-size: 12px; color: #334155; line-height: 1.5; }
+        .dispatch-original-note-label { display: block; font-size: 8.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; margin-bottom: 6px; }
+        .dispatch-original-note p { font-size: 10.2px; color: #334155; line-height: 1.5; }
         .dispatch-select-btn, .dispatch-submit-btn { border: none; cursor: pointer; font-family: inherit; font-weight: 600; transition: all 0.15s; }
-        .dispatch-select-btn { align-self: flex-start; padding: 9px 14px; border-radius: 12px; background: #eef2ff; color: #4338ca; }
-        .dispatch-select-btn:hover { background: #e0e7ff; }
+        .dispatch-select-btn { align-self: flex-start; padding: 9px 14px; border-radius: 12px; background: #E6F3F3; color: #02474C; }
+        .dispatch-select-btn:hover { background: #CCE7E8; color: #007C80; }
         .dispatch-form-card, .dispatch-history-card { padding: 16px; }
         .dispatch-form-card { display: flex; flex-direction: column; gap: 14px; }
         .dispatch-form-row { display: flex; flex-direction: column; gap: 6px; }
-        .dispatch-form-row label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; }
-        .dispatch-form-row input, .dispatch-form-row select, .dispatch-form-row textarea { width: 100%; border-radius: 12px; border: 1px solid #dbe2ee; background: #fff; padding: 11px 12px; font-size: 13px; font-family: inherit; color: #0f172a; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
+        .dispatch-form-row label { font-size: 9.35px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; }
+        .dispatch-form-row input, .dispatch-form-row select, .dispatch-form-row textarea { width: 100%; border-radius: 12px; border: 1px solid #dbe2ee; background: #fff; padding: 11px 12px; font-size: 11.05px; font-family: inherit; color: #0f172a; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
         .dispatch-form-row input:focus, .dispatch-form-row select:focus, .dispatch-form-row textarea:focus { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.14); }
         .dispatch-form-row input[disabled], .dispatch-form-row select[disabled], .dispatch-form-row textarea[disabled] { background: #f8fafc; color: #64748b; cursor: not-allowed; }
-        .dispatch-submit-btn { padding: 11px 16px; border-radius: 12px; background: #1d4ed8; color: #fff; }
-        .dispatch-submit-btn:hover:not(:disabled) { background: #1e40af; }
+        .dispatch-submit-btn { padding: 11px 16px; border-radius: 12px; background: #02474C; color: #fff; }
+        .dispatch-submit-btn:hover:not(:disabled) { background: #007C80; }
         .dispatch-submit-btn:disabled { opacity: 0.55; cursor: wait; }
         .dispatch-history-card { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
         .dispatch-history-item { padding: 12px; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0; }
         .dispatch-history-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-        .dispatch-history-remark { font-size: 12px; color: #1f2937; line-height: 1.5; }
+        .dispatch-history-remark { font-size: 10.2px; color: #1f2937; line-height: 1.5; }
         .dispatch-history-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; flex-wrap: wrap; }
-        .dispatch-empty, .dispatch-error { padding: 16px; border-radius: 14px; font-size: 12.5px; }
+        .dispatch-empty, .dispatch-error { padding: 16px; border-radius: 14px; font-size: 10.62px; }
         .dispatch-empty { background: #fff; border: 1px dashed #dbe2ee; color: #64748b; }
         .dispatch-error { background: #fff1f2; border: 1px solid #fecdd3; color: #be123c; }
         @media (max-width: 1100px) {
@@ -1574,12 +1574,12 @@ export default function OrderHistoryPage() {
               </svg>
             </button>
             <div className="min-w-0">
-              <h1 className="text-[19px] font-bold text-gray-900 leading-tight">Order History</h1>
-              <p className="text-[12.5px] text-gray-500 mt-0.5 flex items-center gap-2">
+              <h1 className="text-[16.15px] font-bold text-gray-900 leading-tight">Order History</h1>
+              <p className="text-[10.62px] text-gray-500 mt-0.5 flex items-center gap-2">
                 {isLoading ? "Loading…" : `${totalCount.toLocaleString()} ${filtersActive ? "matching" : "total"} order${totalCount === 1 ? "" : "s"}`}
                 {isFetching && !isLoading && (
-                  <span className="inline-flex items-center gap-1 text-indigo-600">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping inline-block" />
+                  <span className="inline-flex items-center gap-1 text-brand-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-ping inline-block" />
                     refreshing
                   </span>
                 )}
@@ -1596,7 +1596,7 @@ export default function OrderHistoryPage() {
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search orders…"
                 aria-label="Search orders"
-                className="pl-9 pr-8 py-2 text-[13px] text-gray-900 border border-gray-200 rounded-xl bg-gray-50 outline-none focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all w-56 placeholder:text-gray-400"
+                className="pl-9 pr-8 py-2 text-[11.05px] text-gray-900 border border-gray-200 rounded-xl bg-gray-50 outline-none focus:bg-white focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all w-56 placeholder:text-gray-400"
               />
               {(search || query) && (
                 <button
@@ -1612,7 +1612,7 @@ export default function OrderHistoryPage() {
 
             <button
               onClick={() => setShowInvoiceModal(true)}
-              className="flex items-center gap-2 px-3.5 py-2 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-[13px] font-semibold rounded-xl transition-colors"
+              className="flex items-center gap-2 px-3.5 py-2 border border-gray-200 bg-white hover:bg-gray-50 text-gray-700 text-[11.05px] font-semibold rounded-xl transition-colors"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
@@ -1708,7 +1708,7 @@ export default function OrderHistoryPage() {
 
             {/* Acceptance split for the rows actually on screen */}
             {section === "active" && !isLoading && !isError && orders.length > 0 && (
-              <div className="ml-auto flex items-center gap-2 text-[12px] text-gray-500">
+              <div className="ml-auto flex items-center gap-2 text-[10.2px] text-gray-500">
                 <div className="flex gap-1">
                           <DateInput
                             value={filters.dateFrom}
@@ -1738,7 +1738,7 @@ export default function OrderHistoryPage() {
 
           {selectedOrdersForBilling.length > 0 && (
             <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-blue-200 bg-blue-50 px-3 py-2">
-              <div className="text-[13px] font-semibold text-blue-900">
+              <div className="text-[11.05px] font-semibold text-blue-900">
                 Selected Orders: {selectedOrdersForBilling.length}
                 <span className="ml-3 font-mono">Selected Total: {formatMoney(selectedBillingTotal)}</span>
               </div>
@@ -1746,7 +1746,7 @@ export default function OrderHistoryPage() {
                 type="button"
                 onClick={handleBulkBillingUpload}
                 disabled={bulkBilling}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                className="rounded-lg bg-brand-600 px-4 py-2 text-[11.05px] font-semibold text-white transition-colors hover:bg-brand-500 disabled:opacity-50"
               >
                 {bulkBilling ? "Saving..." : `Save ${selectedOrdersForBilling.length} Invoice${selectedOrdersForBilling.length === 1 ? "" : "s"}`}
               </button>
@@ -1754,7 +1754,7 @@ export default function OrderHistoryPage() {
           )}
           {filtersActive && (
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Filters</span>
+              <span className="text-[9.35px] font-semibold uppercase tracking-wider text-gray-500">Filters</span>
               {filters.orderId && <FilterTag label={`Order: ${filters.orderId}…`} onRemove={() => setFilter("orderId", "")} />}
               {filters.dealer && <FilterTag label={`Dealer: ${filters.dealer}`} onRemove={() => setDealerFilter("")} />}
               {(filters.dateFrom || filters.dateTo) && (
@@ -1781,7 +1781,7 @@ export default function OrderHistoryPage() {
               {filters.mtStatus && (
                 <FilterTag label={mtConf[filters.mtStatus]?.label ?? filters.mtStatus} onRemove={() => setFilter("mtStatus", "")} />
               )}
-              <button type="button" onClick={clearFilters} className="text-[11px] text-gray-500 underline hover:text-gray-800">
+              <button type="button" onClick={clearFilters} className="text-[9.35px] text-gray-500 underline hover:text-gray-800">
                 Clear all
               </button>
             </div>
@@ -1793,7 +1793,7 @@ export default function OrderHistoryPage() {
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10" /><path d="M12 8v4m0 4h.01" />
                 </svg>
-                <p className="text-sm text-gray-600">
+                <p className="text-[11.9px] leading-5 text-gray-600">
                   {sessionExpired
                     ? "Your session has expired. Please sign in again."
                     : "Failed to load orders. Please try again."}
@@ -1802,7 +1802,7 @@ export default function OrderHistoryPage() {
                   <button
                     type="button"
                     onClick={() => router.push("/auth/login")}
-                    className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700"
+                    className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-[10.2px] leading-4 font-semibold hover:bg-brand-500"
                   >
                     Sign in
                   </button>
@@ -1810,7 +1810,7 @@ export default function OrderHistoryPage() {
                   <button
                     type="button"
                     onClick={() => refetch()}
-                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 text-xs font-semibold hover:bg-gray-50"
+                    className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 text-[10.2px] leading-4 font-semibold hover:bg-gray-50"
                   >
                     Retry
                   </button>
@@ -1823,14 +1823,14 @@ export default function OrderHistoryPage() {
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="1.5" strokeLinecap="round">
                   <circle cx="12" cy="12" r="10" /><path d="M12 8v4m0 4h.01" />
                 </svg>
-                <p className="text-sm text-gray-600">Failed to load cancelled orders. Please try again.</p>
+                <p className="text-[11.9px] leading-5 text-gray-600">Failed to load cancelled orders. Please try again.</p>
               </div>
             )}
 
             {/* ── Cancelled & Declined table ── */}
             {section === "cancelled" && !cancelledError && (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-[11.9px] leading-5">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200">
                       <th className={thCls}>#</th>
@@ -1853,7 +1853,7 @@ export default function OrderHistoryPage() {
                               <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="1.2" strokeLinecap="round">
                                 <circle cx="12" cy="12" r="9" /><path d="m15 9-6 6M9 9l6 6" />
                               </svg>
-                              <p className="text-sm text-gray-600">No cancelled or declined orders found</p>
+                              <p className="text-[11.9px] leading-5 text-gray-600">No cancelled or declined orders found</p>
                             </div>
                           </td></tr>
                         )
@@ -1861,26 +1861,26 @@ export default function OrderHistoryPage() {
                           <tr key={order.id || order.orderId} className="odd:bg-white even:bg-gray-50/50 hover:bg-blue-50/40 transition-colors">
                             <td className="px-2 py-2 text-gray-700 font-medium">{String((page - 1) * pageSize + i + 1).padStart(2, "0")}</td>
                             <td className="px-2 py-2">
-                              <span className="font-mono text-[13px] font-bold text-indigo-700">
+                              <span className="font-mono text-[11.05px] font-bold text-brand-600">
                                 {order.formattedOrderNumber || formatDisplayOrderNumber(order.orderId)}
                               </span>
                             </td>
                             {showDealerCol && (
                               <td className="px-2 py-2">
-                                <p className="text-[13px] font-medium text-gray-900">{order.dealerName || (order.originalOrderRef?.Dealer_Name as string) || "Dealer"}</p>
-                                <p className="text-[11px] text-gray-500 font-mono mt-0.5">ID: {order.dealerId}</p>
+                                <p className="text-[11.05px] font-medium text-gray-900">{order.dealerName || (order.originalOrderRef?.Dealer_Name as string) || "Dealer"}</p>
+                                <p className="text-[9.35px] text-gray-500 font-mono mt-0.5">ID: {order.dealerId}</p>
                               </td>
                             )}
-                            <td className="px-2 py-2 font-mono text-[12px] text-gray-700">
+                            <td className="px-2 py-2 font-mono text-[10.2px] text-gray-700">
                               {((order.decline?.declinedAt || order.cancellation?.cancelledAt) || "").slice(0, 10) || "—"}
                             </td>
-                            <td className="px-2 py-2 max-w-[360px] text-[13px] text-gray-700">
+                            <td className="px-2 py-2 max-w-[360px] text-[11.05px] text-gray-700">
                               {order.outcome === "declined" ? (order.decline?.note || "—") : (order.cancellation?.reason || "—")}
                               {order.outcome === "declined" && (
-                                <p className="mt-1 text-[11px] text-red-700">Declined at {order.decline?.stage === "rsm" ? "RSM" : "staff"} stage</p>
+                                <p className="mt-1 text-[9.35px] text-red-700">Declined at {order.decline?.stage === "rsm" ? "RSM" : "staff"} stage</p>
                               )}
                             </td>
-                            <td className="px-2 py-2 font-mono text-[12px] text-gray-700">
+                            <td className="px-2 py-2 font-mono text-[10.2px] text-gray-700">
                               {order.outcome === "declined"
                                 ? (order.decline?.declinedBy?.name || order.decline?.declinedBy?.role || "Reviewer")
                                 : (order.cancellation?.cancelledBy?.name || order.cancellation?.cancelledBy?.id || "Dealer")}
@@ -1894,7 +1894,7 @@ export default function OrderHistoryPage() {
                             <td className="px-2 py-2">
                               <button
                                 onClick={() => router.push(`/orders/${order.orderId}`)}
-                                className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 text-[12px] font-semibold hover:bg-gray-50 transition-colors"
+                                className="px-3 py-1.5 rounded-lg border border-gray-200 text-gray-700 text-[10.2px] font-semibold hover:bg-gray-50 transition-colors"
                               >
                                 View order
                               </button>
@@ -1910,7 +1910,7 @@ export default function OrderHistoryPage() {
             {/* ── Active orders table ── */}
             {section === "active" && !isError && (
               <div className="overflow-x-auto">
-                <table className="w-full text-sm">
+                <table className="w-full text-[11.9px] leading-5">
                   <thead>
                     <tr className="bg-gray-50 border-b border-gray-200 align-top">
                       <th className={`${thCls} w-px`} title="Select for bulk invoicing">Bill</th>
@@ -2040,7 +2040,7 @@ export default function OrderHistoryPage() {
                                 <path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
                                 <rect x="9" y="3" width="6" height="4" rx="1" />
                               </svg>
-                              <p className="text-sm text-gray-600">{filtersActive ? "No orders match the current filters" : "No orders found"}</p>
+                              <p className="text-[11.9px] leading-5 text-gray-600">{filtersActive ? "No orders match the current filters" : "No orders found"}</p>
                             </div>
                           </td></tr>
                         )
@@ -2074,15 +2074,15 @@ export default function OrderHistoryPage() {
                               <td className="px-2 py-2">
                                 <div className="flex items-center gap-2">
                                   <span
-                                    className="font-mono text-[13px] font-bold text-indigo-700"
+                                    className="font-mono text-[11.05px] font-bold text-brand-600"
                                     dangerouslySetInnerHTML={{ __html: formatDisplayOrderNumber(highlight(String(oid), filters.orderId)) }}
                                   />
                                   {isDeleted && (
-                                    <span className="px-1.5 py-0.5 bg-red-50 border border-red-200 text-red-700 rounded text-[10px] font-bold">DELETED</span>
+                                    <span className="px-1.5 py-0.5 bg-red-50 border border-red-200 text-red-700 rounded text-[8.5px] font-bold">DELETED</span>
                                   )}
                                 </div>
                                 {historyNote && (
-                                  <p className="mt-1 max-w-[160px] truncate text-[11px] text-gray-500" title={historyNote}>
+                                  <p className="mt-1 max-w-[160px] truncate text-[9.35px] text-gray-500" title={historyNote}>
                                     Note: {historyNote}
                                   </p>
                                 )}
@@ -2090,35 +2090,35 @@ export default function OrderHistoryPage() {
                               {showDealerCol && (
                                 <td className="px-2 py-2">
                                   <p
-                                    className="text-[13px] font-medium text-gray-900"
+                                    className="text-[11.05px] font-medium text-gray-900"
                                     dangerouslySetInnerHTML={{ __html: highlight(order.Dealer_Name || "—", filters.dealer) }}
                                   />
-                                  <p className="text-[11px] text-gray-500 font-mono mt-0.5">ID: {order.order_dealer}</p>
+                                  <p className="text-[9.35px] text-gray-500 font-mono mt-0.5">ID: {order.order_dealer}</p>
                                 </td>
                               )}
                               <td className="px-2 py-2">
-                                <p className="text-[13px] text-gray-900 font-medium">{moment(order.order_date).format("DD MMM YYYY")}</p>
-                                <p className="text-[11px] text-gray-600 font-mono mt-0.5">{moment(order.order_date).format("hh:mm A")}</p>
+                                <p className="text-[11.05px] text-gray-900 font-medium">{moment(order.order_date).format("DD MMM YYYY")}</p>
+                                <p className="text-[9.35px] text-gray-600 font-mono mt-0.5">{moment(order.order_date).format("hh:mm A")}</p>
                               </td>
-                              <td className="px-2 py-2 font-mono text-[14px] font-bold text-gray-900">
+                              <td className="px-2 py-2 font-mono text-[11.9px] font-bold text-gray-900">
                                 {formatMoney(displayOrder.grossAmount)}
                               </td>
-                              <td className="px-2 py-2 font-mono text-[13px] text-amber-700">
+                              <td className="px-2 py-2 font-mono text-[11.05px] text-amber-700">
                                 {displayOrder.discountAmount > 0 ? `−${formatMoney(displayOrder.discountAmount)}` : "—"}
                                 {additionalDiscount ? (
                                   <>
-                                    <p className="mt-1 text-[11px] font-semibold text-indigo-600">{additionalDiscount.label}</p>
-                                    <p className="text-[11px] text-indigo-600">{additionalDiscount.amountText}</p>
+                                    <p className="mt-1 text-[9.35px] font-semibold text-brand-600">{additionalDiscount.label}</p>
+                                    <p className="text-[9.35px] text-brand-600">{additionalDiscount.amountText}</p>
                                   </>
                                 ) : (
-                                  discountBadge && <p className="mt-1 text-[11px] font-semibold text-indigo-600">{discountBadge}</p>
+                                  discountBadge && <p className="mt-1 text-[9.35px] font-semibold text-brand-600">{discountBadge}</p>
                                 )}
                               </td>
-                              <td className="px-2 py-2 font-mono text-[14px] font-bold text-emerald-700">
+                              <td className="px-2 py-2 font-mono text-[11.9px] font-bold text-emerald-700">
                                 {formatMoney(displayOrder.netPayableAmount)}
                               </td>
                               <td className="px-2 py-2">
-                                <span className="px-2 py-0.5 bg-gray-100 text-gray-800 rounded-lg text-[12px] font-mono font-semibold">
+                                <span className="px-2 py-0.5 bg-gray-100 text-gray-800 rounded-lg text-[10.2px] font-mono font-semibold">
                                   {order.orderdata_item_quantity} units
                                 </span>
                               </td>
@@ -2129,7 +2129,7 @@ export default function OrderHistoryPage() {
                                 </div>
                               </td>
                               {showDispatchNote ? (
-                              <td className="px-2 py-2 max-w-[220px] text-[11px] leading-snug text-gray-700 whitespace-normal break-words">
+                              <td className="px-2 py-2 max-w-[220px] text-[9.35px] leading-snug text-gray-700 whitespace-normal break-words">
                                 {order.dispatch_note || <span className="text-gray-400">—</span>}
                               </td>
                               ) : (
@@ -2137,43 +2137,45 @@ export default function OrderHistoryPage() {
                                 <AcceptBadge accepted={order.accept_order} />
                                 {rsmStatus === "ACCEPTED" && (
                                   <>
-                                    <p className="mt-1 text-[10px] leading-tight font-semibold text-emerald-700">RSM Approved{reviewedBy ? `: ${reviewedBy}` : ""}</p>
+                                    <p className="mt-1 text-[8.5px] leading-tight font-semibold text-emerald-700">RSM Approved{reviewedBy ? `: ${reviewedBy}` : ""}</p>
                                     {order.accept_order === "1" ? (
-                                      <p className="text-[10px] leading-tight font-semibold text-emerald-700">Staff Approved{order.acceptanceReviewedBy ? `: ${order.acceptanceReviewedBy}` : ""}</p>
+                                      <p className="text-[8.5px] leading-tight font-semibold text-emerald-700">Staff Approved{order.acceptanceReviewedBy ? `: ${order.acceptanceReviewedBy}` : ""}</p>
                                     ) : order.accept_order === "2" ? (
-                                      <p className="text-[10px] leading-tight font-semibold text-rose-700">Staff Disapproved{order.acceptanceReviewedBy ? `: ${order.acceptanceReviewedBy}` : ""}</p>
+                                      <p className="text-[8.5px] leading-tight font-semibold text-rose-700">Staff Disapproved{order.acceptanceReviewedBy ? `: ${order.acceptanceReviewedBy}` : ""}</p>
                                     ) : (
-                                      <p className="text-[10px] leading-tight font-semibold text-amber-700">Staff Awaiting{order.staffname ? `: ${order.staffname}` : ""}</p>
+                                      <p className="text-[8.5px] leading-tight font-semibold text-amber-700">Staff Awaiting{order.staffname ? `: ${order.staffname}` : ""}</p>
                                     )}
                                   </>
                                 )}
                                 {rsmStatus === "DECLINED" && (
-                                  <p className="mt-1 text-[10px] leading-tight font-semibold text-rose-700">RSM Disapproved{reviewedBy ? ` by ${reviewedBy}` : ""}</p>
+                                  <p className="mt-1 text-[8.5px] leading-tight font-semibold text-rose-700">RSM Disapproved{reviewedBy ? ` by ${reviewedBy}` : ""}</p>
                                 )}
                                 {rsmStatus === "AWAITING" && (
                                   <>
-                                    <p className="mt-1 text-[10px] leading-tight font-semibold text-amber-700">Awaiting RSM approval{order.rsmName ? `: ${order.rsmName}` : ""}</p>
-                                    {order.staffname && <p className="text-[10px] leading-tight text-gray-500">Staff: {order.staffname}</p>}
+                                    <p className="mt-1 text-[8.5px] leading-tight font-semibold text-amber-700">Awaiting RSM approval{order.rsmName ? `: ${order.rsmName}` : ""}</p>
+                                    {order.staffname && <p className="text-[8.5px] leading-tight text-gray-500">Staff: {order.staffname}</p>}
                                   </>
                                 )}
                               </td>
                               )}
                               <td className="px-2 py-2">
                                 <MtStatusBadge status={order.mtstatus} />
-                                <p className="mt-1 text-[11px] leading-snug text-gray-500 font-mono">
+                                <p className="mt-1 text-[9.35px] leading-snug text-gray-500 font-mono">
                                   Total: {order.orderdata_item_quantity || 0} pcs<br />Dispatched: {order.readyquantity || 0} pcs
                                 </p>
-                                {order.reason && <p className="mt-1 text-[11px] font-semibold text-red-700">⚠ {order.reason}</p>}
+                                {order.reason && <p className="mt-1 text-[9.35px] font-semibold text-red-700">⚠ {order.reason}</p>}
                               </td>
                               {showCustomDiscount && (
                                 <td className="px-2 py-2">
                                   <CustomDiscountBadge progress={customDiscountSummary?.customDiscountStatus ?? null} />
                                 </td>
                               )}
-                              <td className="px-2 py-2 font-mono text-[12px] text-gray-700">
-                                {order.outstandingDate ? moment(order.outstandingDate).format("DD MMM YYYY") : "—"}
+                              <td className="px-2 py-2 font-mono text-[10.2px] text-gray-700">
+                                {order.outstandingDate
+                                  ? moment(order.outstandingDate).format("DD MMM YYYY")
+                                  : safeNumber(order.orderdata_item_quantity) > 0 ? null : "—"}
                                 {safeNumber(order.orderdata_item_quantity) > 0 && (
-                                  <p className={`mt-1 text-[11px] font-semibold ${getOrderLeftPieces(order) > 0 ? "text-red-600" : "text-emerald-600"}`}>
+                                  <p className={`${order.outstandingDate ? "mt-1 " : ""}text-[9.35px] font-semibold ${getOrderLeftPieces(order) > 0 ? "text-red-600" : "text-emerald-600"}`}>
                                     {getOrderLeftPieces(order) > 0 ? `Left: ${getOrderLeftPieces(order)} pcs` : "All dispatched"}
                                   </p>
                                 )}
@@ -2212,17 +2214,17 @@ export default function OrderHistoryPage() {
             {!isLoading && !isError && totalPages > 1 && (
               <div className="flex items-center justify-between px-3 py-2 border-t border-gray-100 bg-gray-50">
                 <div className="flex items-center gap-4 flex-wrap">
-                  <p className="text-[13px] text-gray-700 font-medium">
+                  <p className="text-[11.05px] text-gray-700 font-medium">
                     Page {page} of {totalPages} · <span className="text-gray-600">{totalCount} orders</span>
                   </p>
                   <div className="flex items-center gap-1.5">
-                    <span className="text-[12px] font-semibold text-gray-500">Show</span>
+                    <span className="text-[10.2px] font-semibold text-gray-500">Show</span>
                     {ORDER_PAGE_SIZE_OPTIONS.map(size => (
                       <button
                         key={size}
                         type="button"
                         onClick={() => { setPageSize(size); setPage(1); }}
-                        className={`h-8 min-w-9 px-2.5 rounded-lg border text-[12px] font-semibold transition-all ${pageSize === size ? "bg-gray-900 text-white border-gray-900" : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"}`}
+                        className={`h-8 min-w-9 px-2.5 rounded-lg border text-[10.2px] font-semibold transition-all ${pageSize === size ? "bg-gray-900 text-white border-gray-900" : "bg-white border-gray-200 text-gray-700 hover:bg-gray-50"}`}
                       >
                         {size}
                       </button>
@@ -2233,9 +2235,9 @@ export default function OrderHistoryPage() {
                   <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
                     className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-700 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-all font-medium">‹</button>
                   {pageNums.map((p, i) => p === "…"
-                    ? <span key={`d${i}`} className="w-8 h-8 flex items-center justify-center text-gray-500 text-[13px]">…</span>
+                    ? <span key={`d${i}`} className="w-8 h-8 flex items-center justify-center text-gray-500 text-[11.05px]">…</span>
                     : <button key={p} onClick={() => setPage(p as number)}
-                      className={`w-8 h-8 flex items-center justify-center rounded-lg text-[13px] font-semibold border transition-all ${page === p ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 text-gray-700 hover:bg-white"}`}>{p}</button>
+                      className={`w-8 h-8 flex items-center justify-center rounded-lg text-[11.05px] font-semibold border transition-all ${page === p ? "bg-gray-900 text-white border-gray-900" : "border-gray-200 text-gray-700 hover:bg-white"}`}>{p}</button>
                   )}
                   <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
                     className="w-8 h-8 flex items-center justify-center rounded-lg border border-gray-200 text-gray-700 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-all font-medium">›</button>

@@ -135,7 +135,7 @@ function InvoiceButton({ tx }: { tx: Transaction }) {
         type="button"
         onClick={handleInvoice}
         disabled={loading}
-        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 shadow-sm transition-all hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 disabled:opacity-50"
+        className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-[11px] font-semibold text-gray-700 shadow-sm transition-all hover:border-brand-300 hover:bg-brand-50 hover:text-brand-500 disabled:opacity-50"
         title="Download invoice PDF"
       >
         {loading ? (
@@ -175,14 +175,14 @@ export default function TransactionTable({
     <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 px-6 py-4">
         <div className="flex items-center gap-2">
-          <Receipt className="h-4 w-4 text-indigo-500" />
+          <Receipt className="h-4 w-4 text-brand-500" />
           <div>
             <h2 className="text-[15px] font-bold text-gray-900">Invoices</h2>
             <p className="text-[12px] text-gray-500">
               {safeCount === 0 ? 'No transaction records' : `${formatCount(safeCount)} transaction records`}
               {isFetching && !isLoading ? (
-                <span className="ml-2 inline-flex items-center gap-1 text-indigo-600">
-                  <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-ping" />
+                <span className="ml-2 inline-flex items-center gap-1 text-brand-600">
+                  <span className="h-1.5 w-1.5 rounded-full bg-brand-500 animate-ping" />
                   refreshing
                 </span>
               ) : null}
@@ -239,7 +239,7 @@ export default function TransactionTable({
 
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
-                          <span className="font-mono text-[13px] font-bold text-indigo-700">
+                          <span className="font-mono text-[13px] font-bold text-brand-600">
                             {tx.invoice ? formatDisplayOrderNumber(tx.invoice, orderYear) : tx.id}
                           </span>
                           <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10.5px] font-bold ${tone.wrap}`}>

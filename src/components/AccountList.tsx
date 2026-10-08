@@ -90,14 +90,14 @@ function AccountList() {
   return (
     <div className="bg-white rounded-lg shadow-sm overflow-hidden text-black">
       {/* ── Profile header ── */}
-      <div className="w-full bg-gradient-to-r from-indigo-50 to-purple-50 p-3 border-b border-indigo-100">
+      <div className="w-full bg-gradient-to-r from-brand-50 to-purple-50 p-3 border-b border-brand-100">
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3 flex-1">
-            <img src={imageSrc} alt="profile" className="w-10 h-10 rounded-full object-cover border-2 border-indigo-200" />
+            <img src={imageSrc} alt="profile" className="w-10 h-10 rounded-full object-cover border-2 border-brand-200" />
             <div className="flex flex-col min-w-0">
               <span className="text-sm font-semibold text-gray-900 truncate">{userName}</span>
               <span className="text-xs text-gray-500 truncate">{userEmail}</span>
-              <span className="text-xs font-medium text-indigo-600">{roleLabel}</span>
+              <span className="text-xs font-medium text-brand-600">{roleLabel}</span>
             </div>
           </div>
           <button onClick={handleLogout} className="flex items-center gap-1.5 text-xs font-semibold text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg px-3 py-1.5 transition-colors border border-red-100">
@@ -115,23 +115,23 @@ function AccountList() {
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Quick Links</h3>
           <ul className="space-y-1">
             <li>
-              <Link href="/Products" style={linkStyle} className="hover:text-indigo-600">
+              <Link href="/Products" style={linkStyle} className="hover:text-brand-500">
                 <HiOutlineBeaker className="w-4 h-4 shrink-0" /> All Products
               </Link>
             </li>
             <li>
-              <Link href="/categories" style={linkStyle} className="hover:text-indigo-600">
+              <Link href="/categories" style={linkStyle} className="hover:text-brand-500">
                 <HiOutlineSquares2X2 className="w-4 h-4 shrink-0" /> Categories
               </Link>
             </li>
             <li>
-              <Link href="/Pages/Cart" style={linkStyle} className="hover:text-indigo-600">
+              <Link href="/Pages/Cart" style={linkStyle} className="hover:text-brand-500">
                 <HiOutlineShoppingCart className="w-4 h-4 shrink-0" /> My Cart
               </Link>
             </li>
             {role === "2" && (
               <li>
-                <Link href="/dashboard/dealer/AddOrderForm" style={linkStyle} className="hover:text-indigo-600">
+                <Link href="/dashboard/dealer/AddOrderForm" style={linkStyle} className="hover:text-brand-500">
                   <HiOutlineClipboardDocumentList className="w-4 h-4 shrink-0" /> New Order
                 </Link>
               </li>
@@ -144,25 +144,25 @@ function AccountList() {
           <h3 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Your Account</h3>
           <ul className="space-y-1">
             <li>
-              <Link href={dashboardLink} style={linkStyle} className="hover:text-indigo-600">
+              <Link href={dashboardLink} style={linkStyle} className="hover:text-brand-500">
                 <HiOutlineChartBarSquare className="w-4 h-4 shrink-0" />
                 {role === "3" ? "Admin Panel" : "Dashboard"}
               </Link>
             </li>
             <li>
-              <Link href={ordersLink} style={linkStyle} className="hover:text-indigo-600">
+              <Link href={ordersLink} style={linkStyle} className="hover:text-brand-500">
                 <HiOutlineCube className="w-4 h-4 shrink-0" /> Orders
               </Link>
             </li>
             {role === "3" && (
               <>
                 <li>
-                  <Link href="/dashboard/admin/dealer/DealerList" style={linkStyle} className="hover:text-indigo-600">
+                  <Link href="/dashboard/admin/dealer/DealerList" style={linkStyle} className="hover:text-brand-500">
                     <HiOutlineUserGroup className="w-4 h-4 shrink-0" /> Dealers
                   </Link>
                 </li>
                 <li>
-                  <Link href="/dashboard/admin/hot-items" style={linkStyle} className="hover:text-indigo-600">
+                  <Link href="/dashboard/admin/hot-items" style={linkStyle} className="hover:text-brand-500">
                     <HiOutlineFire className="w-4 h-4 shrink-0" /> Hot Items
                   </Link>
                 </li>
@@ -170,7 +170,7 @@ function AccountList() {
             )}
             {role !== "3" && role !== "2" && (
               <li>
-                <Link href="/dashboard/staff/orderstatus" style={linkStyle} className="hover:text-indigo-600">
+                <Link href="/dashboard/staff/orderstatus" style={linkStyle} className="hover:text-brand-500">
                   <HiOutlineClipboardDocumentList className="w-4 h-4 shrink-0" /> Order Status
                 </Link>
               </li>

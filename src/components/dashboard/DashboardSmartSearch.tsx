@@ -313,7 +313,7 @@ export default function DashboardSmartSearch({
   return (
     <div ref={rootRef} className="relative ml-auto flex w-full max-w-[640px] min-w-0 flex-1">
       <form
-        className="flex h-[38px] w-full items-stretch overflow-hidden rounded-[11px] border border-white/10 bg-white/[0.09] shadow-sm backdrop-blur transition focus-within:border-indigo-400/60 focus-within:bg-white/[0.12]"
+        className="flex h-[38px] w-full items-stretch overflow-hidden rounded-[11px] border border-white/10 bg-white/[0.09] shadow-sm backdrop-blur transition focus-within:border-brand-400/60 focus-within:bg-white/[0.12]"
         onSubmit={(event) => {
           event.preventDefault();
           submitSearch(resolvedActiveIndex >= 0 ? flatResults[resolvedActiveIndex] : null);
@@ -411,7 +411,7 @@ export default function DashboardSmartSearch({
                           </span>
                         </div>
                         {result.subtitle && (
-                          <div className="mt-1 truncate text-xs font-medium text-indigo-700">{result.subtitle}</div>
+                          <div className="mt-1 truncate text-xs font-medium text-brand-600">{result.subtitle}</div>
                         )}
                         {result.metadata && (
                           <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">{result.metadata}</div>

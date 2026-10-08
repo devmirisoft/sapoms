@@ -155,7 +155,7 @@ export default function DealerHelpButton({ className }: { className?: string }) 
                 <div key={contact.id} className="border-b border-gray-50 px-4 py-3 last:border-b-0">
                   <div className="flex items-baseline justify-between gap-2">
                     <p className="truncate text-[13px] font-semibold text-gray-950">{contact.name || "Unnamed"}</p>
-                    <span className="flex-shrink-0 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                    <span className="flex-shrink-0 rounded-full bg-brand-50 px-2 py-0.5 text-[10px] font-semibold text-brand-600">
                       {contact.roleLabel || contact.designation || contact.tier}
                     </span>
                   </div>
@@ -164,7 +164,7 @@ export default function DealerHelpButton({ className }: { className?: string }) 
                     {contact.phone && (
                       <a
                         href={`tel:${contact.phone}`}
-                        className="flex items-center gap-2 text-[13px] text-gray-700 transition hover:text-indigo-700"
+                        className="flex items-center gap-2 text-[13px] text-gray-700 transition hover:text-brand-500"
                       >
                         <Phone size={13} className="flex-shrink-0 text-gray-400" />
                         <span className="font-mono">{contact.phone}</span>
@@ -173,7 +173,7 @@ export default function DealerHelpButton({ className }: { className?: string }) 
                     {contact.email && (
                       <a
                         href={`mailto:${contact.email}`}
-                        className="flex items-center gap-2 text-[13px] text-gray-700 transition hover:text-indigo-700"
+                        className="flex items-center gap-2 text-[13px] text-gray-700 transition hover:text-brand-500"
                       >
                         <Mail size={13} className="flex-shrink-0 text-gray-400" />
                         <span className="truncate">{contact.email}</span>

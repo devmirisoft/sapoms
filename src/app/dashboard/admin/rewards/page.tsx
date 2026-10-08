@@ -105,7 +105,7 @@ function AdjustModal({
               type="number" min="1" value={amount}
               onChange={e => { setAmount(e.target.value); setErr(""); }}
               placeholder="e.g. 100"
-              className="w-full px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              className="w-full px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
             />
           </div>
 
@@ -115,7 +115,7 @@ function AdjustModal({
             <input
               type="text" value={note} onChange={e => setNote(e.target.value)}
               placeholder="e.g. Seasonal bonus"
-              className="w-full px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              className="w-full px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
             />
           </div>
 
@@ -127,7 +127,7 @@ function AdjustModal({
               Cancel
             </button>
             <button type="submit" disabled={busy}
-              className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[13px] font-semibold disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
+              className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-[13px] font-semibold disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
               {busy ? <Loader2 size={13} className="animate-spin"/> : <Check size={13}/>}
               {busy ? "Saving…" : "Save"}
             </button>
@@ -230,7 +230,7 @@ export default function RewardsPage() {
       {/* Stats strip */}
       <div className="grid grid-cols-3 gap-3 mb-5">
         {[
-          { label: "Total Dealers",    value: dealers.length,  icon: <Users size={14}/>,  color: "text-indigo-600", bg: "bg-indigo-50" },
+          { label: "Total Dealers",    value: dealers.length,  icon: <Users size={14}/>,  color: "text-brand-600", bg: "bg-brand-50" },
           { label: "Active Rewards",   value: activeRewards,   icon: <Star size={14}/>,   color: "text-amber-600",  bg: "bg-amber-50"  },
           { label: "Points Issued",    value: totalPoints.toLocaleString(), icon: <Trophy size={14}/>, color: "text-emerald-600", bg: "bg-emerald-50" },
         ].map(s => (
@@ -270,7 +270,7 @@ export default function RewardsPage() {
         <input
           type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search by name, email or dealer code…"
-          className="w-full pl-9 pr-4 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 bg-white"
+          className="w-full pl-9 pr-4 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 bg-white"
         />
       </div>
 
@@ -320,7 +320,7 @@ export default function RewardsPage() {
                         </div>
                       </td>
                       <td className="px-5 py-4">
-                        <span className="font-mono text-[11.5px] text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded-md border border-indigo-100">
+                        <span className="font-mono text-[11.5px] text-brand-600 bg-brand-50 px-2 py-0.5 rounded-md border border-brand-100">
                           {d.Dealer_Dealercode || "—"}
                         </span>
                       </td>

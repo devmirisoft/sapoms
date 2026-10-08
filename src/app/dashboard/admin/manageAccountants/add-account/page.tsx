@@ -68,7 +68,7 @@ function Field({
             placeholder:text-gray-300 disabled:opacity-60 bg-white
             ${error
               ? "border-red-300 bg-red-50/30 focus:ring-2 focus:ring-red-100"
-              : "border-gray-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              : "border-gray-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
             } ${suffix ? "pr-10" : ""}`}
         />
         {suffix && (
@@ -130,10 +130,10 @@ function AccountantModal({
         {/* Header */}
         <div className="flex items-center justify-between px-6 pt-5 pb-4 border-b border-gray-100">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
+            <div className="w-9 h-9 rounded-xl bg-brand-50 flex items-center justify-center">
               {mode === "create"
-                ? <UserPlus size={15} className="text-indigo-600"/>
-                : <Pencil   size={15} className="text-indigo-600"/>}
+                ? <UserPlus size={15} className="text-brand-600"/>
+                : <Pencil   size={15} className="text-brand-600"/>}
             </div>
             <div>
               <h2 className="text-[14.5px] font-bold text-gray-900">
@@ -183,7 +183,7 @@ function AccountantModal({
               Cancel
             </button>
             <button type="submit" disabled={busy}
-              className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[13px] font-semibold disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
+              className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-[13px] font-semibold disabled:opacity-60 transition-colors flex items-center justify-center gap-2">
               {busy
                 ? <><Loader2 size={13} className="animate-spin"/> Saving…</>
                 : <><Check size={13}/> {mode === "create" ? "Create Account" : "Save Changes"}</>}
@@ -311,7 +311,7 @@ export default function ManageAccountantsPage() {
       <div className="flex items-start justify-between mb-6 flex-wrap gap-4">
         <div>
           <h1 className="text-[22px] font-bold text-gray-900 flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-indigo-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-brand-600 flex items-center justify-center">
               <Users size={15} className="text-white"/>
             </div>
             Manage Accountants
@@ -328,7 +328,7 @@ export default function ManageAccountantsPage() {
           </button>
           <button
             onClick={() => setModal("create")}
-            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-[13px] font-semibold rounded-xl transition-colors"
+            className="flex items-center gap-2 px-4 py-2.5 bg-brand-600 hover:bg-brand-500 text-white text-[13px] font-semibold rounded-xl transition-colors"
           >
             <UserPlus size={14}/> Add Accountant
           </button>
@@ -338,7 +338,7 @@ export default function ManageAccountantsPage() {
       {/* Stats */}
       <div className="flex items-center gap-3 mb-5 flex-wrap">
         <div className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-xl text-[12.5px] text-gray-600">
-          <Users size={13} className="text-indigo-500"/>
+          <Users size={13} className="text-brand-500"/>
           <span>Total: <strong className="text-gray-900">{accountants.length}</strong></span>
         </div>
         <div className="flex items-center gap-2 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-xl text-[12.5px] text-emerald-700">
@@ -351,7 +351,7 @@ export default function ManageAccountantsPage() {
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 gap-3 text-gray-400">
-            <Loader2 size={24} className="animate-spin text-indigo-400"/>
+            <Loader2 size={24} className="animate-spin text-brand-400"/>
             <span className="text-[13px]">Loading accountants…</span>
           </div>
         ) : accountants.length === 0 ? (
@@ -362,7 +362,7 @@ export default function ManageAccountantsPage() {
             <p className="text-[13px] text-gray-400 font-medium">No accountants yet</p>
             <button
               onClick={() => setModal("create")}
-              className="mt-1 flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-[12.5px] font-semibold rounded-xl transition-colors"
+              className="mt-1 flex items-center gap-1.5 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white text-[12.5px] font-semibold rounded-xl transition-colors"
             >
               <UserPlus size={13}/> Add first accountant
             </button>
@@ -384,7 +384,7 @@ export default function ManageAccountantsPage() {
 
                     <td className="px-5 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-indigo-500 to-violet-500 flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-brand-500 to-violet-500 flex items-center justify-center text-white text-[12px] font-bold flex-shrink-0">
                           {(a.name ?? "AC").split(" ").map((n: string) => n[0]).join("").toUpperCase().slice(0, 2)}
                         </div>
                         <span className="text-[13px] font-semibold text-gray-900">{a.name}</span>
@@ -406,7 +406,7 @@ export default function ManageAccountantsPage() {
                     </td>
 
                     <td className="px-5 py-4">
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-indigo-50 border border-indigo-200 text-indigo-700">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10.5px] font-bold bg-brand-50 border border-brand-200 text-brand-600">
                         <ShieldCheck size={10}/>
                         {a.role || "accountant"}
                       </span>
@@ -422,7 +422,7 @@ export default function ManageAccountantsPage() {
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => { setEditing(a); setModal("edit"); }}
-                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11.5px] font-semibold bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg transition-all shadow-sm"
+                          className="flex items-center gap-1.5 px-2.5 py-1.5 text-[11.5px] font-semibold bg-white border border-gray-200 hover:border-brand-300 hover:bg-brand-50 text-gray-600 hover:text-brand-500 rounded-lg transition-all shadow-sm"
                         >
                           <Pencil size={11}/> Edit
                         </button>

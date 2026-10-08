@@ -82,7 +82,7 @@ function SectionCard({
   return (
     <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
       <div className="flex items-center gap-2 mb-5 pb-3 border-b border-gray-100">
-        <span className="text-indigo-500">{icon}</span>
+        <span className="text-brand-500">{icon}</span>
         <h2 className="text-sm font-semibold text-gray-700 uppercase tracking-wide">{title}</h2>
       </div>
       {children}
@@ -113,7 +113,7 @@ function InputField({
         value={value}
         onChange={e => onChange(type === "tel" ? phoneInput(e.target.value) : e.target.value)}
         placeholder={placeholder || label}
-        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
       />
       {hint && <p className="text-[11px] text-gray-400">{hint}</p>}
     </div>
@@ -124,7 +124,7 @@ function PriorityPill() {
   return (
     <span
       title="Priority person — used for calls"
-      className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+      className="rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
     >
       Priority
     </span>
@@ -491,7 +491,7 @@ export default function EditDealerPage() {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <Loader2 className="w-7 h-7 text-indigo-600 animate-spin" />
+          <Loader2 className="w-7 h-7 text-brand-600 animate-spin" />
           <p className="text-sm text-gray-500">Loading dealer data...</p>
         </div>
       </div>
@@ -589,7 +589,7 @@ export default function EditDealerPage() {
                   <button
                     type="button"
                     onClick={() => setAdditionalContacts(prev => [...prev, { name: "", phone: "", email: "" }])}
-                    className="rounded-lg border border-indigo-300 px-4 py-2 text-xs font-semibold text-indigo-600 transition hover:bg-indigo-50"
+                    className="rounded-lg border border-brand-300 px-4 py-2 text-xs font-semibold text-brand-600 transition hover:bg-brand-50"
                   >
                     + Add Contact
                   </button>
@@ -603,7 +603,7 @@ export default function EditDealerPage() {
                   <select
                     value={priorityPerson}
                     onChange={e => setPriorityPerson(e.target.value === "secondary" ? "secondary" : "primary")}
-                    className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                    className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
                   >
                     <option value="primary">Contact 1</option>
                     <option value="secondary">Contact 2</option>
@@ -629,12 +629,12 @@ export default function EditDealerPage() {
                         value={diagnosticPassword}
                         onChange={e => setDiagnosticPassword(e.target.value)}
                         placeholder="Temporary testing password"
-                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500"
                       />
                       <button
                         type="button"
                         onClick={() => setShowDiagnosticPassword(value => !value)}
-                        className="absolute inset-y-0 right-2 flex items-center rounded-md px-2 text-gray-400 transition hover:text-indigo-600"
+                        className="absolute inset-y-0 right-2 flex items-center rounded-md px-2 text-gray-400 transition hover:text-brand-500"
                         aria-label={showDiagnosticPassword ? "Hide diagnostic password" : "Show diagnostic password"}
                         title={showDiagnosticPassword ? "Hide password" : "Show password"}
                       >
@@ -649,7 +649,7 @@ export default function EditDealerPage() {
                         value={diagnosticExpiryHours}
                         onChange={e => setDiagnosticExpiryHours(e.target.value)}
                         aria-label="Diagnostic password expiry in hours"
-                        className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-2.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-2.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
                       />
                       <span className="text-[11px] text-gray-400 whitespace-nowrap">hrs</span>
                     </div>
@@ -689,7 +689,7 @@ export default function EditDealerPage() {
                 <select
                   value={isWalletActive ? "advance" : "credit"}
                   onChange={e => setWalletStatus(e.target.value === "advance" ? "active" : "inactive")}
-                  className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                  className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
                 >
                   <option value="credit">Credit</option>
                   <option value="advance">Advance (Wallet)</option>
@@ -725,7 +725,7 @@ export default function EditDealerPage() {
                 <select
                   value={status}
                   onChange={(e) => setStatus(normalizeDealerStatus(e.target.value))}
-                  className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                  className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
                 >
                   <option value="active">Active</option>
                   <option value="inactive">Inactive</option>
@@ -770,7 +770,7 @@ export default function EditDealerPage() {
                   onChange={e => setNotes(e.target.value)}
                   rows={4}
                   placeholder="Add any notes about this dealer..."
-                  className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition resize-none"
+                  className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition resize-none"
                 />
               </div>
             </SectionCard>
@@ -789,7 +789,7 @@ export default function EditDealerPage() {
             <button
               type="submit"
               disabled={isSaving}
-              className="flex items-center gap-2 px-6 py-2.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition font-medium"
+              className="flex items-center gap-2 px-6 py-2.5 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-500 disabled:opacity-60 disabled:cursor-not-allowed transition font-medium"
             >
               {isSaving && <Loader2 className="w-4 h-4 animate-spin" />}
               {isSaving ? "Saving..." : "Save Changes"}

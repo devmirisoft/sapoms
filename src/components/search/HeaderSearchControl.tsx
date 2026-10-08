@@ -275,7 +275,7 @@ export default function HeaderSearchControl({
                 </div>
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-semibold text-slate-900">{suggestion.productName}</div>
-                  <div className="mt-1 text-xs font-medium text-indigo-700">{suggestion.catalogueNumber}</div>
+                  <div className="mt-1 text-xs font-medium text-brand-600">{suggestion.catalogueNumber}</div>
                   {suggestion.previewText && (
                     <div className="mt-1 line-clamp-2 text-xs text-slate-600">{suggestion.previewText}</div>
                   )}

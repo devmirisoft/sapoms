@@ -233,7 +233,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
     <div className="bg-white border border-gray-200 rounded-2xl p-5">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
+          <div className="w-7 h-7 rounded-lg bg-brand-50 flex items-center justify-center">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round">
               <path d="M1 3h15v13H1zM16 8h4l3 3v5h-7z" /><circle cx="5.5" cy="18.5" r="2.5" /><circle cx="18.5" cy="18.5" r="2.5" />
             </svg>
@@ -259,7 +259,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                 setError("");
                 setEditing(true);
               }}
-              className="rounded-xl border border-indigo-200 px-3 py-1.5 text-[12px] font-semibold text-indigo-700 transition hover:bg-indigo-50"
+              className="rounded-xl border border-brand-200 px-3 py-1.5 text-[12px] font-semibold text-brand-600 transition hover:bg-brand-50"
             >
               Edit Dispatch Details
             </button>
@@ -283,7 +283,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                   applyPartner(event.target.value);
                 }}
                 disabled={saving}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
+                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-brand-300"
               >
                 <option value="">Select dispatch partner</option>
                 {/* A courier saved earlier but since removed still shows, so
@@ -313,7 +313,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                     }}
                     disabled={addingCourier || saving}
                     placeholder="New partner name"
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none transition focus:border-brand-300"
                   />
                   <input
                     type="url"
@@ -329,14 +329,14 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                     }}
                     disabled={addingCourier || saving}
                     placeholder="Tracking link prefix, e.g. https://www.delhivery.com/track-v2/package/"
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
+                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none transition focus:border-brand-300"
                   />
                   <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={handleAddCourier}
                     disabled={addingCourier || saving}
-                    className="rounded-xl bg-indigo-600 px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                    className="rounded-xl bg-brand-600 px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
                   >
                     {addingCourier ? "Adding..." : "Add"}
                   </button>
@@ -362,7 +362,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                 onChange={(event) => handleChange("trackingNumber", event.target.value)}
                 disabled={saving}
                 placeholder="AWB123456789"
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-brand-300"
               />
             </div>
             <div>
@@ -375,7 +375,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                 onChange={(event) => handleChange("trackingLink", event.target.value)}
                 disabled={saving}
                 placeholder="https://..."
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-indigo-300"
+                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-brand-300"
               />
               {prefixFor(form.dispatchPartner) && (
                 <p className="mt-1 text-[11px] text-gray-500">
@@ -424,7 +424,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
                 href={value.trackingLink}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-indigo-700 underline underline-offset-2 hover:text-indigo-900"
+                className="text-brand-600 underline underline-offset-2 hover:text-brand-500"
               >
                 Track Shipment →
               </a>

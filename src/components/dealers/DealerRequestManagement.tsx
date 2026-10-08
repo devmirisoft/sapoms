@@ -218,7 +218,7 @@ export default function DealerRequestManagement({ scope }: DealerRequestManageme
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Search requests..."
-                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 outline-none transition focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
               />
             </div>
           </div>
@@ -287,7 +287,7 @@ export default function DealerRequestManagement({ scope }: DealerRequestManageme
                     return (
                       <tr key={request.id} className="hover:bg-gray-50">
                         <td className="px-4 py-4">
-                          <div className="font-mono text-xs font-semibold text-indigo-700">{request.requestReference}</div>
+                          <div className="font-mono text-xs font-semibold text-brand-600">{request.requestReference}</div>
                           <div className="mt-1 text-xs text-gray-400">{request.dealerCode || "-"}</div>
                         </td>
                         <td className="px-4 py-4">
@@ -318,7 +318,7 @@ export default function DealerRequestManagement({ scope }: DealerRequestManageme
                             {actionHref ? (
                               <Link
                                 href={actionHref}
-                                className="rounded-lg bg-indigo-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-indigo-700"
+                                className="rounded-lg bg-brand-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-brand-500"
                               >
                                 {actionLabel}
                               </Link>

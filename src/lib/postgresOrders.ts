@@ -1,9 +1,9 @@
 import "server-only";
 
-import { Prisma, type Warehouse } from "@prisma/client";
+import { Prisma, Warehouse, type OrderStatus } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { rsmOrderScope } from "@/server/auth/sales-scope";
-import type { OrdersActor } from "@/lib/orderPagination";
+import { normalizedMtStatus, normalizedOrderStatus, type OrderFilters, type OrdersActor } from "@/lib/orderPagination";
 import { summarizeOrderSettlement } from "@/lib/orderSettlement";
 import { normalizeSku } from "@/lib/orderProductNotes.mjs";
 import { normalizeDispatchStatus, type DispatchStatus, type OrderDispatchRecord } from "@/lib/orderDispatch";
@@ -407,14 +407,120 @@ async function buildRsmOrderWhere(actor: OrdersActor): Promise<Prisma.OrderWhere
   return rsmOrderScope(BigInt(actor.actorId), BigInt(actor.userId ?? 0));
 }
 
-export async function listPostgresOrderHeaders(actor: OrdersActor, assignedDealerIds: Array<string | number> = []) {
-  const where = await actorWhere(actor, assignedDealerIds);
-  const orders = await prisma.order.findMany({
-    where,
-    include: orderInclude,
-    orderBy: { orderDate: "desc" },
-  });
-  return orders.map(mapPostgresOrderToLegacy);
+// legacyOrderStatus() reads these as "approved"; the rest, bar CANCELLED, as "pending".
+const APPROVED_ORDER_STATUSES = ["ACCEPTED", "PROCESSING", "READY", "DISPATCHED", "COMPLETED"] satisfies OrderStatus[];
+const PENDING_ORDER_WHERE: Prisma.OrderWhereInput = { status: { notIn: [...APPROVED_ORDER_STATUSES, "CANCELLED"] } };
+const NO_ORDERS: Prisma.OrderWhereInput = { id: { in: [] } };
+// legacyAcceptance() codes.
+const ACCEPTED_FILTER: Record<string, Prisma.OrderWhereInput> = {
+  "0": { acceptanceStatus: "AWAITING" },
+  "1": { acceptanceStatus: "ACCEPTED" },
+  "2": { acceptanceStatus: "DECLINED" },
+};
+
+const isIdText = (value: string) => /^\d{1,18}$/.test(value);
+
+// Start of a YYYY-MM-DD business day (India time), the calendar orderDate.js uses.
+function istDayStart(date: string, addDays = 0) {
+  const time = /^\d{4}-\d{2}-\d{2}$/.test(date) ? Date.parse(`${date}T00:00:00+05:30`) : NaN;
+  return Number.isFinite(time) ? new Date(time + addDays * 86_400_000) : null;
+}
+
+// The columns the order list shows, so search finds what the user can see.
+function orderSearchWhere(query: string): Prisma.OrderWhereInput {
+  const contains = { contains: query, mode: "insensitive" as const };
+  return {
+    OR: [
+      ...(isIdText(query) ? [{ id: BigInt(query) }, { dealerId: BigInt(query) }] : []),
+      { orderNumber: contains },
+      { legacyPhpId: contains },
+      { refNo: contains },
+      { note: contains },
+      { shipTo: contains },
+      { trackingNumber: contains },
+      { dispatchPartner: contains },
+      { dealer: { OR: [{ businessName: contains }, { dealerCode: contains }, { phone: contains }, { city: contains }] } },
+      { assignedStaff: { displayName: contains } },
+    ],
+  };
+}
+
+// Dispatch progress comes from the dispatch rows (see legacyFulfilment), so ask
+// SQL which orders have some or all of their pieces dispatched.
+async function mtStatusWhere(value: string): Promise<Prisma.OrderWhereInput> {
+  const mtStatus = normalizedMtStatus(value);
+  const dispatched = Prisma.sql`SUM(d.quantity * GREATEST(i.pack_size, 1))`;
+  const ordered = Prisma.sql`(SELECT COALESCE(SUM(oi.quantity_packs * GREATEST(oi.pack_size, 1)), 0) FROM order_items oi WHERE oi.order_id = d.order_id)`;
+  const having = mtStatus === "Completed" ? Prisma.sql`${dispatched} > 0 AND ${dispatched} >= ${ordered}`
+    : mtStatus === "Partial" ? Prisma.sql`${dispatched} > 0 AND ${dispatched} < ${ordered}`
+    : Prisma.sql`${dispatched} > 0`;
+  const rows = await prisma.$queryRaw<Array<{ id: bigint }>>`
+    SELECT d.order_id AS id FROM order_item_dispatches d JOIN order_items i ON i.id = d.order_item_id
+    GROUP BY d.order_id HAVING ${having}`;
+  const ids = rows.map((row) => row.id);
+  // ponytail: id list grows with dispatched orders; store dispatch progress on the order if this gets slow.
+  return mtStatus === "Pending" ? { id: { notIn: ids } } : { id: { in: ids } };
+}
+
+// The order list filters (applyOrderFilters) as a database WHERE.
+async function orderFilterWhere(filters: OrderFilters): Promise<Prisma.OrderWhereInput[]> {
+  const and: Prisma.OrderWhereInput[] = [];
+  const search = text(filters.search);
+  if (search) and.push(orderSearchWhere(search));
+  const orderId = text(filters.orderId);
+  // ponytail: a numeric id (no legacy id) matches exactly, not by prefix.
+  if (orderId) and.push({ OR: [{ legacyPhpId: { startsWith: orderId, mode: "insensitive" } }, ...(isIdText(orderId) ? [{ legacyPhpId: null, id: BigInt(orderId) }] : [])] });
+  const dealerId = text(filters.targetDealerId);
+  if (dealerId) and.push(isIdText(dealerId) ? { dealerId: BigInt(dealerId) } : NO_ORDERS);
+  const warehouse = text(filters.warehouse);
+  if (warehouse) {
+    and.push((Object.values(Warehouse) as string[]).includes(warehouse)
+      ? { OR: [{ assignedStaff: { warehouse: warehouse as Warehouse } }, { dealer: { staffAssignments: { some: { active: true, staff: { warehouse: warehouse as Warehouse } } } } }] }
+      : NO_ORDERS);
+  }
+  if (filters.accepted) and.push(ACCEPTED_FILTER[filters.accepted] ?? NO_ORDERS);
+  if (filters.orderStatus) {
+    const status = normalizedOrderStatus(filters.orderStatus);
+    and.push(status === "pending" ? PENDING_ORDER_WHERE : status === "approved" ? { status: { in: APPROVED_ORDER_STATUSES } } : NO_ORDERS);
+  }
+  if (filters.mtStatus) and.push(await mtStatusWhere(filters.mtStatus));
+  const from = istDayStart(text(filters.dateFrom));
+  if (from) and.push({ orderDate: { gte: from } });
+  const toExclusive = istDayStart(text(filters.dateTo), 1);
+  if (toExclusive) and.push({ orderDate: { lt: toExclusive } });
+  if (filters.amountMin != null) and.push({ grossAmountPaise: { gte: BigInt(Math.round(filters.amountMin * 100)) } });
+  if (filters.amountMax != null) and.push({ grossAmountPaise: { lte: BigInt(Math.round(filters.amountMax * 100)) } });
+  return and;
+}
+
+// One page of the actor's orders, filtered and paged in the database.
+export async function listPostgresOrderPage(input: {
+  actor: OrdersActor;
+  assignedDealerIds?: Array<string | number>;
+  pendingOnly?: boolean;
+  filters?: OrderFilters;
+  page: number;
+  pageSize: number;
+}) {
+  const where: Prisma.OrderWhereInput = {
+    AND: [
+      await actorWhere(input.actor, input.assignedDealerIds ?? []),
+      { status: { not: "CANCELLED" } },
+      ...(input.pendingOnly ? [PENDING_ORDER_WHERE] : []),
+      ...(await orderFilterWhere(input.filters ?? {})),
+    ],
+  };
+  const [orders, total] = await Promise.all([
+    prisma.order.findMany({
+      where,
+      include: orderInclude,
+      orderBy: [{ orderDate: "desc" }, { id: "desc" }],
+      skip: (input.page - 1) * input.pageSize,
+      take: input.pageSize,
+    }),
+    prisma.order.count({ where }),
+  ]);
+  return { rows: orders.map(mapPostgresOrderToLegacy), total };
 }
 
 export async function findPostgresOrderByLookupId(orderId: unknown) {

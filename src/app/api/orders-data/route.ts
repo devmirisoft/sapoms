@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { loadOrderHeaders, ORDER_HEADER_SOURCES } from "@/lib/orderHeaders";
-import { buildOrdersPage } from "@/lib/orderPagination";
 import { fetchStaffAssignedDealerIds, orderActorFromAuth } from "@/lib/orderScopeServer";
 import { STAFF_ORDER_SCOPE_VERSION } from "@/lib/staffOrderScope.js";
 import { requireAuth } from "@/server/auth/session";
@@ -9,10 +8,10 @@ import { prisma } from "@/server/db/prisma";
 import { coversRsmStage, isAdminLike, orphanRsmOrderWhere } from "@/server/auth/sales-scope";
 import type { AuthActor } from "@/server/auth/session";
 
-// Order keys (id, number, legacy id) the NSM/Admin approves for an unavailable RSM.
-async function rsmCoverKeys(actor: AuthActor) {
-  if (!isAdminLike(actor) || !(await coversRsmStage(actor, prisma))) return new Set<string>();
-  const rows = await prisma.order.findMany({ where: orphanRsmOrderWhere, select: { id: true, orderNumber: true, legacyPhpId: true } });
+// Order keys (id, number, legacy id) on this page the NSM/Admin approves for an unavailable RSM.
+async function rsmCoverKeys(actor: AuthActor, orderNumbers: string[]) {
+  if (!orderNumbers.length || !isAdminLike(actor) || !(await coversRsmStage(actor, prisma))) return new Set<string>();
+  const rows = await prisma.order.findMany({ where: { AND: [orphanRsmOrderWhere, { orderNumber: { in: orderNumbers } }] }, select: { id: true, orderNumber: true, legacyPhpId: true } });
   return new Set(rows.flatMap((row) => [row.id.toString(), row.orderNumber, row.legacyPhpId ?? ""]).filter(Boolean));
 }
 
@@ -37,12 +36,13 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ success: false, message: "Order scope is not available for this session." }, { status: 403 });
     }
     const assignedDealerIds = actor.role === "staff" ? await fetchStaffAssignedDealerIds(actor.actorId) : [];
-    const loaded = await loadOrderHeaders({ source, actor, assignedDealerIds });
-    const activeRows = loaded.rows.filter((row) => String(row.del_status ?? "").trim() !== "1");
     const amountMin = req.nextUrl.searchParams.has("amount_min") ? Number(req.nextUrl.searchParams.get("amount_min")) : null;
     const amountMax = req.nextUrl.searchParams.has("amount_max") ? Number(req.nextUrl.searchParams.get("amount_max")) : null;
-    const page = buildOrdersPage({
-      rows: activeRows,
+    // Only the requested page is read from the database (cancelled orders excluded).
+    const loaded = await loadOrderHeaders({
+      source,
+      actor,
+      assignedDealerIds,
       page: requestedPage,
       pageSize: requestedLimit,
       filters: {
@@ -59,17 +59,18 @@ export async function GET(req: NextRequest) {
         warehouse: req.nextUrl.searchParams.get("warehouse") ?? "",
       },
     });
-    const coverKeys = await rsmCoverKeys(authActor);
+    const totalPages = loaded.total === 0 ? 0 : Math.ceil(loaded.total / requestedLimit);
+    const coverKeys = await rsmCoverKeys(authActor, loaded.rows.map((row) => String(row.order_number)));
     const response = NextResponse.json(serializePrismaValue({
       success: true,
       status: true,
-      data: coverKeys.size ? page.items.map((row) => ({ ...row, rsm_cover: coverKeys.has(String(row.order_id ?? "")) })) : page.items,
-      count: page.total,
-      total: page.total,
-      recordsTotal: page.total,
-      recordsFiltered: page.total,
-      last_page: page.totalPages,
-      lastPage: page.totalPages,
+      data: coverKeys.size ? loaded.rows.map((row) => ({ ...row, rsm_cover: coverKeys.has(String(row.order_id ?? "")) })) : loaded.rows,
+      count: loaded.total,
+      total: loaded.total,
+      recordsTotal: loaded.total,
+      recordsFiltered: loaded.total,
+      last_page: totalPages,
+      lastPage: totalPages,
       page: requestedPage,
       truncated: loaded.truncated,
       totalIsExact: loaded.totalIsExact,

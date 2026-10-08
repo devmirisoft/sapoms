@@ -512,7 +512,7 @@ export default function StaffDealerListPage() {
             </Link>
             <Link
               href="/dashboard/admin/dealer/AddDealerForm"
-              className="rounded-md bg-indigo-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-indigo-700"
+              className="rounded-md bg-brand-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-brand-500"
             >
               Add Dealer
             </Link>
@@ -530,7 +530,7 @@ export default function StaffDealerListPage() {
                 setSearch(event.target.value)
               }
               placeholder="Search dealers..."
-              className="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              className="w-full rounded-md border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
             />
           </div>
 
@@ -577,7 +577,7 @@ export default function StaffDealerListPage() {
                     <button
                       type="button"
                       onClick={() => setNameSort((prev) => prev === "asc" ? "desc" : prev === "desc" ? "" : "asc")}
-                      className={`inline-flex items-center gap-1 hover:text-gray-900 ${nameSort ? "text-indigo-600" : ""}`}
+                      className={`inline-flex items-center gap-1 hover:text-gray-900 ${nameSort ? "text-brand-600" : ""}`}
                       title={nameSort === "asc" ? "A → Z" : nameSort === "desc" ? "Z → A" : "Sort alphabetically"}
                     >
                       Dealer name
@@ -683,7 +683,7 @@ export default function StaffDealerListPage() {
                                 href={
                                   staffDealerRoute
                                 }
-                                className="font-medium text-gray-900 hover:text-indigo-700"
+                                className="font-medium text-gray-900 hover:text-brand-500"
                               >
                                 {dealerName}
                               </Link>
@@ -740,7 +740,7 @@ export default function StaffDealerListPage() {
                               href={
                                 staffDealerRoute
                               }
-                              className="inline-flex rounded-md bg-indigo-600 px-3 py-2 text-xs font-medium text-white hover:bg-indigo-700"
+                              className="inline-flex rounded-md bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-500"
                             >
                               View
                             </Link>
@@ -778,7 +778,7 @@ export default function StaffDealerListPage() {
                     aria-current={page === pageNumber ? "page" : undefined}
                     className={`h-9 min-w-9 rounded-md border px-2 text-sm transition ${
                       page === pageNumber
-                        ? "border-indigo-600 bg-indigo-600 text-white"
+                        ? "border-brand-600 bg-brand-600 text-white"
                         : "border-gray-200 text-gray-700 hover:bg-gray-50"
                     }`}
                   >

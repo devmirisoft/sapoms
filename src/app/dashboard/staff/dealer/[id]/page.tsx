@@ -138,7 +138,7 @@ function dispatchBadge(status: string) {
   switch (status) {
     case "0": return { bg: "bg-red-50",     text: "text-red-600",     label: "In Process" }
     case "1": return { bg: "bg-blue-50",    text: "text-blue-600",    label: "Packing" }
-    case "2": return { bg: "bg-indigo-50",  text: "text-indigo-600",  label: "Dispatched" }
+    case "2": return { bg: "bg-brand-50",  text: "text-brand-600",  label: "Dispatched" }
     case "3": return { bg: "bg-amber-50",   text: "text-amber-700",   label: "Not in Stock" }
     case "4": return { bg: "bg-emerald-50", text: "text-emerald-700", label: "Successful" }
     default:  return { bg: "bg-gray-100",   text: "text-gray-500",    label: "Unknown" }
@@ -390,7 +390,7 @@ export default function StaffDealerViewPage() {
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-6 mb-5">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div className="flex items-center gap-4">
-              <div className="w-14 h-14 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xl font-bold flex-shrink-0">
+              <div className="w-14 h-14 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center text-xl font-bold flex-shrink-0">
                 {dealer ? initials(dealer.Dealer_Name) : "…"}
               </div>
               <div>
@@ -413,7 +413,7 @@ export default function StaffDealerViewPage() {
                     </span>
                   )}
                   {dealer?.discount && dealer.discount !== "0" && (
-                    <span className="font-mono bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded">
+                    <span className="font-mono bg-brand-50 text-brand-600 px-2 py-0.5 rounded">
                       Disc: {dealer.discount}%
                     </span>
                   )}
@@ -430,7 +430,7 @@ export default function StaffDealerViewPage() {
         {/* Summary cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
           {[
-            { label: "Total Orders",    value: loadingOrders ? "…" : String(summary.count),          color: "text-indigo-600",  sub: "all time"           },
+            { label: "Total Orders",    value: loadingOrders ? "…" : String(summary.count),          color: "text-brand-600",  sub: "all time"           },
             { label: "Total Purchased", value: loadingOrders ? "…" : fmt(summary.totalValue),        color: "text-purple-600",  sub: "gross value"        },
             { label: "Total Paid",      value: loadingOrders ? "…" : fmt(summary.totalPaid),         color: "text-emerald-600", sub: "settled"            },
             { label: "Outstanding",     value: loadingOrders ? "…" : fmt(summary.totalPending),      color: "text-amber-600",   sub: "pending / overdue"  },
@@ -451,7 +451,7 @@ export default function StaffDealerViewPage() {
               onClick={() => setTab(t)}
               className={`px-5 py-2 text-sm font-semibold rounded-lg transition ${
                 tab === t
-                  ? "bg-indigo-600 text-white shadow-sm"
+                  ? "bg-brand-600 text-white shadow-sm"
                   : "text-gray-500 hover:text-gray-700 hover:bg-gray-50"
               }`}
             >
@@ -511,7 +511,7 @@ export default function StaffDealerViewPage() {
                         <td className="px-4 py-3.5 text-xs text-gray-600 whitespace-nowrap">
                           {o.order_date ? moment(o.order_date).format("DD MMM YYYY") : "—"}
                         </td>
-                        <td className="px-4 py-3.5 font-mono text-xs font-semibold text-indigo-700 whitespace-nowrap">
+                        <td className="px-4 py-3.5 font-mono text-xs font-semibold text-brand-600 whitespace-nowrap">
                           {formatDisplayOrderNumber(o.order_id)}
                         </td>
                         <td className="px-4 py-3.5 text-xs text-gray-600">
@@ -584,7 +584,7 @@ export default function StaffDealerViewPage() {
                     p === "…" ? <span key={`e${idx}`} className="px-2 text-gray-400 text-sm">…</span> : (
                       <button key={p} onClick={() => setOrderPage(p as number)}
                         className={`px-3 py-1.5 text-sm rounded-lg border transition ${
-                          p === orderPage ? "bg-indigo-600 text-white border-indigo-600 font-medium" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                          p === orderPage ? "bg-brand-600 text-white border-brand-600 font-medium" : "border-gray-200 text-gray-600 hover:bg-gray-50"
                         }`}>
                         {p}
                       </button>
@@ -609,7 +609,7 @@ export default function StaffDealerViewPage() {
                 <input
                   type="text" placeholder="Search by catalogue number…"
                   value={searchInput} onChange={e => setSearchInput(e.target.value)}
-                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition w-full"
+                  className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 transition w-full"
                 />
               </div>
               <button
@@ -730,7 +730,7 @@ export default function StaffDealerViewPage() {
                     p === "…" ? <span key={`e${idx}`} className="px-2 text-gray-400 text-sm">…</span> : (
                       <button key={p} onClick={() => setItemPage(p as number)}
                         className={`px-3 py-1.5 text-sm rounded-lg border transition ${
-                          p === itemPage ? "bg-indigo-600 text-white border-indigo-600 font-medium" : "border-gray-200 text-gray-600 hover:bg-gray-50"
+                          p === itemPage ? "bg-brand-600 text-white border-brand-600 font-medium" : "border-gray-200 text-gray-600 hover:bg-gray-50"
                         }`}>
                         {p}
                       </button>

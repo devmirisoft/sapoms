@@ -62,7 +62,7 @@ export default function ChatPanel({ audience, storageKey, currentPage, open, onC
             <div className="flex flex-col items-center gap-2 pt-2">
               {copy.suggestions.map((suggestion) => (
                 <button key={suggestion} type="button" onClick={() => void submit(suggestion)}
-                  className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-[12.5px] text-indigo-700 hover:bg-indigo-100">
+                  className="rounded-full border border-brand-200 bg-brand-50 px-3 py-1.5 text-[12.5px] text-brand-600 hover:bg-brand-100">
                   {suggestion}
                 </button>
               ))}
@@ -95,10 +95,10 @@ export default function ChatPanel({ audience, storageKey, currentPage, open, onC
             rows={1}
             placeholder={isLoading ? "Waiting for the reply…" : "Type a message"}
             aria-label="Message"
-            className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-[13.5px] outline-none [field-sizing:content] focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-50"
+            className="max-h-32 min-h-[40px] flex-1 resize-none rounded-xl border border-gray-300 px-3 py-2 text-[13.5px] outline-none [field-sizing:content] focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-gray-50"
           />
           <button type="submit" disabled={isLoading || !input.trim()} aria-label="Send"
-            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40">
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-brand-600 text-white hover:bg-brand-500 disabled:opacity-40">
             <SendHorizontal className="h-4 w-4" />
           </button>
         </div>

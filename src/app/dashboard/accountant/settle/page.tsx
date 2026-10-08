@@ -205,7 +205,7 @@ export default function SettlePage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
-            <Wallet className="w-5 h-5 text-indigo-600" />
+            <Wallet className="w-5 h-5 text-brand-600" />
             Wallet Settlements
           </h1>
           <p className="text-xs text-gray-500 mt-0.5">
@@ -228,9 +228,9 @@ export default function SettlePage() {
           <div className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Open settlements</div>
           <div className="text-xl font-semibold text-amber-900 mt-0.5">{summary.openCount}</div>
         </div>
-        <div className="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-3">
-          <div className="text-[11px] font-medium uppercase tracking-wide text-indigo-700">Unsettled amount</div>
-          <div className="text-xl font-semibold text-indigo-900 mt-0.5">{money(summary.openAmount)}</div>
+        <div className="rounded-xl border border-brand-100 bg-brand-50/60 px-4 py-3">
+          <div className="text-[11px] font-medium uppercase tracking-wide text-brand-600">Unsettled amount</div>
+          <div className="text-xl font-semibold text-brand-900 mt-0.5">{money(summary.openAmount)}</div>
         </div>
       </div>
 
@@ -242,13 +242,13 @@ export default function SettlePage() {
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search dealer name or code"
-            className="w-full rounded-lg border border-gray-200 bg-white pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-full rounded-lg border border-gray-200 bg-white pl-8 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
           />
         </div>
         <select
           value={status}
           onChange={(e) => setStatus(e.target.value as StatusFilter)}
-          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+          className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
         >
           <option value="OPEN">Open</option>
           <option value="SETTLED">Settled</option>
@@ -352,9 +352,9 @@ export default function SettlePage() {
                   <div className="text-[10px] uppercase tracking-wide text-gray-400">Settled</div>
                   <div className="text-sm font-semibold text-gray-900 mt-0.5">{money(active.appliedAmount)}</div>
                 </div>
-                <div className="rounded-lg border border-indigo-200 bg-indigo-50/60 px-3 py-2">
-                  <div className="text-[10px] uppercase tracking-wide text-indigo-600">Settle balance</div>
-                  <div className="text-sm font-semibold text-indigo-900 mt-0.5">{money(active.remainingAmount)}</div>
+                <div className="rounded-lg border border-brand-200 bg-brand-50/60 px-3 py-2">
+                  <div className="text-[10px] uppercase tracking-wide text-brand-600">Settle balance</div>
+                  <div className="text-sm font-semibold text-brand-900 mt-0.5">{money(active.remainingAmount)}</div>
                 </div>
               </div>
 
@@ -384,7 +384,7 @@ export default function SettlePage() {
                                 setBillId(e.target.value);
                                 setFormError("");
                               }}
-                              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                              className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                             >
                               <option value="">Select an invoice…</option>
                               {bills.map((bill) => (
@@ -411,7 +411,7 @@ export default function SettlePage() {
                                     setFormError("");
                                   }}
                                   placeholder="0.00"
-                                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                                 />
                                 <button
                                   type="button"
@@ -433,7 +433,7 @@ export default function SettlePage() {
                                 value={note}
                                 onChange={(e) => setNote(e.target.value)}
                                 placeholder="Reference or remark"
-                                className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                                className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                               />
                             </div>
                           </div>
@@ -448,7 +448,7 @@ export default function SettlePage() {
                             type="button"
                             onClick={() => void submit()}
                             disabled={saving || !billId || !amount}
-                            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-500 disabled:opacity-50"
+                            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 disabled:opacity-50"
                           >
                             {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                             {saving ? "Applying…" : "Apply settlement"}

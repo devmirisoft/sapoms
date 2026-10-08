@@ -545,17 +545,17 @@ export default function ProductDetailsPage() {
 
         {/* BREADCRUMB */}
         <div style={{ background: "#fff", borderBottom: "1px solid #e2e8f0" }}>
-          <div style={{ maxWidth: PAGE_MAX_WIDTH, margin: "0 auto", padding: "12px 28px", fontSize: 13, color: "#64748b", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
-            <Link href="/" style={{ color: "#64748b", textDecoration: "none" }}>Home</Link>
-            <span>/</span>
-            <Link href="/Products" style={{ color: "#64748b", textDecoration: "none" }}>Products</Link>
+          <nav aria-label="Breadcrumb" style={{ maxWidth: PAGE_MAX_WIDTH, margin: "0 auto", padding: "12px 28px", fontSize: 13, color: "#64748b", display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+            <Link href="/home" className="text-brand-600 hover:text-brand-500 hover:underline">Home</Link>
+            <span aria-hidden>/</span>
+            <Link href="/Products" className="text-brand-600 hover:text-brand-500 hover:underline">Products</Link>
             {product.category && <>
-              <span>/</span>
-              <span>{product.category}</span>
+              <span aria-hidden>/</span>
+              <Link href={`/Products?cat=${encodeURIComponent(product.category)}`} className="text-brand-600 hover:text-brand-500 hover:underline">{product.category}</Link>
             </>}
-            <span>/</span>
-            <span style={{ color: "#0f172a", fontWeight: 600 }}>{getCatalogueProductLabel(product)}</span>
-          </div>
+            <span aria-hidden>/</span>
+            <span aria-current="page" style={{ color: "#0f172a", fontWeight: 600 }}>{getCatalogueProductLabel(product)}</span>
+          </nav>
         </div>
 
         <div style={{ maxWidth: PAGE_MAX_WIDTH, margin: "0 auto", padding: "32px 28px" }}>

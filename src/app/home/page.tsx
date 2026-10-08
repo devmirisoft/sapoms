@@ -203,7 +203,7 @@ function buildRelatedProducts(products: typeof bottleProducts, resolver: Catalog
 const statusConf: Record<string, { label: string; dot: string; text: string; bg: string }> = {
   inprocess: { label: "In Process", dot: "bg-amber-400", text: "text-amber-800", bg: "bg-amber-50 border-amber-200" },
   processing: { label: "Processing", dot: "bg-blue-400", text: "text-blue-800", bg: "bg-blue-50 border-blue-200" },
-  dispatched: { label: "Dispatched", dot: "bg-indigo-400", text: "text-indigo-800", bg: "bg-indigo-50 border-indigo-200" },
+  dispatched: { label: "Dispatched", dot: "bg-brand-400", text: "text-brand-800", bg: "bg-brand-50 border-brand-200" },
   successful: { label: "Successful", dot: "bg-emerald-400", text: "text-emerald-800", bg: "bg-emerald-50 border-emerald-200" },
   cancelled: { label: "Cancelled", dot: "bg-red-400", text: "text-red-800", bg: "bg-red-50 border-red-200" },
 };
@@ -470,9 +470,9 @@ export default function Page() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
           {CATEGORY_CARDS.map((cat: CategoryCard) => (
             <Link key={cat.title} href={cat.link}
-              className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex flex-col hover:shadow-md hover:border-indigo-200 transition-all group"
+              className="bg-white rounded-lg shadow-sm border border-gray-100 p-4 flex flex-col hover:shadow-md hover:border-brand-200 transition-all group"
               style={{ textDecoration: "none" }}>
-              <h3 className="text-base font-bold text-slate-800 mb-3 group-hover:text-indigo-700 transition-colors">{cat.title}</h3>
+              <h3 className="text-base font-bold text-slate-800 mb-3 group-hover:text-brand-500 transition-colors">{cat.title}</h3>
               <div className="grid grid-cols-2 gap-2 flex-1">
                 {cat.items.map((item) => (
                   <div key={item.label}>
@@ -484,7 +484,7 @@ export default function Page() {
                   </div>
                 ))}
               </div>
-              <span className="mt-4 text-sm font-medium text-indigo-600 group-hover:text-indigo-800 group-hover:underline transition-colors">
+              <span className="mt-4 text-sm font-medium text-brand-600 group-hover:text-brand-500 group-hover:underline transition-colors">
                 See all →
               </span>
             </Link>
@@ -539,7 +539,7 @@ export default function Page() {
                 </div>
                 <div className="p-3 flex flex-col gap-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="font-mono text-[13px] font-bold text-indigo-700">{formatDisplayOrderNumber(order.order_id)}</p>
+                    <p className="font-mono text-[13px] font-bold text-brand-600">{formatDisplayOrderNumber(order.order_id)}</p>
                     {isDeleted && (
                       <span className="px-1.5 py-0.5 bg-red-50 border border-red-200 text-red-700 rounded text-[10px] font-bold">DELETED</span>
                     )}
@@ -652,7 +652,7 @@ export default function Page() {
           Always rendered so the header's "Today's Deals" link (#todays-sale) has a target.
       ══════════════════════════════════════════════════════════════════ */}
       <section id="todays-sale" className="max-w-[1840px] mx-auto px-4 py-12 border-t border-gray-200">
-        <SectionHeading title="Today's Sale" subtitle="Special prices, today only" badge="🏷️ Sale" />
+        <SectionHeading title="Today's Deals" subtitle="Special prices, today only" badge="🏷️ Sale" />
         {!hotLoading && saleItems.length === 0 ? (
           <p className="rounded-lg border border-dashed border-gray-200 bg-white py-8 text-center text-sm text-slate-500">
             No deals today. Check back soon.

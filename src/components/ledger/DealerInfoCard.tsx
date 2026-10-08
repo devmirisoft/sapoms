@@ -115,7 +115,7 @@ export default function DealerInfoCard({
           {showWallet && canAdjustWallet && onAdjustWalletClick && (
             <button
               onClick={onAdjustWalletClick}
-              className="inline-flex items-center gap-2 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-2 text-sm font-medium text-indigo-700 transition-colors hover:bg-indigo-100"
+              className="inline-flex items-center gap-2 rounded-lg border border-brand-200 bg-brand-50 px-4 py-2 text-sm font-medium text-brand-600 transition-colors hover:bg-brand-100"
             >
               <PencilLine className="h-4 w-4" />
               Adjust Wallet
@@ -127,7 +127,7 @@ export default function DealerInfoCard({
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 xl:grid-cols-3">
         {dealer.Dealer_Number && (
           <div className="flex items-start gap-3">
-            <Phone className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" />
+            <Phone className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Mobile
@@ -141,7 +141,7 @@ export default function DealerInfoCard({
 
         {dealer.Dealer_Email && (
           <div className="flex items-start gap-3">
-            <Mail className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" />
+            <Mail className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Email
@@ -155,7 +155,7 @@ export default function DealerInfoCard({
 
         {dealer.Dealer_Address && (
           <div className="flex items-start gap-3">
-            <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600" />
+            <MapPin className="mt-0.5 h-5 w-5 shrink-0 text-brand-600" />
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
                 Address
