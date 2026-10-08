@@ -140,7 +140,7 @@ function InputField({
         value={value}
         onChange={(event) => onChange(type === 'tel' ? phoneInput(event.target.value) : event.target.value)}
         placeholder={placeholder || label}
-        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition disabled:bg-gray-50 disabled:text-gray-500"
+        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition disabled:bg-gray-50 disabled:text-gray-500"
       />
       {hint ? <span className="text-[11px] text-gray-500">{hint}</span> : null}
     </div>
@@ -175,7 +175,7 @@ function TextAreaField({
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder || label}
         rows={2}
-        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition resize-none disabled:bg-gray-50 disabled:text-gray-500"
+        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition resize-none disabled:bg-gray-50 disabled:text-gray-500"
       />
     </div>
   )
@@ -206,7 +206,7 @@ function SelectField({
         required={required}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+        className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
       >
         <option value="" disabled>
           {placeholder || `Select ${label.toLowerCase()}`}
@@ -590,7 +590,7 @@ export default function EditStaffPage() {
     return (
       <div className="min-h-screen bg-gray-100 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+          <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
           <p className="text-sm text-gray-500">Loading staff data...</p>
         </div>
       </div>
@@ -767,12 +767,12 @@ export default function EditStaffPage() {
                       placeholder="Leave blank to keep current password"
                       autoComplete="new-password"
                       minLength={10}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
                     <button
                       type="button"
                       onClick={() => setShowNewPassword((value) => !value)}
-                      className="absolute inset-y-0 right-2 flex items-center rounded-md px-2 text-gray-400 transition hover:text-indigo-600"
+                      className="absolute inset-y-0 right-2 flex items-center rounded-md px-2 text-gray-400 transition hover:text-brand-500"
                       aria-label={showNewPassword ? 'Hide password' : 'Show password'}
                     >
                       {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -793,12 +793,12 @@ export default function EditStaffPage() {
                           value={diagnosticPassword}
                           onChange={(event) => setDiagnosticPassword(event.target.value)}
                           placeholder="Temporary testing password"
-                          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2.5 pr-10 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500"
                         />
                         <button
                           type="button"
                           onClick={() => setShowDiagnosticPassword((value) => !value)}
-                          className="absolute inset-y-0 right-2 flex items-center rounded-md px-2 text-gray-400 transition hover:text-indigo-600"
+                          className="absolute inset-y-0 right-2 flex items-center rounded-md px-2 text-gray-400 transition hover:text-brand-500"
                           aria-label={showDiagnosticPassword ? 'Hide diagnostic password' : 'Show diagnostic password'}
                         >
                           {showDiagnosticPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
@@ -812,7 +812,7 @@ export default function EditStaffPage() {
                           value={diagnosticExpiryHours}
                           onChange={(event) => setDiagnosticExpiryHours(event.target.value)}
                           aria-label="Diagnostic password expiry in hours"
-                          className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-2.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                          className="w-20 rounded-lg border border-gray-200 bg-white px-2 py-2.5 text-xs text-gray-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
                         />
                         <span className="text-[11px] text-gray-400 whitespace-nowrap">hrs</span>
                       </div>
@@ -856,7 +856,7 @@ export default function EditStaffPage() {
                       setWarehouse(nextRole === 'FIELD_EXECUTIVE' ? warehouse : '')
                       resetHierarchy()
                     }}
-                    className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition disabled:bg-gray-50 disabled:text-gray-500"
+                    className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition disabled:bg-gray-50 disabled:text-gray-500"
                   >
                     <option value="" disabled>Select a role</option>
                     {roleOptions.map((option) => (
@@ -874,7 +874,7 @@ export default function EditStaffPage() {
                       required
                       value={salesRegion}
                       onChange={(event) => setSalesRegion(event.target.value)}
-                      className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                      className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
                     >
                       <option value="" disabled>Select region</option>
                       {SALES_REGION_OPTIONS.map((option) => {
@@ -898,7 +898,7 @@ export default function EditStaffPage() {
                       required
                       value={warehouse}
                       onChange={(event) => setWarehouse(event.target.value)}
-                      className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+                      className="px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
                     >
                       <option value="" disabled>Select warehouse</option>
                       {WAREHOUSE_OPTIONS.map((option) => (
@@ -915,7 +915,7 @@ export default function EditStaffPage() {
                     <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-200 bg-white p-2">
                       {rsmOptions.length ? rsmOptions.map((option) => (
                         <label key={option.id} className="flex cursor-pointer items-center gap-3 rounded px-2 py-1.5 text-sm hover:bg-gray-50">
-                          <input type="checkbox" checked={rsmIds.includes(option.id)} onChange={() => toggleRsm(option.id)} className="h-4 w-4 accent-indigo-600" />
+                          <input type="checkbox" checked={rsmIds.includes(option.id)} onChange={() => toggleRsm(option.id)} className="h-4 w-4 accent-brand-600" />
                           <span className="text-black">{displayStaff(option)}</span>
                         </label>
                       )) : <p className="px-2 py-2 text-sm text-black">No RSM accounts found.</p>}
@@ -975,7 +975,7 @@ export default function EditStaffPage() {
                               type="checkbox"
                               checked={assignedStates.includes(state)}
                               onChange={() => toggleState(state)}
-                              className="h-4 w-4 accent-indigo-600"
+                              className="h-4 w-4 accent-brand-600"
                             />
                             <span>{state}</span>
                           </label>
@@ -1006,7 +1006,7 @@ export default function EditStaffPage() {
                                   type="checkbox"
                                   checked={assignedCities.includes(city)}
                                   onChange={() => toggleCity(city)}
-                                  className="h-4 w-4 accent-indigo-600"
+                                  className="h-4 w-4 accent-brand-600"
                                 />
                                 <span>{city}</span>
                               </label>
@@ -1036,7 +1036,7 @@ export default function EditStaffPage() {
               <button
                 type="submit"
                 disabled={isSaving}
-                className="flex items-center gap-2 px-6 py-2.5 text-sm bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60 disabled:cursor-not-allowed transition font-medium"
+                className="flex items-center gap-2 px-6 py-2.5 text-sm bg-brand-600 text-white rounded-lg hover:bg-brand-500 disabled:opacity-60 disabled:cursor-not-allowed transition font-medium"
               >
                 {isSaving && (
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

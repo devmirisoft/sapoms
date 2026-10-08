@@ -4,7 +4,7 @@ import { SALES_REGION_OPTIONS } from '@/lib/salesRegions'
 
 // Shared by Add Staff and Edit Staff: region first, then who a Sales Manager reports to.
 
-const SELECT_CLASS = 'px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition disabled:bg-gray-50 disabled:text-gray-400'
+const SELECT_CLASS = 'px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition disabled:bg-gray-50 disabled:text-gray-400'
 
 function Label({ text, required = true }: { text: string; required?: boolean }) {
   return (

@@ -115,7 +115,7 @@ export default function PayMoneyModal({
                 }}
                 placeholder="0.00"
                 disabled={submitLoading}
-                className="w-full pl-8 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
+                className="w-full pl-8 pr-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent disabled:bg-gray-50 disabled:text-gray-400"
               />
             </div>
           </div>
@@ -130,7 +130,7 @@ export default function PayMoneyModal({
               value={paymentMode}
               onChange={(e) => setPaymentMode(e.target.value)}
               disabled={submitLoading}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-50"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent disabled:bg-gray-50"
             >
               {PAYMENT_MODES.map((mode) => (
                 <option key={mode} value={mode}>
@@ -156,7 +156,7 @@ export default function PayMoneyModal({
                 onChange={(e) => setReferenceId(e.target.value)}
                 placeholder="e.g., CHQ-12345 or TXN-ID"
                 disabled={submitLoading}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-50"
+                className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent disabled:bg-gray-50"
               />
             </div>
           )}
@@ -173,7 +173,7 @@ export default function PayMoneyModal({
               placeholder="Optional notes about this payment"
               disabled={submitLoading}
               rows={3}
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent disabled:bg-gray-50 resize-none"
+              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent disabled:bg-gray-50 resize-none"
             />
           </div>
 
@@ -198,7 +198,7 @@ export default function PayMoneyModal({
             <button
               type="submit"
               disabled={submitLoading || !amount}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-medium hover:bg-indigo-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 py-2 bg-brand-600 text-white rounded-lg text-sm font-medium hover:bg-brand-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {submitLoading ? 'Recording...' : 'Record Payment'}
             </button>

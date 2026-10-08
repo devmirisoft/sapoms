@@ -112,7 +112,7 @@ export default function DealerFundRequestsPage() {
                         <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${dealerBadge(request.status)}`}>
                           {request.dealerStatusLabel}
                         </span>
-                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700">
+                        <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-[11px] font-bold text-brand-600">
                           {request.type === "ADVANCE_ORDER" ? "Advance order" : "Additional funds"}
                         </span>
                       </div>
@@ -149,7 +149,7 @@ export default function DealerFundRequestsPage() {
                     {request.orderNumber && (
                       <p className="text-[13px] text-emerald-700">
                         Order placed:{" "}
-                        <Link href={`/orders/${request.orderId}`} className="font-mono font-semibold text-indigo-600 hover:underline">
+                        <Link href={`/orders/${request.orderId}`} className="font-mono font-semibold text-brand-600 hover:underline">
                           {request.orderNumber}
                         </Link>
                       </p>

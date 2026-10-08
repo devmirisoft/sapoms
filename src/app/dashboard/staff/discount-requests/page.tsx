@@ -251,7 +251,7 @@ export default function StaffDiscountRequestsPage() {
               onChange={(e) => setNotes((prev) => ({ ...prev, [request.id]: e.target.value }))}
               placeholder="Note for the dealer (required to disapprove)"
               rows={3}
-              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-indigo-300"
+              className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-brand-300"
             />
             <div className="mt-3 flex gap-2">
               <button
@@ -383,7 +383,7 @@ export default function StaffDiscountRequestsPage() {
                         <span className="rounded-full border border-gray-200 bg-gray-50 px-2 py-0.5 font-mono text-[10px] font-bold text-gray-700">
                           {request.orderNumber ? `Order ${formatDisplayOrderNumber(request.orderNumber, request.createdAt)}` : "Order not placed yet"}
                         </span>
-                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+                        <span className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-600">
                           {(request.discountScope ?? "order") === "product" ? "Product Discount" : "Order Discount"}
                         </span>
                       </div>
@@ -394,7 +394,7 @@ export default function StaffDiscountRequestsPage() {
                         {` · Requested ${request.createdAt ? new Date(request.createdAt).toLocaleString("en-IN") : "-"}`}
                       </p>
                       {isRsm && request.staffName && (
-                        <p className="mt-0.5 text-[11px] font-semibold text-indigo-700">
+                        <p className="mt-0.5 text-[11px] font-semibold text-brand-600">
                           Raised by: {request.staffName}
                           {request.staffId === user?.staff_id ? " (you)" : ""}
                         </p>
@@ -417,7 +417,7 @@ export default function StaffDiscountRequestsPage() {
                   )}
 
                   {(request.discountScope ?? "order") === "product" && (
-                    <p className="text-[11px] font-semibold text-indigo-700">
+                    <p className="text-[11px] font-semibold text-brand-600">
                       Target: {request.targetProduct?.displayName || request.targetProduct?.variantCode || request.targetProduct?.productname || "Selected product"}
                     </p>
                   )}
@@ -425,7 +425,7 @@ export default function StaffDiscountRequestsPage() {
                   <div className="grid grid-cols-3 gap-3 border-t border-gray-100 pt-4">
                     {[
                       { label: "Current", val: `${request.currentDiscountPercent}%`, cls: "text-gray-900" },
-                      { label: "Requested", val: `${request.requestedDiscountPercent}%`, cls: "text-indigo-700" },
+                      { label: "Requested", val: `${request.requestedDiscountPercent}%`, cls: "text-brand-600" },
                       { label: "Products", val: String(products.length), cls: "text-gray-900" },
                       { label: "Subtotal", val: money(request.subtotal), cls: "text-gray-500" },
                       { label: "Discount", val: `-${money(request.requestedDiscountAmount)}`, cls: "text-amber-700" },
@@ -447,7 +447,7 @@ export default function StaffDiscountRequestsPage() {
                         {products.map((product, index) => (
                           <div
                             key={`${request.id}-${product.productKey || product.sku}-${index}`}
-                            className={`px-3 py-2 ${product.usesCustomDiscount ? "bg-indigo-50" : ""}`}
+                            className={`px-3 py-2 ${product.usesCustomDiscount ? "bg-brand-50" : ""}`}
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
@@ -463,7 +463,7 @@ export default function StaffDiscountRequestsPage() {
                               <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
                                 Base {product.baseDiscountPercent}%
                               </span>
-                              <span className={`rounded-full border px-2 py-0.5 ${product.usesCustomDiscount ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
+                              <span className={`rounded-full border px-2 py-0.5 ${product.usesCustomDiscount ? "border-brand-200 bg-brand-50 text-brand-600" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
                                 {product.usesCustomDiscount ? `Custom ${product.requestedCustomDiscountPercent ?? 0}%` : "Standard Discount"}
                               </span>
                               {product.isPriority && (
@@ -497,7 +497,7 @@ export default function StaffDiscountRequestsPage() {
                       <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-0.5 font-mono text-[11px] font-bold text-gray-700">
                         {request.orderNumber ? `Order ${formatDisplayOrderNumber(request.orderNumber, request.createdAt)}` : "Order not placed yet"}
                       </span>
-                      <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700">
+                      <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-[11px] font-bold text-brand-600">
                         {(request.discountScope ?? "order") === "product" ? "Product discount" : "Order discount"}
                       </span>
                       {(request.rsmApprovalStatus ?? "pending") === "pending" && request.status === "pending" && (
@@ -514,7 +514,7 @@ export default function StaffDiscountRequestsPage() {
                     <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-gray-500">
                       <span>ID: {request.dealerId}</span>
                       {isRsm && request.staffName && (
-                        <span className="font-semibold text-indigo-700">
+                        <span className="font-semibold text-brand-600">
                           Raised by: {request.staffName}
                           {request.staffId === user?.staff_id ? " (you)" : ""}
                         </span>
@@ -527,7 +527,7 @@ export default function StaffDiscountRequestsPage() {
                       Requested {request.createdAt ? new Date(request.createdAt).toLocaleString("en-IN") : "-"}
                     </p>
                     {(request.discountScope ?? "order") === "product" && (
-                      <p className="mt-2 text-[12px] font-semibold text-indigo-700">
+                      <p className="mt-2 text-[12px] font-semibold text-brand-600">
                         Applies to: {request.targetProduct?.displayName || request.targetProduct?.variantCode || request.targetProduct?.productname || "Selected product"}
                       </p>
                     )}
@@ -538,9 +538,9 @@ export default function StaffDiscountRequestsPage() {
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Current</p>
                       <p className="mt-1 font-mono text-[14px] font-bold text-gray-900">{request.currentDiscountPercent}%</p>
                     </div>
-                    <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Requested</p>
-                      <p className="mt-1 font-mono text-[14px] font-bold text-indigo-700">{request.requestedDiscountPercent}%</p>
+                    <div className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-brand-500">Requested</p>
+                      <p className="mt-1 font-mono text-[14px] font-bold text-brand-600">{request.requestedDiscountPercent}%</p>
                     </div>
                     <div className="rounded-xl border border-gray-200 px-3 py-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Current Amt</p>
@@ -599,13 +599,13 @@ export default function StaffDiscountRequestsPage() {
                                 {snapshot.products.map((product, index) => (
                                   <tr
                                     key={`${request.id}-${product.productKey || product.sku}-${index}`}
-                                    className={product.usesCustomDiscount ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200" : ""}
+                                    className={product.usesCustomDiscount ? "bg-brand-50 ring-1 ring-inset ring-brand-200" : ""}
                                   >
                                     <td className="px-3 py-3 font-mono text-[12px] font-bold text-amber-700">{product.catalogueNumber || product.sku || "-"}</td>
                                     <td className="px-3 py-3">
                                       <p className="text-[12px] font-semibold text-gray-900">{product.productName || "-"}</p>
                                       <div className="mt-1 flex flex-wrap gap-1.5">
-                                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${product.usesCustomDiscount ? "border-indigo-300 bg-white text-indigo-700" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
+                                        <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${product.usesCustomDiscount ? "border-brand-300 bg-white text-brand-600" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
                                           {product.usesCustomDiscount ? "Discount Requested" : "Standard Discount"}
                                         </span>
                                         {product.isPriority && (
@@ -626,7 +626,7 @@ export default function StaffDiscountRequestsPage() {
                                     <td className="px-3 py-3 font-mono text-[12px] text-amber-700">
                                       {product.baseDiscountPercent}% &middot; -{money(product.baseDiscountAmount)}
                                     </td>
-                                    <td className="px-3 py-3 font-mono text-[12px] font-bold text-indigo-700">
+                                    <td className="px-3 py-3 font-mono text-[12px] font-bold text-brand-600">
                                       {product.usesCustomDiscount
                                         ? `${product.requestedCustomDiscountPercent ?? 0}% · -${money(product.requestedCustomDiscountAmount ?? 0)}`
                                         : "-"}

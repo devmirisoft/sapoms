@@ -251,7 +251,7 @@ export function PendingProductsReportModal({
   ].filter(Boolean) as string[];
 
   const selectCls =
-    "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-300 focus:ring-2 focus:ring-indigo-100";
+    "w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-brand-300 focus:ring-2 focus:ring-brand-100";
 
   return (
     <div
@@ -277,7 +277,7 @@ export function PendingProductsReportModal({
                 type="button"
                 onClick={() => setMode("all")}
                 className={`rounded-xl border px-3 py-2.5 text-left text-[13px] font-semibold transition ${
-                  mode === "all" ? "border-indigo-300 bg-indigo-50 text-indigo-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  mode === "all" ? "border-brand-300 bg-brand-50 text-brand-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 All pending products
@@ -287,7 +287,7 @@ export function PendingProductsReportModal({
                 type="button"
                 onClick={() => setMode("product")}
                 className={`rounded-xl border px-3 py-2.5 text-left text-[13px] font-semibold transition ${
-                  mode === "product" ? "border-indigo-300 bg-indigo-50 text-indigo-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                  mode === "product" ? "border-brand-300 bg-brand-50 text-brand-800" : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
                 }`}
               >
                 Single product
@@ -364,7 +364,7 @@ export function PendingProductsReportModal({
             type="button"
             onClick={download}
             disabled={reportQuery.isFetching || !payload || (mode === "product" && !productKey)}
-            className="flex-1 rounded-xl bg-indigo-600 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex-1 rounded-xl bg-brand-600 py-2.5 text-[13px] font-semibold text-white transition-colors hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {reportQuery.isFetching ? "Preparing…" : "Download .xlsx"}
           </button>

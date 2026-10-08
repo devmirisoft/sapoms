@@ -99,7 +99,7 @@ function InvoiceBtn({ order }: { order: RawOrder }) {
   };
   return (
     <button onClick={handle} disabled={loading}
-      className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg transition-all shadow-sm disabled:opacity-50 whitespace-nowrap">
+      className="flex items-center gap-1 px-2 py-1 text-[11px] font-semibold bg-white border border-gray-200 hover:border-brand-300 hover:bg-brand-50 text-gray-600 hover:text-brand-500 rounded-lg transition-all shadow-sm disabled:opacity-50 whitespace-nowrap">
       {loading
         ? <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
         : <Receipt size={10} />}
@@ -148,9 +148,9 @@ function AgingPanel({ orders }: { orders: RawOrder[] }) {
         className="w-full flex items-center justify-between px-5 py-4 border-b border-gray-100 hover:bg-gray-50/60 transition-colors"
       >
         <div className="flex items-center gap-2 text-[13.5px] font-semibold text-gray-900">
-          {open ? <ChevronDown size={15} className="text-indigo-500" /> : <ChevronRight size={15} className="text-indigo-500" />}
+          {open ? <ChevronDown size={15} className="text-brand-500" /> : <ChevronRight size={15} className="text-brand-500" />}
           Aging Analysis
-          <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-bold">
+          <span className="px-2 py-0.5 bg-brand-50 text-brand-600 rounded-full text-[10px] font-bold">
             {outstanding.length} dealer{outstanding.length !== 1 ? "s" : ""} with outstanding
           </span>
         </div>
@@ -369,8 +369,8 @@ export default function OrderBookPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
         <div>
           <div className="flex items-center gap-2.5 mb-1">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center">
-              <BookOpen size={16} className="text-indigo-600" />
+            <div className="w-9 h-9 rounded-xl bg-brand-50 border border-brand-100 flex items-center justify-center">
+              <BookOpen size={16} className="text-brand-600" />
             </div>
             <h1 className="text-[22px] font-bold text-gray-900 tracking-tight">Order Book</h1>
           </div>
@@ -389,7 +389,7 @@ export default function OrderBookPage() {
           <button
             onClick={exportXlsx}
             disabled={loading || filtered.length === 0}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-[12px] font-semibold bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 text-[12px] font-semibold bg-brand-600 hover:bg-brand-500 text-white rounded-lg transition-colors disabled:opacity-50"
           >
             <FileSpreadsheet size={12} /> Export XLSX
           </button>
@@ -403,13 +403,13 @@ export default function OrderBookPage() {
           <div className="flex flex-col gap-1">
             <label className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wider">From</label>
             <DateInput value={filters.from} onChange={e => setF("from", e.target.value)}
-              className="px-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 text-gray-700 bg-white" />
+              className="px-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-100 text-gray-700 bg-white" />
           </div>
 
           <div className="flex flex-col gap-1">
             <label className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wider">To</label>
             <DateInput value={filters.to} onChange={e => setF("to", e.target.value)}
-              className="px-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 text-gray-700 bg-white" />
+              className="px-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-100 text-gray-700 bg-white" />
           </div>
 
           <div className="flex flex-col gap-1 min-w-[160px]">
@@ -420,7 +420,7 @@ export default function OrderBookPage() {
                 placeholder="Search dealer…"
                 value={filters.dealer}
                 onChange={e => setF("dealer", e.target.value)}
-                className="w-full pl-3 pr-7 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-indigo-400 focus:ring-1 focus:ring-indigo-100 text-gray-700 bg-white"
+                className="w-full pl-3 pr-7 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-100 text-gray-700 bg-white"
               />
               {filters.dealer && (
                 <button onClick={() => setF("dealer", "")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-300 hover:text-gray-500">
@@ -435,7 +435,7 @@ export default function OrderBookPage() {
             <select
               value={filters.invoiceType}
               onChange={e => setF("invoiceType", e.target.value as InvoiceType)}
-              className="px-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-indigo-400 text-gray-700 bg-white"
+              className="px-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-brand-400 text-gray-700 bg-white"
             >
               {(["All", "Tax Invoice", "Bill of Supply"] as InvoiceType[]).map(t => (
                 <option key={t} value={t}>{t}</option>
@@ -448,7 +448,7 @@ export default function OrderBookPage() {
             <select
               value={filters.payStatus}
               onChange={e => setF("payStatus", e.target.value as Filters["payStatus"])}
-              className="px-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-indigo-400 text-gray-700 bg-white"
+              className="px-3 py-1.5 text-[12.5px] border border-gray-200 rounded-lg outline-none focus:border-brand-400 text-gray-700 bg-white"
             >
               {(["All", "Paid", "Partial", "Unpaid", "Overdue"] as const).map(s => (
                 <option key={s} value={s}>{s}</option>
@@ -472,9 +472,9 @@ export default function OrderBookPage() {
       <div className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
         <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
           <div className="flex items-center gap-2 text-[13.5px] font-semibold text-gray-900">
-            <BookOpen size={14} className="text-indigo-500" />
+            <BookOpen size={14} className="text-brand-500" />
             Ledger
-            <span className="px-2 py-0.5 bg-indigo-50 text-indigo-600 rounded-full text-[10px] font-bold">
+            <span className="px-2 py-0.5 bg-brand-50 text-brand-600 rounded-full text-[10px] font-bold">
               {filtered.length} row{filtered.length !== 1 ? "s" : ""}
             </span>
             {isBos && (
@@ -527,7 +527,7 @@ export default function OrderBookPage() {
                       {String(rowN).padStart(2, "0")}
                     </td>
                     <td className="px-3 py-3">
-                      <span className="font-mono text-[11.5px] font-bold text-indigo-700">
+                      <span className="font-mono text-[11.5px] font-bold text-brand-600">
                         {formatDisplayOrderNumber(order.order_id)}
                       </span>
                     </td>
@@ -576,7 +576,7 @@ export default function OrderBookPage() {
             {/* Totals row */}
             {!loading && filtered.length > 0 && (
               <tfoot>
-                <tr className="bg-indigo-50/60 border-t-2 border-indigo-100">
+                <tr className="bg-brand-50/60 border-t-2 border-brand-100">
                   <td colSpan={5} className="px-3 py-3 text-[10.5px] font-bold text-gray-500 uppercase tracking-wider">
                     Totals — {filtered.length} orders
                   </td>
@@ -592,7 +592,7 @@ export default function OrderBookPage() {
                   <td className="px-3 py-3 font-mono text-[12.5px] font-bold text-gray-400">
                     {isBos ? <span className="text-gray-300">—</span> : "0.00"}
                   </td>
-                  <td className="px-3 py-3 font-mono text-[14px] font-bold text-indigo-700">
+                  <td className="px-3 py-3 font-mono text-[14px] font-bold text-brand-600">
                     {fmt(totals.grand)}
                   </td>
                   <td colSpan={2} />

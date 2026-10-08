@@ -24,13 +24,13 @@ function ContactCard({
   email?: string
 }) {
   return (
-    <div className={`rounded-lg border p-4 ${isPriority ? 'border-indigo-300 bg-indigo-50/50' : 'border-gray-200 bg-gray-50/60'}`}>
+    <div className={`rounded-lg border p-4 ${isPriority ? 'border-brand-300 bg-brand-50/50' : 'border-gray-200 bg-gray-50/60'}`}>
       <div className="flex items-center gap-2 mb-3">
         <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide mr-10">{heading}</span>
         {isPriority && (
           <span
             title="Priority person — used for calls"
-            className="rounded-full bg-indigo-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
+            className="rounded-full bg-brand-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white"
           >
            Priority
           </span>
@@ -81,7 +81,7 @@ export default function DealerViewPage() {
   if (isLoading) return (
     <div className="min-h-screen bg-gray-100 flex items-center justify-center">
       <div className="flex flex-col items-center gap-3">
-        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-2 border-brand-600 border-t-transparent rounded-full animate-spin" />
         <p className="text-sm text-gray-500">Loading dealer...</p>
       </div>
     </div>

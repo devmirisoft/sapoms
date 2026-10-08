@@ -138,7 +138,7 @@ export default function CouriersPage() {
           <button
             type="submit"
             disabled={saving || !name.trim()}
-            className="rounded-lg bg-[#1d4ed8] px-5 text-sm font-semibold text-white transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:bg-gray-400"
+            className="rounded-lg bg-brand-600 px-5 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:bg-gray-400"
           >
             Add Courier
           </button>
@@ -165,10 +165,10 @@ export default function CouriersPage() {
                 >
                   {courier.isActive ? "Active" : "Hidden"}
                 </span>
-                <button type="button" onClick={() => handleRename(courier)} disabled={saving} className="text-[12px] font-semibold text-[#1d4ed8] hover:underline disabled:opacity-50">
+                <button type="button" onClick={() => handleRename(courier)} disabled={saving} className="text-[12px] font-semibold text-brand-600 hover:text-brand-500 hover:underline disabled:opacity-50">
                   Rename
                 </button>
-                <button type="button" onClick={() => handleEditPrefix(courier)} disabled={saving} className="text-[12px] font-semibold text-[#1d4ed8] hover:underline disabled:opacity-50">
+                <button type="button" onClick={() => handleEditPrefix(courier)} disabled={saving} className="text-[12px] font-semibold text-brand-600 hover:text-brand-500 hover:underline disabled:opacity-50">
                   Tracking Prefix
                 </button>
                 <button type="button" onClick={() => handleToggle(courier)} disabled={saving} className="text-[12px] font-semibold text-[#405064] hover:underline disabled:opacity-50">

@@ -101,7 +101,7 @@ export default function AccountantFundRecordsPage() {
                     <td className="px-4 py-3 font-mono text-gray-600">#{row.id}</td>
                     <td className="px-4 py-3">
                       {row.orderId ? (
-                        <Link href={`/orders/${row.orderId}`} className="font-mono font-semibold text-indigo-600 hover:underline">
+                        <Link href={`/orders/${row.orderId}`} className="font-mono font-semibold text-brand-600 hover:underline">
                           {row.orderNumber || row.orderId}
                         </Link>
                       ) : (

@@ -539,7 +539,7 @@ export default function DealerLedgerShellPage() {
   if (redirectingStaff) {
     return (
       <div className="min-h-screen bg-gray-100 p-6">
-        <div className="admin-page-shell rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+        <div className="admin-page-shell rounded-lg border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-600">
           Opening assigned dealer ledger...
         </div>
       </div>
@@ -581,7 +581,7 @@ export default function DealerLedgerShellPage() {
                   aria-pressed={termsFilter === option.value}
                   className={`rounded-md px-3 py-1.5 text-sm font-medium transition ${
                     termsFilter === option.value
-                      ? 'bg-indigo-600 text-white'
+                      ? 'bg-brand-600 text-white'
                       : 'text-gray-600 hover:bg-gray-100'
                   }`}
                 >
@@ -597,7 +597,7 @@ export default function DealerLedgerShellPage() {
                 placeholder="Search dealers..."
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full rounded-lg border border-gray-300 bg-white py-2 pl-10 pr-4 text-sm text-gray-900 placeholder-gray-400 transition focus:border-transparent focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
           </div>
@@ -724,7 +724,7 @@ export default function DealerLedgerShellPage() {
                 <button
                   type="button"
                   onClick={() => setOrderDropdownOpen((open) => !open)}
-                  className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 >
                   <span>
                     {billForm.orderNumbers.length > 0
@@ -745,7 +745,7 @@ export default function DealerLedgerShellPage() {
                               type="checkbox"
                               checked={billForm.orderNumbers.includes(currentOrderNumber)}
                               onChange={(event) => toggleBillOrder(currentOrderNumber, event.target.checked)}
-                              className="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500"
+                              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
                             />
                             <span className="flex-1 text-gray-900">{orderLabel(order)}</span>
                             <span className="text-xs font-semibold text-gray-600">{formatAmount(order.unbilled)}</span>
@@ -802,7 +802,7 @@ export default function DealerLedgerShellPage() {
                   accept="application/pdf,.pdf"
                   multiple
                   onChange={(event) => handleBillFiles(event.target.files)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-indigo-700"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-600"
                 />
                 {billFiles.length > 0 && (
                   <p className="mt-1.5 text-xs text-gray-500">{billFiles.length} PDF{billFiles.length === 1 ? '' : 's'} selected</p>
@@ -821,7 +821,7 @@ export default function DealerLedgerShellPage() {
               <button
                 type="submit"
                 disabled={isSavingBill}
-                className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-60"
               >
                 {isSavingBill && <Loader2 className="h-4 w-4 animate-spin" />}
                 {isUploadingPdfs ? 'Uploading PDFs…' : 'Save Invoice'}
@@ -851,7 +851,7 @@ export default function DealerLedgerShellPage() {
                       href={billPdfHref(pdfTarget.bill, index, 'inline')}
                       target="_blank"
                       rel="noreferrer"
-                      className="flex min-w-0 items-center gap-2 text-sm text-gray-700 hover:text-indigo-700"
+                      className="flex min-w-0 items-center gap-2 text-sm text-gray-700 hover:text-brand-500"
                       title="Open in a new tab"
                     >
                       <FileText className="h-4 w-4 shrink-0 text-red-500" />
@@ -863,7 +863,7 @@ export default function DealerLedgerShellPage() {
                     <a
                       href={billPdfHref(pdfTarget.bill, index, 'attachment')}
                       download={file.name}
-                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
+                      className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500"
                     >
                       <Download className="h-3.5 w-3.5" />
                       Download
@@ -900,7 +900,7 @@ export default function DealerLedgerShellPage() {
                 <select
                   value={paymentForm.paymentMode}
                   onChange={(event) => setPaymentForm((prev) => ({ ...prev, paymentMode: event.target.value }))}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 >
                   {PAYMENT_MODES.map((mode) => (
                     <option key={mode} value={mode}>
@@ -937,7 +937,7 @@ export default function DealerLedgerShellPage() {
               onChange={(event) => setPaymentForm((prev) => ({ ...prev, notes: event.target.value }))}
               placeholder="Notes"
               rows={3}
-              className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
             /> */}
 
             <div className="flex justify-end gap-2 pt-2">
@@ -951,7 +951,7 @@ export default function DealerLedgerShellPage() {
               <button
                 type="submit"
                 disabled={isSavingPayment}
-                className="inline-flex items-center gap-2 rounded-lg bg-[#00494B] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#00494B]/90 disabled:opacity-60"
+                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-60"
               >
                 {isSavingPayment && <Loader2 className="h-4 w-4 animate-spin" />}
                 Add Payment
@@ -1009,7 +1009,7 @@ function FragmentRow({
             href={`/dashboard/admin/dealer/${encodeURIComponent(dealer.Dealer_Id)}/ledger`}
             className="group inline-block text-left"
           >
-            <div className="font-semibold text-gray-900 transition-colors group-hover:text-indigo-600">
+            <div className="font-semibold text-gray-900 transition-colors group-hover:text-brand-500">
               {dealer.Dealer_Name || '-'}
             </div>
             <div className="mt-0.5 text-xs text-gray-500">{dealer.Dealer_Email || dealer.Dealer_Number || '-'}</div>
@@ -1026,7 +1026,7 @@ function FragmentRow({
         </td>
         <td className="px-4 py-4 text-sm text-gray-600">
           {terms === 'credit' ? (
-            <span className="inline-flex items-center rounded-full bg-indigo-50 px-2 py-0.5 text-xs font-medium text-indigo-700">
+            <span className="inline-flex items-center rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-600">
               Credit · {creditDays} days
             </span>
           ) : (
@@ -1075,7 +1075,7 @@ function FragmentRow({
                   </p>
                 </div>
                 {isLoadingDetails && (
-                  <span className="inline-flex items-center gap-2 text-xs font-medium text-indigo-600">
+                  <span className="inline-flex items-center gap-2 text-xs font-medium text-brand-600">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" />
                     Loading orders
                   </span>
@@ -1127,7 +1127,7 @@ function FragmentRow({
 
                       return (
                         <tr key={bill.id} className="hover:bg-gray-50">
-                          <td className="px-4 py-3 font-mono text-xs font-semibold text-indigo-700">
+                          <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600">
                             {formatLedgerOrderId(bill.orderNumber)}
                           </td>
                           <td className="px-4 py-3">
@@ -1158,7 +1158,7 @@ function FragmentRow({
                               <button
                                 type="button"
                                 onClick={() => onViewPdfs(bill)}
-                                className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50 px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition hover:bg-indigo-100"
+                                className="inline-flex items-center gap-1.5 rounded-lg border border-brand-200 bg-brand-50 px-2.5 py-1.5 text-xs font-semibold text-brand-600 transition hover:bg-brand-100"
                                 title="View and download bill PDFs"
                               >
                                 <FileText className="h-3.5 w-3.5" />
@@ -1177,7 +1177,7 @@ function FragmentRow({
                                 type="button"
                                 onClick={() => onPayment(bill)}
                                 disabled={balance === 0}
-                                className="inline-flex items-center gap-2 rounded-lg bg-[#00494B] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#00494B]/90 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <CreditCard className="h-3.5 w-3.5" />
                                 Add Payment
@@ -1258,7 +1258,7 @@ function FormField({
         min={min}
         step={step}
         onChange={(event) => onChange(event.target.value)}
-        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500"
       />
     </div>
   )

@@ -342,7 +342,7 @@ function DispatchPanelDialog({
                         <tr key={entry.id} className="border-b border-slate-100 align-top last:border-b-0">
                           <td className="px-4 py-3 font-mono text-[11px] text-slate-500">{String(index + 1).padStart(2, "0")}</td>
                           <td className="px-4 py-3 font-mono text-[12px] font-semibold text-slate-900">{entry.quantity * packSize} pcs</td>
-                          <td className="px-4 py-3 text-[12px] font-semibold text-indigo-700">{statusSelectLabel(entry.status)}</td>
+                          <td className="px-4 py-3 text-[12px] font-semibold text-brand-600">{statusSelectLabel(entry.status)}</td>
                           <td className="px-4 py-3 text-[12px] leading-5 text-slate-700">{entry.remark}</td>
                           <td className="px-4 py-3 text-[12px] text-slate-600">{entry.actorId}</td>
                           <td className="px-4 py-3 text-[12px] capitalize text-slate-600">{entry.actorRole}</td>
@@ -391,7 +391,7 @@ function DispatchPanelDialog({
                     value={form.dispatchQuantity}
                     onChange={(event) => handleChange("dispatchQuantity", event.target.value)}
                     disabled={submitDisabled}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-indigo-300"
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-brand-300"
                   />
                 </div>
 
@@ -404,7 +404,7 @@ function DispatchPanelDialog({
                     value={form.status}
                     onChange={(event) => handleChange("status", event.target.value)}
                     disabled={submitDisabled}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-indigo-300"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-brand-300"
                   >
                     <option value="">Select status</option>
                     {DISPATCH_MUTATION_STATUSES.map((status) => (
@@ -431,7 +431,7 @@ function DispatchPanelDialog({
                     value={form.remark}
                     onChange={(event) => handleChange("remark", event.target.value)}
                     disabled={submitDisabled}
-                    className="w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 text-[13px] leading-6 text-slate-900 outline-none transition focus:border-indigo-300"
+                    className="w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 text-[13px] leading-6 text-slate-900 outline-none transition focus:border-brand-300"
                     placeholder="Add the operational dispatch remark"
                   />
                 </div>

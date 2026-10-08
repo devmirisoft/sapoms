@@ -121,8 +121,8 @@ export default function SliderManager({
 
         {/* Drop zone */}
         <label className={`flex flex-col items-center justify-center border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${preview
-          ? "border-indigo-300 bg-indigo-50/30"
-          : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/20"
+          ? "border-brand-300 bg-brand-50/30"
+          : "border-gray-200 hover:border-brand-300 hover:bg-brand-50/20"
           }`}>
           <input
             ref={fileRef}
@@ -161,7 +161,7 @@ export default function SliderManager({
           value={label}
           onChange={e => setLabel(e.target.value)}
           placeholder="Label (optional, for your reference)"
-          className="mt-3 w-full px-4 py-2.5 text-[13px] text-gray-900 border border-gray-200 rounded-xl outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all placeholder:text-gray-300"
+          className="mt-3 w-full px-4 py-2.5 text-[13px] text-gray-900 border border-gray-200 rounded-xl outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all placeholder:text-gray-300"
         />
 
         {/* Actions */}
@@ -169,7 +169,7 @@ export default function SliderManager({
           <button
             onClick={handleUpload}
             disabled={!file || uploading}
-            className="flex items-center gap-2 px-5 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-semibold rounded-xl transition-colors"
+            className="flex items-center gap-2 px-5 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-[13px] font-semibold rounded-xl transition-colors"
           >
             {uploading ? (
               <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Uploading…</>

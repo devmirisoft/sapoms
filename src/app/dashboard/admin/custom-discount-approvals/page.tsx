@@ -125,7 +125,7 @@ function DecisionPanel({
         rows={4}
         disabled={!!blocker || request.normalizedStatus !== "pending" || busy}
         placeholder="Add approval note (optional) or disapproval note (required)..."
-        className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100 disabled:bg-gray-100 disabled:text-gray-500"
+        className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-gray-100 disabled:text-gray-500"
       />
 
       {blocker ? (
@@ -223,7 +223,7 @@ function RequestCard({
               {request.requestReference || request.id}
             </span>
             <OrderNumberChip request={request} />
-            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-bold text-indigo-700">
+            <span className="rounded-full border border-brand-200 bg-brand-50 px-2 py-0.5 text-[10px] font-bold text-brand-600">
               {request.discountScope === "product" ? "Product Discount" : "Order Discount"}
             </span>
             {request.isLegacySnapshot && (
@@ -254,7 +254,7 @@ function RequestCard({
       <NsmStatusLine request={request} size="text-[11px]" />
 
       {request.discountScope === "product" && request.targetProduct && (
-        <p className="text-[11px] font-semibold text-indigo-700">
+        <p className="text-[11px] font-semibold text-brand-600">
           Target: {request.targetProduct.displayName || request.targetProduct.variantCode || request.targetProduct.productname || "Selected product"}
         </p>
       )}
@@ -263,7 +263,7 @@ function RequestCard({
         {[
           { label: "Products", val: String(request.orderSnapshot.products.length), cls: "text-gray-900" },
           { label: "Pieces", val: String(totalPieces(request)), cls: "text-gray-900" },
-          { label: "Requested", val: `${request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent}%`, cls: "text-indigo-700" },
+          { label: "Requested", val: `${request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent}%`, cls: "text-brand-600" },
           { label: "Gross", val: money(request.orderSnapshot.grossAmount), cls: "text-gray-500" },
           { label: "Discount", val: `-${money(request.orderSnapshot.totalDiscountAmount)}`, cls: "text-amber-700" },
           { label: "Net Payable", val: money(request.orderSnapshot.requestedNetPayableAmount), cls: "text-emerald-700" },
@@ -283,7 +283,7 @@ function RequestCard({
           {request.orderSnapshot.products.map((product, index) => (
             <div
               key={`${request.id}-${product.productKey || product.sku}-${index}`}
-              className={`px-3 py-2 ${product.usesCustomDiscount ? "bg-indigo-50" : ""}`}
+              className={`px-3 py-2 ${product.usesCustomDiscount ? "bg-brand-50" : ""}`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
@@ -299,7 +299,7 @@ function RequestCard({
                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700">
                   Base {product.baseDiscountPercent}%
                 </span>
-                <span className={`rounded-full border px-2 py-0.5 ${product.usesCustomDiscount ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
+                <span className={`rounded-full border px-2 py-0.5 ${product.usesCustomDiscount ? "border-brand-200 bg-brand-50 text-brand-600" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
                   {product.usesCustomDiscount ? `Custom ${product.requestedCustomDiscountPercent ?? 0}%` : "Standard Discount"}
                 </span>
                 {product.isPriority && (
@@ -513,7 +513,7 @@ export default function CustomDiscountApprovalsPage() {
               key={item.key}
               onClick={() => setFilter(item.key as "all" | ApprovalStatus)}
               className={`rounded-2xl border px-4 py-3 text-left transition-colors ${
-                filter === item.key ? "border-indigo-300 bg-indigo-50" : "border-gray-200 bg-white hover:bg-gray-50"
+                filter === item.key ? "border-brand-300 bg-brand-50" : "border-gray-200 bg-white hover:bg-gray-50"
               }`}
             >
               <p className="text-[11px] font-bold uppercase tracking-wider text-gray-400">{item.label}</p>
@@ -529,7 +529,7 @@ export default function CustomDiscountApprovalsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Dealer, dealer ID, code, request ref..."
-              className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-100"
+              className="mt-1 w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
             />
           </label>
           <label>
@@ -537,7 +537,7 @@ export default function CustomDiscountApprovalsPage() {
             <select
               value={scopeFilter}
               onChange={(e) => setScopeFilter(e.target.value as typeof scopeFilter)}
-              className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-indigo-500"
+              className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-brand-500"
             >
               <option value="all">All</option>
               <option value="order">Order Discount</option>
@@ -549,7 +549,7 @@ export default function CustomDiscountApprovalsPage() {
             <select
               value={rsmFilter}
               onChange={(e) => setRsmFilter(e.target.value as typeof rsmFilter)}
-              className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-indigo-500"
+              className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-brand-500"
             >
               <option value="all">All</option>
               <option value="pending">Awaiting</option>
@@ -562,7 +562,7 @@ export default function CustomDiscountApprovalsPage() {
             <DateInput
               value={dateFrom}
               onChange={(e) => setDateFrom(e.target.value)}
-              className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-indigo-500"
+              className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-brand-500"
             />
           </label>
           <label>
@@ -570,7 +570,7 @@ export default function CustomDiscountApprovalsPage() {
             <DateInput
               value={dateTo}
               onChange={(e) => setDateTo(e.target.value)}
-              className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-indigo-500"
+              className="mt-1 block rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-brand-500"
             />
           </label>
           {hasExtraFilters && (
@@ -634,7 +634,7 @@ export default function CustomDiscountApprovalsPage() {
                       <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge(request.normalizedStatus)}`}>
                         {statusLabel(request.normalizedStatus)}
                       </span>
-                      <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700">
+                      <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-[11px] font-bold text-brand-600">
                         {request.discountScope === "product" ? "Product Discount" : "Order Discount"}
                       </span>
                       {request.isLegacySnapshot && (
@@ -661,7 +661,7 @@ export default function CustomDiscountApprovalsPage() {
                     )}
                     <NsmStatusLine request={request} size="text-[12px]" />
                     {request.discountScope === "product" && request.targetProduct && (
-                      <p className="text-[12px] font-semibold text-indigo-700">
+                      <p className="text-[12px] font-semibold text-brand-600">
                         Custom discount target: {request.targetProduct.displayName || request.targetProduct.variantCode || request.targetProduct.productname || "Selected product"}
                       </p>
                     )}
@@ -676,9 +676,9 @@ export default function CustomDiscountApprovalsPage() {
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Pieces</p>
                       <p className="mt-1 font-mono text-[14px] font-bold text-gray-900">{totalPieces(request)}</p>
                     </div>
-                    <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">Requested</p>
-                      <p className="mt-1 font-mono text-[14px] font-bold text-indigo-700">
+                    <div className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-brand-500">Requested</p>
+                      <p className="mt-1 font-mono text-[14px] font-bold text-brand-600">
                         {request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent}%
                       </p>
                     </div>
@@ -700,9 +700,9 @@ export default function CustomDiscountApprovalsPage() {
                         <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Base Discount</p>
                         <p className="mt-1 font-mono text-[13px] font-semibold text-amber-700">{money(request.orderSnapshot.baseDiscountAmount)}</p>
                       </div>
-                      <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-                        <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Requested Custom</p>
-                        <p className="mt-1 font-mono text-[13px] font-semibold text-indigo-700">{money(request.orderSnapshot.requestedAdditionalDiscountAmount)}</p>
+                      <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
+                        <p className="text-[10px] font-bold uppercase tracking-wider text-brand-600">Requested Custom</p>
+                        <p className="mt-1 font-mono text-[13px] font-semibold text-brand-600">{money(request.orderSnapshot.requestedAdditionalDiscountAmount)}</p>
                       </div>
                       <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                         <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Total Discount</p>
@@ -734,13 +734,13 @@ export default function CustomDiscountApprovalsPage() {
                             {request.orderSnapshot.products.map((product, index) => (
                               <tr
                                 key={`${request.id}-${product.productKey || product.sku}-${index}`}
-                                className={product.usesCustomDiscount ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200" : ""}
+                                className={product.usesCustomDiscount ? "bg-brand-50 ring-1 ring-inset ring-brand-200" : ""}
                               >
                                 <td className="px-3 py-3 font-mono text-[12px] font-bold text-amber-700">{product.catalogueNumber || product.sku || "-"}</td>
                                 <td className="px-3 py-3">
                                   <p className="text-[12px] font-semibold text-gray-900">{product.productName || "-"}</p>
                                   <div className="mt-1 flex flex-wrap gap-1.5">
-                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${product.usesCustomDiscount ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
+                                    <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${product.usesCustomDiscount ? "border-brand-200 bg-brand-50 text-brand-600" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
                                       {product.usesCustomDiscount ? "Custom Approval Requested" : "Standard Discount"}
                                     </span>
                                     {product.isPriority && (
@@ -761,7 +761,7 @@ export default function CustomDiscountApprovalsPage() {
                                 <td className="px-3 py-3 font-mono text-[12px] text-amber-700">
                                   {product.baseDiscountPercent}% · -{money(product.baseDiscountAmount)}
                                 </td>
-                                <td className="px-3 py-3 font-mono text-[12px] text-indigo-700">
+                                <td className="px-3 py-3 font-mono text-[12px] text-brand-600">
                                   {product.usesCustomDiscount
                                     ? `${product.requestedCustomDiscountPercent ?? 0}% · -${money(product.requestedCustomDiscountAmount ?? 0)}`
                                     : "Standard Discount"}

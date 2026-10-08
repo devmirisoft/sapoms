@@ -156,7 +156,7 @@ export default function ApprovedDiscountsPage() {
                         <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge(request.normalizedStatus)}`}>
                           {statusLabel(request.normalizedStatus)}
                         </span>
-                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700">
+                        <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-[11px] font-bold text-brand-600">
                           {request.discountScope === "product" ? "Product Discount" : "Order Discount"}
                         </span>
                         {request.isLegacySnapshot && (
@@ -232,9 +232,9 @@ export default function ApprovedDiscountsPage() {
                       <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Base Discount</p>
                       <p className="mt-1 font-mono text-[14px] font-bold text-amber-700">{money(request.orderSnapshot.baseDiscountAmount)}</p>
                     </div>
-                    <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-4 py-3">
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600">Requested Custom</p>
-                      <p className="mt-1 font-mono text-[14px] font-bold text-indigo-700">{money(request.orderSnapshot.requestedAdditionalDiscountAmount)}</p>
+                    <div className="rounded-xl border border-brand-200 bg-brand-50 px-4 py-3">
+                      <p className="text-[10px] font-bold uppercase tracking-wider text-brand-600">Requested Custom</p>
+                      <p className="mt-1 font-mono text-[14px] font-bold text-brand-600">{money(request.orderSnapshot.requestedAdditionalDiscountAmount)}</p>
                     </div>
                     <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Requested Total Discount</p>
@@ -274,7 +274,7 @@ export default function ApprovedDiscountsPage() {
                               <td className="px-3 py-3">
                                 <p className="text-[12px] font-semibold text-gray-900">{product.productName || "-"}</p>
                                 <div className="mt-1 flex flex-wrap gap-1.5">
-                                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${product.usesCustomDiscount ? "border-indigo-200 bg-indigo-50 text-indigo-700" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
+                                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-bold ${product.usesCustomDiscount ? "border-brand-200 bg-brand-50 text-brand-600" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
                                     {product.usesCustomDiscount ? "Custom Approval Requested" : "Standard Discount"}
                                   </span>
                                   {product.isPriority && (
@@ -295,7 +295,7 @@ export default function ApprovedDiscountsPage() {
                               <td className="px-3 py-3 font-mono text-[12px] text-amber-700">
                                 {product.baseDiscountPercent}% · -{money(product.baseDiscountAmount)}
                               </td>
-                              <td className="px-3 py-3 font-mono text-[12px] text-indigo-700">
+                              <td className="px-3 py-3 font-mono text-[12px] text-brand-600">
                                 {product.usesCustomDiscount
                                   ? `${product.requestedCustomDiscountPercent ?? 0}% · -${money(product.requestedCustomDiscountAmount ?? 0)}`
                                   : "Standard Discount"}

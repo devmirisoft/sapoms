@@ -41,7 +41,7 @@ export type CreditSnapshot = {
 // rate difference, return...); the dealer sees it as a debit note.
 const PAYMENT_MODES = ['Cash', 'Cheque', 'NEFT', 'UPI', 'IMPF', 'Credit Note']
 const today = () => new Date().toISOString().slice(0, 10)
-const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500'
+const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500'
 const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500'
 
 type BilledAgainst = Pick<LedgerBill, 'orderNumber' | 'billAmount' | 'debitNote'>
@@ -122,7 +122,7 @@ function Actions({ onCancel, busy, label, tone = 'indigo' }: { onCancel: () => v
       <button
         type="submit"
         disabled={busy}
-        className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${tone === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-indigo-600 hover:bg-indigo-700'}`}
+        className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60 ${tone === 'emerald' ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-brand-600 hover:bg-brand-500'}`}
       >
         {busy && <Loader2 className="h-4 w-4 animate-spin" />}
         {label}
@@ -283,7 +283,7 @@ export default function DealerBillsPanel({
                 <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">Credit limit</p>
                 <p className="font-semibold text-gray-900">
                   {credit.creditLimit === null ? 'Not set' : formatAmount(credit.creditLimit)}
-                  {credit.tempCreditLimit > 0 && <span className="ml-1 text-xs font-medium text-indigo-600">+ {formatAmount(credit.tempCreditLimit)} temp</span>}
+                  {credit.tempCreditLimit > 0 && <span className="ml-1 text-xs font-medium text-brand-600">+ {formatAmount(credit.tempCreditLimit)} temp</span>}
                 </p>
               </div>
               <div>
@@ -305,11 +305,11 @@ export default function DealerBillsPanel({
           </div>
           {canExtendCredit && (
             <div className="mt-4 flex flex-wrap gap-2 border-t border-gray-200/70 pt-3">
-              <button type="button" onClick={() => setModal('days')} className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">
+              <button type="button" onClick={() => setModal('days')} className="rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50">
                 Extend credit days
               </button>
               {credit.creditLimit !== null && (
-                <button type="button" onClick={() => setModal('limit')} className="rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">
+                <button type="button" onClick={() => setModal('limit')} className="rounded-lg border border-brand-200 bg-white px-3 py-1.5 text-xs font-semibold text-brand-600 hover:bg-brand-50">
                   Add temporary limit
                 </button>
               )}
@@ -326,7 +326,7 @@ export default function DealerBillsPanel({
               <p className="text-xs text-gray-500">{selectable.length} dispatched order{selectable.length === 1 ? '' : 's'} with unbilled value</p>
             </div>
             {canManageBills && (
-              <button type="button" onClick={openInvoice} className="inline-flex items-center gap-2 rounded-lg bg-[#00494B] px-3 py-2 text-sm font-semibold text-white hover:bg-[#007d7d]">
+              <button type="button" onClick={openInvoice} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-500">
                 <Plus className="h-4 w-4" /> Add Invoice
               </button>
             )}
@@ -354,14 +354,14 @@ export default function DealerBillsPanel({
                   const pdfs = billPdfs(bill)
                   return (
                     <tr key={bill.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-indigo-700">{formatDisplayOrderNumber(bill.orderNumber)}</td>
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600">{formatDisplayOrderNumber(bill.orderNumber)}</td>
                       <td className="px-4 py-3">
                         <div className="font-semibold text-gray-900">{formatAmount(bill.billAmount)}</div>
                         <div className="text-xs text-gray-500">Paid {formatAmount(bill.paidAmount)}</div>
                       </td>
                       <td className="px-4 py-3 text-gray-600">
                         {formatDate(due)}
-                        {(bill.extraCreditDays || 0) > 0 && <div className="text-xs font-medium text-indigo-600">+{bill.extraCreditDays} days extended</div>}
+                        {(bill.extraCreditDays || 0) > 0 && <div className="text-xs font-medium text-brand-600">+{bill.extraCreditDays} days extended</div>}
                       </td>
                       <td className="px-4 py-3">
                         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${balance === 0 ? 'bg-emerald-50 text-emerald-700' : left < 0 ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
@@ -375,7 +375,7 @@ export default function DealerBillsPanel({
                             href={`/api/ledger/${encodeURIComponent(dealerId)}/bill-pdf/download?${new URLSearchParams({ billId: bill.id, index: String(index), mode: 'inline' })}`}
                             target="_blank"
                             rel="noreferrer"
-                            className="flex items-center gap-1.5 text-xs text-gray-700 hover:text-indigo-700"
+                            className="flex items-center gap-1.5 text-xs text-gray-700 hover:text-brand-500"
                           >
                             <FileText className="h-3.5 w-3.5 text-red-500" /> {file.name}
                           </a>
@@ -391,7 +391,7 @@ export default function DealerBillsPanel({
                               setPayment({ amount: String(balance), mode: 'NEFT', date: today(), reference: '' })
                               setModal('payment')
                             }}
-                            className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-[#00494B] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#007d7d] disabled:cursor-not-allowed disabled:opacity-50"
+                            className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             <CreditCard className="h-3.5 w-3.5" /> Add Payment
                           </button>
@@ -417,7 +417,7 @@ export default function DealerBillsPanel({
                   const id = String(order.order_id)
                   return (
                     <label key={id} className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 text-sm last:border-b-0 hover:bg-gray-50">
-                      <input type="checkbox" checked={invoiceOrders.includes(id)} onChange={(event) => toggleOrder(id, event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-indigo-600" />
+                      <input type="checkbox" checked={invoiceOrders.includes(id)} onChange={(event) => toggleOrder(id, event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-600" />
                       <span className="flex-1 text-gray-900">{formatDisplayOrderNumber(id)}</span>
                       <span className="text-xs font-semibold text-gray-600">{formatAmount(order.unbilled)}</span>
                     </label>
@@ -440,7 +440,7 @@ export default function DealerBillsPanel({
                 accept="application/pdf,.pdf"
                 multiple
                 onChange={(event) => setInvoiceFiles(Array.from(event.target.files || []))}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-indigo-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-indigo-700"
+                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-600"
               />
             </label>
             <Actions onCancel={close} busy={busy} label="Save Invoice" />

@@ -58,7 +58,7 @@ export default function ProductSearch({
           onChange={(e) => debouncedSearch(e.target.value)}
           onFocus={() => setFocused(true)}
           onBlur={() => setTimeout(() => setFocused(false), 150)}
-          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition"
+          className="w-full pl-10 pr-4 py-2.5 border border-gray-300 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition"
         />
         {query && (
           <button
@@ -117,7 +117,7 @@ export default function ProductSearch({
                   <div className="flex-1 min-w-0">
                     {/* SKU + Name */}
                     <div className="flex items-center gap-2 mb-1.5">
-                      <span className="font-mono text-xs font-semibold text-indigo-600">
+                      <span className="font-mono text-xs font-semibold text-brand-600">
                         {result.sku}
                       </span>
                       <Badge
@@ -162,7 +162,7 @@ export default function ProductSearch({
           {displayResults.length > 0 && results.length > displayResults.length && (
             <Link
               href={`/search?q=${encodeURIComponent(query)}`}
-              className="block px-4 py-3 text-center text-sm text-indigo-600 hover:bg-indigo-50 border-t border-gray-100 font-medium"
+              className="block px-4 py-3 text-center text-sm text-brand-600 hover:bg-brand-50 border-t border-gray-100 font-medium"
             >
               Show all {results.length} results →
             </Link>

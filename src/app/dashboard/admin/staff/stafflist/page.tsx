@@ -63,7 +63,7 @@ function roleBadge(staff: Pick<StaffData, "role" | "staff_roletype" | "sales_reg
 
   switch (staffRoleType) {
     case "1": return { bg: "bg-violet-50", text: "text-violet-700", label: "Sales Manager" }
-    case "2": return { bg: "bg-indigo-50", text: "text-indigo-700", label: "Staff" }
+    case "2": return { bg: "bg-brand-50", text: "text-brand-600", label: "Staff" }
     default:  return { bg: "bg-gray-100",  text: "text-gray-500",   label: "Unknown" }
   }
 }
@@ -286,7 +286,7 @@ function HierarchyTree({ root, collapsed, onToggle }: { root: TreeNode; collapse
                 title={node.email || node.name}
                 className={`relative flex flex-col rounded-2xl border border-gray-100 bg-white px-4 pb-4 pt-8 text-center shadow-[0_4px_20px_rgba(15,23,42,0.06)] transition duration-200 ${
                   foldable ? "cursor-pointer hover:-translate-y-0.5 hover:shadow-[0_8px_28px_rgba(15,23,42,0.10)]" : ""
-                } ${node.subject ? "ring-2 ring-indigo-500/25" : ""}`}
+                } ${node.subject ? "ring-2 ring-brand-500/25" : ""}`}
                 style={{ minHeight: CARD_H, borderTop: `3px solid ${color}` }}
               >
                 <span
@@ -401,7 +401,7 @@ function HierarchyPanel({ open, onClose, data, reports }: { open: boolean; onClo
           <p className="mt-1 truncate text-xs text-slate-400">
             {selected ? `${selected.staff_name} · ${teamSize} in team` : "Sales Team Structure"}
           </p>
-          <span className="mx-auto mt-2.5 block h-[3px] w-9 rounded-full bg-indigo-500" />
+          <span className="mx-auto mt-2.5 block h-[3px] w-9 rounded-full bg-brand-500" />
           <button
             onClick={onClose}
             aria-label="Close hierarchy"
@@ -420,7 +420,7 @@ function HierarchyPanel({ open, onClose, data, reports }: { open: boolean; onClo
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder="Search staff by name, email or role"
-                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                  className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2 pl-9 pr-3 text-sm outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
                 />
               </div>
             </div>
@@ -434,9 +434,9 @@ function HierarchyPanel({ open, onClose, data, reports }: { open: boolean; onClo
                     key={nodeKey(s)}
                     onClick={() => { setCollapsed(new Set()); setSelectedId(nodeKey(s)) }}
                     style={{ animationDelay: `${Math.min(i, 10) * 25}ms` }}
-                    className={`staff-node mb-1.5 flex w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:border-indigo-300 hover:bg-indigo-50/40 ${pressable}`}
+                    className={`staff-node mb-1.5 flex w-full items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-3 py-2.5 text-left shadow-sm transition-colors hover:border-brand-300 hover:bg-brand-50/40 ${pressable}`}
                   >
-                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-indigo-50 text-[11px] font-semibold text-indigo-600">
+                    <div className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-50 text-[11px] font-semibold text-brand-600">
                       {initials(s.staff_name)}
                     </div>
                     <div className="min-w-0 flex-1">
@@ -872,7 +872,7 @@ export default function StaffListPage() {
               </button>
               <Link
                 href="/dashboard/admin/staff/addstaff"
-                className={`inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 ${pressable}`}
+                className={`inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 ${pressable}`}
               >
                 <UserPlus className="w-4 h-4" />
                 Add staff
@@ -894,7 +894,7 @@ export default function StaffListPage() {
                   aria-pressed={active}
                   className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium shadow-sm ${pressable} ${
                     active
-                      ? "border-indigo-600 bg-indigo-600 text-white"
+                      ? "border-brand-600 bg-brand-600 text-white"
                       : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
                   }`}
                 >
@@ -942,7 +942,7 @@ export default function StaffListPage() {
                         value={searchInput}
                         onChange={(e) => setSearchInput(e.target.value)}
                         placeholder="Name"
-                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
                       />
                       {searchInput && (
                         <button
@@ -964,7 +964,7 @@ export default function StaffListPage() {
                         value={emailFilter}
                         onChange={(e) => setEmailFilter(e.target.value)}
                         placeholder="Email"
-                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
                       />
                       {emailFilter && (
                         <button
@@ -984,7 +984,7 @@ export default function StaffListPage() {
                       <select
                         value={roleFilter}
                         onChange={(e) => setRoleFilter(e.target.value)}
-                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
                       >
                         <option value="">Role</option>
                         {roleOptions.map((opt) => (
@@ -1016,7 +1016,7 @@ export default function StaffListPage() {
                       <select
                         value={statusFilter}
                         onChange={(e) => setStatusFilter(e.target.value as "" | StaffStatus)}
-                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
                       >
                         <option value="">Status</option>
                         <option value="ACTIVE">Active</option>
@@ -1070,7 +1070,7 @@ export default function StaffListPage() {
 
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
-                          {/* <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                          {/* <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center text-xs font-semibold flex-shrink-0">
                             {initials(staff.staff_name)}
                           </div> */}
                           <span className="font-medium text-gray-800">{staff.staff_name || "-"}</span>
@@ -1201,7 +1201,7 @@ export default function StaffListPage() {
                     onClick={() => handlePageChange(p)}
                     className={`px-3 py-1.5 text-sm rounded-lg border ${pressable} ${
                       p === page
-                        ? "bg-indigo-600 text-white border-indigo-600 font-medium"
+                        ? "bg-brand-600 text-white border-brand-600 font-medium"
                         : "border-gray-200 text-gray-600 hover:bg-gray-50"
                     }`}
                   >

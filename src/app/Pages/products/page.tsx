@@ -583,14 +583,14 @@ function ProductListContent() {
               placeholder="Search product code, catalogue no. or name…"
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
-              className="pl-[42px] pr-[16px] py-[12px] border border-[#e5e5ea] rounded-full text-[16px] font-semibold bg-white text-[#1d1d1f] w-full outline-none transition-shadow duration-150 placeholder:text-[#98989d] placeholder:font-normal focus:border-[#00494B] focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
+              className="pl-[42px] pr-[16px] py-[12px] border border-[#e5e5ea] rounded-full text-[16px] font-semibold bg-white text-[#1d1d1f] w-full outline-none transition-shadow duration-150 placeholder:text-[#98989d] placeholder:font-normal focus:border-brand-600 focus:shadow-[0_0_0_4px_rgba(0,113,227,0.12)]"
               style={{ fontFamily: "inherit", letterSpacing: '-0.01em' }}
             /> 
           </div>
            <div className="flex items-center gap-2">
              <button
             onClick={() => router.push('/Pages/products/addproducts')}
-            className={`${PRESS} inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border-none bg-[#00494B] text-[12.5px] font-semibold text-white cursor-pointer whitespace-nowrap hover:bg-[#007D7D]`}
+            className={`${PRESS} inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border-none bg-brand-600 text-[12.5px] font-semibold text-white cursor-pointer whitespace-nowrap hover:bg-brand-500`}
           >
             <Plus size={14} />
             Add Product
@@ -653,7 +653,7 @@ function ProductListContent() {
                         placeholder={col.label}
                         value={(columnFilters as Record<string, string>)[col.key]}
                         onChange={(e) => setColumnFilters((f) => ({ ...f, [col.key]: e.target.value }))}
-                        className="w-full bg-white border border-[#e5e5ea] rounded-[8px] px-2.5 py-[6px] text-[11px] font-medium text-[#3a3a3c] outline-none transition-colors placeholder:text-[#98989d] placeholder:font-semibold placeholder:uppercase placeholder:text-[10.5px] focus:border-[#00494B] focus:shadow-[0_0_0_3px_rgba(0,113,227,0.12)]"
+                        className="w-full bg-white border border-[#e5e5ea] rounded-[8px] px-2.5 py-[6px] text-[11px] font-medium text-[#3a3a3c] outline-none transition-colors placeholder:text-[#98989d] placeholder:font-semibold placeholder:uppercase placeholder:text-[10.5px] focus:border-brand-600 focus:shadow-[0_0_0_3px_rgba(0,113,227,0.12)]"
                         style={{ letterSpacing: '0.02em' }}
                       />
                     </th>
@@ -803,7 +803,7 @@ function ProductListContent() {
                       onClick={() => handlePageChange(p as number)}
                       className={`${PRESS} min-w-[34px] h-[34px] px-2 rounded-full border text-[13px] font-medium inline-flex items-center justify-center cursor-pointer ${
                         p === page
-                          ? "bg-[#00494B] border-[#00494B] text-white font-semibold"
+                          ? "bg-brand-600 border-brand-600 text-white font-semibold"
                           : "bg-white border-[#e5e5ea] text-[#3a3a3c] hover:bg-[#fafafc]"
                       }`}
                     >

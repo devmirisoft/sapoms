@@ -387,12 +387,12 @@ function buildDispatchRecordFallbackKey(record: Partial<OrderDispatchRecord>) {
 const itemStatusMap: Record<string, { label: string; dot: string; text: string; bg: string }> = {
   "0": { label: "In Process",   dot: "bg-amber-400",   text: "text-amber-700",   bg: "bg-amber-50"   },
   "1": { label: "Processing",   dot: "bg-blue-400",    text: "text-blue-700",    bg: "bg-blue-50"    },
-  "2": { label: "Dispatched",   dot: "bg-indigo-400",  text: "text-indigo-700",  bg: "bg-indigo-50"  },
+  "2": { label: "Dispatched",   dot: "bg-brand-400",  text: "text-brand-600",  bg: "bg-brand-50"  },
   "3": { label: "Not in Stock", dot: "bg-red-400",     text: "text-red-700",     bg: "bg-red-50"     },
   "4": { label: "Successful",   dot: "bg-emerald-400", text: "text-emerald-700", bg: "bg-emerald-50" },
   pending: { label: "Pending", dot: "bg-amber-400", text: "text-amber-700", bg: "bg-amber-50" },
   packing: { label: "Packing", dot: "bg-blue-400", text: "text-blue-700", bg: "bg-blue-50" },
-  dispatched: { label: "Dispatched", dot: "bg-indigo-400", text: "text-indigo-700", bg: "bg-indigo-50" },
+  dispatched: { label: "Dispatched", dot: "bg-brand-400", text: "text-brand-600", bg: "bg-brand-50" },
   not_in_stock: { label: "Not in Stock", dot: "bg-red-400", text: "text-red-700", bg: "bg-red-50" },
   successful: { label: "Successful", dot: "bg-emerald-400", text: "text-emerald-700", bg: "bg-emerald-50" },
   partially_dispatched: { label: "Partially Dispatched", dot: "bg-orange-400", text: "text-orange-700", bg: "bg-orange-50" },
@@ -671,7 +671,7 @@ function ItemCard({
             checked={selected}
             onChange={(event) => onSelectedChange(event.target.checked)}
             aria-label={`Select ${o.product_name || o.orderdata_cat_no || "product"} for dispatch`}
-            className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600"
+            className="mt-1 h-4 w-4 rounded border-slate-300 text-brand-600"
           />
         )}
         <div className="flex-1 min-w-0">
@@ -686,7 +686,7 @@ function ItemCard({
           </div>
           <h3 className="text-[14px] font-bold text-gray-900 truncate">{o.product_name || "—"}</h3>
           {o.product_discription && <p className="text-[12px] text-gray-500 truncate mt-0.5">{o.product_discription}</p>}
-          {o.fallbackProductNote && <p className="mt-2 text-[11px] leading-5 text-indigo-700">Product Note: {o.fallbackProductNote}</p>}
+          {o.fallbackProductNote && <p className="mt-2 text-[11px] leading-5 text-brand-600">Product Note: {o.fallbackProductNote}</p>}
           {originalRemarksText && <p className="mt-2 text-[11px] leading-5 text-gray-600">{originalRemarksText}</p>}
         </div>
         <StatusPill code={resolveItemStatusCode(o, pricing)} />
@@ -724,7 +724,7 @@ function ItemCard({
       <div className="flex items-center justify-between border-t border-gray-100 pt-3">
         <span className="text-[11px] text-gray-400 font-mono">{o.orderdata_datetime || "—"}</span>
         <button onClick={onDispatch} disabled={isDeleted}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-all ${isDeleted ? "opacity-40 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-200" : "bg-white text-gray-700 border-gray-200 hover:border-indigo-300 hover:text-indigo-700 hover:bg-indigo-50"}`}>
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-all ${isDeleted ? "opacity-40 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-200" : "bg-white text-gray-700 border-gray-200 hover:border-brand-300 hover:text-brand-500 hover:bg-brand-50"}`}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
           </svg>
@@ -1908,7 +1908,7 @@ export default function ViewOrderDealerPage() {
               <div className="flex items-center gap-3">
                 <h1 className="text-[18px] font-bold text-gray-900">Order Details</h1>
                 {firstOrder?.orderdata_orderid && (
-                  <span className="font-mono text-[12px] font-semibold text-indigo-700 bg-indigo-50 px-2.5 py-1 rounded-lg">
+                  <span className="font-mono text-[12px] font-semibold text-brand-600 bg-brand-50 px-2.5 py-1 rounded-lg">
                     {formatDisplayOrderNumber(firstOrder.orderdata_orderid)}
                   </span>
                 )}
@@ -1934,7 +1934,7 @@ export default function ViewOrderDealerPage() {
               <div className="flex items-center gap-2">
                 <button type="button" onClick={() => setSelectedDispatchKeys(new Set(dispatchableByKey.keys()))}
                   disabled={dispatchableByKey.size === 0 || dispatchAllSaving}
-                  className="px-3 py-2 text-[12px] font-semibold text-indigo-700 border border-indigo-200 rounded-xl hover:bg-indigo-50 disabled:opacity-40">
+                  className="px-3 py-2 text-[12px] font-semibold text-brand-600 border border-brand-200 rounded-xl hover:bg-brand-50 disabled:opacity-40">
                   Select All Dispatchable
                 </button>
                 <button type="button" onClick={() => setSelectedDispatchKeys(new Set())}
@@ -1946,7 +1946,7 @@ export default function ViewOrderDealerPage() {
                   type="button"
                   onClick={openDispatchAllDialog}
                   disabled={!dispatchAllHasLines || dispatchAllSaving}
-                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-semibold rounded-xl border bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+                  className="flex items-center gap-2 px-4 py-2 text-[13px] font-semibold rounded-xl border bg-brand-600 hover:bg-brand-500 text-white border-brand-600 transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   Dispatch Selected ({selectedDispatchLines.length})
                 </button>
@@ -1993,7 +1993,7 @@ export default function ViewOrderDealerPage() {
           {visibleDealerFields.length > 0 && (
             <div className="bg-white border border-gray-200 rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-4">
-                <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-lg bg-brand-50 flex items-center justify-center">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round">
                     <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />
                   </svg>
@@ -2009,9 +2009,9 @@ export default function ViewOrderDealerPage() {
           )}
 
           {orderNote && (
-            <div className="bg-white border border-indigo-200 rounded-2xl p-5">
+            <div className="bg-white border border-brand-200 rounded-2xl p-5">
               <div className="flex items-center gap-2 mb-3">
-                <div className="w-7 h-7 rounded-lg bg-indigo-50 flex items-center justify-center">
+                <div className="w-7 h-7 rounded-lg bg-brand-50 flex items-center justify-center">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round">
                     <path d="M21 15a4 4 0 0 1-4 4H7l-4 4V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z" />
                   </svg>
@@ -2272,13 +2272,13 @@ export default function ViewOrderDealerPage() {
                                   return next;
                                 })}
                                 aria-label={`Select ${o.product_name || o.orderdata_cat_no || "product"} for dispatch`}
-                                className="h-4 w-4 rounded border-slate-300 text-indigo-600 disabled:opacity-30"
+                                className="h-4 w-4 rounded border-slate-300 text-brand-600 disabled:opacity-30"
                               />
                             </td>
                           )}
                           <td className="px-4 py-3.5 text-[11px] text-gray-400 font-mono font-semibold">{String(idx + 1).padStart(2, "0")}</td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
-                            <span className="font-mono text-[11px] font-bold text-indigo-600">{formatDisplayOrderNumber(o.orderdata_orderid)}</span>
+                            <span className="font-mono text-[11px] font-bold text-brand-600">{formatDisplayOrderNumber(o.orderdata_orderid)}</span>
                           </td>
                           <td className="px-4 py-3.5">
                             <div className="flex flex-col gap-1">
@@ -2296,7 +2296,7 @@ export default function ViewOrderDealerPage() {
                           <td className="px-4 py-3.5 max-w-[140px]">
                             <span className="block truncate text-[12px] text-gray-600">{o.product_discription || "—"}</span>
                             {o.fallbackProductNote && (
-                              <span className="mt-1 block text-[11px] leading-5 text-indigo-700">Product Note: {o.fallbackProductNote}</span>
+                              <span className="mt-1 block text-[11px] leading-5 text-brand-600">Product Note: {o.fallbackProductNote}</span>
                             )}
                             {([o.remark, o.remarks].filter(Boolean).join(" | ")) && (
                               <span className="mt-1 block text-[11px] leading-5 text-gray-500">{[o.remark, o.remarks].filter(Boolean).join(" | ")}</span>
@@ -2334,7 +2334,7 @@ export default function ViewOrderDealerPage() {
                               <button
                                 onClick={() => !isDeleted && setActiveDispatchItemId(o.orderdata_id)}
                                 disabled={isDeleted}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all whitespace-nowrap ${isDeleted ? "opacity-30 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-100" : "bg-white text-gray-600 border-gray-200 hover:border-indigo-200 hover:text-indigo-600 hover:bg-indigo-50"}`}>
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all whitespace-nowrap ${isDeleted ? "opacity-30 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-100" : "bg-white text-gray-600 border-gray-200 hover:border-brand-200 hover:text-brand-500 hover:bg-brand-50"}`}>
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
                                 </svg>
@@ -2443,7 +2443,7 @@ export default function ViewOrderDealerPage() {
                       </div>
                       <div><p className="text-[10px] font-bold uppercase text-slate-400">Ordered</p><p className="font-mono text-[13px] font-bold">{line.orderedQuantity * line.packSize} pcs</p></div>
                       <div><p className="text-[10px] font-bold uppercase text-slate-400">Dispatched</p><p className="font-mono text-[13px] font-bold">{line.dispatchedQuantity * line.packSize} pcs</p></div>
-                      <div><p className="text-[10px] font-bold uppercase text-slate-400">Remaining</p><p className="font-mono text-[13px] font-bold text-indigo-700">{line.remainingQuantity * line.packSize} pcs</p></div>
+                      <div><p className="text-[10px] font-bold uppercase text-slate-400">Remaining</p><p className="font-mono text-[13px] font-bold text-brand-600">{line.remainingQuantity * line.packSize} pcs</p></div>
                       <div><p className="mb-1 text-[10px] font-bold uppercase text-slate-400">Current status</p><StatusPill code={line.currentStatus} /></div>
                       <label className="text-[10px] font-bold uppercase text-slate-500">
                         Dispatch pcs
@@ -2458,7 +2458,7 @@ export default function ViewOrderDealerPage() {
                             setDispatchAllError("");
                           }}
                           disabled={dispatchAllSaving}
-                          className="mt-1 w-24 rounded-xl border border-slate-200 px-3 py-2 font-mono text-[13px] text-slate-900 outline-none focus:border-indigo-300"
+                          className="mt-1 w-24 rounded-xl border border-slate-200 px-3 py-2 font-mono text-[13px] text-slate-900 outline-none focus:border-brand-300"
                         />
                       </label>
                     </div>
@@ -2471,7 +2471,7 @@ export default function ViewOrderDealerPage() {
                 <select id="dispatch-selected-status" value={dispatchSelectedStatus}
                   onChange={(event) => setDispatchSelectedStatus(event.target.value as Exclude<DispatchStatus, "pending">)}
                   disabled={dispatchAllSaving}
-                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-[13px] text-slate-900 outline-none focus:border-indigo-300">
+                  className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-[13px] text-slate-900 outline-none focus:border-brand-300">
                   {DISPATCH_MUTATION_STATUSES.map((status) => <option key={status} value={status}>{DISPATCH_STATUS_LABELS[status]}</option>)}
                 </select>
               </div>
@@ -2493,7 +2493,7 @@ export default function ViewOrderDealerPage() {
                     setDispatchAllError("");
                   }}
                   disabled={dispatchAllSaving}
-                  className="w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 text-[13px] leading-6 text-slate-900 outline-none transition focus:border-indigo-300"
+                  className="w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 text-[13px] leading-6 text-slate-900 outline-none transition focus:border-brand-300"
                   placeholder="Add the operational dispatch remark"
                 />
               </div>

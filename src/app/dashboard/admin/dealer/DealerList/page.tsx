@@ -825,7 +825,7 @@ export default function DealerListPage() {
               Dealer Requests
             </Link>
             <button
-              className={`inline-flex items-center gap-2 rounded-lg bg-[#0B767C] px-4 py-2 text-sm font-medium text-white hover:bg-[#00494b] ${pressable}`}
+              className={`inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-medium text-white hover:bg-brand-500 ${pressable}`}
               onClick={() => window.location.href = "/dashboard/admin/dealer/AddDealerForm"}
             >
               <UserPlus className="h-4 w-4" />
@@ -870,7 +870,7 @@ export default function DealerListPage() {
               placeholder="Search dealers..."
               value={searchInput}
               onChange={e => setSearchInput(e.target.value)}
-              className="pl-10 pr-9 py-2.5 border border-gray-200 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent transition w-full"
+              className="pl-10 pr-9 py-2.5 border border-gray-200 rounded-lg text-sm bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition w-full"
             />
             {searchInput && (
               <button
@@ -912,7 +912,7 @@ export default function DealerListPage() {
              <button
               type="button"
               onClick={() => setNameSort((prev) => prev === "asc" ? "desc" : prev === "desc" ? "" : "asc")}
-              className={`rounded-md  text-gray-400 hover:bg-gray-200 hover:text-gray-600 ${pressable} ${nameSort ? "text-indigo-600" : ""}`}
+              className={`rounded-md  text-gray-400 hover:bg-gray-200 hover:text-gray-600 ${pressable} ${nameSort ? "text-brand-600" : ""}`}
               aria-label={nameSort === "asc" ? "Sorted A to Z, click to sort Z to A" : nameSort === "desc" ? "Sorted Z to A, click to clear sort" : "Sort by dealer name"}
               title={nameSort === "asc" ? "A → Z" : nameSort === "desc" ? "Z → A" : "Sort alphabetically"}
             >
@@ -946,7 +946,7 @@ export default function DealerListPage() {
                         value={nameSearchInput}
                         onChange={(event) => setNameSearchInput(event.target.value)}
                         placeholder="Dealer"
-                        className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-4 pr-16 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-4 pr-16 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
                       />
                       <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center gap-0.5">
                         {nameSearchInput && (
@@ -972,7 +972,7 @@ export default function DealerListPage() {
                           setCityFilter(event.target.value)
                         }}
                         disabled={cityOptionsLoading}
-                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <option value="">City</option>
                         {cityOptions.map((city) => (
@@ -989,7 +989,7 @@ export default function DealerListPage() {
                         value={emailSearchInput}
                         onChange={(event) => setEmailSearchInput(event.target.value)}
                         placeholder="Email"
-                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
                       />
                       {emailSearchInput && (
                         <button
@@ -1010,7 +1010,7 @@ export default function DealerListPage() {
                         value={phoneSearchInput}
                         onChange={(event) => setPhoneSearchInput(event.target.value)}
                         placeholder="Phone"
-                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full rounded-lg border border-gray-200 bg-gray-50 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 placeholder:text-gray-600 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
                       />
                       {phoneSearchInput && (
                         <button
@@ -1035,7 +1035,7 @@ export default function DealerListPage() {
                             setSelectedStaffId(event.target.value)
                           }}
                           disabled={staffOptionsLoading}
-                          className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+                          className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                           <option value="">Staff</option>
                           {staffOptions.map((staff) => {
@@ -1059,7 +1059,7 @@ export default function DealerListPage() {
                           setPage(1)
                           setWalletFilter(event.target.value as WalletFilter)
                         }}
-                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
                       >
                         <option value="">Payment type</option>
                         <option value="active">Advance dealers</option>
@@ -1076,7 +1076,7 @@ export default function DealerListPage() {
                           setPage(1)
                           setStatusFilter(event.target.value as DealerStatusFilter)
                         }}
-                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/20"
+                        className="w-full appearance-none rounded-lg border border-gray-200 bg-gray-50 pl-4 pr-8 py-2.5 text-xs font-semibold uppercase tracking-wide text-gray-600 outline-none transition cursor-pointer focus:border-brand-400 focus:ring-2 focus:ring-brand-500/20"
                       >
                         <option value="">Status</option>
                         <option value="ACTIVE">Active</option>
@@ -1123,12 +1123,12 @@ export default function DealerListPage() {
 
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
-                          {/* <div className="w-8 h-8 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center text-xs font-semibold shrink-0">
+                          {/* <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-600 flex items-center justify-center text-xs font-semibold shrink-0">
                             {initials(dealer.Dealer_Name)}
                           </div> */}
                           <Link
                             href={getDealerEditRoute(dealer.Dealer_Id)}
-                            className="font-medium text-gray-800 hover:text-indigo-700 transition-colors"
+                            className="font-medium text-gray-800 hover:text-brand-500 transition-colors"
                           >
                             {dealer.Dealer_Name || "-"}
                           </Link>
@@ -1229,7 +1229,7 @@ export default function DealerListPage() {
                                     <button
                                       onClick={(e) => { e.stopPropagation(); confirmDealerStatusChange(dealer) }}
                                       disabled={statusUpdatingId === String(dealer.Dealer_Id)}
-                                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-indigo-600 hover:bg-indigo-50 disabled:cursor-not-allowed disabled:opacity-50"
+                                      className="flex w-full items-center gap-2.5 px-3 py-2 text-left text-sm text-brand-600 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-50"
                                     >
                                       {normalizeDealerStatus(dealer.status) === "active"
                                         ? <PowerOff className="h-3.5 w-3.5" />
@@ -1279,7 +1279,7 @@ export default function DealerListPage() {
                     key={p}
                     onClick={() => handlePageChange(p)}
                     className={`px-3 py-1.5 text-sm rounded-lg border ${pressable} ${p === page
-                        ? "bg-indigo-600 text-white border-indigo-600 font-medium"
+                        ? "bg-brand-600 text-white border-brand-600 font-medium"
                         : "border-gray-200 text-gray-600 hover:bg-gray-50"
                       }`}
                   >

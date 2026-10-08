@@ -300,7 +300,7 @@ export default function FundRequestQueue({ stage, backHref, notice }: { stage: "
                         <span className={`rounded-full border px-2.5 py-0.5 text-[11px] font-bold ${statusBadge(request.status)}`}>
                           {stageLabel(request.status, request.rejectedBy)}
                         </span>
-                        <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[11px] font-bold text-indigo-700">
+                        <span className="rounded-full border border-brand-200 bg-brand-50 px-2.5 py-0.5 text-[11px] font-bold text-brand-600">
                           {request.type === "ADVANCE_ORDER" ? "Advance order" : "Additional funds"}
                         </span>
                       </div>
@@ -355,7 +355,7 @@ export default function FundRequestQueue({ stage, backHref, notice }: { stage: "
                           value={notes[request.id] || ""}
                           onChange={(event) => setNotes((current) => ({ ...current, [request.id]: event.target.value }))}
                           placeholder="Note (required to reject)"
-                          className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-indigo-300"
+                          className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-[13px] outline-none focus:border-brand-300"
                         />
                         <button
                           type="button"

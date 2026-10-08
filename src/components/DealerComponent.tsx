@@ -22,10 +22,10 @@ function DealerComponent() {
           </div>
         </div>
         <div className="flex flex-row gap-2 px-4 py-1 border-b border-gray-200 justify-evenly">
-          <Link href="Dashboard/adminpanel"><span className="w-50 text-left text-sm text-blue-600 hover:text-blue-800 font-sm text-wrap py-1">
+          <Link href="Dashboard/adminpanel"><span className="w-50 text-left text-sm text-brand-600 hover:text-brand-500 font-sm text-wrap py-1">
             Admin panel
           </span></Link>
-          <span onClick={()=>{console.log("signout clicked")}} className="w-full text-left text-sm text-blue-600 hover:text-blue-800 font-medium py-1">
+          <span onClick={()=>{console.log("signout clicked")}} className="w-full text-left text-sm text-brand-600 hover:text-brand-500 font-medium py-1">
             <Link href="/auth/login">
             Sign out
             </Link>
@@ -40,17 +40,17 @@ function DealerComponent() {
           <h3 className="text-sm font-bold text-gray-900 mb-2">Your Lists</h3>
           <ul className="space-y-2">
             <li>
-              <button className="text-sm text-gray-700 hover:text-blue-600">
+              <button className="text-sm text-gray-700 hover:text-brand-500">
                 Create a List
               </button>
             </li>
             <li>
-              <button className="text-sm text-gray-700 hover:text-blue-600">
+              <button className="text-sm text-gray-700 hover:text-brand-500">
                 Find a List or Registry
               </button>
             </li>
             <li>
-              <button className="text-sm text-gray-700 hover:text-blue-600">
+              <button className="text-sm text-gray-700 hover:text-brand-500">
                 Your Saved Books
               </button>
             </li>

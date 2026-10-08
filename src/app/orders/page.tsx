@@ -365,7 +365,7 @@ async function fetchOrders(page: number, pageSize: number, search: string, filte
 const statusConf: Record<number, { label: string; dot: string; text: string; bg: string }> = {
   0: { label: "In Process",   dot: "bg-amber-400",   text: "text-amber-800",   bg: "bg-amber-50 border-amber-200" },
   1: { label: "Packing",      dot: "bg-blue-400",    text: "text-blue-800",    bg: "bg-blue-50 border-blue-200" },
-  2: { label: "Dispatch",     dot: "bg-indigo-400",  text: "text-indigo-800",  bg: "bg-indigo-50 border-indigo-200" },
+  2: { label: "Dispatch",     dot: "bg-brand-400",  text: "text-brand-800",  bg: "bg-brand-50 border-brand-200" },
   3: { label: "Not in Stock", dot: "bg-red-400",     text: "text-red-800",     bg: "bg-red-50 border-red-200" },
   4: { label: "Successful",   dot: "bg-emerald-400", text: "text-emerald-800", bg: "bg-emerald-50 border-emerald-200" },
 };
@@ -442,7 +442,7 @@ function CustomDiscountBadge({ progress }: { progress: CustomDiscountProgress | 
 /** Removable chip summarising one active filter. */
 function FilterTag({ label, onRemove }: { label: string; onRemove: () => void }) {
   return (
-    <span className="inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-100 text-[11px] font-semibold">
+    <span className="inline-flex items-center gap-1.5 pl-2.5 pr-2 py-1 rounded-full bg-brand-50 text-brand-600 border border-brand-100 text-[11px] font-semibold">
       {label}
       <button type="button" onClick={onRemove} aria-label={`Remove filter ${label}`} className="opacity-70 hover:opacity-100">
         <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -455,8 +455,8 @@ function FilterTag({ label, onRemove }: { label: string; onRemove: () => void })
 
 const filterInputCls = (active: boolean) =>
   `mt-1 block px-1.5 py-0.5 text-[11px] font-medium normal-case tracking-normal rounded-md border outline-none transition-colors ${
-    active ? "border-indigo-400 bg-indigo-50 text-indigo-800" : "border-gray-200 bg-white text-gray-700"
-  } focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100`;
+    active ? "border-brand-400 bg-brand-50 text-brand-800" : "border-gray-200 bg-white text-gray-700"
+  } focus:border-brand-400 focus:ring-2 focus:ring-brand-100`;
 
 function SkeletonRow({ cols }: { cols: number }) {
   return (
@@ -552,7 +552,7 @@ function RowActionsMenu({
         aria-label="Order actions"
         aria-haspopup="menu"
         aria-expanded={!!menuPos}
-        className="flex items-center justify-center w-8 h-8 bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg transition-all shadow-sm disabled:opacity-50"
+        className="flex items-center justify-center w-8 h-8 bg-white border border-gray-200 hover:border-brand-300 hover:bg-brand-50 text-gray-600 hover:text-brand-500 rounded-lg transition-all shadow-sm disabled:opacity-50"
       >
         {loading
           ? <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />
@@ -575,7 +575,7 @@ function RowActionsMenu({
             <button
               role="menuitem"
               onClick={() => { setMenuPos(null); onView(); }}
-              className={itemCls("hover:bg-indigo-50")}
+              className={itemCls("hover:bg-brand-50")}
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                 <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
@@ -589,7 +589,7 @@ function RowActionsMenu({
                 role="menuitem"
                 onClick={dispatchDisabled ? undefined : () => { setMenuPos(null); onDispatch(); }}
                 disabled={dispatchDisabled}
-                className={`${itemCls("hover:bg-indigo-50", "text-indigo-700")} disabled:opacity-50 disabled:cursor-not-allowed`}
+                className={`${itemCls("hover:bg-brand-50", "text-brand-600")} disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                   <path d="M9 12h6M12 9v6" />
@@ -688,7 +688,7 @@ function ExportButton({ orders, dealerName, dealerId, isLoading = false, onExpor
         <button
           onClick={() => setShowMenu(!showMenu)}
           disabled={isLoading || isExporting || orders.length === 0}
-          className="flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold rounded-xl transition-colors"
+          className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-[13px] font-semibold rounded-xl transition-colors"
         >
           {isExporting ? (
             <><div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />Exporting…</>
@@ -701,17 +701,17 @@ function ExportButton({ orders, dealerName, dealerId, isLoading = false, onExpor
             <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
             <div className="absolute right-0 mt-2 w-60 bg-white rounded-xl shadow-xl border border-gray-200 z-50 overflow-hidden py-1">
               <p className="px-4 pt-2 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">PDF</p>
-              <button onClick={() => handleExport(false)} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[13px] text-gray-700 hover:bg-indigo-50 disabled:opacity-50 transition-colors flex items-center gap-3">
+              <button onClick={() => handleExport(false)} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[13px] text-gray-700 hover:bg-brand-50 disabled:opacity-50 transition-colors flex items-center gap-3">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 <div><p className="font-semibold">Download to device</p><p className="text-[11px] text-gray-500 mt-0.5">Save PDF locally</p></div>
               </button>
-              <button onClick={() => handleExport(true)} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[13px] text-gray-700 hover:bg-indigo-50 disabled:opacity-50 transition-colors flex items-center gap-3">
+              <button onClick={() => handleExport(true)} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[13px] text-gray-700 hover:bg-brand-50 disabled:opacity-50 transition-colors flex items-center gap-3">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="1"/><path d="M12 1v6m0 6v6M4.22 4.22l4.24 4.24m0 5.08l-4.24 4.24M19.78 4.22l-4.24 4.24m0 5.08l4.24 4.24M1 12a11 11 0 0 1 22 0 11 11 0 0 1-22 0"/></svg>
                 <div><p className="font-semibold">Save to cloud</p><p className="text-[11px] text-gray-500 mt-0.5">Stored for later download</p></div>
               </button>
               <div className="my-1 border-t border-gray-100" />
               <p className="px-4 pt-1 pb-1 text-[10px] font-bold uppercase tracking-widest text-gray-400">Spreadsheet</p>
-              <button onClick={() => { setShowMenu(false); onExportCsv(); }} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[13px] text-gray-700 hover:bg-indigo-50 disabled:opacity-50 transition-colors flex items-center gap-3">
+              <button onClick={() => { setShowMenu(false); onExportCsv(); }} disabled={isExporting} className="w-full text-left px-4 py-2.5 text-[13px] text-gray-700 hover:bg-brand-50 disabled:opacity-50 transition-colors flex items-center gap-3">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="m9 13 2 3-2 3M15 13l-2 3 2 3"/></svg>
                 <div><p className="font-semibold">Export CSV</p><p className="text-[11px] text-gray-500 mt-0.5">{orders.length} row{orders.length === 1 ? "" : "s"} on this page</p></div>
               </button>
@@ -763,7 +763,7 @@ function DeleteModal({ orderId, onConfirm, onClose }: { orderId: string; onConfi
             rows={3}
             disabled={deleting}
             className={`w-full px-4 py-3 text-[13px] text-gray-900 border rounded-xl outline-none resize-none transition-all placeholder:text-gray-400 ${
-              err ? "border-red-300 bg-red-50/30 focus:ring-2 focus:ring-red-100" : "border-gray-200 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+              err ? "border-red-300 bg-red-50/30 focus:ring-2 focus:ring-red-100" : "border-gray-200 focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
             }`}
           />
           {err && <p className="text-[11px] text-red-600 mt-1.5">{err}</p>}
@@ -1533,8 +1533,8 @@ export default function OrderHistoryPage() {
         .dispatch-original-note-label { display: block; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #64748b; margin-bottom: 6px; }
         .dispatch-original-note p { font-size: 12px; color: #334155; line-height: 1.5; }
         .dispatch-select-btn, .dispatch-submit-btn { border: none; cursor: pointer; font-family: inherit; font-weight: 600; transition: all 0.15s; }
-        .dispatch-select-btn { align-self: flex-start; padding: 9px 14px; border-radius: 12px; background: #eef2ff; color: #4338ca; }
-        .dispatch-select-btn:hover { background: #e0e7ff; }
+        .dispatch-select-btn { align-self: flex-start; padding: 9px 14px; border-radius: 12px; background: #E6F3F3; color: #02474C; }
+        .dispatch-select-btn:hover { background: #CCE7E8; color: #007C80; }
         .dispatch-form-card, .dispatch-history-card { padding: 16px; }
         .dispatch-form-card { display: flex; flex-direction: column; gap: 14px; }
         .dispatch-form-row { display: flex; flex-direction: column; gap: 6px; }
@@ -1542,8 +1542,8 @@ export default function OrderHistoryPage() {
         .dispatch-form-row input, .dispatch-form-row select, .dispatch-form-row textarea { width: 100%; border-radius: 12px; border: 1px solid #dbe2ee; background: #fff; padding: 11px 12px; font-size: 13px; font-family: inherit; color: #0f172a; outline: none; transition: border-color 0.15s, box-shadow 0.15s; }
         .dispatch-form-row input:focus, .dispatch-form-row select:focus, .dispatch-form-row textarea:focus { border-color: #818cf8; box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.14); }
         .dispatch-form-row input[disabled], .dispatch-form-row select[disabled], .dispatch-form-row textarea[disabled] { background: #f8fafc; color: #64748b; cursor: not-allowed; }
-        .dispatch-submit-btn { padding: 11px 16px; border-radius: 12px; background: #1d4ed8; color: #fff; }
-        .dispatch-submit-btn:hover:not(:disabled) { background: #1e40af; }
+        .dispatch-submit-btn { padding: 11px 16px; border-radius: 12px; background: #02474C; color: #fff; }
+        .dispatch-submit-btn:hover:not(:disabled) { background: #007C80; }
         .dispatch-submit-btn:disabled { opacity: 0.55; cursor: wait; }
         .dispatch-history-card { display: flex; flex-direction: column; gap: 14px; min-height: 0; }
         .dispatch-history-item { padding: 12px; border-radius: 14px; background: #f8fafc; border: 1px solid #e2e8f0; }
@@ -1578,8 +1578,8 @@ export default function OrderHistoryPage() {
               <p className="text-[12.5px] text-gray-500 mt-0.5 flex items-center gap-2">
                 {isLoading ? "Loading…" : `${totalCount.toLocaleString()} ${filtersActive ? "matching" : "total"} order${totalCount === 1 ? "" : "s"}`}
                 {isFetching && !isLoading && (
-                  <span className="inline-flex items-center gap-1 text-indigo-600">
-                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping inline-block" />
+                  <span className="inline-flex items-center gap-1 text-brand-600">
+                    <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-ping inline-block" />
                     refreshing
                   </span>
                 )}
@@ -1596,7 +1596,7 @@ export default function OrderHistoryPage() {
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search orders…"
                 aria-label="Search orders"
-                className="pl-9 pr-8 py-2 text-[13px] text-gray-900 border border-gray-200 rounded-xl bg-gray-50 outline-none focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all w-56 placeholder:text-gray-400"
+                className="pl-9 pr-8 py-2 text-[13px] text-gray-900 border border-gray-200 rounded-xl bg-gray-50 outline-none focus:bg-white focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all w-56 placeholder:text-gray-400"
               />
               {(search || query) && (
                 <button
@@ -1746,7 +1746,7 @@ export default function OrderHistoryPage() {
                 type="button"
                 onClick={handleBulkBillingUpload}
                 disabled={bulkBilling}
-                className="rounded-lg bg-blue-600 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
+                className="rounded-lg bg-brand-600 px-4 py-2 text-[13px] font-semibold text-white transition-colors hover:bg-brand-500 disabled:opacity-50"
               >
                 {bulkBilling ? "Saving..." : `Save ${selectedOrdersForBilling.length} Invoice${selectedOrdersForBilling.length === 1 ? "" : "s"}`}
               </button>
@@ -1802,7 +1802,7 @@ export default function OrderHistoryPage() {
                   <button
                     type="button"
                     onClick={() => router.push("/auth/login")}
-                    className="px-3 py-1.5 rounded-lg bg-indigo-600 text-white text-xs font-semibold hover:bg-indigo-700"
+                    className="px-3 py-1.5 rounded-lg bg-brand-600 text-white text-xs font-semibold hover:bg-brand-500"
                   >
                     Sign in
                   </button>
@@ -1861,7 +1861,7 @@ export default function OrderHistoryPage() {
                           <tr key={order.id || order.orderId} className="odd:bg-white even:bg-gray-50/50 hover:bg-blue-50/40 transition-colors">
                             <td className="px-2 py-2 text-gray-700 font-medium">{String((page - 1) * pageSize + i + 1).padStart(2, "0")}</td>
                             <td className="px-2 py-2">
-                              <span className="font-mono text-[13px] font-bold text-indigo-700">
+                              <span className="font-mono text-[13px] font-bold text-brand-600">
                                 {order.formattedOrderNumber || formatDisplayOrderNumber(order.orderId)}
                               </span>
                             </td>
@@ -2074,7 +2074,7 @@ export default function OrderHistoryPage() {
                               <td className="px-2 py-2">
                                 <div className="flex items-center gap-2">
                                   <span
-                                    className="font-mono text-[13px] font-bold text-indigo-700"
+                                    className="font-mono text-[13px] font-bold text-brand-600"
                                     dangerouslySetInnerHTML={{ __html: formatDisplayOrderNumber(highlight(String(oid), filters.orderId)) }}
                                   />
                                   {isDeleted && (
@@ -2107,11 +2107,11 @@ export default function OrderHistoryPage() {
                                 {displayOrder.discountAmount > 0 ? `−${formatMoney(displayOrder.discountAmount)}` : "—"}
                                 {additionalDiscount ? (
                                   <>
-                                    <p className="mt-1 text-[11px] font-semibold text-indigo-600">{additionalDiscount.label}</p>
-                                    <p className="text-[11px] text-indigo-600">{additionalDiscount.amountText}</p>
+                                    <p className="mt-1 text-[11px] font-semibold text-brand-600">{additionalDiscount.label}</p>
+                                    <p className="text-[11px] text-brand-600">{additionalDiscount.amountText}</p>
                                   </>
                                 ) : (
-                                  discountBadge && <p className="mt-1 text-[11px] font-semibold text-indigo-600">{discountBadge}</p>
+                                  discountBadge && <p className="mt-1 text-[11px] font-semibold text-brand-600">{discountBadge}</p>
                                 )}
                               </td>
                               <td className="px-2 py-2 font-mono text-[14px] font-bold text-emerald-700">

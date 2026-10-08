@@ -66,7 +66,7 @@ export default function AccountantReportsPage() {
               <option value="">All dealers</option>
               {dealers.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
             </select>
-            <a href={downloadHref} className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-indigo-700">
+            <a href={downloadHref} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-[13px] font-semibold text-white hover:bg-brand-500">
               <Download size={14} />
               Download CSV
             </a>
@@ -98,7 +98,7 @@ export default function AccountantReportsPage() {
                   <tr key={i} className="hover:bg-gray-50">
                     <td className="px-4 py-3 font-semibold text-gray-900">{row.name}</td>
                     <td className="px-4 py-3 text-right font-mono text-gray-600">{row.creditDays}</td>
-                    <td className="px-4 py-3 font-mono text-indigo-700">{row.billNo}</td>
+                    <td className="px-4 py-3 font-mono text-brand-600">{row.billNo}</td>
                     <td className="px-4 py-3 text-gray-600">{new Date(row.billDate).toLocaleDateString("en-IN", { timeZone: "UTC" })}</td>
                     <td className="px-4 py-3 text-right font-mono">{money(row.billAmount)}</td>
                     <td className="px-4 py-3 text-right font-mono text-gray-600">{row.age}</td>

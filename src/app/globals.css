@@ -4,6 +4,20 @@
 
 @custom-variant dark (&:is(.dark *));
 
+/* Brand accent: buttons/links use brand-600, hover brand-500. */
+@theme {
+  --color-brand-50: #e6f3f3;
+  --color-brand-100: #cce7e8;
+  --color-brand-200: #99cfd1;
+  --color-brand-300: #66b7ba;
+  --color-brand-400: #33969a;
+  --color-brand-500: #007c80;
+  --color-brand-600: #02474c;
+  --color-brand-700: #023b3f;
+  --color-brand-800: #022f33;
+  --color-brand-900: #012326;
+}
+
 :root {
   --font-geist-sans: Arial, Helvetica, sans-serif;
   --font-geist-mono: "Courier New", Courier, monospace;

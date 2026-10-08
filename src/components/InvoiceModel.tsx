@@ -97,7 +97,7 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search by invoice no. or dealer name…"
-                className="pl-9 pr-4 py-2 w-full text-[13px] border border-gray-200 rounded-xl bg-gray-50 outline-none focus:bg-white focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all placeholder:text-gray-400"
+                className="pl-9 pr-4 py-2 w-full text-[13px] border border-gray-200 rounded-xl bg-gray-50 outline-none focus:bg-white focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all placeholder:text-gray-400"
               />
             </div>
           </div>
@@ -106,7 +106,7 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
           <div className="flex-1 overflow-y-auto">
             {isLoading ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3 text-gray-400">
-                <div className="w-7 h-7 border-3 border-gray-200 border-t-indigo-500 rounded-full animate-spin" />
+                <div className="w-7 h-7 border-3 border-gray-200 border-t-brand-500 rounded-full animate-spin" />
                 <p className="text-[13px]">Loading invoices…</p>
               </div>
             ) : error ? (
@@ -139,7 +139,7 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
                   {filtered.map(inv => (
                     <tr key={inv.id} className="hover:bg-gray-50/60 transition-colors group">
                       <td className="px-6 py-4">
-                        <p className="font-mono text-[13px] font-bold text-indigo-700">{inv.invoiceNumber}</p>
+                        <p className="font-mono text-[13px] font-bold text-brand-600">{inv.invoiceNumber}</p>
                         <p className="text-[11px] text-gray-400 mt-0.5 font-mono">{inv.orderNumber}</p>
                       </td>
                       <td className="px-6 py-4 text-[13px] text-gray-800 font-medium">{inv.buyerName || "—"}</td>
@@ -154,7 +154,7 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
                         <div className="flex items-center justify-end gap-1.5">
                           <button
                             onClick={() => setSelectedInvoice(inv)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-200 hover:border-indigo-300 hover:bg-indigo-50 text-gray-600 hover:text-indigo-700 rounded-lg text-[11px] font-semibold transition-all"
+                            className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-white border border-gray-200 hover:border-brand-300 hover:bg-brand-50 text-gray-600 hover:text-brand-500 rounded-lg text-[11px] font-semibold transition-all"
                           >
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
                             View
@@ -226,7 +226,7 @@ export function InvoiceModal({ isOpen, onClose, dealerId }: InvoiceModalProps) {
             <div className="px-6 pb-5 flex gap-2">
               <button
                 onClick={() => { handleDownload(selectedInvoice); setSelectedInvoice(null); }}
-                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[13px] font-semibold transition-colors"
+                className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-[13px] font-semibold transition-colors"
               >
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                 Download PDF

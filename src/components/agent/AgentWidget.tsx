@@ -72,7 +72,7 @@ export default function AgentWidget() {
         onClick={toggle}
         aria-label={`${open ? "Close" : "Open"} ${title.toLowerCase()}`}
         aria-expanded={open}
-        className={`fixed bottom-5 right-5 z-45 h-14 w-14 items-center justify-center rounded-full bg-indigo-600 text-white shadow-lg transition hover:bg-indigo-700 focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-300 ${open ? "hidden sm:flex" : "flex"}`}
+        className={`fixed bottom-5 right-5 z-45 h-14 w-14 items-center justify-center rounded-full bg-brand-600 text-white shadow-lg transition hover:bg-brand-500 focus:outline-none focus-visible:ring-4 focus-visible:ring-brand-300 ${open ? "hidden sm:flex" : "flex"}`}
       >
         {open ? <X className="h-6 w-6" /> : <MessageCircle className="h-6 w-6" />}
       </button>

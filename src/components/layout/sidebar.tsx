@@ -294,10 +294,10 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         }
         .sb-mark img { width: 100%; height: 100%; object-fit: contain; display: block; }
         .sb-headtext { min-width: 0; padding-left: 10px; border-left: 1px solid rgba(255,255,255,0.3); }
-        .sb-title { font-size: 13.5px; font-weight: 700; color: #fff; letter-spacing: -.2px; }
+        .sb-title { font-size: 11.48px; font-weight: 700; color: #fff; letter-spacing: -.2px; }
         .sb-chip {
           display: block; margin-top: 3px;
-          color: rgba(255,255,255,0.85); font-size: 9px; font-weight: 500;
+          color: rgba(255,255,255,0.85); font-size: 7.65px; font-weight: 500;
           letter-spacing: .16em; 
           overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
         }
@@ -313,14 +313,14 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           border-radius: 50%;
           background: #3d8bfd;
           display: grid; place-items: center;
-          font-size: 13px; font-weight: 700; color: #fff;
+          font-size: 11.05px; font-weight: 700; color: #fff;
           overflow: hidden;
         }
         .sb-avatar img { width: 100%; height: 100%; object-fit: cover; }
         .sb-usertext { min-width: 0; }
-        .sb-uname { font-size: 12px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sb-meta  { font-size: 10px; color: rgba(255,255,255,0.9); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-        .sb-role  { margin-top: 5px; display: inline-block; font-size: 9.5px; background: rgba(255,255,255,0.2); color: #fff; padding: 1px 10px; border-radius: 999px; }
+        .sb-uname { font-size: 10.2px; font-weight: 700; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sb-meta  { font-size: 8.5px; color: rgba(255,255,255,0.9); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .sb-role  { margin-top: 5px; display: inline-block; font-size: 8.08px; background: rgba(255,255,255,0.2); color: #fff; padding: 1px 10px; border-radius: 999px; }
 
         .sb-divider { height: 1px; flex: 0 0 auto; margin: 14px 18px; background: rgba(255,255,255,0.18); }
 
@@ -332,7 +332,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         /* The first group (Overview / Home) is a fixed label with its links always shown. */
         .sb-lead-label {
           padding: 2px 4px 10px;
-          font-size: 9.5px; font-weight: 600;
+          font-size: 8.08px; font-weight: 600;
           letter-spacing: .16em; 
           
                     color: rgba(255,255,255,0.8);
@@ -350,7 +350,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           background: transparent;
           color: #fff;
           cursor: pointer;
-          font-family: ; font-size: 15.5px; ;
+          font-family: ; font-size: 13.18px; ;
           letter-spacing: .14em; ;
           text-align: left;
           user-select: none;
@@ -393,7 +393,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           position: relative;
           display: flex; align-items: center; gap: 0;
           height: 39px; padding: 0; border-radius: 10px;
-          font-size: 12px; font-weight: 500;
+          font-size: 10.2px; font-weight: 500;
           color: #fff; text-decoration: none;
           margin-bottom: 2px;
           transition: background .16s, color .16s;
@@ -401,7 +401,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         /* content-box padding makes the 17px glyph occupy a fixed 44px slot (keeps it centred on the rail) */
         .sb-link svg, .sb-section svg { width: 17px; height: 17px; flex: 0 0 auto; box-sizing: content-box; padding: 0 13.5px; }
         /* Links inside an opened section sit a step in and a size down. */
-        .sb-group:not(.lead) .sb-link { height: 34px; font-size: 11px; color: rgba(255,255,255,0.9); }
+        .sb-group:not(.lead) .sb-link { height: 34px; font-size: 9.35px; color: rgba(255,255,255,0.9); }
         .sb-group:not(.lead) .sb-link svg { width: 14px; height: 14px; padding: 0 15px; }
         .sb-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .sb-link:hover { background: rgba(255,255,255,0.05); color: #fff; }
@@ -425,7 +425,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
           border-radius: 999px;
           background: #ef4444;
           color: #fff;
-          font-size: 9.5px; font-weight: 650; line-height: 17px; letter-spacing: 0;
+          font-size: 8.08px; font-weight: 650; line-height: 17px; letter-spacing: 0;
           text-align: center;
           font-variant-numeric: tabular-nums;
         }
@@ -437,7 +437,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
         .sb-logout {
           width: 100%; height: 41px; padding: 0; border-radius: 12px;
           background: transparent; border: 1px solid rgba(255,255,255,0.28);
-          font-size: 12.5px; font-weight: 500; color: #fff;
+          font-size: 10.63px; font-weight: 500; color: #fff;
           cursor: pointer; font-family: inherit;
           display: flex; align-items: center; justify-content: flex-start; gap: 0;
           transition: background .16s, color .16s, border-color .16s;
@@ -481,7 +481,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
             position: absolute; top: 5px; left: 50%;
             margin: 0; transform: translateX(2px);
             min-width: 16px; height: 16px; padding: 0 4px;
-            font-size: 10px; line-height: 16px;
+            font-size: 8.5px; line-height: 16px;
             box-shadow: 0 0 0 2px #333333;
           }
 

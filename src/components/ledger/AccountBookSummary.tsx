@@ -61,7 +61,7 @@ export default function AccountBookSummary({ stats, isLoading = false }: Props) 
       label: "Awaiting Confirm",
       value: safeStats.awaiting,
       count: safeStats.awaitingCount,
-      tone: "border-indigo-200 bg-indigo-50 text-indigo-800",
+      tone: "border-brand-200 bg-brand-50 text-brand-800",
       sub: "Pending acceptance",
     },
   ];

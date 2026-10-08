@@ -334,7 +334,7 @@ function ClubOrderBreakdown({ scope, productKey }: { scope: ClubScope; productKe
           <div className="min-w-0">
             <Link
               href={`/orders/${encodeURIComponent(order.orderId)}`}
-              className="font-mono text-[13px] font-bold text-indigo-700 hover:underline"
+              className="font-mono text-[13px] font-bold text-brand-600 hover:underline"
             >
               {formatDisplayOrderNumber(order.orderId)}
             </Link>
@@ -512,7 +512,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
     const cards = [
       { label: "Products Pending", value: formatNumber(summary.productsPending), accent: "text-slate-900" },
       { label: "Total Pending Units", value: formatNumber(summary.totalPendingUnits), accent: "text-rose-600" },
-      { label: "Orders With Pending Items", value: formatNumber(summary.ordersWithPendingItems), accent: "text-indigo-700" },
+      { label: "Orders With Pending Items", value: formatNumber(summary.ordersWithPendingItems), accent: "text-brand-600" },
     ];
 
     if (role !== "dealer") {
@@ -560,7 +560,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
             <button
               type="button"
               onClick={() => setReportOpen(true)}
-              className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-[12.5px] font-semibold text-white shadow-sm transition-colors hover:bg-indigo-700"
+              className="flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2 text-[12.5px] font-semibold text-white shadow-sm transition-colors hover:bg-brand-500"
             >
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
@@ -595,7 +595,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
                 placeholder="Name, catalogue no., specification, category..."
-                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:bg-white focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-brand-400 focus:bg-white focus:ring-2 focus:ring-brand-100"
               />
             </div>
 
@@ -609,7 +609,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                   setCategory(event.target.value);
                   setPage(1);
                 }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
               >
                 <option value="">All categories</option>
                 {(listPayload?.filters.categories ?? []).map((entry) => (
@@ -630,7 +630,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                   setSort(event.target.value as typeof sort);
                   setPage(1);
                 }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
               >
                 <option value="pending_desc">Highest pending</option>
                 <option value="oldest_pending">Oldest → Newest</option>
@@ -651,7 +651,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                   setDetailProductKey("");
                   setDetailPage(1);
                 }}
-                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
               >
                 <option value="product">Product (default)</option>
                 {role !== "dealer" && <option value="dealer">Dealer</option>}
@@ -670,7 +670,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                     setDealerId(event.target.value);
                     setPage(1);
                   }}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                 >
                   <option value="">All dealers</option>
                   {(listPayload?.filters.dealers ?? []).map((dealer) => (
@@ -693,7 +693,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                     setAssignedStaffId(event.target.value);
                     setPage(1);
                   }}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100"
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-[13px] text-slate-900 outline-none transition focus:border-brand-400 focus:ring-2 focus:ring-brand-100"
                 >
                   <option value="">All staff</option>
                   {(listPayload?.filters.staff ?? []).map((staff) => (
@@ -821,7 +821,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                             </div>
 
                             <div className="w-20 text-right">
-                              <p className="font-mono text-[14px] font-semibold tabular-nums text-indigo-700">
+                              <p className="font-mono text-[14px] font-semibold tabular-nums text-brand-600">
                                 {formatNumber(item.pendingOrders)}
                               </p>
                               <p className="text-[11px] text-slate-500">
@@ -915,7 +915,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                               </div>
                               <div className="h-2 rounded-full bg-slate-100">
                                 <div
-                                  className="h-2 rounded-full bg-indigo-500"
+                                  className="h-2 rounded-full bg-brand-500"
                                   style={{ width: `${clampPercent(item.fulfillmentPercent)}%` }}
                                 />
                               </div>
@@ -936,7 +936,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                                 setDetailProductKey(item.productKey);
                                 setDetailPage(1);
                               }}
-                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-700 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-500"
                             >
                               View Orders
                             </button>
@@ -1069,7 +1069,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                     <ProductMetric label="Ordered" value={formatNumber(detailPayload.product.orderedQuantity)} accent="text-slate-900" />
                     <ProductMetric label="Dispatched" value={formatNumber(detailPayload.product.dispatchedQuantity)} accent="text-emerald-700" />
                     <ProductMetric label="Pending" value={formatNumber(detailPayload.product.pendingQuantity)} accent="text-rose-600" />
-                    <ProductMetric label="Orders" value={formatNumber(detailPayload.product.pendingOrders)} accent="text-indigo-700" />
+                    <ProductMetric label="Orders" value={formatNumber(detailPayload.product.pendingOrders)} accent="text-brand-600" />
                   </div>
 
                   <div className="space-y-3">
@@ -1077,7 +1077,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                       <div key={order.orderId} className="rounded-2xl border border-slate-200 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <p className="font-mono text-[13px] font-bold text-indigo-700">{formatDisplayOrderNumber(order.orderId)}</p>
+                            <p className="font-mono text-[13px] font-bold text-brand-600">{formatDisplayOrderNumber(order.orderId)}</p>
                             {role !== "dealer" && (
                               <p className="mt-1 text-[13px] font-medium text-slate-800">{order.dealerName || order.dealerId}</p>
                             )}
@@ -1089,7 +1089,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                           </div>
                           <Link
                             href={`/orders/${encodeURIComponent(order.orderId)}`}
-                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700"
+                            className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-700 transition hover:border-brand-300 hover:bg-brand-50 hover:text-brand-500"
                           >
                             View Order
                           </Link>

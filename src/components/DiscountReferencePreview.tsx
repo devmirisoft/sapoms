@@ -16,11 +16,11 @@ export function DiscountReferencePreview({ requestId, file }: Props) {
     <div className="overflow-hidden rounded-xl border border-gray-200">
       <div className="flex items-center justify-between gap-3 bg-gray-50 px-4 py-2.5">
         <p className="flex min-w-0 items-center gap-2 text-[12px] font-bold text-gray-700">
-          <FileText size={14} className="shrink-0 text-indigo-600" />
+          <FileText size={14} className="shrink-0 text-brand-600" />
           <span className="shrink-0">Reference document:</span>
           <span className="truncate font-medium text-gray-600">{file.name}</span>
         </p>
-        <a href={src} target="_blank" rel="noopener noreferrer" className="shrink-0 text-[12px] font-semibold text-indigo-600 hover:underline">
+        <a href={src} target="_blank" rel="noopener noreferrer" className="shrink-0 text-[12px] font-semibold text-brand-600 hover:underline">
           {isPdf || isImage ? "Open" : "Download"}
         </a>
       </div>

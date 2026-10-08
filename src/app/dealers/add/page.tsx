@@ -152,7 +152,7 @@ export default function AddDealerPage() {
               name="notes"
               value={form.notes}
               onChange={handleChange}
-              className="w-full border border-black rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full border border-black rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
               rows={3}
             />
           </div>
@@ -161,7 +161,7 @@ export default function AddDealerPage() {
           <div>
             <button
               type="submit"
-              className="bg-indigo-600 text-gray-700 px-6 py-2 rounded-md hover:bg-indigo-700 transition"
+              className="bg-brand-600 text-gray-700 px-6 py-2 rounded-md hover:bg-brand-500 transition"
             >
               Submit
             </button>
@@ -195,7 +195,7 @@ function Input({
         name={name}
         value={value}
         onChange={onChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
       />
     </div>
   );
@@ -221,7 +221,7 @@ function Select({
         name={name}
         value={value}
         onChange={onChange}
-        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+        className="w-full border border-gray-300 rounded-md px-3 py-2 focus:outline-none focus:ring-2 focus:ring-brand-500"
       >
         <option value="">Select</option>
         {options.map((opt) => (

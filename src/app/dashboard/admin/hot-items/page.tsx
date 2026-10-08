@@ -410,7 +410,7 @@ export default function AdminHotItemsPage() {
                     }}
                     onBlur={e => syncCatalogMatch(e.target.value)}
                     placeholder="e.g. PYC-25-A"
-                    className="w-full text-black px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all font-mono"
+                    className="w-full text-black px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all font-mono"
                     autoComplete="off"
                     aria-autocomplete="list"
                     aria-controls="hot-item-catalog-suggestions"
@@ -431,7 +431,7 @@ export default function AdminHotItemsPage() {
                               applyCatalogOption(option);
                               skuInputRef.current?.focus();
                             }}
-                            className="w-full text-left px-3.5 py-2.5 hover:bg-indigo-50 focus:bg-indigo-50 outline-none transition-colors border-b border-gray-100 last:border-b-0"
+                            className="w-full text-left px-3.5 py-2.5 hover:bg-brand-50 focus:bg-brand-50 outline-none transition-colors border-b border-gray-100 last:border-b-0"
                           >
                             <div className="text-[12px] font-semibold text-gray-900 font-mono leading-5">
                               {option.sku}
@@ -453,7 +453,7 @@ export default function AdminHotItemsPage() {
                       const match = findCatalogOption(form.SKU);
                       if (match) applyCatalogOption(match);
                     }}
-                    className="mt-2 text-[11px] font-bold text-indigo-600 hover:text-indigo-800"
+                    className="mt-2 text-[11px] font-bold text-brand-600 hover:text-brand-500"
                   >
                     Use catalog name, specs and image
                   </button>
@@ -474,7 +474,7 @@ export default function AdminHotItemsPage() {
                   value={form.name}
                   onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
                   placeholder="e.g. Pycnometer Class A 25ml"
-                  className="w-full text-black px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+                  className="w-full text-black px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all"
                 />
               </div>
 
@@ -487,7 +487,7 @@ export default function AdminHotItemsPage() {
                   value={form.specs}
                   onChange={e => setForm(f => ({ ...f, specs: e.target.value }))}
                   placeholder="e.g. 25 mL"
-                  className="w-full text-black px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+                  className="w-full text-black px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all"
                 />
               </div>
 
@@ -498,7 +498,7 @@ export default function AdminHotItemsPage() {
                   value={form.image}
                   onChange={e => setForm(f => ({ ...f, image: e.target.value }))}
                   placeholder="https://…"
-                  className="w-full text-black px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+                  className="w-full text-black px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all"
                 />
                 {form.image && (
                   <img src={form.image} alt="preview"
@@ -515,8 +515,8 @@ export default function AdminHotItemsPage() {
                       onClick={() => setForm(f => ({ ...f, badge: b }))}
                       className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border transition-all ${
                         form.badge === b
-                          ? "bg-indigo-600 text-white border-indigo-600"
-                          : "border-gray-200 text-gray-600 hover:border-indigo-300 hover:text-indigo-700"
+                          ? "bg-brand-600 text-white border-brand-600"
+                          : "border-gray-200 text-gray-600 hover:border-brand-300 hover:text-brand-500"
                       }`}>
                       {b}
                     </button>
@@ -526,7 +526,7 @@ export default function AdminHotItemsPage() {
                   value={form.badge}
                   onChange={e => setForm(f => ({ ...f, badge: e.target.value }))}
                   placeholder="Or type a custom badge…"
-                  className="w-full text-black px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 transition-all"
+                  className="w-full text-black px-3.5 py-2.5 text-[13px] border border-gray-200 rounded-xl outline-none focus:border-brand-400 focus:ring-2 focus:ring-brand-100 transition-all"
                 />
               </div>
 
@@ -537,7 +537,7 @@ export default function AdminHotItemsPage() {
                   <p className="text-[11px] text-gray-400 mt-0.5">Toggle visibility without deleting</p>
                 </div>
                 <button type="button" onClick={() => setForm(f => ({ ...f, active: !f.active }))}
-                  className={`relative w-11 h-6 rounded-full transition-colors ${form.active ? "bg-indigo-500" : "bg-gray-300"}`}>
+                  className={`relative w-11 h-6 rounded-full transition-colors ${form.active ? "bg-brand-500" : "bg-gray-300"}`}>
                   <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${form.active ? "translate-x-5" : ""}`} />
                 </button>
               </div>
@@ -549,7 +549,7 @@ export default function AdminHotItemsPage() {
                 Cancel
               </button>
               <button onClick={submitForm}
-                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-[13px] font-semibold transition-colors">
+                className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-500 text-white rounded-xl text-[13px] font-semibold transition-colors">
                 {editId ? "Save changes" : "Add item"}
               </button>
             </div>
@@ -577,7 +577,7 @@ export default function AdminHotItemsPage() {
             </div>
             <div className="flex items-center gap-2">
               <button onClick={openAdd}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-indigo-200 bg-indigo-50 text-indigo-700 text-[13px] font-semibold hover:bg-indigo-100 transition-colors">
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl border border-brand-200 bg-brand-50 text-brand-600 text-[13px] font-semibold hover:bg-brand-100 transition-colors">
                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
                   <path d="M12 5v14M5 12h14" />
                 </svg>
@@ -632,7 +632,7 @@ export default function AdminHotItemsPage() {
 
               {loading && (
                 <div className="flex flex-col items-center justify-center py-20 gap-3">
-                  <div className="h-8 w-8 rounded-full border-2 border-gray-200 border-t-indigo-500 animate-spin" />
+                  <div className="h-8 w-8 rounded-full border-2 border-gray-200 border-t-brand-500 animate-spin" />
                   <p className="text-sm text-gray-500">Loading hot items...</p>
                 </div>
               )}
@@ -701,14 +701,14 @@ export default function AdminHotItemsPage() {
 
                   {/* Active toggle */}
                   <button onClick={() => toggleActive(item.id)}
-                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${item.active ? "bg-indigo-500" : "bg-gray-200"}`}>
+                    className={`relative w-11 h-6 rounded-full transition-colors flex-shrink-0 ${item.active ? "bg-brand-500" : "bg-gray-200"}`}>
                     <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${item.active ? "translate-x-5" : ""}`} />
                   </button>
 
                   {/* Actions */}
                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button onClick={() => openEdit(item)} title="Edit"
-                      className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-indigo-50 text-gray-400 hover:text-indigo-600 transition-colors">
+                      className="w-7 h-7 flex items-center justify-center rounded-lg hover:bg-brand-50 text-gray-400 hover:text-brand-500 transition-colors">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                         <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
                         <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />

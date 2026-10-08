@@ -290,7 +290,7 @@ export default function DealerLedgerPage() {
     return (
       <div className="min-h-screen bg-gray-100">
         <div className="p-6 admin-page-shell">
-          <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-700">
+          <div className="rounded-lg border border-brand-100 bg-brand-50 px-4 py-3 text-sm text-brand-600">
             Opening assigned dealer ledger...
           </div>
         </div>
@@ -373,14 +373,14 @@ export default function DealerLedgerPage() {
                   step="0.01"
                   value={walletAdjustAmount}
                   onChange={(e) => setWalletAdjustAmount(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
                 <span className="mt-1 block text-xs text-gray-500">Funds are added to the current balance; they do not set a per-order limit.</span>
               </label>}
 
               <label className="block">
                 <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">Transaction date</span>
-                <DateInput min={new Date().toISOString().slice(0, 10)} value={walletTransactionDate} onChange={(e) => setWalletTransactionDate(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                <DateInput min={new Date().toISOString().slice(0, 10)} value={walletTransactionDate} onChange={(e) => setWalletTransactionDate(e.target.value)} className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500" />
               </label>
 
               <label className="block">
@@ -389,7 +389,7 @@ export default function DealerLedgerPage() {
                   type="text"
                   value={walletAdjustReference}
                   onChange={(e) => setWalletAdjustReference(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </label>
 
@@ -399,7 +399,7 @@ export default function DealerLedgerPage() {
                   value={walletAdjustNote}
                   onChange={(e) => setWalletAdjustNote(e.target.value)}
                   rows={3}
-                  className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 />
               </label>
 
@@ -415,7 +415,7 @@ export default function DealerLedgerPage() {
                   type="button"
                   onClick={handleWalletAdjust}
                   disabled={walletAdjustLoading}
-                  className="inline-flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-500 disabled:opacity-60"
                 >
                   {walletAdjustLoading && <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />}
                   {walletAdjustType === 'disable' ? 'Disable Wallet' : walletAdjustType === 'activate' ? 'Activate Wallet' : 'Add Funds'}
@@ -436,7 +436,7 @@ export default function DealerLedgerPage() {
         {/* Back button */}
         <button
           onClick={() => router.back()}
-          className="flex items-center gap-2 text-sm font-medium text-indigo-600 hover:text-indigo-700 transition-colors mb-6"
+          className="flex items-center gap-2 text-sm font-medium text-brand-600 hover:text-brand-500 transition-colors mb-6"
         >
           <ChevronLeft className="w-4 h-4" />
           Back to Dealers
