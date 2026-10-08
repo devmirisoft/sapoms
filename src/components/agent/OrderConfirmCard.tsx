@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import type { DraftSummary } from "@/lib/agent/types";
 import type { DraftOutcome } from "./useAgentChat";
+import { showToast } from "@/components/ui/toast";
 
 const money = (value: number) => `₹${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
@@ -46,6 +47,7 @@ export default function OrderConfirmCard({ draft, outcome, onUpdate, onNotice }:
         const text = `Order ${data.orderNumber} placed.`;
         onUpdate({ outcome: { kind: "placed", text } });
         onNotice(`${text} You can track it under Orders.`);
+        showToast("success", text);
       } else if (res.ok && data.status === "DISCOUNT_REQUESTED") {
         const text = `Discount request #${data.requestId} sent to ${discount?.approvers ?? "your approvers"}. The order is placed automatically once it is approved.`;
         onUpdate({ outcome: { kind: "requested", text } });

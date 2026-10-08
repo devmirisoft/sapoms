@@ -10,7 +10,7 @@ import { parseCreateAdminDealerInput } from "@/server/modules/admin/dealers/deal
 import { generatePostgresDealerCode } from "@/server/modules/dealers/dealer-code.service";
 import { createAdminDealer } from "@/server/modules/admin/dealers/dealers.service";
 import type { AuthActor } from "@/server/modules/admin/dealers/dealers.types";
-import { getSelectedDealerContact, normalizeDealerFormSnapshot, validateDealerFormSnapshot } from "@/lib/dealerForm";
+import { getSelectedDealerContact, normalizeDealerFormSnapshot, rupeesToPaise, validateDealerFormSnapshot } from "@/lib/dealerForm";
 import { ensurePostgresDealerRequestIndexes, getPostgresDealerRequestCollection, isPostgresDealerRequestDependencyError } from "@/lib/postgresDealerRequests";
 import { findDealerCodeReservationConflict } from "@/server/modules/dealers/dealer-code.service";
 import { invalidateStaffAssignmentCache } from "@/lib/orderScopeServer";
@@ -85,8 +85,8 @@ function buildDealerInputFromSnapshot(snapshot: ReturnType<typeof normalizeDeale
     gstin: snapshot.gstNo,
     discountPercent: snapshot.discount,
     creditDays: snapshot.creditDays,
-    creditLimitPaise: snapshot.currentLimit,
-    annualTargetPaise: snapshot.annualTarget,
+    creditLimitPaise: rupeesToPaise(snapshot.currentLimit),
+    annualTargetPaise: rupeesToPaise(snapshot.annualTarget),
     notes: snapshot.notes,
     priorityContact: snapshot.priorityPerson,
     secondaryContactName: snapshot.secondaryContactName,

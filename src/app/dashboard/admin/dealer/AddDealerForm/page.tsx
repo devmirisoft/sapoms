@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 import DealerFormCard from "@/components/dealers/DealerFormCard";
-import { getSelectedDealerContact, type DealerFormSnapshot } from "@/lib/dealerForm";
+import { getSelectedDealerContact, rupeesToPaise, type DealerFormSnapshot } from "@/lib/dealerForm";
 import { buildDealerRequestHeaders, type PublicDealerRequest } from "@/lib/dealerRequests";
 import { readDashboardActor, type DashboardActor } from "@/lib/dealerRequestClient";
 import { showToast } from "@/components/ui/toast";
@@ -31,8 +31,8 @@ function dealerPayloadFromSnapshot(snapshot: DealerFormSnapshot) {
     gstin: snapshot.gstNo,
     discountPercent: snapshot.discount,
     creditDays: snapshot.creditDays,
-    creditLimitPaise: snapshot.currentLimit,
-    annualTargetPaise: snapshot.annualTarget,
+    creditLimitPaise: rupeesToPaise(snapshot.currentLimit),
+    annualTargetPaise: rupeesToPaise(snapshot.annualTarget),
     notes: snapshot.notes,
     priorityContact: snapshot.priorityPerson,
     contactName: snapshot.contactName,

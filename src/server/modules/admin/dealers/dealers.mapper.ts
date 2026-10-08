@@ -10,6 +10,10 @@ function moneyToString(value: bigint | null | undefined) {
   return value === null || value === undefined ? "" : value.toString();
 }
 
+function rupeesFromPaise(value: bigint | null | undefined) {
+  return value === null || value === undefined ? "" : String(Number(value) / 100);
+}
+
 export function mapAdminDealerStaffAssignment(record: AdminDealerStaffAssignment) {
   const roleSource = {
     role: record.staff.user.role,
@@ -128,8 +132,9 @@ export function mapAdminDealer(record: AdminDealerRecord) {
     discount,
     gst: gstin,
     creditdays: String(creditDays),
-    currentlimit: creditLimitPaise,
-    annualtarget: annualTarget,
+    // Legacy aliases are rupees, matching the dealer profile aliases and the admin form inputs.
+    currentlimit: rupeesFromPaise(record.creditLimitPaise),
+    annualtarget: rupeesFromPaise(record.annualTargetPaise),
     assignedstaff,
     staffname,
   };

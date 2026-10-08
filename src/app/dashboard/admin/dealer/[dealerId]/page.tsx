@@ -27,6 +27,7 @@ import {
 } from '@/lib/dealerForm'
 import { showToast } from "@/components/ui/toast";
 import { clampPercentInput, normalizePhone, phoneInput, phoneInputProps } from "@/lib/fieldRules";
+import { rupeesToPaise } from "@/lib/dealerForm";
 import { RoleAssignmentPanel } from "@/components/dealers/DealerFormCard";
 
 type DealerStatus = "active" | "inactive" | "suspended"
@@ -54,11 +55,6 @@ type DiagnosticPassword = {
 const ADMIN_DEALERS_URL = "/api/admin/dealers"
 const ADMIN_STAFF_URL = "/api/admin/staff"
 const DEALER_LIST_ROUTE = "/dashboard/admin/dealer/DealerList"
-
-function rupeesToPaise(value: string) {
-  const amount = Number(value)
-  return Number.isFinite(amount) ? String(Math.round((amount + Number.EPSILON) * 100)) : ""
-}
 
 async function parseJsonResponse<T>(res: Response): Promise<T> {
   const text = await res.text()
@@ -426,7 +422,7 @@ export default function EditDealerPage() {
         dealerCode: dealercode,
         gstin: gst,
         discountPercent: discount,
-        annualTargetPaise: annualtarget,
+        annualTargetPaise: rupeesToPaise(annualtarget),
         notes,
         priorityContact: priorityPerson,
         contactName,
@@ -479,6 +475,7 @@ export default function EditDealerPage() {
         setStaffTouched(false)
       }
       showToast('success', "Dealer updated successfully")
+      router.push(DEALER_LIST_ROUTE)
     } catch (error) {
       console.error("Failed to update dealer", error)
       showToast('error', error instanceof Error && error.message ? error.message : "Failed to update dealer")
@@ -799,4 +796,4 @@ export default function EditDealerPage() {
       </div>
     </div>
   )
-}
+}

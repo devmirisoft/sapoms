@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
+import { showToast } from "@/components/ui/toast";
 
 import {
   EMPTY_ROLE_ASSIGNMENTS,
@@ -131,7 +132,6 @@ export default function DealerFormCard({
   const [staffList, setStaffList] = useState<StaffMember[]>([]);
   const [staffLoading, setStaffLoading] = useState(true);
   const [staffError, setStaffError] = useState("");
-  const [inlineError, setInlineError] = useState("");
   const [formData, setFormData] = useState<DealerFormValues>(() => toFormValues(initialSnapshot));
   const [showPassword, setShowPassword] = useState(true);
   const [roleAssignments, setRoleAssignments] = useState<RoleAssignments>(() => ({ ...EMPTY_ROLE_ASSIGNMENTS }));
@@ -244,7 +244,6 @@ export default function DealerFormCard({
     event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>,
   ) => {
     const { name, value } = event.target;
-    setInlineError("");
     setFormData((prev) => ({ ...prev, [name]: name === "whatsapp" || name === "secondaryContactPhone" ? phoneInput(value) : name === "discount" ? clampPercentInput(value) : value }));
   };
 
@@ -265,14 +264,12 @@ export default function DealerFormCard({
   // The stored dealer code stays a bare 4-digit number; "OM-" is a fixed display prefix.
   const handleDealerCodeChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const typed = event.target.value.replace(/^(?:OM-?)+/i, "");
-    setInlineError("");
     setFormData((prev) => ({ ...prev, dealerCode: typed }));
   };
 
   // City list depends on the state, so a state change drops a now-invalid city.
   const handleStateChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const state = event.target.value;
-    setInlineError("");
     setFormData((prev) => ({
       ...prev,
       state,
@@ -283,7 +280,6 @@ export default function DealerFormCard({
   const cityOptions = CITIES_BY_STATE[formData.state] ?? [];
 
   const handleAdditionalContactChange = (index: number, field: keyof DealerContact, value: string) => {
-    setInlineError("");
     setFormData((prev) => ({
       ...prev,
       additionalContacts: prev.additionalContacts.map((contact, position) => (position === index ? { ...contact, [field]: value } : contact)),
@@ -291,30 +287,25 @@ export default function DealerFormCard({
   };
 
   const handleAddContact = () => {
-    setInlineError("");
     setFormData((prev) => ({ ...prev, additionalContacts: [...prev.additionalContacts, { name: "", phone: "", email: "" }] }));
   };
 
   const handleRemoveContact = (index: number) => {
-    setInlineError("");
     setFormData((prev) => ({ ...prev, additionalContacts: prev.additionalContacts.filter((_, position) => position !== index) }));
   };
 
   const handleAssignmentChange = (nextRegion: string, nextAssignments: RoleAssignments) => {
-    setInlineError("");
     setRegion(nextRegion);
     setRoleAssignments(nextAssignments);
   };
 
   const handlePaymentTermsChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
-    setInlineError("");
     setFormData((prev) => ({ ...prev, creditDays: event.target.value }));
   };
 
   // Advance dealers pay upfront, so credit days are not applicable to them.
   const handlePaymentTypeChange = (event: React.ChangeEvent<HTMLSelectElement>) => {
     const paymentType = event.target.value === "advance" ? "advance" : "credit";
-    setInlineError("");
     setFormData((prev) => ({
       ...prev,
       paymentType,
@@ -333,7 +324,6 @@ export default function DealerFormCard({
     setRoleAssignments(assignments);
     setRegion(regionFromAssignments(assignments, staffList) || snapshot.region || "");
     setActiveDetailsTab("company");
-    setInlineError("");
   };
 
   // The validated snapshot, or null after showing why it is not valid yet.
@@ -346,7 +336,7 @@ export default function DealerFormCard({
         ? "Select a Staff / Executive for this dealer."
         : validateDealerFormSnapshot(snapshot);
 
-    setInlineError(validationError ?? "");
+    if (validationError) showToast("error", validationError);
     return validationError ? null : snapshot;
   };
 
@@ -397,10 +387,6 @@ export default function DealerFormCard({
               <div className="mt-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
                 <span className="font-semibold">Rejection Reason:</span> {requestMeta.rejectionReason}
               </div>
-            ) : null}
-
-            {inlineError ? (
-              <div className="mt-4 border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{inlineError}</div>
             ) : null}
 
             {staffError ? (
