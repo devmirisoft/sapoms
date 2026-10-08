@@ -315,7 +315,7 @@ export class PostgresAdminStaffRepository {
     const nsmItems = input.includeNsm ? await this.findNsmRecords(input) : [];
     const where = buildWhere(input);
     const staffWindow = staffPageWindow(nsmItems.length, skip, take);
-    const [staff, total] = await prisma.$transaction([
+    const [staff, total] = await Promise.all([
       prisma.staffProfile.findMany({ where, include, orderBy: { id: "desc" }, skip: staffWindow.skip, take: staffWindow.take }),
       prisma.staffProfile.count({ where }),
     ]);

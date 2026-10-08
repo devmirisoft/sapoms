@@ -51,7 +51,7 @@ export class PostgresAdminOrderRepository {
   async list(input: AdminOrderListInput): Promise<{ items: AdminOrderRecord[]; total: number }> {
     const where = buildWhere(input);
     const { skip, take } = paginationToPrisma(input);
-    const [items, total] = await prisma.$transaction([
+    const [items, total] = await Promise.all([
       prisma.order.findMany({ where, include: listInclude, orderBy: { orderDate: "desc" }, skip, take }),
       prisma.order.count({ where }),
     ]);

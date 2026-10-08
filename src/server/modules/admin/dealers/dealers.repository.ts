@@ -182,7 +182,7 @@ export class PostgresAdminDealerRepository implements AdminDealerRepository {
   async list(input: AdminDealerListInput): Promise<{ items: AdminDealerRecord[]; total: number }> {
     const where = buildWhere(input);
     const { skip, take } = paginationToPrisma(input);
-    const [items, total] = await prisma.$transaction([
+    const [items, total] = await Promise.all([
       prisma.dealerProfile.findMany({ where, include, orderBy: { id: "desc" }, skip, take }),
       prisma.dealerProfile.count({ where }),
     ]);

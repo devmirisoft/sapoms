@@ -13,8 +13,6 @@ import Sidebar from "@/components/layout/sidebar";
 import { logout, type AppRole, type StoredUser } from "@/lib/roleAccess";
 import { useAuthSession } from "@/hooks/useAuthSession";
 
-let ledgerWarmupStarted = false;
-
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const [fullscreen, setFullscreen] = useState(false);
@@ -27,18 +25,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     !auth.loading && auth.session.status === "authenticated" ? auth.session.user : null;
   const role: AppRole | null =
     !auth.loading && auth.session.status === "authenticated" ? auth.session.role : null;
-
-  useEffect(() => {
-    if (auth.loading || auth.session.status !== "authenticated") return;
-    if (auth.session.role === "staff" || auth.session.role === "dealer") return;
-    if (ledgerWarmupStarted) return;
-    ledgerWarmupStarted = true;
-
-    void fetch("/api/ledger", { cache: "no-store" }).catch((error) => {
-      console.error("[dashboard ledger preload]", error);
-      ledgerWarmupStarted = false;
-    });
-  }, [auth.loading, auth.session]);
 
   const displayName =
     role === "accountant"

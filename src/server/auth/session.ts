@@ -265,11 +265,14 @@ function assertActiveUser(user: NonNullable<UserWithProfiles>, claims?: Pick<Acc
 
 export async function loadActiveSession(claims: AccessClaims) {
   const userId = BigInt(claims.sub);
-  const session = await prisma.authSession.findUnique({ where: { id: claims.sid } });
+  // userId comes from the token, so both reads go out together: one round trip, not two.
+  const [session, user] = await Promise.all([
+    prisma.authSession.findUnique({ where: { id: claims.sid } }),
+    loadUserWithProfiles(userId),
+  ]);
   if (!session || session.revokedAt || session.expiresAt <= new Date()) throw new Error("Session is not active");
   if (session.userId !== userId) throw new Error("Session mismatch");
 
-  const user = await loadUserWithProfiles(userId);
   if (!user) throw new Error("User not found");
   assertActiveUser(user, claims);
   getProfileId(user);

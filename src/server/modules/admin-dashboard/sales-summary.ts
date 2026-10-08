@@ -86,7 +86,7 @@ export async function summarizeSales(filters: SalesFilters, options: { scope?: P
   // date fields can be walked back as far as there is anything to show.
   // Billed is what the accountant invoiced in the ledger, paid what was recorded
   // against those bills; both by bill date, since one bill can span several orders.
-  const [orders, oldest, bills] = await prisma.$transaction([
+  const [orders, oldest, bills] = await Promise.all([
     prisma.order.findMany({
       where: scoped(filters.where),
       select: { orderDate: true, finalPayableAmountPaise: true },

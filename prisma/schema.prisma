@@ -737,6 +737,8 @@ model Order {
   @@index([rsmApprovalStatus])
   @@index([fulfilmentStatus])
   @@index([orderNumber])
+  @@index([orderDate])
+  @@index([dealerId, orderDate])
   @@map("orders")
 }
 
@@ -1181,6 +1183,7 @@ model CustomDiscountRequest {
   @@index([orderId])
   @@index([orderDraftId])
   @@index([status, createdAt])
+  @@index([staffId])
   @@map("custom_discount_requests")
 }
 

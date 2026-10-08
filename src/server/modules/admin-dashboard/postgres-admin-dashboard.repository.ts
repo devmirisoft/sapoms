@@ -82,7 +82,7 @@ export async function getPostgresAdminDashboard(
   options: { regionalGranularity?: SalesGranularity | string } = {},
 ): Promise<AdminDashboardResult> {
   const regionalGranularity = normalizeGranularity(options.regionalGranularity);
-  const [dealerCount, orderCount, ordersForRegionalTotals, dealerSalesGroups] = await prisma.$transaction([
+  const [dealerCount, orderCount, ordersForRegionalTotals, dealerSalesGroups] = await Promise.all([
     prisma.dealerProfile.count(),
     prisma.order.count(),
     prisma.order.findMany({

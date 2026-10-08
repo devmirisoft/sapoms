@@ -33,7 +33,7 @@ export class PostgresAdminAccountantRepository {
   async list(input: AdminAccountantListInput): Promise<{ items: AdminAccountantRecord[]; total: number }> {
     const where = buildWhere(input);
     const { skip, take } = paginationToPrisma(input);
-    const [items, total] = await prisma.$transaction([
+    const [items, total] = await Promise.all([
       prisma.accountantProfile.findMany({ where, include, orderBy: { id: "desc" }, skip, take }),
       prisma.accountantProfile.count({ where }),
     ]);
