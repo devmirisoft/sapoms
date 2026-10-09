@@ -254,11 +254,32 @@ model AuthSession {
   createdAt        DateTime  @default(now()) @map("created_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  impersonationsAsAdmin AuthImpersonation[] @relation("ImpersonationAdminSession")
+  impersonationAsDealer AuthImpersonation?  @relation("ImpersonationDealerSession")
 
   @@index([userId])
   @@index([expiresAt])
   @@index([revokedAt])
   @@map("auth_sessions")
+}
+
+// An admin signed in as a dealer. The admin's session is paused (its refresh hash parked)
+// until the dealer session logs out and presents the restoration token, stored here only hashed.
+model AuthImpersonation {
+  id                   String    @id @default(uuid())
+  adminSessionId       String    @map("admin_session_id")
+  dealerSessionId      String    @unique @map("dealer_session_id")
+  adminTokenVersion    Int       @map("admin_token_version")
+  restorationTokenHash String    @unique @map("restoration_token_hash")
+  expiresAt            DateTime  @map("expires_at") @db.Timestamptz(6)
+  endedAt              DateTime? @map("ended_at") @db.Timestamptz(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  adminSession  AuthSession @relation("ImpersonationAdminSession", fields: [adminSessionId], references: [id], onDelete: Cascade)
+  dealerSession AuthSession @relation("ImpersonationDealerSession", fields: [dealerSessionId], references: [id], onDelete: Cascade)
+
+  @@index([adminSessionId, endedAt])
+  @@map("auth_impersonations")
 }
 
 model AdminProfile {
