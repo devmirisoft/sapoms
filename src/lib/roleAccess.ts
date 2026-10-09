@@ -69,12 +69,34 @@ export function clearAuthStorage(storage: AuthStorage) {
 
 // Browser-only. An admin signed in as a dealer gets their admin session back from the
 // server instead of being logged out; a full page load drops the dealer's client state.
+// Only the server's answer plus a fresh /api/auth/me decide the identity shown next.
 export async function logout() {
-  const res = await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => null);
-  const restored = (await res?.json().catch(() => null))?.data?.restored as StoredUser | undefined;
+  // 503 means a transient server error while ending an impersonation; the server kept what a retry
+  // needs. Two retries, then ?final=1 tells it to give up and clear everything.
+  const attempts = ["/api/auth/logout", "/api/auth/logout", "/api/auth/logout?final=1"];
+  let body: { data?: { restored?: unknown } } | null = null;
+  for (const [index, url] of attempts.entries()) {
+    const res = await fetch(url, { method: "POST", credentials: "include" }).catch(() => null);
+    if (res && res.status !== 503) {
+      body = await res.json().catch(() => null);
+      break;
+    }
+    if (index < attempts.length - 1) await new Promise((resolve) => setTimeout(resolve, 750 * (index + 1)));
+  }
+  const restored = body?.data?.restored === true;
   clearAuthStorage(localStorage);
-  if (restored) persistAuthenticatedSession(localStorage, restored);
-  window.location.href = restored ? "/dashboard/admin/dealer/DealerList" : LOGIN_ROUTE;
+  if (restored) {
+    const me = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null);
+    const session = me?.data ? persistAuthenticatedSession(localStorage, me.data as StoredUser) : null;
+    if (session?.status === "authenticated" && session.role === "admin") {
+      window.location.href = "/dashboard/admin/dealer/DealerList";
+      return;
+    }
+    clearAuthStorage(localStorage);
+  }
+  window.location.href = LOGIN_ROUTE;
 }
 
 // Browser-only. Admin signs in as the dealer; logout() brings the admin back.

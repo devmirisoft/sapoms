@@ -9,6 +9,7 @@ import { prisma } from "@/server/db/prisma";
 import { requestIp, userAgent } from "@/server/http/request-meta";
 import { getProfileId, mapPostgresUserToLegacyProfile } from "@/server/auth/legacy-auth.mapper";
 import type { AuthenticatedPostgresUser } from "@/server/auth/providers/postgres-auth.provider";
+import type { ImpersonationDeps } from "./impersonation";
 import type { AuthRole } from "./providers/types";
 
 export const ACCESS_COOKIE = "omsons_access";
@@ -70,7 +71,7 @@ export function generateRefreshToken() {
   return randomBytes(48).toString("base64url");
 }
 
-function signAccessToken(input: { userId: bigint; sessionId: string; role: AuthRole; tokenVersion: number }) {
+export function signAccessToken(input: { userId: bigint; sessionId: string; role: AuthRole; tokenVersion: number }) {
   return jwt.sign(
     {
       sub: input.userId.toString(),
@@ -103,24 +104,45 @@ export function setAuthCookies(response: NextResponse, accessToken: string, refr
   response.cookies.set(REFRESH_COOKIE, refreshToken, cookieOptions(REFRESH_TTL_SECONDS, "strict", "/api/auth"));
 }
 
-export function clearAuthCookies(response: NextResponse) {
+// While an admin is signed in as a dealer this holds only the opaque restoration token; the
+// server keeps its hash in auth_impersonations (see impersonation.ts). Path /api/auth, like the
+// refresh cookie, so only the auth routes (logout among them) ever receive it.
+export const IMPERSONATOR_COOKIE = "omsons_impersonator";
+
+export function clearAccessCookie(response: NextResponse) {
   response.cookies.set(ACCESS_COOKIE, "", { ...cookieOptions(0, "lax", "/"), expires: new Date(0) });
+}
+
+export function clearAuthCookies(response: NextResponse) {
+  clearAccessCookie(response);
   response.cookies.set(REFRESH_COOKIE, "", { ...cookieOptions(0, "strict", "/api/auth"), expires: new Date(0) });
   response.cookies.set(IMPERSONATOR_COOKIE, "", { ...cookieOptions(0, "strict", "/api/auth"), expires: new Date(0) });
 }
 
-// While an admin is signed in as a dealer this holds "<dealer session id>.<admin refresh token>",
-// so logging out of that dealer session hands the admin their own session back.
-export const IMPERSONATOR_COOKIE = "omsons_impersonator";
-
-export function setImpersonatorCookie(response: NextResponse, dealerSessionId: string, adminRefreshToken: string) {
-  response.cookies.set(IMPERSONATOR_COOKIE, `${dealerSessionId}.${adminRefreshToken}`, cookieOptions(REFRESH_TTL_SECONDS, "strict", "/api/auth"));
+export function setImpersonatorCookie(response: NextResponse, restorationToken: string, expiresAt: Date) {
+  const maxAge = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
+  response.cookies.set(IMPERSONATOR_COOKIE, restorationToken, cookieOptions(maxAge, "strict", "/api/auth"));
 }
 
-export function readImpersonatorCookie(request: NextRequest) {
-  const value = request.cookies.get(IMPERSONATOR_COOKIE)?.value ?? "";
-  const dot = value.indexOf(".");
-  return dot > 0 ? { dealerSessionId: value.slice(0, dot), adminRefreshToken: value.slice(dot + 1) } : null;
+export function impersonationDeps(): ImpersonationDeps {
+  return { db: prisma, hashToken: hashRefreshToken, generateToken: generateRefreshToken, issueAccessToken: signAccessToken };
+}
+
+// The session behind this request: from the access token, or once that has expired (or the
+// browser dropped it), from the refresh cookie, which /api/auth/* routes still receive.
+export async function currentSessionId(request: NextRequest): Promise<string | null> {
+  const accessToken = request.cookies.get(ACCESS_COOKIE)?.value;
+  if (accessToken) {
+    try {
+      return verifyAccessToken(accessToken).sid;
+    } catch {
+      // Expired or invalid: fall back to the refresh cookie.
+    }
+  }
+  const refreshToken = request.cookies.get(REFRESH_COOKIE)?.value;
+  if (!refreshToken) return null;
+  const session = await prisma.authSession.findUnique({ where: { refreshTokenHash: hashRefreshToken(refreshToken) }, select: { id: true } });
+  return session?.id ?? null;
 }
 
 export async function writeAuthAuditLog(input: {
@@ -266,12 +288,18 @@ function assertActiveUser(user: NonNullable<UserWithProfiles>, claims?: Pick<Acc
 export async function loadActiveSession(claims: AccessClaims) {
   const userId = BigInt(claims.sub);
   // userId comes from the token, so both reads go out together: one round trip, not two.
+  const now = new Date();
   const [session, user] = await Promise.all([
-    prisma.authSession.findUnique({ where: { id: claims.sid } }),
+    prisma.authSession.findUnique({
+      where: { id: claims.sid },
+      include: { impersonationsAsAdmin: { where: { endedAt: null, expiresAt: { gt: now } }, select: { id: true }, take: 1 } },
+    }),
     loadUserWithProfiles(userId),
   ]);
-  if (!session || session.revokedAt || session.expiresAt <= new Date()) throw new Error("Session is not active");
+  if (!session || session.revokedAt || session.expiresAt <= now) throw new Error("Session is not active");
   if (session.userId !== userId) throw new Error("Session mismatch");
+  // An admin session paused behind an active dealer impersonation is unusable until restored.
+  if (session.impersonationsAsAdmin.length) throw new Error("Session is paused");
 
   if (!user) throw new Error("User not found");
   assertActiveUser(user, claims);
@@ -356,11 +384,14 @@ export async function rotateRefreshToken(refreshToken: string, request?: NextReq
 }
 
 export async function revokeSession(sessionId: string, request?: NextRequest) {
-  const session = await prisma.authSession.update({
-    where: { id: sessionId },
+  // Only a live session is revoked, so a retried logout neither re-stamps revokedAt nor logs twice.
+  const revoked = await prisma.authSession.updateMany({
+    where: { id: sessionId, revokedAt: null },
     data: { revokedAt: new Date() },
-    include: { user: true },
   });
+  if (revoked.count === 0) return;
+  const session = await prisma.authSession.findUnique({ where: { id: sessionId }, include: { user: true } });
+  if (!session) return;
   await writeAuthAuditLog({
     sessionId: session.id,
     userId: session.userId,
