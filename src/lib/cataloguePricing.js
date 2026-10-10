@@ -39,6 +39,11 @@ function isSyringeFiltersProduct(product) {
   return /\bsyringe\s+filters?\b/i.test(collectProductText(product));
 }
 
+// OM401–OM434: membrane disc filters and absorbent pads are priced per pack of 25/100.
+function isMembraneDiscFilterProduct(product) {
+  return /\bmembrane\s+disc\s+filters?\b|\babsorbent\s+pads?\b/i.test(collectProductText(product));
+}
+
 function isTenMetreTubingProduct(product) {
   const sku = String(product?.sku ?? product?.SKU ?? product?.catalogueProductSku ?? "").trim();
   if (/^(364|365|366)$/.test(sku)) return true;
@@ -60,7 +65,7 @@ function getVariantOrderPricing(priceInput, packSizeInput, product) {
   const packSize = Math.max(1, positiveNumber(packSizeInput) || 1);
   if (!price) return { unitPrice: 0, baseListPrice: 0, priceBasis: "unit" };
 
-  if (isSyringeFiltersProduct(product) || isTenMetreTubingProduct(product)) {
+  if (isSyringeFiltersProduct(product) || isMembraneDiscFilterProduct(product) || isTenMetreTubingProduct(product)) {
     return {
       unitPrice: roundMoney(price / packSize),
       baseListPrice: price,
@@ -78,6 +83,7 @@ function getVariantOrderPricing(priceInput, packSizeInput, product) {
 module.exports = {
   getVariantOrderPricing,
   isSyringeFiltersProduct,
+  isMembraneDiscFilterProduct,
   isTenMetreTubingProduct,
   variantPriceToUnitRupees,
   variantPackPriceToUnitRupees: variantPriceToUnitRupees,
