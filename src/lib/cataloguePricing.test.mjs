@@ -51,3 +51,12 @@ test("cat nos 364, 365, and 366 use catalogue price as 10 mtrs price", () => {
     );
   }
 });
+
+test("membrane disc filters and absorbent pads use catalogue price as pack price", () => {
+  for (const name of ["PVDF Membrane Disc Filter", "Absorbent Pads (Nutrient Pads) Sterile"]) {
+    assert.deepEqual(
+      pricing.getVariantOrderPricing(3400, 100, { sku: "OM409", category: "Filters & Membrane", name }),
+      { unitPrice: 34, baseListPrice: 3400, priceBasis: "pack" }
+    );
+  }
+});
