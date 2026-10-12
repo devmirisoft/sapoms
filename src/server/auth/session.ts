@@ -360,13 +360,19 @@ export async function rotateRefreshToken(refreshToken: string, request?: NextReq
 
   const nextRefreshToken = generateRefreshToken();
   const nextRefreshTokenHash = hashRefreshToken(nextRefreshToken);
-  const updated = await prisma.authSession.update({
-    where: { id: session.id },
+  // Compare-and-set on the presented hash: a logout that revoked this session, an impersonation
+  // that parked it, or a concurrent refresh that already rotated it, all landing after the read
+  // above, make this match nothing. An unconditional write here let a refresh that was in flight
+  // during logout hand the browser the revoked dealer session's cookies over the restored admin ones.
+  const rotated = await prisma.authSession.updateMany({
+    where: { id: session.id, refreshTokenHash, revokedAt: null, expiresAt: { gt: new Date() } },
     data: {
       refreshTokenHash: nextRefreshTokenHash,
       lastUsedAt: new Date(),
     },
   });
+  if (rotated.count !== 1) throw new Error("Invalid refresh token");
+  const updated = { ...session, refreshTokenHash: nextRefreshTokenHash };
 
   await writeAuthAuditLog({
     sessionId: updated.id,

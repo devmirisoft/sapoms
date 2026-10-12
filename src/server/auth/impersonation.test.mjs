@@ -350,7 +350,9 @@ test("a paused admin session is refused, and refresh still rotates only the pres
   const session = await read("src/server/auth/session.ts");
   assert.match(session, /impersonationsAsAdmin: \{ where: \{ endedAt: null, expiresAt: \{ gt: now \} \}/);
   assert.match(session, /if \(session\.impersonationsAsAdmin\.length\) throw new Error\("Session is paused"\)/);
-  assert.match(session, /findUnique\(\{ where: \{ refreshTokenHash \} \}\)[\s\S]*?prisma\.authSession\.update\(\{\s*where: \{ id: session\.id \}/);
+  // Rotation is a compare-and-set, so a refresh racing logout or impersonation can't overwrite it.
+  assert.match(session, /findUnique\(\{ where: \{ refreshTokenHash \} \}\)[\s\S]*?prisma\.authSession\.updateMany\(\{\s*where: \{ id: session\.id, refreshTokenHash, revokedAt: null, expiresAt: \{ gt: new Date\(\) \} \}/);
+  assert.match(session, /if \(rotated\.count !== 1\) throw new Error\("Invalid refresh token"\)/);
   // Logout finds the session from the access token, else from the refresh cookie.
   assert.match(session, /return verifyAccessToken\(accessToken\)\.sid/);
   assert.match(session, /findUnique\(\{ where: \{ refreshTokenHash: hashRefreshToken\(refreshToken\) \}, select: \{ id: true \} \}\)/);
