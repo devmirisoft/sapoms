@@ -193,7 +193,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           background: rgba(255,255,255,0.16);
           border: 1px solid rgba(255,255,255,0.2);
           box-shadow: none;
-          padding-right: 75px;
+          padding-right: 12px;
         }
         .dl-search-area form { padding-left: 6px; }
         .dl-search-area .ss-input-row { padding-left: 14px; }
@@ -206,19 +206,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         .dl-search-area input::placeholder { color: rgba(255,255,255,0.85); }
         .dl-search-area form > div:first-child,
         .dl-search-area .ss-icon { color: #fff; }
-        .dl-kbd {
-          position: absolute;
-          right: 10px;
-          top: 50%;
-          transform: translateY(-50%);
-          pointer-events: none;
-          padding: 3px 8px;
-          border-radius: 7px;
-          background: rgba(255,255,255,0.18);
-          font: 600 10px/1.2 inherit;
-          color: #fff;
-          white-space: nowrap;
-        }
         .dl-actions {
           display: flex;
           align-items: center;
@@ -360,8 +347,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           filter: invert(1) hue-rotate(180deg);
         }
         @media (max-width: 1100px) {
-          .dl-user-name, .dl-user svg, .dl-kbd { display: none; }
-          .dl-search-area form, .dl-search-area .ss-input-row { padding-right: 12px; }
+          .dl-user-name, .dl-user svg { display: none; }
         }
         @media (max-width: 900px) {
           .dl-topbar { padding: 0 14px; gap: 10px; }
@@ -412,7 +398,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   placeholder={searchPlaceholder}
                 />
               )}
-              <kbd className="dl-kbd">Ctrl + K</kbd>
             </div>
 
             <div className="dl-actions">
