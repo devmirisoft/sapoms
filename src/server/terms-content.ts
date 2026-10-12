@@ -3,9 +3,31 @@ import { DEFAULT_TERMS_BLOCKS, TERMS_BLOCK_TYPES, type TermsBlock } from "@/comp
 
 const KEY = "terms";
 
-export async function getTermsBlocks(): Promise<TermsBlock[]> {
-  const row = await prisma.appSetting.findUnique({ where: { key: KEY } });
-  return row ? (row.value as TermsBlock[]) : DEFAULT_TERMS_BLOCKS;
+// A dealer's own document lives beside the global one; no row means they get the template.
+const dealerKey = (dealerId: bigint) => `${KEY}:dealer:${dealerId}`;
+
+// The document a dealer sees and when it last changed (null = built-in default, never edited).
+export async function getDealerTerms(dealerId?: bigint): Promise<{ blocks: TermsBlock[]; updatedAt: Date | null }> {
+  const own = dealerId === undefined ? null : await prisma.appSetting.findUnique({ where: { key: dealerKey(dealerId) } });
+  const row = own ?? await prisma.appSetting.findUnique({ where: { key: KEY } });
+  return { blocks: row ? (row.value as TermsBlock[]) : DEFAULT_TERMS_BLOCKS, updatedAt: row?.updatedAt ?? null };
+}
+
+export async function getTermsBlocks(dealerId?: bigint): Promise<TermsBlock[]> {
+  return (await getDealerTerms(dealerId)).blocks;
+}
+
+// True when the document changed after the dealer accepted it; never-accepted dealers get the login modal instead.
+export function isTermsUpdatedSinceAccepted(updatedAt: Date | null, acceptedAt: Date | null | undefined) {
+  return Boolean(updatedAt && acceptedAt && updatedAt > acceptedAt);
+}
+
+export async function dealerTermsUpdatedAt(dealerId: bigint): Promise<Date | null> {
+  const [{ updatedAt }, profile] = await Promise.all([
+    getDealerTerms(dealerId),
+    prisma.dealerProfile.findUnique({ where: { id: dealerId }, select: { termsAcceptedAt: true } }),
+  ]);
+  return isTermsUpdatedSinceAccepted(updatedAt, profile?.termsAcceptedAt) ? updatedAt : null;
 }
 
 // Returns null when the payload isn't a list of known blocks; blank blocks are dropped.
@@ -21,10 +43,16 @@ export function parseTermsBlocks(input: unknown): TermsBlock[] | null {
   return blocks;
 }
 
-export async function saveTermsBlocks(blocks: TermsBlock[]) {
+export async function saveTermsBlocks(blocks: TermsBlock[], dealerId?: bigint) {
+  const key = dealerId === undefined ? KEY : dealerKey(dealerId);
+  // A no-op save must not bump updatedAt, or dealers get an "updated" notice for nothing.
+  // Compared as tuples because jsonb doesn't keep key order.
+  const flat = (list: TermsBlock[]) => JSON.stringify(list.map((block) => [block.type, block.text]));
+  const current = await prisma.appSetting.findUnique({ where: { key } });
+  if (current && flat(current.value as TermsBlock[]) === flat(blocks)) return;
   await prisma.appSetting.upsert({
-    where: { key: KEY },
-    create: { key: KEY, value: blocks },
+    where: { key },
+    create: { key, value: blocks },
     update: { value: blocks },
   });
 }

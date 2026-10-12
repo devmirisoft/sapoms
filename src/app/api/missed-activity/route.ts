@@ -4,7 +4,8 @@ import { prisma } from "@/server/db/prisma";
 import { requireAuth } from "@/server/auth/session";
 import { actorWhere } from "@/lib/postgresOrders";
 import { fetchStaffAssignedDealerIds, orderActorFromAuth } from "@/lib/orderScopeServer";
-import { buildMissedActivity } from "@/lib/missedActivity";
+import { buildMissedActivity, type MissedActivity } from "@/lib/missedActivity";
+import { dealerTermsUpdatedAt } from "@/server/terms-content";
 
 export const runtime = "nodejs";
 
@@ -22,13 +23,25 @@ export async function GET() {
     const session = await prisma.authSession.findUnique({ where: { id: actor.sessionId }, select: { createdAt: true } });
     if (!session) return NextResponse.json({ success: true, key: null, items: [] });
     const until = session.createdAt;
+
+    // Not windowed: stays in the bell (and toasts each login) until the dealer accepts the new version.
+    const termsUpdatedAt = actor.role === "DEALER" && actor.dealerId ? await dealerTermsUpdatedAt(actor.dealerId) : null;
+    const termsItems: MissedActivity[] = termsUpdatedAt ? [{
+      at: termsUpdatedAt.toISOString(),
+      orderId: "",
+      href: "/dashboard/dealer/terms",
+      type: "info",
+      title: "Terms & Conditions updated",
+      description: "Please review and accept the updated terms",
+    }] : [];
+
     const previous = await prisma.authAuditLog.findFirst({
       where: { actorId: actor.userId, action: { in: ["LOGIN", "LOGOUT"] }, createdAt: { lt: until } },
       orderBy: { createdAt: "desc" },
       select: { createdAt: true },
     });
     // First ever login: nothing was "missed".
-    if (!previous) return NextResponse.json({ success: true, key: until.toISOString(), items: [] });
+    if (!previous) return NextResponse.json({ success: true, key: until.toISOString(), items: termsItems });
     const since = previous.createdAt;
 
     const window = { gt: since, lte: until };
@@ -56,7 +69,7 @@ export async function GET() {
       id: order.id.toString(),
       dealerName: order.dealer.businessName,
     })), since, until);
-    return NextResponse.json({ success: true, key: until.toISOString(), items });
+    return NextResponse.json({ success: true, key: until.toISOString(), items: [...termsItems, ...items] });
   } catch (error: any) {
     const status = Number(error?.status) || (error?.message === "Unauthenticated" ? 401 : 500);
     if (status >= 500) console.error("[GET /api/missed-activity]", error);

@@ -24,6 +24,8 @@ export type MissedActivity = {
   type: "success" | "error" | "info";
   title: string;
   description: string;
+  // Where the bell links; defaults to the order page.
+  href?: string;
 };
 
 export function buildMissedActivity(role: string, orders: MissedActivityOrder[], since: Date, until: Date): MissedActivity[] {

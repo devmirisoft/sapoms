@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
 import TermsEditor from "@/components/terms/TermsEditor";
+import { TermsDocument, type TermsBlock } from "@/components/terms/TermsDocument";
 
 type TermsRow = {
   id: string;
@@ -29,6 +30,7 @@ export default function TermsAcceptancePage() {
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<Tab>("pending");
   const [search, setSearch] = useState("");
+  const [docDealer, setDocDealer] = useState<TermsRow | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,22 +138,23 @@ export default function TermsAcceptancePage() {
                 <th className="px-4 py-3">Location</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Accepted on</th>
+                <th className="px-4 py-3">Document</th>
               </tr>
             </thead>
             <tbody>
               {loading && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-[#667085]">Loading...</td>
+                  <td colSpan={6} className="px-4 py-8 text-center text-[#667085]">Loading...</td>
                 </tr>
               )}
               {!loading && error && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-red-500">{error}</td>
+                  <td colSpan={6} className="px-4 py-8 text-center text-red-500">{error}</td>
                 </tr>
               )}
               {!loading && !error && visible.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-8 text-center text-[#667085]">No dealers match this filter.</td>
+                  <td colSpan={6} className="px-4 py-8 text-center text-[#667085]">No dealers match this filter.</td>
                 </tr>
               )}
               {!loading && !error && visible.map((row) => (
@@ -173,12 +176,99 @@ export default function TermsAcceptancePage() {
                     </span>
                   </td>
                   <td className="px-4 py-3 text-[#59677a]">{formatDate(row.acceptedAt)}</td>
+                  <td className="px-4 py-3">
+                    <button
+                      type="button"
+                      onClick={() => setDocDealer(row)}
+                      className="h-8 rounded border border-[#d6dbe4] bg-white px-3 text-xs font-medium text-[#344054] hover:bg-[#f7f9fc]"
+                    >
+                      Document
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       </div>
+
+      {docDealer && <DealerDocumentModal dealer={docDealer} onClose={() => setDocDealer(null)} />}
     </main>
+  );
+}
+
+// Preview of one dealer's T&C (their own, or the template if none), with an edit mode.
+function DealerDocumentModal({ dealer, onClose }: { dealer: TermsRow; onClose: () => void }) {
+  const url = `/api/admin/dealers/${encodeURIComponent(dealer.id)}/terms`;
+  const [blocks, setBlocks] = useState<TermsBlock[] | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (editing) return;
+    let cancelled = false;
+    fetch(url, { credentials: "include", cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.msg || payload?.message || "Failed to load document.");
+        if (!cancelled) setBlocks(Array.isArray(payload?.data) ? payload.data : []);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(err instanceof Error ? err.message : "Failed to load document.");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [url, editing]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={`${dealer.businessName} terms document`}
+        className={`flex max-h-[90vh] w-full flex-col overflow-hidden rounded bg-white shadow-xl ${editing ? "max-w-6xl" : "max-w-3xl"}`}
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-[#eef1f6] px-5 py-3">
+          <div>
+            <h2 className="text-base font-semibold">{editing ? "Edit document" : "Terms & Conditions"}</h2>
+            <p className="text-xs text-[#667085]">{dealer.businessName}{dealer.dealerCode ? ` · ${dealer.dealerCode}` : ""}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close" className="rounded px-2 py-1 text-lg text-[#667085] hover:bg-[#f7f9fc]">×</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4">
+          {editing ? (
+            <TermsEditor url={url} />
+          ) : error ? (
+            <p className="text-sm text-red-500">{error}</p>
+          ) : blocks ? (
+            <div className="space-y-3 text-sm leading-relaxed text-slate-700">
+              <TermsDocument blocks={blocks} />
+            </div>
+          ) : (
+            <p className="text-sm text-[#667085]">Loading document...</p>
+          )}
+        </div>
+
+        <div className="flex justify-end gap-2 border-t border-[#eef1f6] px-5 py-3">
+          {editing ? (
+            <button type="button" onClick={() => { setBlocks(null); setEditing(false); }} className="h-9 rounded border border-[#d6dbe4] bg-white px-4 text-sm font-medium text-[#344054] hover:bg-[#f7f9fc]">
+              Back to preview
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              disabled={!blocks}
+              className="h-9 rounded bg-[#1f2937] px-4 text-sm font-medium text-white hover:bg-[#374151] disabled:opacity-50"
+            >
+              Edit document
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

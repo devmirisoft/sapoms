@@ -30,12 +30,15 @@ import { clampPercentInput, phoneInput, phoneInputProps } from "@/lib/fieldRules
 import { CITIES_BY_STATE, STATE_OPTIONS } from "@/lib/places";
 import { SALES_REGION_OPTIONS } from "@/lib/salesRegions";
 import { formatWarehouseLabel } from "@/lib/warehouses";
+import { TermsBlocksEditor } from "@/components/terms/TermsEditor";
+import type { TermsBlock } from "@/components/terms/TermsDocument";
 
 const ADMIN_STAFF_URL = "/api/admin/staff";
 const DEALER_CODE_PREFIX = "OM-";
+const UNCHANGED_TERMS_WARNING = "If the document isn’t updated, a default template will appear at login.";
 
 type DealerFormMode = "admin-create" | "staff-submit" | "admin-review" | "rsm-review" | "staff-resubmit";
-type DealerDetailsTab = "company" | "alternate" | "remarks";
+type DealerDetailsTab = "company" | "alternate" | "remarks" | "documents";
 
 async function fetchWithAuthRetry(input: RequestInfo | URL, init?: RequestInit) {
   const response = await fetch(input, { credentials: "include", cache: "no-store", ...init });
@@ -55,7 +58,8 @@ type DealerFormContext = {
   mode: DealerFormMode;
   initialSnapshot?: DealerFormSnapshot | null;
   isSubmitting?: boolean;
-  onSubmit: (snapshot: DealerFormSnapshot) => Promise<void> | void;
+  // termsBlocks is the dealer's own T&C document, or null to keep the default template.
+  onSubmit: (snapshot: DealerFormSnapshot, termsBlocks: TermsBlock[] | null) => Promise<void> | void;
   secondaryAction?: {
     label: string;
     loadingLabel: string;
@@ -140,6 +144,26 @@ export default function DealerFormCard({
   const [dealerCodeLoading, setDealerCodeLoading] = useState(false);
   const [dealerCodeError, setDealerCodeError] = useState("");
   const [dealerCodeInitialized, setDealerCodeInitialized] = useState(() => Boolean(initialSnapshot?.dealerCode));
+  // Only direct admin creation sets a per-dealer document; request flows get the template.
+  const hasDocumentsTab = mode === "admin-create";
+  const [termsBlocks, setTermsBlocks] = useState<TermsBlock[]>([]);
+  const [termsTemplate, setTermsTemplate] = useState("[]");
+
+  useEffect(() => {
+    if (!hasDocumentsTab) return;
+    let active = true;
+    fetch("/api/terms/content", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload) => {
+        if (!active || !Array.isArray(payload?.data)) return;
+        setTermsBlocks(payload.data);
+        setTermsTemplate(JSON.stringify(payload.data));
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [hasDocumentsTab]);
 
   useEffect(() => {
     let active = true;
@@ -343,7 +367,11 @@ export default function DealerFormCard({
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const snapshot = buildValidSnapshot();
-    if (snapshot) await onSubmit(snapshot);
+    if (!snapshot) return;
+    if (!hasDocumentsTab) return onSubmit(snapshot, null);
+    const termsChanged = JSON.stringify(termsBlocks) !== termsTemplate;
+    if (!termsChanged && !window.confirm(UNCHANGED_TERMS_WARNING)) return;
+    await onSubmit(snapshot, termsChanged ? termsBlocks : null);
   };
 
   const handleSecondaryAction = async () => {
@@ -470,6 +498,9 @@ export default function DealerFormCard({
                 <Tab active={activeDetailsTab === "company"} onClick={() => setActiveDetailsTab("company")}>Company Details</Tab>
                 <Tab active={activeDetailsTab === "alternate"} onClick={() => setActiveDetailsTab("alternate")}>Business details</Tab>
                 <Tab active={activeDetailsTab === "remarks"} onClick={() => setActiveDetailsTab("remarks")}>Remarks</Tab>
+                {hasDocumentsTab ? (
+                  <Tab active={activeDetailsTab === "documents"} onClick={() => setActiveDetailsTab("documents")}>Documents</Tab>
+                ) : null}
               </div>
 
               <div className="relative overflow-visible bg-[#e7eef7] px-8 pb-7 pt-6">
@@ -603,6 +634,15 @@ export default function DealerFormCard({
                       placeholder="Add dealer notes or payment remarks"
                     />
                   </Field>
+                ) : null}
+
+                {activeDetailsTab === "documents" ? (
+                  <div>
+                    <p className="mb-3 text-xs text-[#59677a]">
+                      Terms &amp; Conditions for this dealer, starting from the default template. Edits are saved with the dealer.
+                    </p>
+                    <TermsBlocksEditor blocks={termsBlocks} onChange={setTermsBlocks} />
+                  </div>
                 ) : null}
               </div>
             </div>

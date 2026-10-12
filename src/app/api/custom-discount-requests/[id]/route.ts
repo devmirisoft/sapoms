@@ -10,8 +10,10 @@ import {
   customDiscountInclude,
   jsonValue,
   mapCustomDiscount,
+  paise,
   text,
 } from "@/lib/postgresDiscountDrafts";
+import { normalizeApprovalProductKey, splitApprovalSnapshot, type ApprovalSnapshotProduct } from "@/lib/customDiscountRequests";
 import { placeOrderForApprovedDiscount } from "@/lib/discountApprovalOrder";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
@@ -53,8 +55,7 @@ async function assertRsmDiscountScope(actor: AuthActor, dealerId: bigint, reques
   if (!scoped) throw Object.assign(new Error("This request is outside your RSM scope"), { status: 403 });
 }
 
-function rejectionRows(request: any) {
-  const products = Array.isArray(request.orderSnapshot?.products) ? request.orderSnapshot.products : [];
+function rejectionRows(products: any[]) {
   return products.slice(0, 100).map((product: any, index: number) => ({
     key: index + 1,
     productname: text(product.productName || product.catalogueNumber, 200),
@@ -113,7 +114,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const rawStatus = text(body.status, 40);
     const rawRsmStatus = text(body.rsmStatus ?? body.rsmApprovalStatus ?? (rsmStage ? body.status : ""), 40);
     const rawNsmStatus = text(body.nsmStatus ?? body.nsmApprovalStatus ?? (nsmStage ? body.status : ""), 40);
-    const nextStatus = rawStatus && !stageRole ? statusValue(rawStatus) : null;
+    // Admin only covers when there is no active NSM, so Admin is the next and last
+    // reviewer anyway: approving on behalf of the missing stages is also the final approval.
+    const adminAlone = actor.role === "ADMIN" && !!cover && statusValue(rawStatus) === "APPROVED";
+    const nextStatus = rawStatus && (!stageRole || adminAlone) ? statusValue(rawStatus) : null;
     const nextRsmStatus = rawRsmStatus ? statusValue(rawRsmStatus) : null;
     const nextNsmStatus = rawNsmStatus ? statusValue(rawNsmStatus) : null;
     const orderId = text(body.orderId || body.order_id, 80);
@@ -128,8 +132,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (reviewUpdate && actor?.role !== "ADMIN") throw Object.assign(new Error("Only Admin can review custom discounts"), { status: 403 });
     if (rsmReviewUpdate && !rsmStage) throw Object.assign(new Error("Only RSM can perform RSM custom discount review"), { status: 403 });
     if (nsmReviewUpdate && !nsmStage) throw Object.assign(new Error("Only NSM can perform NSM custom discount review"), { status: 403 });
-    if (reviewUpdate && existing.rsmApprovalStatus !== "APPROVED") throw Object.assign(new Error("RSM approval is required before Admin review"), { status: 409 });
-    if (reviewUpdate && existing.nsmApprovalStatus !== null && existing.nsmApprovalStatus !== "APPROVED") throw Object.assign(new Error("NSM approval is required before Admin review"), { status: 409 });
+    if (reviewUpdate && !adminAlone && existing.rsmApprovalStatus !== "APPROVED") throw Object.assign(new Error("RSM approval is required before Admin review"), { status: 409 });
+    if (reviewUpdate && !adminAlone && existing.nsmApprovalStatus !== null && existing.nsmApprovalStatus !== "APPROVED") throw Object.assign(new Error("NSM approval is required before Admin review"), { status: 409 });
     if (nsmReviewUpdate && existing.nsmApprovalStatus === null) throw Object.assign(new Error("This request does not need NSM review"), { status: 409 });
     if (nsmReviewUpdate && existing.rsmApprovalStatus !== "APPROVED") throw Object.assign(new Error("RSM approval is required before NSM review"), { status: 409 });
     if (wantsResubmit && actor?.role === "ADMIN") throw Object.assign(new Error("Admin cannot resubmit dealer custom discounts"), { status: 403 });
@@ -188,6 +192,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data.reviewedAt = nextStatus === "PENDING" ? null : new Date();
       data.allowReorder = nextStatus === "APPROVED" ? true : nextStatus === "REJECTED" ? false : existing.allowReorder;
     }
+    // Selective approval: the order is placed from the approved lines only, and
+    // the rejected ones go back to the dealer as a fresh draft (below).
+    let partialRejected: ApprovalSnapshotProduct[] = [];
+    if (body.rejectedLines !== undefined) {
+      if (!(reviewUpdate && nextStatus === "APPROVED")) throw Object.assign(new Error("Lines can only be rejected while Admin approves"), { status: 400 });
+      if (!Array.isArray(body.rejectedLines)) throw Object.assign(new Error("rejectedLines must be a list"), { status: 400 });
+      if (!data.adminNote) throw Object.assign(new Error("A disapproval note is required when rejecting a discount request"), { status: 400 });
+      const snapshot = (existing.orderSnapshot ?? {}) as Record<string, unknown>;
+      const { approved, rejected } = splitApprovalSnapshot(
+        { ...snapshot, products: (Array.isArray(snapshot.products) ? snapshot.products : []) as ApprovalSnapshotProduct[] },
+        body.rejectedLines.map(Number),
+      );
+      partialRejected = rejected;
+      const keptKeys = new Set(approved.products.map((product) => normalizeApprovalProductKey(product.productKey)));
+      const rejectedKeys = new Set(rejected.map((product) => normalizeApprovalProductKey(product.productKey)).filter((key) => !keptKeys.has(key)));
+      const productDiscounts = (existing.requestedProductDiscounts ?? {}) as Record<string, unknown>;
+      data.orderSnapshot = jsonValue({ ...approved, rejectedProducts: rejected, rejectedNote: data.adminNote });
+      data.requestedProductDiscounts = jsonValue(Object.fromEntries(Object.entries(productDiscounts).filter(([key]) => !rejectedKeys.has(normalizeApprovalProductKey(key)))));
+      data.grossAmountPaise = paise(approved.grossAmount);
+      data.requestedDiscountAmountPaise = paise(approved.requestedAdditionalDiscountAmount);
+      data.requestedNetPayableAmountPaise = paise(approved.requestedNetPayableAmount);
+    }
     if (typeof body.allowReorder === "boolean") {
       if (actor?.role !== "ADMIN") throw Object.assign(new Error("Only Admin can change reorder permission"), { status: 403 });
       data.allowReorder = body.allowReorder;
@@ -235,7 +261,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             dealerId: existing.dealerId,
             name: `Disapproved Request: ${new Date().toLocaleString("en-IN")}`,
             snapshot: jsonValue({
-              rows: rejectionRows(existing),
+              rows: rejectionRows(Array.isArray((existing.orderSnapshot as any)?.products) ? (existing.orderSnapshot as any).products : []),
               shipto: (existing.orderSnapshot as any)?.shipto ?? null,
               refno: (existing.orderSnapshot as any)?.refno ?? null,
               order_note: [
@@ -271,6 +297,45 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             include: customDiscountInclude,
           });
         }
+      }
+
+      // The rejected lines return as a plain, unlinked draft: requesting them
+      // again is a new request and, once approved, a new order number.
+      if (partialRejected.length) {
+        const orderNumber = placedOrder?.orderNumber ?? row.order?.orderNumber ?? "";
+        const note = text(data.adminNote, 1500);
+        const snapshot = (row.orderSnapshot ?? {}) as any;
+        const draft = await tx.orderDraft.create({
+          data: {
+            dealerId: row.dealerId,
+            name: `Rejected lines from ${orderNumber || `request ${row.id}`}`,
+            snapshot: jsonValue({
+              rows: rejectionRows(partialRejected),
+              shipto: snapshot.shipto ?? null,
+              refno: snapshot.refno ?? null,
+              order_note: [
+                "--- ADMIN PARTIAL REJECTION ---",
+                orderNumber ? `Rejected on order ${orderNumber}` : "",
+                note,
+                "Request the discount again to place these as a new order.",
+              ].filter(Boolean).join("\n\n"),
+              rejection_notes: {
+                rejected_by: "ADMIN",
+                rejected_at: new Date().toISOString(),
+                admin_note: note,
+                reason: orderNumber ? `Rejected on order ${orderNumber}: ${note}` : note,
+              },
+              source: "custom_discount_rejection",
+              source_request_id: row.id.toString(),
+            }),
+          },
+        });
+        rejectionDraftId = draft.id;
+        row = await tx.customDiscountRequest.update({
+          where: { id: row.id },
+          data: { orderSnapshot: jsonValue({ ...snapshot, rejectionDraftId: draft.id.toString() }) },
+          include: customDiscountInclude,
+        });
       }
 
       // A converted draft keeps the status set above; only refresh approval
@@ -318,11 +383,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         ...changes,
         metadata: {
           dealerId: row.dealerId.toString(),
-          stage: rsmReviewUpdate ? "rsm" : nsmReviewUpdate ? "nsm" : reviewUpdate ? "admin" : "dealer",
+          stage: adminAlone ? "admin" : rsmReviewUpdate ? "rsm" : nsmReviewUpdate ? "nsm" : reviewUpdate ? "admin" : "dealer",
           ...(row.adminNote ? { adminNote: row.adminNote } : {}),
           ...(row.rsmNote ? { rsmNote: row.rsmNote } : {}),
           ...(row.nsmNote ? { nsmNote: row.nsmNote } : {}),
           ...(placedOrder ? { placedOrderNumber: placedOrder.orderNumber } : {}),
+          ...(partialRejected.length ? { rejectedLineCount: partialRejected.length, partialRejectionDraftId: rejectionDraftId?.toString() } : {}),
         },
       });
 

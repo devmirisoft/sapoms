@@ -2,19 +2,24 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireRole, writeAuthAuditLog } from "@/server/auth/session";
 import { compatibilityFailure, compatibilitySuccess } from "@/server/http/compat-response";
+import { getDealerTerms, isTermsUpdatedSinceAccepted } from "@/server/terms-content";
 
 export async function GET() {
   try {
     const actor = await requireRole("DEALER");
-    const profile = await prisma.dealerProfile.findUnique({
-      where: { id: actor.dealerId! },
-      select: { termsAcceptedAt: true },
-    });
+    const [profile, terms] = await Promise.all([
+      prisma.dealerProfile.findUnique({ where: { id: actor.dealerId! }, select: { termsAcceptedAt: true } }),
+      // This dealer's own document, or the global template.
+      getDealerTerms(actor.dealerId!),
+    ]);
 
     return NextResponse.json(
       compatibilitySuccess({
         accepted: Boolean(profile?.termsAcceptedAt),
         acceptedAt: profile?.termsAcceptedAt?.toISOString() ?? null,
+        blocks: terms.blocks,
+        updatedAt: terms.updatedAt?.toISOString() ?? null,
+        updatedSinceAccepted: isTermsUpdatedSinceAccepted(terms.updatedAt, profile?.termsAcceptedAt),
       }),
     );
   } catch {

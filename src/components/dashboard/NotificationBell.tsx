@@ -112,7 +112,7 @@ export default function NotificationBell({ className }: { className?: string }) 
             <ul className="dl-notif-list">
               {items.map((item) => (
                 <li key={`${item.orderId}-${item.at}-${item.title}`}>
-                  <Link href={`/orders/${item.orderId}`} className="dl-notif-item" onClick={() => setOpen(false)}>
+                  <Link href={item.href ?? `/orders/${item.orderId}`} className="dl-notif-item" onClick={() => setOpen(false)}>
                     <span className="dl-notif-dot" style={{ background: DOT[item.type] }} />
                     <span style={{ minWidth: 0 }}>
                       <span className="dl-notif-title">{item.title}</span>
