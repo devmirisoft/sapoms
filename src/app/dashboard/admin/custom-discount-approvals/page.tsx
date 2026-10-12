@@ -93,6 +93,25 @@ function NsmStatusLine({ request, size }: { request: NormalizedCustomDiscountReq
   return <p className={`${size} font-semibold text-amber-600`}>Awaiting NSM Approval</p>;
 }
 
+/** Per-line approval is Admin's final review; an Admin cover is final too (Admin is alone). */
+function canSelectLines(request: NormalizedCustomDiscountRequest, viewerIsNsm: boolean) {
+  return !viewerIsNsm && !request.isLegacySnapshot && request.normalizedStatus === "pending" && !reviewBlocker(request, viewerIsNsm);
+}
+
+function rejectedLineCount(request: NormalizedCustomDiscountRequest) {
+  const rejected = (request.source.orderSnapshot as { rejectedProducts?: unknown[] } | null | undefined)?.rejectedProducts;
+  return Array.isArray(rejected) ? rejected.length : 0;
+}
+
+function LineApproveToggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
+  return (
+    <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-[10px] font-bold text-gray-600">
+      <input type="checkbox" checked={checked} onChange={onChange} className="h-3.5 w-3.5 accent-emerald-600" />
+      Approve
+    </label>
+  );
+}
+
 function totalPieces(request: NormalizedCustomDiscountRequest) {
   return request.orderSnapshot.products.reduce((sum, product) => sum + Number(product.totalPieces || 0), 0);
 }
@@ -104,6 +123,7 @@ function DecisionPanel({
   busy,
   blocker,
   viewerIsNsm,
+  rejectedCount,
   onDecide,
   onToggleReorder,
 }: {
@@ -113,9 +133,12 @@ function DecisionPanel({
   busy: boolean;
   blocker: string | null;
   viewerIsNsm: boolean;
+  rejectedCount: number;
   onDecide: (status: ApprovalStatus) => void;
   onToggleReorder: () => void;
 }) {
+  const customCount = request.orderSnapshot.products.filter((product) => product.usesCustomDiscount).length;
+  const partial = rejectedCount > 0;
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
       <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{viewerIsNsm ? "NSM Note" : "Admin Note"}</label>
@@ -139,18 +162,22 @@ function DecisionPanel({
                   ? "RSM unavailable — you are approving on their behalf. This also clears the NSM stage."
                   : "RSM unavailable — you are approving on their behalf."
                 : "NSM unavailable — you are approving on their behalf."}
+              {!viewerIsNsm && " Approving also places the order."}
             </p>
           ) : null}
           <p className="mt-2 text-[11px] font-medium text-red-600">
-            Rejecting this request will save the full order snapshot back to a dealer draft for correction.
+            {partial
+              ? `${rejectedCount} unticked line(s) will go back to the dealer as a new draft; the rest is placed as the order. A note is required.`
+              : "Rejecting this request will save the full order snapshot back to a dealer draft for correction."}
           </p>
           <div className="mt-3 flex gap-2">
             <button
               onClick={() => onDecide("approved")}
-              disabled={busy}
+              disabled={busy || (partial && !note.trim())}
+              title={partial && !note.trim() ? "Add a note for the rejected lines" : undefined}
               className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-[13px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
-              {busy ? "Saving..." : "Approve"}
+              {busy ? "Saving..." : partial ? `Approve ${customCount - rejectedCount} of ${customCount} lines` : "Approve"}
             </button>
             <button
               onClick={() => onDecide("rejected")}
@@ -167,6 +194,11 @@ function DecisionPanel({
           <p className="mt-3 text-[12px] text-gray-500">
             Reviewed by {String(request.source?.reviewedBy || "Admin")} {request.reviewedAt ? `on ${new Date(request.reviewedAt).toLocaleString("en-IN")}` : ""}
           </p>
+          {rejectedLineCount(request) > 0 && (
+            <p className="mt-1 text-[12px] font-semibold text-red-600">
+              {rejectedLineCount(request)} line(s) rejected — returned to dealer draft
+            </p>
+          )}
           {request.normalizedStatus === "approved" && !viewerIsNsm && (
             <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2">
               <span className="text-[11px] text-gray-500">
@@ -202,6 +234,8 @@ function RequestCard({
   onNoteChange,
   busy,
   viewerIsNsm,
+  rejected,
+  onToggleLine,
   onDecide,
   onToggleReorder,
 }: {
@@ -210,10 +244,13 @@ function RequestCard({
   onNoteChange: (value: string) => void;
   busy: boolean;
   viewerIsNsm: boolean;
+  rejected: number[];
+  onToggleLine: (index: number) => void;
   onDecide: (status: ApprovalStatus) => void;
   onToggleReorder: () => void;
 }) {
   const blocker = reviewBlocker(request, viewerIsNsm);
+  const selectable = canSelectLines(request, viewerIsNsm);
   return (
     <div className={`flex flex-col gap-4 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm transition-all hover:border-gray-300 hover:shadow-md ${blocker ? "opacity-60" : ""}`}>
       <div className="flex items-start justify-between gap-3">
@@ -283,14 +320,19 @@ function RequestCard({
           {request.orderSnapshot.products.map((product, index) => (
             <div
               key={`${request.id}-${product.productKey || product.sku}-${index}`}
-              className={`px-3 py-2 ${product.usesCustomDiscount ? "bg-brand-50" : ""}`}
+              className={`px-3 py-2 ${rejected.includes(index) ? "bg-red-50" : product.usesCustomDiscount ? "bg-brand-50" : ""}`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <p className="font-mono text-[11px] font-bold text-amber-700">{product.catalogueNumber || product.sku || "-"}</p>
                   <p className="truncate text-[12px] font-semibold text-gray-900">{product.productName || "-"}</p>
                 </div>
-                <p className="shrink-0 font-mono text-[12px] font-bold text-emerald-700">{money(product.finalAmount)}</p>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <p className="font-mono text-[12px] font-bold text-emerald-700">{money(product.finalAmount)}</p>
+                  {selectable && product.usesCustomDiscount && (
+                    <LineApproveToggle checked={!rejected.includes(index)} onChange={() => onToggleLine(index)} />
+                  )}
+                </div>
               </div>
               <p className="mt-1 font-mono text-[11px] text-gray-500">
                 {product.quantity} x {product.packSize} = {product.totalPieces} pcs · {money(product.unitPrice)}
@@ -327,6 +369,7 @@ function RequestCard({
         busy={busy}
         blocker={blocker}
         viewerIsNsm={viewerIsNsm}
+        rejectedCount={selectable ? rejected.length : 0}
         onDecide={onDecide}
         onToggleReorder={onToggleReorder}
       />
@@ -341,6 +384,12 @@ export default function CustomDiscountApprovalsPage() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<"all" | ApprovalStatus>("pending");
   const [notes, setNotes] = useState<Record<string, string>>({});
+  // Snapshot product indexes Admin has unticked, per request.
+  const [rejectedLines, setRejectedLines] = useState<Record<string, number[]>>({});
+  const toggleLine = (requestId: string, index: number) => setRejectedLines((prev) => {
+    const current = prev[requestId] ?? [];
+    return { ...prev, [requestId]: current.includes(index) ? current.filter((i) => i !== index) : [...current, index] };
+  });
   const [updating, setUpdating] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
   const [search, setSearch] = useState("");
@@ -428,8 +477,9 @@ export default function CustomDiscountApprovalsPage() {
 
   const decide = async (request: NormalizedCustomDiscountRequest, status: ApprovalStatus) => {
     const adminNote = notes[request.id] ?? "";
+    const rejected = status === "approved" && canSelectLines(request, viewerIsNsm) ? rejectedLines[request.id] ?? [] : [];
     // A disapproval must always carry a reason the dealer can act on.
-    if (status === "rejected" && !adminNote.trim()) {
+    if ((status === "rejected" || rejected.length > 0) && !adminNote.trim()) {
       setError("Add a note explaining the disapproval before rejecting this request.");
       return;
     }
@@ -443,12 +493,14 @@ export default function CustomDiscountApprovalsPage() {
           status,
           adminNote,
           reviewedBy: resolveAdminName(),
+          ...(rejected.length ? { rejectedLines: rejected } : {}),
         }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.message ?? "Update failed");
       const normalized = normalizeCustomDiscountRequestRecord(json.data);
       setRequests((prev) => prev.map((row) => row.id === request.id ? normalized : row));
+      setRejectedLines((prev) => ({ ...prev, [request.id]: [] }));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update approval");
     } finally {
@@ -610,6 +662,8 @@ export default function CustomDiscountApprovalsPage() {
                 onNoteChange={(value) => setNotes((prev) => ({ ...prev, [request.id]: value }))}
                 busy={updating === request.id}
                 viewerIsNsm={viewerIsNsm}
+                rejected={rejectedLines[request.id] ?? []}
+                onToggleLine={(index) => toggleLine(request.id, index)}
                 onDecide={(status) => decide(request, status)}
                 onToggleReorder={() => toggleReorder(request)}
               />
@@ -619,6 +673,8 @@ export default function CustomDiscountApprovalsPage() {
           <div className="space-y-4">
             {filtered.map((request) => {
               const blocker = reviewBlocker(request, viewerIsNsm);
+              const selectable = canSelectLines(request, viewerIsNsm);
+              const rejected = rejectedLines[request.id] ?? [];
               return (
               <div
                 key={request.id}
@@ -734,9 +790,16 @@ export default function CustomDiscountApprovalsPage() {
                             {request.orderSnapshot.products.map((product, index) => (
                               <tr
                                 key={`${request.id}-${product.productKey || product.sku}-${index}`}
-                                className={product.usesCustomDiscount ? "bg-brand-50 ring-1 ring-inset ring-brand-200" : ""}
+                                className={rejected.includes(index) ? "bg-red-50 ring-1 ring-inset ring-red-200" : product.usesCustomDiscount ? "bg-brand-50 ring-1 ring-inset ring-brand-200" : ""}
                               >
-                                <td className="px-3 py-3 font-mono text-[12px] font-bold text-amber-700">{product.catalogueNumber || product.sku || "-"}</td>
+                                <td className="px-3 py-3 font-mono text-[12px] font-bold text-amber-700">
+                                  {product.catalogueNumber || product.sku || "-"}
+                                  {selectable && product.usesCustomDiscount && (
+                                    <div className="mt-1">
+                                      <LineApproveToggle checked={!rejected.includes(index)} onChange={() => toggleLine(request.id, index)} />
+                                    </div>
+                                  )}
+                                </td>
                                 <td className="px-3 py-3">
                                   <p className="text-[12px] font-semibold text-gray-900">{product.productName || "-"}</p>
                                   <div className="mt-1 flex flex-wrap gap-1.5">
@@ -799,6 +862,7 @@ export default function CustomDiscountApprovalsPage() {
                     busy={updating === request.id}
                     blocker={blocker}
                     viewerIsNsm={viewerIsNsm}
+                    rejectedCount={selectable ? rejected.length : 0}
                     onDecide={(status) => decide(request, status)}
                     onToggleReorder={() => toggleReorder(request)}
                   />

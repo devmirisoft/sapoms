@@ -5,6 +5,7 @@ import { buildRsmDiscountRequestWhere, coversNsmStage, coversRsmStage, dealerReq
 import { buildFundRequestScope, STAGE_REQUIRES } from "@/lib/dealerFundRequests";
 import { actorWhere } from "@/lib/postgresOrders";
 import { fetchStaffAssignedDealerIds, orderActorFromAuth } from "@/lib/orderScopeServer";
+import { dealerTermsUpdatedAt } from "@/server/terms-content";
 
 // Lifted out of GET /api/sidebar-counts so the assistant's "what's pending for me"
 // answers with the same numbers as the sidebar badges.
@@ -35,6 +36,7 @@ export async function countsFor(actor: AuthActor) {
     add("drafts", () => prisma.orderDraft.count({ where: { dealerId, status: "ACTIVE" } }));
     add("orders", () => prisma.order.count({ where: { dealerId, acceptanceStatus: "AWAITING", status: { notIn: ["CANCELLED", "DECLINED"] } } }));
     add("fundRequests", () => prisma.dealerFundRequest.count({ where: { dealerId, status: { notIn: ["COMPLETED", "REJECTED"] } } }));
+    add("terms", async () => ((await dealerTermsUpdatedAt(dealerId)) ? 1 : 0));
   } else {
     add("pendingOrders", async () => prisma.order.count({ where: { AND: [await orderScope(actor), { acceptanceStatus: "AWAITING", status: { notIn: ["CANCELLED", "DECLINED"] } }] } }));
 

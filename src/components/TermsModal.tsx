@@ -28,10 +28,11 @@ async function refreshSession() {
   return refreshPromise;
 }
 
-async function postTermsAcceptance() {
+// GET returns this dealer's terms document; POST records acceptance.
+export async function termsRequest(method: "GET" | "POST") {
   const send = () =>
     fetch("/api/terms", {
-      method: "POST",
+      method,
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       cache: "no-store",
@@ -60,9 +61,9 @@ export default function TermsModal({
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/terms/content", { cache: "no-store" })
+    termsRequest("GET")
       .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => setBlocks(Array.isArray(payload?.data) ? payload.data : DEFAULT_TERMS_BLOCKS))
+      .then((payload) => setBlocks(Array.isArray(payload?.data?.blocks) ? payload.data.blocks : DEFAULT_TERMS_BLOCKS))
       .catch(() => setBlocks(DEFAULT_TERMS_BLOCKS));
   }, []);
 
@@ -88,7 +89,7 @@ export default function TermsModal({
     setError(null);
 
     try {
-      const res = await postTermsAcceptance();
+      const res = await termsRequest("POST");
       const payload = await res.json().catch(() => null);
 
       if (!res.ok) {

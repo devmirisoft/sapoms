@@ -312,6 +312,14 @@ export function buildOrderApprovalSnapshot(options: BuildOrderSnapshotOptions): 
     )
   ));
 
+  return {
+    orderNote: cleanText(options.orderNote),
+    products,
+    ...summarizeSnapshotProducts(products),
+  };
+}
+
+export function summarizeSnapshotProducts(products: ApprovalSnapshotProduct[]) {
   const grossAmount = roundMoney(products.reduce((sum, product) => sum + product.grossAmount, 0));
   const baseDiscountAmount = roundMoney(products.reduce((sum, product) => sum + product.baseDiscountAmount, 0));
   const requestedAdditionalDiscountAmount = roundMoney(products.reduce((sum, product) => (
@@ -319,15 +327,29 @@ export function buildOrderApprovalSnapshot(options: BuildOrderSnapshotOptions): 
   ), 0));
   const totalDiscountAmount = roundMoney(baseDiscountAmount + requestedAdditionalDiscountAmount);
   const requestedNetPayableAmount = roundMoney(Math.max(0, grossAmount - totalDiscountAmount));
+  return { grossAmount, baseDiscountAmount, requestedAdditionalDiscountAmount, totalDiscountAmount, requestedNetPayableAmount };
+}
 
+/**
+ * Selective approval: Admin rejects some of the lines that asked for a custom
+ * discount. The rest (approved + standard lines) become the order; the rejected
+ * lines go back to the dealer. Rejecting every custom line is a full Reject.
+ */
+export function splitApprovalSnapshot<T extends { products: ApprovalSnapshotProduct[] }>(snapshot: T, rejectedIndexes: number[]) {
+  const products = snapshot.products;
+  const rejectedSet = new Set(rejectedIndexes);
+  const fail = (message: string) => Object.assign(new Error(message), { status: 400 });
+  if (rejectedSet.size === 0) throw fail("Select at least one line to reject");
+  for (const index of rejectedSet) {
+    if (!Number.isInteger(index) || !products[index]?.usesCustomDiscount) throw fail("Only lines with a requested discount can be rejected");
+  }
+  if (products.every((product, index) => !product.usesCustomDiscount || rejectedSet.has(index))) {
+    throw fail("Every requested line is rejected; use Reject to return the whole order");
+  }
+  const kept = products.filter((_, index) => !rejectedSet.has(index));
   return {
-    orderNote: cleanText(options.orderNote),
-    products,
-    grossAmount,
-    baseDiscountAmount,
-    requestedAdditionalDiscountAmount,
-    totalDiscountAmount,
-    requestedNetPayableAmount,
+    approved: { ...snapshot, products: kept, ...summarizeSnapshotProducts(kept) },
+    rejected: products.filter((_, index) => rejectedSet.has(index)),
   };
 }
 

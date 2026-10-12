@@ -15,7 +15,7 @@ import { logout, type AppRole, type StoredUser } from "@/lib/roleAccess";
 import { useAuthSession } from "@/hooks/useAuthSession";
 
 type NavItem = { label: string; href: string; icon: React.ReactNode; section?: string; badgeKey?: BadgeKey };
-type BadgeKey = "discountRequests" | "fundRequests" | "dealerRequests" | "pendingOrders" | "drafts" | "orders" | "settlements";
+type BadgeKey = "discountRequests" | "fundRequests" | "dealerRequests" | "pendingOrders" | "drafts" | "orders" | "settlements" | "terms";
 type SidebarUser = {
   role: AppRole;
   name?: string;
@@ -68,6 +68,7 @@ const NAV: Record<AppRole, NavItem[]> = {
     { section: "Home",     label: "Home",             href: "/home",                          icon: <Home size={15} />          },
     {                      label: "Dashboard",         href: "/dashboard/dealer",              icon: <LayoutDashboard size={15} /> },
     {                      label: "Profile",           href: "/dashboard/dealer/profile",      icon: <SquareUser size={15} />      },
+    {                      label: "Terms & Conditions", href: "/dashboard/dealer/terms",       icon: <ScrollText size={15} />, badgeKey: "terms" },
     { section: "Orders",   label: "My Order Status",  href: "/orders",         icon: <ClipboardList size={15} />, badgeKey: "orders" },
     {                      label: "Pending Products",  href: "/dashboard/dealer/pending-products", icon: <Package size={15} /> },
     {                      label: "Add Order",         href: "/dashboard/dealer/AddOrderForm", icon: <Plus size={15} />          },
@@ -241,6 +242,12 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
     "Staff Portal";
 
   const handleLogout = () => void logout();
+
+  // Only the most specific match is active, so "/dashboard/dealer" stays off on "/dashboard/dealer/terms".
+  const activeHref = (role ? NAV[role] : [])
+    .map(item => item.href)
+    .filter(href => pathname === href || (href.length > 1 && pathname.startsWith(href + "/")))
+    .sort((a, b) => b.length - a.length)[0];
 
   const grouped: { section?: string; items: NavItem[] }[] = [];
   const hiddenSections = user?.authRole === "nsm" ? NSM_HIDDEN_SECTIONS : null;
@@ -639,9 +646,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
               <div className="sb-group-items">
                 <div className="sb-group-inner">
                   {group.items.map(item => {
-                    const active =
-                      pathname === item.href ||
-                      (item.href.length > 1 && pathname.startsWith(item.href));
+                    const active = item.href === activeHref;
                     const count = item.badgeKey ? badgeCounts[item.badgeKey] ?? 0 : 0;
                     return (
                       <Link

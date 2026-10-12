@@ -8,6 +8,7 @@ import { getSelectedDealerContact, rupeesToPaise, type DealerFormSnapshot } from
 import { buildDealerRequestHeaders, type PublicDealerRequest } from "@/lib/dealerRequests";
 import { readDashboardActor, type DashboardActor } from "@/lib/dealerRequestClient";
 import { showToast } from "@/components/ui/toast";
+import type { TermsBlock } from "@/components/terms/TermsDocument";
 
 type RequestMode = "admin-create" | "staff-submit" | "admin-review" | "rsm-review" | "staff-resubmit";
 
@@ -139,7 +140,7 @@ function AddDealerPageContent() {
       ? STAFF_REQUESTS_ROUTE
       : DEALER_LIST_ROUTE;
 
-  const handleSubmit = async (snapshot: DealerFormSnapshot) => {
+  const handleSubmit = async (snapshot: DealerFormSnapshot, termsBlocks: TermsBlock[] | null) => {
     if (!actor || !mode) return;
 
     setActiveAction("submit");
@@ -150,7 +151,7 @@ function AddDealerPageContent() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify(dealerPayloadFromSnapshot(snapshot)),
+          body: JSON.stringify({ ...dealerPayloadFromSnapshot(snapshot), ...(termsBlocks ? { termsBlocks } : {}) }),
         });
         const payload = await response.json();
         if (!response.ok || !payload.success) {

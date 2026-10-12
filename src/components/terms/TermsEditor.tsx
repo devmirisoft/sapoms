@@ -9,33 +9,20 @@ const TYPE_LABEL: Record<TermsBlockType, string> = {
 
 const buttonClass = "h-8 rounded border border-[#d6dbe4] bg-white px-3 text-xs font-medium text-[#344054] hover:bg-[#f7f9fc] disabled:opacity-40";
 
-export default function TermsEditor() {
+// Loads and saves through `url`: the global template by default, or one dealer's document.
+export default function TermsEditor({ url = "/api/terms/content" }: { url?: string }) {
   const [blocks, setBlocks] = useState<TermsBlock[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
-    fetch("/api/terms/content", { cache: "no-store" })
+    fetch(url, { credentials: "include", cache: "no-store" })
       .then((response) => response.json())
       .then((payload) => setBlocks(Array.isArray(payload?.data) ? payload.data : []))
       .catch(() => setMessage({ ok: false, text: "Could not load current terms." }))
       .finally(() => setLoading(false));
-  }, []);
-
-  const update = (index: number, patch: Partial<TermsBlock>) =>
-    setBlocks((current) => current.map((block, i) => (i === index ? { ...block, ...patch } : block)));
-
-  const move = (index: number, delta: number) =>
-    setBlocks((current) => {
-      const next = [...current];
-      [next[index], next[index + delta]] = [next[index + delta], next[index]];
-      return next;
-    });
-
-  const remove = (index: number) => setBlocks((current) => current.filter((_, i) => i !== index));
-
-  const add = (type: TermsBlockType) => setBlocks((current) => [...current, { type, text: "" }]);
+  }, [url]);
 
   function clearAll() {
     if (window.confirm("Remove all terms content? Nothing is saved until you click Save.")) setBlocks([]);
@@ -45,7 +32,7 @@ export default function TermsEditor() {
     setSaving(true);
     setMessage(null);
     try {
-      const response = await fetch("/api/terms/content", {
+      const response = await fetch(url, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -63,6 +50,49 @@ export default function TermsEditor() {
   }
 
   if (loading) return <p className="text-sm text-[#667085]">Loading terms...</p>;
+
+  return (
+    <TermsBlocksEditor blocks={blocks} onChange={setBlocks}>
+      <div className="flex flex-wrap items-center gap-2 border-t border-[#eef1f6] pt-3">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="h-9 rounded bg-[#1f2937] px-4 text-sm font-medium text-white hover:bg-[#374151] disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save"}
+        </button>
+        <button type="button" onClick={clearAll} disabled={blocks.length === 0} className={`${buttonClass} h-9 text-red-600`}>
+          Clear all
+        </button>
+        {message && <span className={`text-sm ${message.ok ? "text-emerald-600" : "text-red-500"}`}>{message.text}</span>}
+      </div>
+    </TermsBlocksEditor>
+  );
+}
+
+// Controlled block list + live preview; `children` renders under the add buttons (e.g. a Save row).
+export function TermsBlocksEditor({
+  blocks,
+  onChange,
+  children,
+}: {
+  blocks: TermsBlock[];
+  onChange: (blocks: TermsBlock[]) => void;
+  children?: React.ReactNode;
+}) {
+  const update = (index: number, patch: Partial<TermsBlock>) =>
+    onChange(blocks.map((block, i) => (i === index ? { ...block, ...patch } : block)));
+
+  const move = (index: number, delta: number) => {
+    const next = [...blocks];
+    [next[index], next[index + delta]] = [next[index + delta], next[index]];
+    onChange(next);
+  };
+
+  const remove = (index: number) => onChange(blocks.filter((_, i) => i !== index));
+
+  const add = (type: TermsBlockType) => onChange([...blocks, { type, text: "" }]);
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -110,20 +140,7 @@ export default function TermsEditor() {
           ))}
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 border-t border-[#eef1f6] pt-3">
-          <button
-            type="button"
-            onClick={save}
-            disabled={saving}
-            className="h-9 rounded bg-[#1f2937] px-4 text-sm font-medium text-white hover:bg-[#374151] disabled:opacity-50"
-          >
-            {saving ? "Saving..." : "Save"}
-          </button>
-          <button type="button" onClick={clearAll} disabled={blocks.length === 0} className={`${buttonClass} h-9 text-red-600`}>
-            Clear all
-          </button>
-          {message && <span className={`text-sm ${message.ok ? "text-emerald-600" : "text-red-500"}`}>{message.text}</span>}
-        </div>
+        {children}
       </div>
 
       <div>

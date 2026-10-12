@@ -496,7 +496,7 @@ function AddOrderPageInner() {
   // ── Order note + custom discount approval ────────────────────────────────
   const [orderNote, setOrderNote] = useState("");
   const [showCustomDiscountEditor, setShowCustomDiscountEditor] = useState(false);
-  const [customDiscountInput, setCustomDiscountInput] = useState("");
+  const [customDiscountInput, setCustomDiscountInput] = useState("0");
   // Raw text of the savings box while it is being typed in; null = show the amount derived from %.
   const [savingsDraft, setSavingsDraft] = useState<string | null>(null);
   const [customDiscountScope, setCustomDiscountScope] = useState<CustomDiscountScope>("order");
@@ -823,7 +823,7 @@ function AddOrderPageInner() {
           updatedAt: req.reviewedAt || req.createdAt,
         }));
         setCustomDiscountScope(req.discountScope);
-        setCustomDiscountInput(String(req.requestedOrderDiscountPercent ?? ""));
+        setCustomDiscountInput(String(req.requestedOrderDiscountPercent ?? "0"));
         setPerProductDiscountInputs(req.requestedProductDiscounts);
         setArr(rows.length > 0 ? rows : [emptyRow()]);
         if (req.shipto) setShipto(req.shipto);
@@ -869,7 +869,7 @@ function AddOrderPageInner() {
       setAppliedCoupon({ code: cachedDraft.coupon_code, pct: cachedDraft.coupon_pct });
     }
     setPerProductDiscountInputs(cachedDraft.approval_state?.requestedProductDiscounts ?? {});
-    setCustomDiscountInput(cachedDraft.approval_state?.requestedOrderDiscountPercent ? String(cachedDraft.approval_state.requestedOrderDiscountPercent) : "");
+    setCustomDiscountInput(cachedDraft.approval_state?.requestedOrderDiscountPercent ? String(cachedDraft.approval_state.requestedOrderDiscountPercent) : "0");
     setCustomDiscountScope(cachedDraft.approval_state?.requestedOrderDiscountPercent ? "order" : "product");
     setArr(cachedDraft.rows.length > 0 ? cachedDraft.rows : [emptyRow()]);
     setDraftBanner(`Loaded: "${cachedDraft.name}"`);
@@ -2298,7 +2298,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
       setReorderRequest(null);
       setDraftApprovalState(null);
       setPerProductDiscountInputs({});
-      setCustomDiscountInput("");
+      setCustomDiscountInput("0");
       setShowCustomDiscountEditor(false);
       setEditingProductDiscountKey(null);
       setDraftName("Untitled Draft");
@@ -2391,12 +2391,12 @@ const verifySubmittedProductNotes = async (orderId: string) => {
       {showDiscountConfirm && (
         <div className="fixed inset-0 z-[1000] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[68vh] overflow-y-auto" style={{ zoom: 1.25 }}>
-            <h3 className="text-[15px] font-bold text-gray-900 mb-1">Request Custom Discount</h3>
-            <p className="text-[12.5px] text-gray-500 mb-4">
+            <h3 className="text-[12.75px] font-bold text-gray-900 mb-1">Request Custom Discount</h3>
+            <p className="text-[10.63px] text-gray-500 mb-4">
               This order will not be placed now. It is sent to admin for discount approval and can be placed once approved.
             </p>
 
-            <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 text-[12.5px]">
+            <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 text-[10.63px]">
               <div className="flex items-center justify-between px-3 py-2">
                 <span className="text-gray-500">Current discount</span>
                 <span className="font-mono font-bold text-gray-900">{currentDiscountBaseline}%</span>
@@ -2412,7 +2412,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   <span className="text-gray-600 truncate">{r.label}</span>
                   <span className="shrink-0 text-right">
                     <span className="block font-mono font-bold text-brand-600">{discountOnNet(currentDiscountBaseline, r.percent)}% on net</span>
-                    <span className="block font-mono text-[11px] text-emerald-600">−{fmt(r.extraPaise)}</span>
+                    <span className="block font-mono text-[9.35px] text-emerald-600">−{fmt(r.extraPaise)}</span>
                   </span>
                 </div>
               ))}
@@ -2422,11 +2422,11 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               </div>
             </div>
 
-            <p className="mt-3 text-[11.5px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+            <p className="mt-3 text-[9.78px] text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
               Amounts shown are estimates. The final discount is whatever the admin approves, and the order stays locked until then.
             </p>
 
-            <label className="mt-3 block text-[12px] font-semibold text-gray-700">
+            <label className="mt-3 block text-[10.2px] font-semibold text-gray-700">
               Reference document <span className="font-normal text-gray-400">(optional · PDF, Word, Excel or image, max 10 MB)</span>
               <input
                 type="file"
@@ -2441,7 +2441,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   }
                   setDiscountReferenceFile(file);
                 }}
-                className="mt-1.5 block w-full text-[12px] text-gray-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-[12px] file:font-semibold file:text-brand-600 hover:file:bg-brand-100"
+                className="mt-1.5 block w-full text-[10.2px] text-gray-600 file:mr-3 file:cursor-pointer file:rounded-lg file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-[10.2px] file:font-semibold file:text-brand-600 hover:file:bg-brand-100"
               />
             </label>
 
@@ -2449,14 +2449,14 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               <button
                 onClick={handleConfirmDiscountRequest}
                 disabled={customDiscountSubmitting}
-                className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-[13px] font-semibold transition-colors cursor-pointer border-none"
+                className="flex-1 py-2.5 bg-brand-600 hover:bg-brand-500 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-[11.05px] font-semibold transition-colors cursor-pointer border-none"
               >
                 {customDiscountSubmitting ? "Sending..." : "Proceed"}
               </button>
               <button
                 onClick={() => { setShowDiscountConfirm(false); setDiscountReferenceFile(null); }}
                 disabled={customDiscountSubmitting}
-                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-[13px] font-medium transition-colors cursor-pointer border-none disabled:opacity-40"
+                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-600 rounded-xl text-[11.05px] font-medium transition-colors cursor-pointer border-none disabled:opacity-40"
               >
                 Cancel
               </button>
@@ -2568,7 +2568,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         </div>
       )}
 
-      <div className="p-7 max-w-[1840px] mx-auto font-[family-name:var(--font-dm-sans)]">
+      <div className="p-7 max-w-[1840px] mx-auto font-[family-name:var(--font-dm-sans)] [zoom:0.9]">
 
         {/* Draft loaded banner */}
         {draftBanner && (
@@ -2817,7 +2817,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 <button
                   type="button"
                   onClick={() => {
-                    setCustomDiscountInput(String(visibleCustomRequest?.requestedDiscountPercent ?? activeDiscount));
+                    setCustomDiscountInput(String(visibleCustomRequest?.requestedDiscountPercent ?? 0));
                     setShowCustomDiscountEditor(true);
                   }}
                   disabled={orderLockedByPendingApproval}
@@ -2934,7 +2934,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               <button
                 type="button"
                 onClick={() => {
-                  setCustomDiscountInput(String(visibleCustomRequest?.requestedDiscountPercent ?? activeDiscount));
+                  setCustomDiscountInput(String(visibleCustomRequest?.requestedDiscountPercent ?? 0));
                   setShowCustomDiscountEditor((v) => !v);
                 }}
                 disabled={orderLockedByPendingApproval}
@@ -3129,6 +3129,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
+                  {/* Requested Savings box hidden on request; kept for reuse.
                   <div className="rounded-xl border border-gray-200 px-3 py-2">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Requested Savings</p>
                     <input
@@ -3148,6 +3149,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                       placeholder="e.g. 100"
                     />
                   </div>
+                  */}
                   <div className="rounded-xl border border-gray-900 bg-gray-900 px-3 py-2 text-white">
                     <p className="text-[10px] font-bold uppercase tracking-wider text-white/60">Requested Payable</p>
                     <p className="mt-1 font-mono text-[13px] font-bold">{fmt(toPaise(requestedCustomFinalPayable))}</p>
@@ -3410,7 +3412,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                             <button onClick={() => updateQuantity(idx, row.producQuanity - 1)} disabled={orderLockedByPendingApproval}
                               className="w-8 h-[34px] flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-600 text-base transition-colors border-none cursor-pointer">−</button>
                             <input type="number" value={row.producQuanity} onChange={(e) => updateQuantity(idx, parseInt(e.target.value) || 1)} min={1} disabled={orderLockedByPendingApproval}
-                              className="w-12 h-[34px] text-center text-[13px] font-semibold text-gray-900 font-mono border-l border-gray-200 outline-none bg-white" />
+                              className="w-12 h-[34px] text-center text-[13px] font-semibold text-gray-900 font-mono border-l border-gray-200 outline-none bg-white [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none" />
                             <span className="h-[34px] flex items-center pr-2 text-[11px] font-semibold text-gray-400 bg-white border-r border-gray-200 select-none">Packs</span>
                             <button onClick={() => updateQuantity(idx, row.producQuanity + 1)} disabled={orderLockedByPendingApproval}
                               className="w-8 h-[34px] flex items-center justify-center bg-gray-50 hover:bg-gray-100 text-gray-600 text-base transition-colors border-none cursor-pointer">+</button>
