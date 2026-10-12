@@ -497,6 +497,8 @@ function AddOrderPageInner() {
   const [orderNote, setOrderNote] = useState("");
   const [showCustomDiscountEditor, setShowCustomDiscountEditor] = useState(false);
   const [customDiscountInput, setCustomDiscountInput] = useState("");
+  // Raw text of the savings box while it is being typed in; null = show the amount derived from %.
+  const [savingsDraft, setSavingsDraft] = useState<string | null>(null);
   const [customDiscountScope, setCustomDiscountScope] = useState<CustomDiscountScope>("order");
   const [customDiscountProductKey, setCustomDiscountProductKey] = useState("");
   const [customDiscountSubmitting, setCustomDiscountSubmitting] = useState(false);
@@ -3120,7 +3122,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                       step={0.5}
                       value={customDiscountInput}
                       onChange={(e) => setCustomDiscountInput(clampPercentInput(e.target.value))}
-                      className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13.5px] font-mono font-semibold text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                      className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13.5px] font-mono font-semibold text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       placeholder="e.g. 10"
                     />
 
@@ -3133,14 +3135,16 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                       type="number"
                       min={0}
                       step={1}
-                      value={requestedCustomDiscountAmount ? Number(requestedCustomDiscountAmount.toFixed(2)) : ""}
+                      value={savingsDraft ?? (requestedCustomDiscountAmount ? Number(requestedCustomDiscountAmount.toFixed(2)) : "")}
                       onChange={(e) => {
+                        setSavingsDraft(e.target.value);
                         const amount = Math.max(0, Number(e.target.value) || 0);
                         if (!customDiscountNetSubtotal) return;
                         const percent = Math.min(100, (amount / customDiscountNetSubtotal) * 100);
-                        setCustomDiscountInput(percent ? String(Number(percent.toFixed(4))) : "");
+                        setCustomDiscountInput(percent ? String(percent) : "");
                       }}
-                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 font-mono text-[13px] font-bold text-brand-600 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
+                      onBlur={() => setSavingsDraft(null)}
+                      className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 font-mono text-[13px] font-bold text-brand-600 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       placeholder="e.g. 100"
                     />
                   </div>
