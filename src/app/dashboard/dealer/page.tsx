@@ -294,7 +294,6 @@ function DealerDashboardInner() {
   const [monthlyValues, setMonthlyValues] = useState<MonthlyData[]>([]);
   const [orderHistory,  setOrderHistory]  = useState<OrderHistoryItem[]>([]);
   const [salesPeriod,   setSalesPeriod]   = useState<SalesPeriod>("year");
-  const [funnel,        setFunnel]        = useState<FunnelStage[]>([]);
   const [contacts,      setContacts]      = useState<DealerContact[]>([]);
   const [contactsLoading, setContactsLoading] = useState(true);
 
@@ -338,6 +337,12 @@ function DealerDashboardInner() {
           .then((response) => response.ok ? response.json() : Promise.reject(new Error("profile unavailable")))
           .then((payload) => {
             const data = payload?.data ?? {};
+            // localStorage UserData is a login-time snapshot; take the live limits.
+            setDealer((prev) => ({
+              ...prev,
+              annualtarget: data.annualtarget ?? prev.annualtarget,
+              currentlimit: data.currentlimit ?? prev.currentlimit,
+            }));
             const team: DealerContact[] = [
               ...(Array.isArray(data.assignedStaff) ? data.assignedStaff : []),
               ...(data.asm ? [data.asm] : []),
@@ -355,14 +360,6 @@ function DealerDashboardInner() {
         const orderView = buildDealerOrderView(activeResponse.data, dealerId);
         setMonthlyOrders(orderView.monthly);
         setOrderHistory(orderView.orders as OrderHistoryItem[]);
-
-        // Funnel from dealer data
-        const annual  = Number(parsed.annualtarget) || 0;
-        const current = Number(parsed.currentlimit)  || 0;
-        setFunnel([
-          { label: "Annual Target", value: annual,  pct: 100, color: "#af52de" },
-          { label: "Current Limit", value: current, pct: annual > 0 ? Math.round((current / annual) * 100) : 0, color: "#006162" },
-        ]);
     } catch (err) {
       console.error("[DealerDashboard] top-level error:", err);
     } finally {
@@ -517,6 +514,10 @@ function DealerDashboardInner() {
   // Outstanding against the credit ceiling — how much of the limit is tied up.
   const limitUsedPct = currentLimit > 0 ? Math.min(100, Math.round((outstanding / currentLimit) * 100)) : 0;
   const usagePct     = annualTarget > 0 ? Math.min(100, Math.round((currentLimit / annualTarget) * 100)) : 0;
+  const funnel: FunnelStage[] = [
+    { label: "Annual Target", value: annualTarget, pct: 100, color: "#af52de" },
+    { label: "Current Limit", value: currentLimit, pct: annualTarget > 0 ? Math.round((currentLimit / annualTarget) * 100) : 0, color: "#006162" },
+  ];
   const initials     = dealer.Dealer_Name?.trim()?.charAt(0)?.toUpperCase() || dealer.Dealer_Email?.trim()?.charAt(0)?.toUpperCase() || "D";
 
   const handleLogout = () => void logout();
