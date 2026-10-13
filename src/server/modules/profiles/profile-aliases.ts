@@ -24,7 +24,7 @@ export function mapDealerProfileAliases(profile: DealerWithUser, assignedStaffNa
     gst: text(profile.gstin),
     creditdays: text(profile.creditDays ?? 0),
     currentlimit: moneyFromPaise(profile.creditLimitPaise),
-    annualtarget: "",
+    annualtarget: moneyFromPaise(profile.annualTargetPaise),
     status: profile.user.status === "ACTIVE" && !profile.deletedAt ? "1" : "0",
     assignedstaff: assignedStaffName,
     name: profile.businessName,

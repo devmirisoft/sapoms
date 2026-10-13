@@ -64,6 +64,8 @@ export function mapDealerProfile(user: UserLike, profile: DealerProfile) {
     discount: valueOrZero(profile.discountPercent),
     gst: valueOrEmpty(profile.gstin),
     creditdays: valueOrZero(profile.creditDays),
+    currentlimit: String(Number(profile.creditLimitPaise ?? 0) / 100),
+    annualtarget: String(Number(profile.annualTargetPaise ?? 0) / 100),
     termsAcceptedAt: profile.termsAcceptedAt?.toISOString() ?? "",
     passwordUpdatedAt: user.passwordUpdatedAt?.toISOString() ?? "",
     role: "dealer",
