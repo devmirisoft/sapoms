@@ -1,4 +1,5 @@
 import { showToast } from "@/components/ui/toast";
+import { customDiscountOnNet } from "@/lib/customDiscountRequests";
 
 /** Per-line tick on a discount review: unticked lines are rejected back to a dealer draft. */
 export function LineApproveToggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
@@ -109,7 +110,7 @@ export function RejectedTableRows({ orderSnapshot }: { orderSnapshot: unknown })
       <td className="px-3 py-3 font-mono text-[12px]">{money(line.unitPrice)}</td>
       <td className="px-3 py-3 font-mono text-[12px]">{money(line.grossAmount)}</td>
       <td className="px-3 py-3 font-mono text-[12px]">{line.baseDiscountPercent ?? 0}% · -{money(line.baseDiscountAmount)}</td>
-      <td className="px-3 py-3 font-mono text-[12px]">{line.requestedCustomDiscountPercent ?? 0}% · -{money(line.requestedCustomDiscountAmount)}</td>
+      <td className="px-3 py-3 font-mono text-[12px]">{customDiscountOnNet(line.baseDiscountPercent, line.requestedCustomDiscountPercent)}% on net · -{money(line.requestedCustomDiscountAmount)}</td>
       <td className="px-3 py-3 font-mono text-[12px] font-bold">{money(line.finalAmount)}</td>
     </tr>
   ));

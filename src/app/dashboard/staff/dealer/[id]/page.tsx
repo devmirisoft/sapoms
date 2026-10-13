@@ -11,6 +11,7 @@ import { OrderAmountSource, withDisplayOrderAmounts } from '@/lib/orderAmounts'
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 import { mergeFallbackProductNotes } from '@/lib/orderProductNotes.mjs'
 import { STAFF_ORDER_SCOPE_VERSION } from '@/lib/staffOrderScope.js'
+import { getCurrentUser } from '@/lib/currentUser'
 import {
   dealerStatusBadge,
   fetchDealerStatus,
@@ -185,9 +186,7 @@ export default function StaffDealerViewPage() {
   useEffect(() => {
     let active = true
     try {
-      const raw = localStorage.getItem("staffData") || localStorage.getItem("UserData")
-      const parsed = raw ? JSON.parse(raw) : null
-      const actorId = String(parsed?.staff_id ?? "").trim()
+      const actorId = String(getCurrentUser()?.staff_id ?? "").trim()
       if (!actorId) {
         router.replace("/auth/login")
         return

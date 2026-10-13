@@ -6,6 +6,7 @@ import { Mail, Phone, Save, Upload, Users } from "lucide-react";
 import { staffRoleBadge } from "@/lib/staffRoleLabel";
 import { showToast } from "@/components/ui/toast";
 import { normalizePhone, phoneInput, phoneInputProps } from "@/lib/fieldRules";
+import { getCurrentUser, refreshCurrentUser } from "@/lib/currentUser";
 
 type DealerSession = {
   Dealer_Id?: string;
@@ -34,13 +35,7 @@ type DealerContact = {
 };
 
 function readDealerSession(): DealerSession | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem("UserData") || localStorage.getItem("user");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  return getCurrentUser() as DealerSession | null;
 }
 
 const MIN_PASSWORD_LENGTH = 10;
@@ -207,25 +202,7 @@ export default function DealerProfilePage() {
       });
       const payload = await response.json();
       if (!response.ok || !payload.success) throw new Error(payload.message || "Update failed");
-      const previous = readDealerSession() || {};
-      const payloadData = payload?.data || {};
-      const updated = {
-        ...previous,
-        ...payloadData,
-        Dealer_Id: dealerId,
-        Dealer_Name: name,
-        Dealer_Email: email,
-        Dealer_Number: number,
-        Dealer_City: city,
-        Dealer_Address: address,
-        Dealer_Pincode: pincode,
-        name: payloadData.name || previous.name || name,
-        email: payloadData.email || previous.email || email,
-        image: payloadData.Dealer_Image || payloadData.image || previous.image || undefined,
-      };
-      localStorage.setItem("status", "true");
-      localStorage.setItem("UserData", JSON.stringify(updated));
-      localStorage.setItem("roletype", "2");
+      void refreshCurrentUser();
       showToast("success", payload?.msg || "Dealer profile updated");
       setTimeout(() => window.location.reload(), 700);
     } catch {

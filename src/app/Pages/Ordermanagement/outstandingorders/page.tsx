@@ -7,6 +7,7 @@ import axios from 'axios'
 import { STAFF_ORDER_SCOPE_VERSION } from '@/lib/staffOrderScope.js'
 import { formatAdditionalDiscountBadge, withDisplayOrderAmounts } from '@/lib/orderAmounts'
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { getCurrentSession } from '@/lib/currentUser'
 
 type Role = 'admin' | 'dealer' | 'staff' | 'accountant'
 type PendingOrderData = {
@@ -27,50 +28,13 @@ const ITEMS_PER_PAGE = 10
 const YEAR           = new Date().getFullYear()
 const ALLOWED_ROLES  = new Set<Role>(['admin', 'staff', 'dealer', 'accountant'])
 
-function decodeJWTPayload(token: string): Record<string, unknown> | null {
-  try {
-    const parts = token.split('.')
-    if (parts.length !== 3) return null
-    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/')
-    return JSON.parse(atob(base64)) as Record<string, unknown>
-  } catch {
-    return null
-  }
-}
-
 function resolveViewer(): { role: Role; id: string } | null {
-  if (typeof window === 'undefined') return null
-
-  try {
-    // Accountants use a cookie session; AccountantData is the client-side marker.
-    const accountantRaw = localStorage.getItem('AccountantData')
-    if (accountantRaw) {
-      const parsed = JSON.parse(accountantRaw)
-      return { role: 'accountant', id: String(parsed?.id ?? parsed?._id ?? '') }
-    }
-
-    const staffRaw = localStorage.getItem('staffData')
-    if (staffRaw) {
-      const parsed = JSON.parse(staffRaw)
-      if (parsed?.staff_id) return { role: parsed.staff_roletype === '0' ? 'admin' : 'staff', id: String(parsed.staff_id) }
-    }
-
-    const userRaw = localStorage.getItem('UserData')
-    if (userRaw) {
-      const parsed = JSON.parse(userRaw)
-      if (parsed?.Dealer_Id) return { role: 'dealer', id: String(parsed.Dealer_Id) }
-      if (parsed?.staff_id) return { role: parsed.staff_roletype === '0' ? 'admin' : 'staff', id: String(parsed.staff_id) }
-      if (localStorage.getItem('roletype') === '3' && parsed && Object.keys(parsed).length > 0) return { role: 'admin', id: String(parsed.id ?? '') }
-    }
-
-    const adminRaw = localStorage.getItem('AdminData') || localStorage.getItem('admin')
-    if (adminRaw) {
-      const parsed = JSON.parse(adminRaw)
-      if (parsed && Object.keys(parsed).length > 0) return { role: 'admin', id: String(parsed.id ?? parsed.admin_id ?? '') }
-    }
-  } catch {}
-
-  return null
+  const session = getCurrentSession()
+  if (session?.status !== 'authenticated') return null
+  const p = session.user
+  if (session.role === 'accountant') return { role: 'accountant', id: String(p.id ?? p._id ?? '') }
+  if (session.role === 'dealer') return { role: 'dealer', id: String(p.Dealer_Id ?? '') }
+  return { role: session.role, id: String(p.staff_id ?? p.id ?? p.admin_id ?? '') }
 }
 
 function statusBadge(s: string) {

@@ -11,7 +11,8 @@ import {
 import { CiSearch } from "react-icons/ci";
 import { useCartStore } from "@/Store/store";
 import PendingProductsPreview from "@/components/dashboard/PendingProductsPreview";
-import { logout } from "@/lib/roleAccess";
+import { logout } from "@/lib/currentUser";
+import { useAuthSession } from "@/hooks/useAuthSession";
 import { buildDealerOrderView } from "@/lib/dealerOrderView";
 import { resolveStaffRoleKey, type StaffRoleKey } from "@/lib/staffRoleLabel";
 import {
@@ -298,15 +299,14 @@ function DealerDashboardInner() {
   const [contactsLoading, setContactsLoading] = useState(true);
 
   // ── Data fetch ────────────────────────────────────────────────────────────
-  // Extracted into a callback so it can be re-run whenever the cached dealer
-  // session changes (profile save, login as another dealer, another tab), not
+  // Extracted into a callback so it can be re-run whenever the signed-in
+  // dealer changes (profile save, login as another dealer, another tab), not
   // just once on mount.
-  const loadDashboard = useCallback(async () => {
-    if (typeof window === "undefined") return;
+  const { session } = useAuthSession();
+  const sessionUser = session?.status === "authenticated" ? session.user : null;
 
+  const loadDashboard = useCallback(async (parsed: DealerData) => {
     try {
-        const raw    = localStorage.getItem("UserData") || localStorage.getItem("user") || "{}";
-        const parsed: DealerData = JSON.parse(raw);
         setDealer({ ...EMPTY_DEALER, ...parsed });
 
         const dealerId = parsed.Dealer_Id;
@@ -337,12 +337,6 @@ function DealerDashboardInner() {
           .then((response) => response.ok ? response.json() : Promise.reject(new Error("profile unavailable")))
           .then((payload) => {
             const data = payload?.data ?? {};
-            // localStorage UserData is a login-time snapshot; take the live limits.
-            setDealer((prev) => ({
-              ...prev,
-              annualtarget: data.annualtarget ?? prev.annualtarget,
-              currentlimit: data.currentlimit ?? prev.currentlimit,
-            }));
             const team: DealerContact[] = [
               ...(Array.isArray(data.assignedStaff) ? data.assignedStaff : []),
               ...(data.asm ? [data.asm] : []),
@@ -367,20 +361,11 @@ function DealerDashboardInner() {
     }
   }, []);
 
-  // Initial load, plus a re-load whenever the dealer session changes. Profile
-  // saves and logins write UserData to localStorage and fire
-  // "omsons-auth-changed"; "storage" covers the same edit made in another tab.
+  // Initial load, plus a re-load whenever the current-user query hands back a
+  // different profile (its data keeps the same reference while nothing changed).
   useEffect(() => {
-    void loadDashboard();
-
-    const handleAuthChanged = () => { void loadDashboard(); };
-    window.addEventListener("omsons-auth-changed", handleAuthChanged);
-    window.addEventListener("storage", handleAuthChanged);
-    return () => {
-      window.removeEventListener("omsons-auth-changed", handleAuthChanged);
-      window.removeEventListener("storage", handleAuthChanged);
-    };
-  }, [loadDashboard]);
+    if (sessionUser) void loadDashboard(sessionUser as unknown as DealerData);
+  }, [loadDashboard, sessionUser]);
 
   useEffect(() => {
     setMonthlyValues(buildSalesTrend(orderHistory, salesPeriod));

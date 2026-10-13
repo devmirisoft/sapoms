@@ -29,44 +29,29 @@ const {
   canAccessRoute,
   getAllowedRoles,
   getRoleHome,
-  resolveStoredAuth,
-  persistAuthenticatedSession,
+  normalizeRoleFromProfile,
+  clearAuthStorage,
+  LEGACY_AUTH_KEYS,
 } = moduleShim.exports;
 
-function storage(values = {}) {
-  const map = new Map(Object.entries(values));
-  return {
-    removed: [],
-    getItem(key) {
-      return map.has(key) ? map.get(key) : null;
-    },
-    removeItem(key) {
-      this.removed.push(key);
-      map.delete(key);
-    },
-    setItem(key, value) {
-      map.set(key, String(value));
-    },
-  };
-}
-
-function json(value) {
-  return JSON.stringify(value);
-}
-
 assert.equal(getAllowedRoles("/Products"), null, "public product route stays public");
-assert.equal(resolveStoredAuth(storage()).status, "unauthenticated", "missing auth is not admin");
-assert.equal(resolveStoredAuth(storage({ UserData: "{" })).reason, "invalid", "invalid JSON redirects safely");
-assert.equal(resolveStoredAuth(storage({ UserData: json({ name: "No Role" }) })).reason, "unsupported-role", "missing role is not admin");
-assert.equal(resolveStoredAuth(storage({ UserData: json({ name: "Mystery" }), roletype: "99" })).reason, "unsupported-role", "unknown role is not admin");
 
-assert.equal(resolveStoredAuth(storage({ UserData: json({ name: "A" }), roletype: "3" })).role, "admin");
-assert.equal(resolveStoredAuth(storage({ UserData: json({ admin_id: "n1", role: "nsm" }) })).role, "admin");
-assert.equal(resolveStoredAuth(storage({ UserData: json({ staff_id: "r1", staff_roletype: "RSM", role: "rsm" }) })).role, "staff");
-assert.equal(resolveStoredAuth(storage({ UserData: json({ staff_id: "s1", staff_roletype: "1" }) })).role, "staff");
-assert.equal(resolveStoredAuth(storage({ UserData: json({ staff_id: "s2", staff_roletype: "2" }), roletype: "1" })).role, "staff");
-assert.equal(resolveStoredAuth(storage({ staffData: json({ staff_id: "s3", staff_roletype: "2" }) })).role, "staff");
-assert.equal(resolveStoredAuth(storage({ UserData: json({ Dealer_Id: "d1", Dealer_Name: "D" }) })).role, "dealer");
+// The /api/auth/me profile decides the client role.
+assert.equal(normalizeRoleFromProfile({ name: "No Role" }), null, "missing role is not admin");
+assert.equal(normalizeRoleFromProfile({ name: "Mystery", role: "99" }), null, "unknown role is not admin");
+assert.equal(normalizeRoleFromProfile({ admin_id: "n1", role: "nsm" }), "admin");
+assert.equal(normalizeRoleFromProfile({ staff_id: "r1", staff_roletype: "RSM", role: "rsm" }), "staff");
+assert.equal(normalizeRoleFromProfile({ staff_id: "s1", staff_roletype: "1" }), "staff");
+assert.equal(normalizeRoleFromProfile({ staff_id: "s0", staff_roletype: "0" }), "admin");
+assert.equal(normalizeRoleFromProfile({ Dealer_Id: "d1", Dealer_Name: "D" }), "dealer");
+assert.equal(normalizeRoleFromProfile({ accountant_id: "a1", role: "accountant" }), "accountant");
+
+// Logout wipes every profile copy older builds kept in localStorage, and the cart.
+const keys = [...LEGACY_AUTH_KEYS, "cart"];
+const values = new Map(keys.map((key) => [key, "x"]));
+clearAuthStorage({ removeItem: (key) => values.delete(key) });
+assert.deepEqual([...values.keys()], [], "no profile data or cart survives logout");
+assert.ok(LEGACY_AUTH_KEYS.includes("UserData") && LEGACY_AUTH_KEYS.includes("accountant_token"));
 
 assert.equal(canAccessRoute("admin", "/dashboard/admin/custom-discount-approvals"), true);
 assert.equal(canAccessRoute("staff", "/dashboard/admin/custom-discount-approvals"), false);
@@ -94,28 +79,4 @@ assert.equal(getRoleHome("staff"), "/dashboard/staff");
 assert.equal(getRoleHome("dealer"), "/home");
 assert.equal(getRoleHome("accountant"), "/dashboard/accountant");
 
-const persistedStorage = storage();
-const persisted = persistAuthenticatedSession(persistedStorage, { admin_id: "1", name: "Admin", email: "admin@admin", role: "nsm" });
-assert.equal(persisted.role, "admin");
-assert.equal(persistedStorage.getItem("status"), "true");
-assert.equal(persistedStorage.getItem("roletype"), "3");
-assert.equal(JSON.parse(persistedStorage.getItem("UserData")).role, "admin");
-assert.equal(JSON.parse(persistedStorage.getItem("AdminData")).email, "admin@admin");
-assert.equal(persistedStorage.getItem("accountant_token"), null, "frontend auth sync does not store JWTs");
-
-// Re-persisting an unchanged session must not write: each write fires a
-// cross-tab "storage" event that makes other tabs re-fetch /api/auth/me.
-const writes = [];
-const originalSetItem = persistedStorage.setItem;
-persistedStorage.setItem = function (key, value) { writes.push(key); return originalSetItem.call(this, key, value); };
-persistedStorage.removed.length = 0;
-persistAuthenticatedSession(persistedStorage, { admin_id: "1", name: "Admin", email: "admin@admin", role: "nsm" });
-assert.deepEqual(writes, [], "unchanged session writes nothing");
-assert.deepEqual(persistedStorage.removed, [], "unchanged session removes nothing");
-
-// A stale key from another role is still cleared.
-const staleStorage = storage({ accountant_token: "x", staffData: "{}" });
-persistAuthenticatedSession(staleStorage, { admin_id: "1", name: "Admin", email: "admin@admin", role: "nsm" });
-assert.equal(staleStorage.getItem("accountant_token"), null);
-assert.equal(staleStorage.getItem("staffData"), null);
 console.log("roleAccess policy tests passed");

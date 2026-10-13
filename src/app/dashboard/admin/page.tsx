@@ -28,7 +28,7 @@ import {
 } from "recharts";
 import { fetchDealerStatusOverrides, normalizeDealerStatus, type DealerStatusDocument } from "@/lib/dealerStatus";
 import PendingProductsPreview from "@/components/dashboard/PendingProductsPreview";
-import { clearAuthStorage } from "@/lib/roleAccess";
+import { getCurrentUser, refreshCurrentUser } from "@/lib/currentUser";
 import { staffRoleBadge } from "@/lib/staffRoleLabel";
 import { SegmentedDropdown, type SegItem } from "@/components/SegmentedTabs";
 
@@ -453,16 +453,8 @@ function AdminDashboardInner() {
   const [saleAsm, setSaleAsm] = useState("");
   const [saleCity, setSaleCity] = useState("");
 
-  // Load admin user from localStorage
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const adminRaw = localStorage.getItem("AdminData") || localStorage.getItem("admin") || "{}";
-      const adminParsed: AdminUser = JSON.parse(adminRaw);
-      setAdminUser(adminParsed);
-    } catch (err) {
-      console.error("Error loading admin data from localStorage:", err);
-    }
+    setAdminUser((getCurrentUser() ?? {}) as AdminUser);
   }, []);
 
   // Fetch dashboard data
@@ -476,8 +468,7 @@ function AdminDashboardInner() {
         ]);
 
         if (dashboardRes.status === 401) {
-          clearAuthStorage(localStorage);
-          window.dispatchEvent(new Event("omsons-auth-changed"));
+          void refreshCurrentUser();
           router.push("/auth/login");
           return;
         }
@@ -789,12 +780,6 @@ function AdminDashboardInner() {
     name: dealer.Dealer_Name.substring(0, 12),
     value: Number(dealer.total),
   }));
-
-  const handleLogout = () => {
-    clearAuthStorage(localStorage);
-    window.dispatchEvent(new Event("omsons-auth-changed"));
-    router.push("/auth/login");
-  };
 
 
 

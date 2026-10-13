@@ -21,6 +21,7 @@ import {
   useRenameDraft,
 } from "@/lib/useDrafts";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
+import { getCurrentUser } from "@/lib/currentUser";
 
 const EMPTY_DRAFTS: OrderDraft[] = [];
 const DRAFT_PAGE_SIZE_OPTIONS = [10, 20, 30, 40] as const;
@@ -209,15 +210,14 @@ export default function DraftsPage() {
   const renameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    const stored = localStorage.getItem("UserData");
-    const loggedIn = localStorage.getItem("status");
+    const stored = getCurrentUser();
 
-    if (!stored || JSON.parse(loggedIn ?? "false") !== true) {
+    if (!stored) {
       router.push("/login");
       return;
     }
 
-    setUser(JSON.parse(stored));
+    setUser(stored as unknown as DealerUser);
   }, [router]);
 
   const { data: draftData, isLoading: loading, isFetching } = useDrafts(user?.Dealer_Id);

@@ -43,6 +43,7 @@ import {
 import { PenLine, Trash2 } from "lucide-react";
 import { fetchLegacyDealerProfile, fetchLegacyOrderDetail } from "@/lib/legacyOrderDetail";
 import { showToast } from "@/components/ui/toast";
+import { getCurrentSession, getCurrentUser } from "@/lib/currentUser";
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -310,64 +311,29 @@ async function fetchOrderDispatchAccessMeta(
 }
 
 function resolveCurrentUser(): DispatchUserSession | null {
-  if (typeof window === "undefined") return null;
+  const session = getCurrentSession();
+  if (session?.status !== "authenticated") return null;
+  const parsed = session.user;
 
-  try {
-    const staffRaw = localStorage.getItem("staffData");
-    if (staffRaw) {
-      const parsed = JSON.parse(staffRaw);
-      if (parsed?.staff_id) {
-        return {
-          role: parsed.role === "NSM" || parsed.staff_roletype === "NSM" || parsed.staff_roletype === "0" ? "admin" : "staff",
-          id: String(parsed.staff_id),
-          name: parsed.staff_name || "",
-          roletype: String(parsed.staff_roletype ?? ""),
-        };
-      }
-    }
-
-    const userRaw = localStorage.getItem("UserData");
-    if (userRaw) {
-      const parsed = JSON.parse(userRaw);
-      if (parsed?.Dealer_Id) {
-        return {
-          role: "dealer",
-          id: String(parsed.Dealer_Id),
-          name: parsed.Dealer_Name || "",
-        };
-      }
-      if (parsed?.staff_id) {
-        return {
-          role: parsed.role === "NSM" || parsed.staff_roletype === "NSM" || parsed.staff_roletype === "0" ? "admin" : "staff",
-          id: String(parsed.staff_id),
-          name: parsed.staff_name || "",
-          roletype: String(parsed.staff_roletype ?? ""),
-        };
-      }
-      if (localStorage.getItem("roletype") === "3" && parsed && Object.keys(parsed).length > 0) {
-        return {
-          role: "admin",
-          id: String(parsed.id || parsed.admin_id || parsed.Admin_Id || ""),
-          name: parsed.name || parsed.email || "Admin",
-          roletype: "0",
-        };
-      }
-    }
-
-    const adminRaw = localStorage.getItem("AdminData") || localStorage.getItem("admin");
-    if (adminRaw) {
-      const parsed = JSON.parse(adminRaw);
-      if (parsed && Object.keys(parsed).length > 0) {
-        return {
-          role: "admin",
-          id: String(parsed.id || parsed.admin_id || parsed.Admin_Id || ""),
-          name: parsed.name || "Admin",
-          roletype: "0",
-        };
-      }
-    }
-  } catch {}
-
+  if (session.role === "dealer") {
+    return { role: "dealer", id: String(parsed.Dealer_Id ?? ""), name: parsed.Dealer_Name || "" };
+  }
+  if (parsed.staff_id && (session.role === "staff" || session.role === "admin")) {
+    return {
+      role: session.role,
+      id: String(parsed.staff_id),
+      name: parsed.staff_name || "",
+      roletype: String(parsed.staff_roletype ?? ""),
+    };
+  }
+  if (session.role === "admin") {
+    return {
+      role: "admin",
+      id: String(parsed.id || parsed.admin_id || parsed.Admin_Id || ""),
+      name: parsed.name || String(parsed.email || "") || "Admin",
+      roletype: "0",
+    };
+  }
   return null;
 }
 
@@ -965,15 +931,8 @@ export default function ViewOrderDealerPage() {
   const [rsmDeclineNote, setRsmDeclineNote] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
   const dealer = useMemo<DealerInfo | null>(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const raw = localStorage.getItem("UserData");
-      if (!raw) return null;
-      const parsed = JSON.parse(raw);
-      return parsed?.Dealer_Id ? parsed as DealerInfo : null;
-    } catch {
-      return null;
-    }
+    const parsed = getCurrentUser();
+    return parsed?.Dealer_Id ? parsed as unknown as DealerInfo : null;
   }, []);
   const [orderDealerProfile, setOrderDealerProfile] = useState<DealerInfo | null>(null);
   const currentUser = useMemo<DispatchUserSession | null>(() => resolveCurrentUser(), []);

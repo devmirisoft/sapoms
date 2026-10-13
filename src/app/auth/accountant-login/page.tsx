@@ -2,7 +2,7 @@
 
 import { useState, type FormEvent } from "react"
 import { useRouter } from "next/navigation"
-import { persistAuthenticatedSession } from "@/lib/roleAccess"
+import { setCurrentUser } from "@/lib/currentUser"
 
 export default function AccountantLogin() {
   const router = useRouter()
@@ -36,8 +36,7 @@ export default function AccountantLogin() {
       const failureMessage = typeof data?.message === "string" ? data.message : "Invalid credentials"
 
       if (res.ok && data?.success) {
-        persistAuthenticatedSession(localStorage, data.data, "accountant")
-        window.dispatchEvent(new Event("omsons-auth-changed"))
+        setCurrentUser(data.data)
         router.push("/dashboard/accountant")
       } else {
         setError(failureMessage)

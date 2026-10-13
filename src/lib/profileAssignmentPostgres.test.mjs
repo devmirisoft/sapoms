@@ -59,9 +59,9 @@ test("legacy UI aliases are preserved", () => {
   }
 });
 
-test("staff dealer list resolves staff access through shared auth parsing", () => {
+test("staff dealer list resolves staff access from the current-user session", () => {
   const staffDealerListPage = read("src/app/dashboard/staff/dealerlist/page.tsx");
-  assert.match(staffDealerListPage, /resolveStoredAuth\(localStorage\)/);
-  assert.match(staffDealerListPage, /auth\.status === "authenticated" && auth\.role === "staff"/);
-  assert.doesNotMatch(staffDealerListPage, /return roleType === "1" \|\| roleType === "staff"/);
+  assert.match(staffDealerListPage, /getCurrentSession\(\)/);
+  assert.match(staffDealerListPage, /auth\.role !== "staff"/);
+  assert.doesNotMatch(staffDealerListPage, /localStorage/);
 });

@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronsUpDown, ChevronUp, Eye, EyeOff, Search } from "lucide-react";
-import { resolveStoredAuth } from "@/lib/roleAccess";
+import { getCurrentSession } from "@/lib/currentUser";
 import {
   applyDealerStatusOverrides,
   fetchDealerStatusOverrides,
@@ -44,8 +44,6 @@ type DealerListResponse = {
   data?: Dealer[];
 };
 
-type StoredStaffRecord = Record<string, unknown>;
-
 type StaffSession = {
   id: string;
   name: string;
@@ -53,174 +51,6 @@ type StaffSession = {
 };
 
 const DEALERS_PER_PAGE = 10;
-
-function isRecord(value: unknown): value is StoredStaffRecord {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value)
-  );
-}
-
-function normalizeString(value: unknown): string {
-  if (
-    typeof value !== "string" &&
-    typeof value !== "number"
-  ) {
-    return "";
-  }
-
-  return String(value).trim();
-}
-
-function parseStoredRecord(
-  value: string | null
-): StoredStaffRecord | null {
-  if (!value) return null;
-
-  try {
-    const parsed: unknown = JSON.parse(value);
-    return isRecord(parsed) ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function getFirstStoredValue(keys: string[]): string {
-  for (const key of keys) {
-    const value = normalizeString(
-      localStorage.getItem(key)
-    );
-
-    if (value) return value;
-  }
-
-  return "";
-}
-
-function getFirstRecordValue(
-  record: StoredStaffRecord,
-  fields: string[]
-): string {
-  for (const field of fields) {
-    const value = normalizeString(record[field]);
-
-    if (value) return value;
-  }
-
-  return "";
-}
-
-/**
- * Reads the staff identity from localStorage.
- *
- * It supports both:
- * 1. Direct values such as localStorage.staff_id
- * 2. JSON objects stored under keys such as user, userdata, userData, etc.
- */
-function getCurrentStaffSession(): StaffSession | null {
-  if (typeof window === "undefined") return null;
-
-  const directStaffId = getFirstStoredValue([
-    "staff_id",
-    "Staff_Id",
-    "staffId",
-    "userId",
-    "StaffId",
-  ]);
-
-  if (directStaffId) {
-    return {
-      id: directStaffId,
-
-      name:
-        getFirstStoredValue([
-          "staff_name",
-          "Staff_Name",
-          "staffName",
-          "name",
-          "username",
-        ]) || "Staff",
-
-      email: getFirstStoredValue([
-        "staff_email",
-        "Staff_Email",
-        "staffEmail",
-        "email",
-      ]),
-    };
-  }
-
-  const possibleUserStorageKeys = [
-    "user",
-    "userdata",
-    "userData",
-    "loggedInUser",
-    "authUser",
-    "staff",
-    "staffData",
-    "loginData",
-  ];
-
-  for (const storageKey of possibleUserStorageKeys) {
-    const record = parseStoredRecord(
-      localStorage.getItem(storageKey)
-    );
-
-    if (!record) continue;
-
-    const staffId = getFirstRecordValue(record, [
-      "staff_id",
-      "Staff_Id",
-      "staffId",
-      "StaffId",
-      "userId",
-      "id",
-    ]);
-
-    if (!staffId) continue;
-
-    return {
-      id: staffId,
-
-      name:
-        getFirstRecordValue(record, [
-          "staff_name",
-          "Staff_Name",
-          "staffName",
-          "StaffName",
-          "name",
-          "username",
-        ]) || "Staff",
-
-      email: getFirstRecordValue(record, [
-        "staff_email",
-        "Staff_Email",
-        "staffEmail",
-        "email",
-      ]),
-    };
-  }
-
-  return null;
-}
-
-function isLoggedIn(): boolean {
-  const rawStatus = localStorage.getItem("status");
-
-  if (rawStatus === "true") return true;
-
-  try {
-    return JSON.parse(rawStatus ?? "false") === true;
-  } catch {
-    return false;
-  }
-}
-
-function hasStaffAccess(): boolean {
-  const auth = resolveStoredAuth(localStorage);
-  return auth.status === "authenticated" && auth.role === "staff";
-}
 
 function normalizeAssignedStaff(
   value: unknown
@@ -342,23 +172,27 @@ export default function StaffDealerListPage() {
     const controller = new AbortController();
 
     const loadAssignedDealers = async () => {
-      if (!isLoggedIn()) {
+      const auth = getCurrentSession();
+      if (auth?.status !== "authenticated") {
         router.replace("/auth/login");
         return;
       }
 
-      if (!hasStaffAccess()) {
+      if (auth.role !== "staff") {
         router.replace("/dashboard");
         return;
       }
 
-      const currentStaff =
-        getCurrentStaffSession();
+      const currentStaff: StaffSession = {
+        id: String(auth.user.staff_id ?? "").trim(),
+        name: String(auth.user.staff_name || auth.user.name || "Staff"),
+        email: String(auth.user.staff_email || auth.user.email || ""),
+      };
 
-      if (!currentStaff?.id) {
+      if (!currentStaff.id) {
         setDealers([]);
         setError(
-          "Unable to identify the logged-in staff account from localStorage."
+          "Unable to identify the logged-in staff account."
         );
         setLoading(false);
         return;

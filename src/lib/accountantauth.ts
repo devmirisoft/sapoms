@@ -2,29 +2,6 @@
 
 export const ACCOUNTANT_API = "/api";
 
-// ── Token helpers ─────────────────────────────────────────────────────────────
-
-export function getToken(): string | null {
-  return null;
-}
-
-export function clearAccountantSession() {
-  localStorage.removeItem("accountant_token");
-  localStorage.removeItem("AccountantData");
-  localStorage.removeItem("roletype");
-}
-
-// ── JWT expiry check (client-side, no verify) ─────────────────────────────────
-
-export function isTokenExpired(token: string): boolean {
-  try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
-    return payload.exp * 1000 < Date.now();
-  } catch {
-    return true;
-  }
-}
-
 export async function isAuthenticated(): Promise<boolean> {
   const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
   return res.ok;

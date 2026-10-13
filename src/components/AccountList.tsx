@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import {
   HiOutlineBeaker,
   HiOutlineSquares2X2,
@@ -13,7 +13,8 @@ import {
   HiOutlineFire,
   HiOutlineArrowRightOnRectangle,
 } from "react-icons/hi2"
-import { logout } from "@/lib/roleAccess"
+import { logout } from "@/lib/currentUser"
+import { useAuthSession } from "@/hooks/useAuthSession"
 
 type UserData = {
   Dealer_Name?: string
@@ -28,28 +29,16 @@ type UserData = {
 }
 
 function AccountList() {
-  const [user, setUser]       = useState<UserData>({})
-  const [role, setRole]       = useState<string | null>(null)
-  const [mounted, setMounted] = useState(false)
-  const [imageSrc, setImageSrc] = useState<string>("/image.png")
+  const auth = useAuthSession()
+  const session = auth.session?.status === "authenticated" ? auth.session : null
+  const user = (session?.user ?? {}) as UserData
+  const role = session?.roletype ?? null
+  const candidate = user.image || user.Dealer_Image || user.ADMIN_IMAGE || user.imageUrl || null
+  // timestamp busts the browser cache after a profile image update
+  const [mountedAt] = useState(() => Date.now())
+  const imageSrc = candidate ? `${candidate}?t=${mountedAt}` : "/image.png"
 
-  useEffect(() => {
-    if (typeof window === "undefined") return
-    try {
-      const roleType = localStorage.getItem("roletype")
-      const userData = JSON.parse(localStorage.getItem("UserData") || "{}")
-      setRole(roleType)
-      setUser(userData)
-      // derive image src from stored user data, add timestamp to bust cache after updates
-      const candidate = userData?.image || userData?.Dealer_Image || userData?.ADMIN_IMAGE || userData?.imageUrl || null
-      if (candidate) setImageSrc(`${candidate}?t=${Date.now()}`)
-    } catch { /* ignore */ }
-    setMounted(true)
-  }, [])
-
-  if (!mounted) return null
-
-  
+  if (auth.loading) return null
 
   const userName =
     role === "3" ? user.name || user.username || "Administrator"

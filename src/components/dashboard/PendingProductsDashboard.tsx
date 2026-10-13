@@ -14,6 +14,8 @@ import {
 } from "@tanstack/react-query";
 import PendingProductsReportModal from "./PendingProductsReportModal";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
+import { useAuthSession } from "@/hooks/useAuthSession";
+import type { AuthSession } from "@/lib/roleAccess";
 
 type Role = "admin" | "staff" | "dealer";
 
@@ -132,74 +134,26 @@ const pendingProductsQueryClient = new QueryClient({
   },
 });
 
-function resolveDashboardActor(expectedRole: Role): DashboardActor | null {
-  if (typeof window === "undefined") return null;
+function resolveDashboardActor(session: AuthSession | null, expectedRole: Role): DashboardActor | null {
+  if (session?.status !== "authenticated") return null;
+  const user = session.user;
 
-  try {
-    if (expectedRole === "dealer") {
-      const userRaw = localStorage.getItem("UserData");
-      if (userRaw) {
-        const parsed = JSON.parse(userRaw);
-        if (parsed?.Dealer_Id) {
-          return {
-            role: "dealer",
-            id: String(parsed.Dealer_Id),
-            name: parsed.Dealer_Name || "Dealer",
-          };
-        }
-      }
-      return null;
-    }
-
-    const staffRaw = localStorage.getItem("staffData");
-    if (staffRaw) {
-      const parsed = JSON.parse(staffRaw);
-      if (parsed?.staff_id) {
-        return {
-          role: parsed.staff_roletype === "0" ? "admin" : "staff",
-          id: String(parsed.staff_id),
-          name: parsed.staff_name || "Staff",
-          roletype: String(parsed.staff_roletype ?? ""),
-        };
-      }
-    }
-
-    const userRaw = localStorage.getItem("UserData");
-    if (userRaw) {
-      const parsed = JSON.parse(userRaw);
-      if (parsed?.staff_id) {
-        return {
-          role: parsed.staff_roletype === "0" ? "admin" : "staff",
-          id: String(parsed.staff_id),
-          name: parsed.staff_name || "Staff",
-          roletype: String(parsed.staff_roletype ?? ""),
-        };
-      }
-
-      if (localStorage.getItem("roletype") === "3" && parsed && Object.keys(parsed).length > 0) {
-        return {
-          role: "admin",
-          id: String(parsed.id || parsed.admin_id || parsed.Admin_Id || "admin"),
-          name: parsed.name || parsed.email || "Admin",
-          roletype: "0",
-        };
-      }
-    }
-
-    const adminRaw = localStorage.getItem("AdminData") || localStorage.getItem("admin");
-    if (adminRaw) {
-      const parsed = JSON.parse(adminRaw);
-      if (parsed && Object.keys(parsed).length > 0) {
-        return {
-          role: "admin",
-          id: String(parsed.id || parsed.admin_id || parsed.Admin_Id || "admin"),
-          name: parsed.name || "Admin",
-          roletype: "0",
-        };
-      }
-    }
-  } catch {}
-
+  if (expectedRole === "dealer") {
+    return session.role === "dealer"
+      ? { role: "dealer", id: String(user.Dealer_Id ?? ""), name: user.Dealer_Name || "Dealer" }
+      : null;
+  }
+  if (session.role === "staff") {
+    return { role: "staff", id: String(user.staff_id ?? ""), name: user.staff_name || "Staff", roletype: String(user.staff_roletype ?? "") };
+  }
+  if (session.role === "admin") {
+    return {
+      role: "admin",
+      id: String(user.staff_id || user.id || user.admin_id || user.Admin_Id || "admin"),
+      name: user.staff_name || user.name || String(user.email || "") || "Admin",
+      roletype: String(user.staff_roletype ?? "0"),
+    };
+  }
   return null;
 }
 
@@ -368,7 +322,8 @@ function ClubOrderBreakdown({ scope, productKey }: { scope: ClubScope; productKe
 }
 
 function PendingProductsDashboardInner({ role }: { role: Role }) {
-  const [actor, setActor] = useState<DashboardActor | null>(() => resolveDashboardActor(role));
+  const { session } = useAuthSession();
+  const actor = useMemo(() => resolveDashboardActor(session, role), [session, role]);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("");
@@ -385,16 +340,6 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
   const [reportOpen, setReportOpen] = useState(false);
   const queryClient = useQueryClient();
   const actorScopeKey = `${actor?.role ?? ""}:${actor?.id ?? ""}`;
-
-  useEffect(() => {
-    const refreshActor = () => setActor(resolveDashboardActor(role));
-    window.addEventListener("storage", refreshActor);
-    window.addEventListener("omsons-auth-changed", refreshActor);
-    return () => {
-      window.removeEventListener("storage", refreshActor);
-      window.removeEventListener("omsons-auth-changed", refreshActor);
-    };
-  }, [role]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {

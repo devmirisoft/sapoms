@@ -20,7 +20,7 @@ import {
 import { formatRupee, resolveCurrentMonthTotal } from "@/lib/companySales"
 import { resolveOrderAmounts } from "@/lib/orderAmounts"
 import PendingProductsPreview from "@/components/dashboard/PendingProductsPreview"
-import { clearAuthStorage } from "@/lib/roleAccess"
+import { getCurrentUser, logout } from "@/lib/currentUser"
 import { STAFF_ORDER_SCOPE_VERSION } from "@/lib/staffOrderScope.js"
 import {
   applyDealerStatusOverrides,
@@ -177,16 +177,9 @@ function ExecutiveDashboard() {
   const [user, setUser] = useState<User | null>(null)
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("staffData") || localStorage.getItem("UserData")
-      if (!raw) { router.push("/auth/login"); return }
-      const parsed: User = JSON.parse(raw)
-      if (!parsed?.staff_id) { router.push("/auth/login"); return }
-      localStorage.setItem("staffData", JSON.stringify(parsed))
-      setUser(parsed)
-    } catch {
-      router.push("/auth/login")
-    }
+    const parsed = getCurrentUser() as User | null
+    if (!parsed?.staff_id) { router.push("/auth/login"); return }
+    setUser(parsed)
   }, [router])
 
   // ── UI state ─────────────────────────────────────────────────
@@ -374,7 +367,7 @@ function ExecutiveDashboard() {
     else { setSortKey(key); setSortAsc(true) }
   }
 
-  const handleLogout = () => { clearAuthStorage(localStorage); window.dispatchEvent(new Event("omsons-auth-changed")); router.push("/auth/login") }
+  const handleLogout = () => { void logout() }
 
   if (!user) return null
 

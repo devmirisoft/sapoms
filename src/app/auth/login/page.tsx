@@ -16,7 +16,8 @@ import {
   Users,
   UsersRound,
 } from "lucide-react"
-import { persistAuthenticatedSession, type StoredUser } from "@/lib/roleAccess"
+import type { StoredUser } from "@/lib/roleAccess"
+import { setCurrentUser } from "@/lib/currentUser"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { cn } from "@/lib/utils"
 
@@ -81,14 +82,13 @@ export default function Login() {
   }, [showNotice])
 
   const completeLogin = (userData: StoredUser) => {
-    const session = persistAuthenticatedSession(localStorage, userData)
-    if (!session || session.status !== "authenticated") {
+    const session = setCurrentUser(userData)
+    if (session.status !== "authenticated") {
       setError("Invalid credentials")
       return
     }
 
     const clientRole = session.role
-    window.dispatchEvent(new Event("omsons-auth-changed"))
 
     setEmail("")
     setPassword("")

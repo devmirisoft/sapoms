@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import DealerPasswordModal from "@/components/password/DealerPasswordModal";
 import { useAuthSession } from "@/hooks/useAuthSession";
+import { refreshCurrentUser } from "@/lib/currentUser";
 
 function isSet(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
@@ -30,16 +31,7 @@ export default function DealerPasswordGate() {
       userName={String(dealer?.Dealer_Name ?? "Dealer")}
       onChanged={(nextUpdatedAt) => {
         setUpdatedAt(nextUpdatedAt);
-
-        try {
-          const raw = localStorage.getItem("UserData");
-          if (raw) {
-            const parsed = JSON.parse(raw) as Record<string, unknown>;
-            parsed.passwordUpdatedAt = nextUpdatedAt;
-            localStorage.setItem("UserData", JSON.stringify(parsed));
-            window.dispatchEvent(new Event("omsons-auth-changed"));
-          }
-        } catch {}
+        void refreshCurrentUser();
       }}
     />
   );

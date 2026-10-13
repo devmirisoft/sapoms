@@ -18,6 +18,7 @@ import AccountBookSummary, { AccountBookStats } from '@/components/ledger/Accoun
 import TransactionTable from '@/components/ledger/TransactionTable'
 import PayMoneyModal, { PaymentData } from '@/components/ledger/PayMoneyModal'
 import { InvoiceModal } from '@/components/InvoiceModel'
+import { getCurrentSession } from '@/lib/currentUser'
 import { downloadOrderInvoice } from '@/lib/invoicegenerator'
 import { resolveOrderAmounts } from '@/lib/orderAmounts'
 import {
@@ -131,31 +132,11 @@ type RawOrder = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 function resolveRole(): { role: Role; dealerId?: string; staffId?: string } {
-  if (typeof window === 'undefined') return { role: 'admin' }
-  try {
-    if (localStorage.getItem('AccountantData')) return { role: 'accountant' }
-    const userData = localStorage.getItem('UserData')
-    if (userData) {
-      const p = JSON.parse(userData)
-      if (p?.Dealer_Id) return { role: 'dealer', dealerId: p.Dealer_Id }
-      if (p?.staff_id) return {
-        role: p.staff_roletype === '0' ? 'admin' : 'staff',
-        staffId: p.staff_id,
-      }
-      if (localStorage.getItem('roletype') === '3') return { role: 'admin' }
-    }
-    const staffRaw = localStorage.getItem('staffData')
-    if (staffRaw) {
-      const p = JSON.parse(staffRaw)
-      if (p?.staff_id) return {
-        role: p.staff_roletype === '0' ? 'admin' : 'staff',
-        staffId: p.staff_id,
-      }
-    }
-    const adminRaw = localStorage.getItem('AdminData') || localStorage.getItem('admin')
-    if (adminRaw) return { role: 'admin' }
-  } catch (_) {}
-  return { role: 'admin' }
+  const session = getCurrentSession()
+  if (session?.status !== 'authenticated') return { role: 'admin' }
+  const p = session.user
+  if (session.role === 'dealer') return { role: 'dealer', dealerId: String(p.Dealer_Id ?? '') }
+  return { role: session.role, staffId: p.staff_id ? String(p.staff_id) : undefined }
 }
 
 function fmt(n: number) {

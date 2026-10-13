@@ -10,7 +10,8 @@ import DealerHelpButton from "@/components/dashboard/DealerHelpButton";
 import NotificationBell from "@/components/dashboard/NotificationBell";
 import SmartSearchBar from "@/components/SartSearchBar";
 import Sidebar from "@/components/layout/sidebar";
-import { logout, type AppRole, type StoredUser } from "@/lib/roleAccess";
+import { type AppRole, type StoredUser } from "@/lib/roleAccess";
+import { logout } from "@/lib/currentUser";
 import { useAuthSession } from "@/hooks/useAuthSession";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {

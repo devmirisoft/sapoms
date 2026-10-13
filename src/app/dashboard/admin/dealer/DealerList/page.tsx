@@ -6,7 +6,7 @@ import { CheckCircle2, Search, Trash2, Eye, MoreVertical, Pencil, Wallet, Power,
 import { confirmAlert } from 'react-confirm-alert'
 import { staffRoleBadge } from '@/lib/staffRoleLabel'
 import { showToast } from "@/components/ui/toast";
-import { loginAsDealer } from "@/lib/roleAccess";
+import { getCurrentRole, getCurrentUser, loginAsDealer } from "@/lib/currentUser";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import { type FloatingMenuState, isMenuOpen, openFloatingMenu, measureFloatingMenu } from "@/components/ui/floating-menu";
 type DealerStatus = "active" | "inactive" | "suspended"
@@ -249,29 +249,12 @@ async function fetchDealerSummaryCounts(): Promise<DealerSummaryCounts> {
 }
 
 function getRole(): AppRole {
-  if (typeof window === "undefined") return "admin"
-  if (localStorage.getItem("AccountantData")) return "accountant"
-  const rt = localStorage.getItem("roletype")
-  if (rt === "1") return "staff"
-  return "admin"
+  const role = getCurrentRole()
+  return role === "accountant" || role === "staff" ? role : "admin"
 }
 
 function getStaffId(): string {
-  if (typeof window === "undefined") return ""
-
-  for (const key of ["staffData", "UserData"]) {
-    try {
-      const raw = localStorage.getItem(key)
-      if (!raw) continue
-      const value = JSON.parse(raw) as { staff_id?: unknown }
-      const staffId = String(value.staff_id ?? "").trim()
-      if (staffId) return staffId
-    } catch {
-      // Try the next legacy session key.
-    }
-  }
-
-  return ""
+  return String(getCurrentUser()?.staff_id ?? "").trim()
 }
 
 export default function DealerListPage() {

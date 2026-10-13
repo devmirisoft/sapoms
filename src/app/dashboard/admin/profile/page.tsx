@@ -6,6 +6,7 @@ import axios from "axios";
 import { Save, Upload } from "lucide-react";
 import { showToast } from "@/components/ui/toast";
 import { normalizePhone, phoneInput, phoneInputProps } from "@/lib/fieldRules";
+import { getCurrentUser, refreshCurrentUser } from "@/lib/currentUser";
 
 const ADMIN_PROFILE_URL = "/api/admin/profile";
 
@@ -23,16 +24,7 @@ type AdminSession = {
 };
 
 function readAdminSession(): AdminSession | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw =
-      localStorage.getItem("UserData") ||
-      localStorage.getItem("AdminData") ||
-      localStorage.getItem("admin");
-    return raw ? JSON.parse(raw) : null;
-  } catch {
-    return null;
-  }
+  return getCurrentUser() as AdminSession | null;
 }
 
 function Field({
@@ -84,7 +76,6 @@ export default function AdminProfilePage() {
       try {
         const response = await fetch(ADMIN_PROFILE_URL, { credentials: "include" });
         const json = await response.json();
-        // Prefer session/localStorage values first so recent client-side updates show immediately
         const data = admin || json.data || {};
         setName(data.ADMIN_NAME || data.name || "");
         setPhone(normalizePhone(data.ADMIN_PHONE));
@@ -112,26 +103,7 @@ export default function AdminProfilePage() {
         response = await axios.post(ADMIN_PROFILE_URL, form, { withCredentials: true });
       }
       const payload = response.data || {};
-      const previous = readAdminSession() || {};
-      const payloadData = payload?.data || {};
-
-      const updated = {
-        ...previous,
-        ...payloadData,
-
-        ADMIN_NAME: name,
-        ADMIN_EMAIL: email,
-        ADMIN_PHONE: phone,
-
-        name: payloadData.name || previous.name || name,
-        email: payloadData.email || previous.email || email,
-        image: payloadData.ADMIN_IMAGE || payloadData.image || previous.image || previous.ADMIN_IMAGE || undefined,
-      };
-
-      localStorage.setItem("status", "true");
-      localStorage.setItem("UserData", JSON.stringify(updated));
-      localStorage.setItem("AdminData", JSON.stringify(updated));
-      localStorage.setItem("roletype", "3");
+      void refreshCurrentUser();
       showToast("success", payload?.msg || "Admin profile updated");
       setTimeout(() => window.location.reload(), 700);
     } catch (error) {

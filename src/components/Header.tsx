@@ -12,6 +12,7 @@ import { useCartStore } from "@/Store/store";
 import { usePathname, useRouter } from "next/navigation";
 import { SIDEBAR_CATEGORIES } from "@/lib/categories";
 import productSearch from "@/lib/productSearch.js";
+import { useAuthSession } from "@/hooks/useAuthSession";
 
 const { buildSearchUrl } = productSearch;
 
@@ -58,50 +59,26 @@ export function storeCategoryFilter(value: string) {
   }
 }
 
-export function UserName() {
-  const [value, setValue] = useState<string | null>(null);
-
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      try {
-        const raw = localStorage.getItem("UserData");
-        if (!raw) return;
-
-        const data = JSON.parse(raw);
-        setValue(data?.Dealer_Name ?? data?.city ?? data?.District ?? data?.district ?? null);
-      } catch {
-        // Ignore invalid storage data.
-      }
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
-  }, []);
-
-  return <span className="font-bold uppercase">{value}</span>;
+function useProfile(): Record<string, unknown> {
+  const { session } = useAuthSession();
+  return session?.status === "authenticated" ? session.user : {};
 }
 
-function useLocationFromStorage() {
-  const [city, setCity] = useState<string | null>(null);
-  const [pincode, setPincode] = useState<string | null>(null);
+function text(value: unknown) {
+  return value === null || value === undefined ? null : String(value);
+}
 
-  useEffect(() => {
-    const timeoutId = window.setTimeout(() => {
-      try {
-        const raw = localStorage.getItem("UserData");
-        if (!raw) return;
+export function UserName() {
+  const data = useProfile();
+  return <span className="font-bold uppercase">{text(data.Dealer_Name ?? data.city ?? data.District ?? data.district)}</span>;
+}
 
-        const data = JSON.parse(raw);
-        setCity(data?.Dealer_Address ?? data?.city ?? data?.District ?? data?.district ?? null);
-        setPincode(data?.Pincode ?? data?.pincode ?? data?.Pin ?? data?.pin ?? null);
-      } catch {
-        // Ignore invalid storage data.
-      }
-    }, 0);
-
-    return () => window.clearTimeout(timeoutId);
-  }, []);
-
-  return { city, pincode };
+function useLocationFromProfile() {
+  const data = useProfile();
+  return {
+    city: text(data.Dealer_Address ?? data.city ?? data.District ?? data.district),
+    pincode: text(data.Pincode ?? data.pincode ?? data.Pin ?? data.pin),
+  };
 }
 
 const navItem = "flex flex-col justify-center rounded px-2 py-1 leading-tight border border-transparent hover:border-white/40";
@@ -111,7 +88,7 @@ export default function Header() {
   const pathname = usePathname();
   const cart = useCartStore((state) => state.cart);
   const itemCount = cart.reduce((total, item) => total + item.quantity, 0);
-  const { city, pincode } = useLocationFromStorage();
+  const { city, pincode } = useLocationFromProfile();
 
   const [selectedCategory, setSelectedCategory] = useState("all");
 

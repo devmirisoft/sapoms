@@ -14,7 +14,7 @@ import PayMoneyModal, { PaymentData } from '@/components/ledger/PayMoneyModal'
 import { InvoiceModal } from '@/components/InvoiceModel'
 import DealerBillsPanel, { BillableOrder, CreditSnapshot, LedgerBill } from '@/components/ledger/DealerBillsPanel'
 import { createIdempotencyKey } from '@/lib/idempotency'
-import { resolveStoredAuth } from '@/lib/roleAccess'
+import { getCurrentRole } from '@/lib/currentUser'
 import { showToast } from "@/components/ui/toast";
 
 const TRANSACTIONS_PAGE_SIZE = 10
@@ -96,11 +96,7 @@ interface TransactionsResponse {
   message?: string
 }
 
-function getLedgerViewerRole() {
-  if (typeof window === 'undefined') return null
-  const session = resolveStoredAuth(window.localStorage)
-  return session.status === 'authenticated' ? session.role : null
-}
+const getLedgerViewerRole = getCurrentRole
 
 function isStaffLedgerSession() {
   return getLedgerViewerRole() === 'staff'
@@ -180,8 +176,6 @@ export default function DealerLedgerPage() {
   } = useQuery<WalletResponse>({
     queryKey: ['dealer-wallet', dealerId],
     queryFn: async () => {
-      const session = resolveStoredAuth(window.localStorage)
-      if (session.status !== 'authenticated') throw new Error('Missing wallet identity')
       const res = await axios.get(`/api/wallet/${dealerId}`)
       return res.data
     },
@@ -258,8 +252,6 @@ export default function DealerLedgerPage() {
 
     setWalletAdjustLoading(true)
     try {
-      const session = resolveStoredAuth(window.localStorage)
-      if (session.status !== 'authenticated') throw new Error('Missing wallet identity')
       const idempotencyKey = createIdempotencyKey('wallet-adjust')
       const response = await axios.post(`/api/wallet/${dealerId}/adjust`, {
         action: walletAdjustType,
