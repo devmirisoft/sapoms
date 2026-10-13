@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import TermsModal from "@/components/TermsModal";
 import { useAuthSession } from "@/hooks/useAuthSession";
+import { refreshCurrentUser } from "@/lib/currentUser";
 
 function hasAcceptedTerms(value: unknown) {
   return typeof value === "string" && value.trim().length > 0;
@@ -31,16 +32,7 @@ export default function DealerTermsGate() {
       userName={String(dealer?.Dealer_Name ?? "Dealer")}
       onAccepted={(nextAcceptedAt) => {
         setAcceptedAt(nextAcceptedAt);
-
-        try {
-          const raw = localStorage.getItem("UserData");
-          if (raw) {
-            const parsed = JSON.parse(raw) as Record<string, unknown>;
-            parsed.termsAcceptedAt = nextAcceptedAt;
-            localStorage.setItem("UserData", JSON.stringify(parsed));
-            window.dispatchEvent(new Event("omsons-auth-changed"));
-          }
-        } catch {}
+        void refreshCurrentUser();
       }}
     />
   );

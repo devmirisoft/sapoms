@@ -29,7 +29,7 @@ import {
   Download,
   ChevronDown,
 } from "lucide-react";
-import { isAuthenticated, clearAccountantSession } from "@/lib/accountantauth";
+import { isAuthenticated } from "@/lib/accountantauth";
 import { downloadOrderInvoice } from "@/lib/invoicegenerator";
 import { OrderAmountSource, withDisplayOrderAmounts } from "@/lib/orderAmounts";
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';

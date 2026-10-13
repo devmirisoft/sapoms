@@ -11,7 +11,8 @@ import {
   SquareChevronLeft, SquareChevronRight, Percent,
 } from "lucide-react";
 import { useEffect, useState, useSyncExternalStore } from "react";
-import { logout, type AppRole, type StoredUser } from "@/lib/roleAccess";
+import { type AppRole, type StoredUser } from "@/lib/roleAccess";
+import { logout } from "@/lib/currentUser";
 import { useAuthSession } from "@/hooks/useAuthSession";
 
 type NavItem = { label: string; href: string; icon: React.ReactNode; section?: string; badgeKey?: BadgeKey };

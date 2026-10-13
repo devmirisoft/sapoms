@@ -174,6 +174,11 @@ export function discountOnNet(basePercent: unknown, totalPercent: unknown) {
   return base >= 100 ? 0 : clampPercent((clampPercent(totalPercent) - base) * 100 / (100 - base));
 }
 
+/** Snapshot lines store the custom % as extra-of-gross over base; this is the on-net % the dealer asked for. */
+export function customDiscountOnNet(basePercent: unknown, customPercent: unknown) {
+  return discountOnNet(basePercent, clampPercent(basePercent) + clampPercent(customPercent));
+}
+
 /** A custom ask above this % off the net after base goes RSM -> NSM -> Admin instead of RSM -> Admin. */
 export const NSM_REVIEW_ON_NET_PERCENT = 5;
 

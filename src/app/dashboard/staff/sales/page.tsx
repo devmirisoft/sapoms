@@ -9,6 +9,7 @@ import { CalendarRange, ChevronLeft, RefreshCw, Search } from "lucide-react"
 import { DistributorSalesRow, formatRupee, getOrderDate, groupOrdersByDistributor, type SalesOrder } from "@/lib/companySales"
 import { STAFF_ORDER_SCOPE_VERSION } from "@/lib/staffOrderScope.js"
 import type { OrderAmountSource } from "@/lib/orderAmounts"
+import { getCurrentUser } from "@/lib/currentUser"
 
 type OrderResponse = {
   data: SalesOrder[]
@@ -94,16 +95,8 @@ async function fetchOrderSummaryOverrides(orderIds: string[]) {
 }
 
 function resolveStaffSession(): StaffSession | null {
-  if (typeof window === "undefined") return null
-  try {
-    const raw = localStorage.getItem("staffData") || localStorage.getItem("UserData")
-    if (!raw) return null
-    const parsed = JSON.parse(raw)
-    if (parsed?.staff_id) return parsed as StaffSession
-  } catch {
-    return null
-  }
-  return null
+  const parsed = getCurrentUser()
+  return parsed?.staff_id ? parsed as unknown as StaffSession : null
 }
 
 function SalesReportPageInner() {

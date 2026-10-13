@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Eye, EyeOff } from "lucide-react";
-import { logout } from "@/lib/roleAccess";
+import { logout } from "@/lib/currentUser";
 
 const MIN_LENGTH = 10;
 

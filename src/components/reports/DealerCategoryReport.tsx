@@ -5,6 +5,8 @@ import { Fragment, useDeferredValue, useEffect, useMemo, useState, useSyncExtern
 import moment from 'moment'
 import { useRouter } from 'next/navigation'
 import { keepPreviousData, useQuery } from '@tanstack/react-query'
+import { useAuthSession } from '@/hooks/useAuthSession'
+import type { AuthSession } from '@/lib/roleAccess'
 import {
   AlertCircle,
   ChevronDown,
@@ -137,60 +139,21 @@ function firstNonEmpty(...values: unknown[]) {
   return ''
 }
 
-function resolveDashboardSession(): DashboardSession | null {
-  if (typeof window === 'undefined') return null
-
-  try {
-    const staffRaw = localStorage.getItem('staffData')
-    if (staffRaw) {
-      const parsed = JSON.parse(staffRaw)
-      if (parsed?.staff_id) {
-        return {
-          role: parsed.staff_roletype === '0' ? 'admin' : 'staff',
-          id: String(parsed.staff_id),
-          roletype: String(parsed.staff_roletype ?? ''),
-          name: parsed.staff_name || '',
-        }
-      }
-    }
-
-    const userRaw = localStorage.getItem('UserData')
-    if (userRaw) {
-      const parsed = JSON.parse(userRaw)
-      if (parsed?.Dealer_Id) {
-        return {
-          role: 'dealer',
-          id: String(parsed.Dealer_Id),
-          name: parsed.Dealer_Name || '',
-        }
-      }
-
-      if (parsed?.staff_id) {
-        return {
-          role: parsed.staff_roletype === '0' ? 'admin' : 'staff',
-          id: String(parsed.staff_id),
-          roletype: String(parsed.staff_roletype ?? ''),
-          name: parsed.staff_name || '',
-        }
-      }
-    }
-
-    const adminRaw = localStorage.getItem('AdminData') || localStorage.getItem('admin')
-    if (adminRaw) {
-      const parsed = JSON.parse(adminRaw)
-      if (parsed && Object.keys(parsed).length > 0) {
-        return {
-          role: 'admin',
-          id: firstNonEmpty(parsed.id, parsed.admin_id, parsed.Admin_Id, 'admin'),
-          roletype: '0',
-          name: parsed.name || parsed.email || 'Admin',
-        }
-      }
-    }
-  } catch {
-    return null
+function resolveDashboardSession(auth: AuthSession | null): DashboardSession | null {
+  if (auth?.status !== 'authenticated') return null
+  const user = auth.user
+  if (auth.role === 'dealer') return { role: 'dealer', id: String(user.Dealer_Id ?? ''), name: user.Dealer_Name || '' }
+  if (auth.role === 'staff') {
+    return { role: 'staff', id: String(user.staff_id ?? ''), roletype: String(user.staff_roletype ?? ''), name: user.staff_name || '' }
   }
-
+  if (auth.role === 'admin') {
+    return {
+      role: 'admin',
+      id: firstNonEmpty(user.staff_id, user.id, user.admin_id, user.Admin_Id, 'admin'),
+      roletype: String(user.staff_roletype ?? '0'),
+      name: user.staff_name || user.name || String(user.email || '') || 'Admin',
+    }
+  }
   return null
 }
 
@@ -365,7 +328,8 @@ function downloadReportCsv(report: ReportResponse) {
 export default function DealerCategoryReport({ allowedRoles = ['admin', 'staff'] }: DealerCategoryReportProps) {
   const router = useRouter()
   const hasHydrated = useHasHydrated()
-  const session = hasHydrated ? resolveDashboardSession() : null
+  const auth = useAuthSession()
+  const session = useMemo(() => resolveDashboardSession(auth.session), [auth.session])
 
   const [selectorOpen, setSelectorOpen] = useState(false)
   const [dealerSearch, setDealerSearch] = useState('')

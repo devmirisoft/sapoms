@@ -3,10 +3,13 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  customDiscountOnNet,
+  discountOnNet,
   normalizeCustomDiscountRequestRecord,
   type NormalizedCustomDiscountRequest,
 } from "@/lib/customDiscountRequests";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
+import { getCurrentUser } from "@/lib/currentUser";
 
 type TabKey = "pending" | "approved" | "rejected";
 type DealerUser = {
@@ -21,15 +24,7 @@ function money(value: number) {
 }
 
 function resolveDealer() {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem("UserData");
-    const loggedIn = localStorage.getItem("status");
-    if (!raw || JSON.parse(loggedIn ?? "false") !== true) return null;
-    return JSON.parse(raw);
-  } catch {
-    return null;
-  }
+  return getCurrentUser() as DealerUser | null;
 }
 
 function statusBadge(status: string) {
@@ -247,7 +242,7 @@ export default function ApprovedDiscountsPage() {
                     <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Requested Discount</p>
                       <p className="mt-1 font-mono text-[14px] font-bold text-gray-900">
-                        {request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent}%
+                        {discountOnNet(request.currentDiscountPercent, request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)}%
                       </p>
                     </div>
                   </div>
@@ -297,7 +292,7 @@ export default function ApprovedDiscountsPage() {
                               </td>
                               <td className="px-3 py-3 font-mono text-[12px] text-brand-600">
                                 {product.usesCustomDiscount
-                                  ? `${product.requestedCustomDiscountPercent ?? 0}% · -${money(product.requestedCustomDiscountAmount ?? 0)}`
+                                  ? `${customDiscountOnNet(product.baseDiscountPercent, product.requestedCustomDiscountPercent)}% on net · -${money(product.requestedCustomDiscountAmount ?? 0)}`
                                   : "Standard Discount"}
                               </td>
                               <td className="px-3 py-3 font-mono text-[12px] font-bold text-emerald-700">{money(product.finalAmount)}</td>

@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { useAuthSession } from "@/hooks/useAuthSession";
+import type { AuthSession } from "@/lib/roleAccess";
 
 type Role = "admin" | "staff" | "dealer";
 
@@ -47,58 +49,23 @@ type PendingProductsPreviewProps = {
   moreHref: string;
 };
 
-function resolveDashboardActor(expectedRole: Role): DashboardActor | null {
-  if (typeof window === "undefined") return null;
+function resolveDashboardActor(session: AuthSession | null, expectedRole: Role): DashboardActor | null {
+  if (session?.status !== "authenticated") return null;
+  const user = session.user;
 
-  try {
-    if (expectedRole === "dealer") {
-      const userRaw = localStorage.getItem("UserData");
-      if (userRaw) {
-        const parsed = JSON.parse(userRaw);
-        if (parsed?.Dealer_Id) {
-          return { role: "dealer", id: String(parsed.Dealer_Id) };
-        }
-      }
-      return null;
-    }
-
-    const staffRaw = localStorage.getItem("staffData");
-    if (staffRaw) {
-      const parsed = JSON.parse(staffRaw);
-      if (parsed?.staff_id) {
-        return {
-          role: parsed.staff_roletype === "0" ? "admin" : "staff",
-          id: String(parsed.staff_id),
-          roletype: String(parsed.staff_roletype ?? ""),
-        };
-      }
-    }
-
-    const userRaw = localStorage.getItem("UserData");
-    if (userRaw) {
-      const parsed = JSON.parse(userRaw);
-      if (parsed?.staff_id) {
-        return {
-          role: parsed.staff_roletype === "0" ? "admin" : "staff",
-          id: String(parsed.staff_id),
-          roletype: String(parsed.staff_roletype ?? ""),
-        };
-      }
-    }
-
-    const adminRaw = localStorage.getItem("AdminData") || localStorage.getItem("admin");
-    if (adminRaw) {
-      const parsed = JSON.parse(adminRaw);
-      if (parsed && Object.keys(parsed).length > 0) {
-        return {
-          role: "admin",
-          id: String(parsed.id || parsed.admin_id || parsed.Admin_Id || "admin"),
-          roletype: "0",
-        };
-      }
-    }
-  } catch {}
-
+  if (expectedRole === "dealer") {
+    return session.role === "dealer" ? { role: "dealer", id: String(user.Dealer_Id ?? "") } : null;
+  }
+  if (session.role === "staff") {
+    return { role: "staff", id: String(user.staff_id ?? ""), roletype: String(user.staff_roletype ?? "") };
+  }
+  if (session.role === "admin") {
+    return {
+      role: "admin",
+      id: String(user.staff_id || user.id || user.admin_id || user.Admin_Id || "admin"),
+      roletype: String(user.staff_roletype ?? "0"),
+    };
+  }
   return null;
 }
 
@@ -117,25 +84,12 @@ function emptyText(role: Role) {
 }
 
 export default function PendingProductsPreview({ role, moreHref }: PendingProductsPreviewProps) {
-  const [actor, setActor] = useState<DashboardActor | null>(() => resolveDashboardActor(role));
+  const { session } = useAuthSession();
+  const actor = useMemo(() => resolveDashboardActor(session, role), [session, role]);
   const [payload, setPayload] = useState<PendingProductsPayload | null>(null);
-  const [loading, setLoading] = useState(() => Boolean(resolveDashboardActor(role)));
+  const [loading, setLoading] = useState(() => Boolean(actor));
   const [error, setError] = useState("");
   const [refreshToken, setRefreshToken] = useState(0);
-
-  useEffect(() => {
-    const refreshActor = () => {
-      setActor(resolveDashboardActor(role));
-      setPayload(null);
-      setError("");
-    };
-    window.addEventListener("storage", refreshActor);
-    window.addEventListener("omsons-auth-changed", refreshActor);
-    return () => {
-      window.removeEventListener("storage", refreshActor);
-      window.removeEventListener("omsons-auth-changed", refreshActor);
-    };
-  }, [role]);
 
   useEffect(() => {
     const handleDispatchUpdated = () => setRefreshToken((current) => current + 1);

@@ -1,3 +1,5 @@
+import { getCurrentSession } from "@/lib/currentUser";
+
 export type DashboardActorRole = "admin" | "staff" | "dealer" | "accountant";
 
 export type DashboardActor = {
@@ -7,72 +9,42 @@ export type DashboardActor = {
   roletype: string;
 };
 
-function parseStoredObject(key: string) {
-  if (typeof window === "undefined") return null;
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : null;
-  } catch {
-    return null;
-  }
-}
-
 export function readDashboardActor(): DashboardActor | null {
-  if (typeof window === "undefined") return null;
+  const session = getCurrentSession();
+  if (session?.status !== "authenticated") return null;
+  const user = session.user;
 
-  const accountantToken = localStorage.getItem("AccountantData");
-  if (accountantToken) {
-    const accountant = parseStoredObject("AccountantData");
+  if (session.role === "accountant") {
     return {
       role: "accountant",
-      actorId: String(accountant?.id ?? accountant?.email ?? "").trim(),
-      actorName: String(accountant?.name ?? accountant?.email ?? "Accountant").trim(),
+      actorId: String(user.id ?? user.email ?? "").trim(),
+      actorName: String(user.name ?? user.email ?? "Accountant").trim(),
       roletype: "accountant",
     };
   }
 
-  const staff = parseStoredObject("staffData");
-  if (typeof staff?.staff_id === "string" && staff.staff_id.trim()) {
-    const isAdmin = String(staff.staff_roletype ?? "") === "0";
-    return {
-      role: isAdmin ? "admin" : "staff",
-      actorId: String(staff.staff_id).trim(),
-      actorName: String(staff.staff_name ?? staff.name ?? (isAdmin ? "Admin" : "Staff")).trim(),
-      roletype: String(staff.staff_roletype ?? (isAdmin ? "0" : "1")).trim(),
-    };
-  }
-
-  const userData = parseStoredObject("UserData");
-  if (typeof userData?.staff_id === "string" && userData.staff_id.trim()) {
-    const isAdmin = String(userData.staff_roletype ?? "") === "0";
-    return {
-      role: isAdmin ? "admin" : "staff",
-      actorId: String(userData.staff_id).trim(),
-      actorName: String(userData.staff_name ?? userData.name ?? (isAdmin ? "Admin" : "Staff")).trim(),
-      roletype: String(userData.staff_roletype ?? (isAdmin ? "0" : "1")).trim(),
-    };
-  }
-
-  if (typeof userData?.Dealer_Id === "string" && userData.Dealer_Id.trim()) {
+  if (session.role === "dealer") {
     return {
       role: "dealer",
-      actorId: String(userData.Dealer_Id).trim(),
-      actorName: String(userData.Dealer_Name ?? "Dealer").trim(),
+      actorId: String(user.Dealer_Id ?? "").trim(),
+      actorName: String(user.Dealer_Name ?? "Dealer").trim(),
       roletype: "2",
     };
   }
 
-  const admin = parseStoredObject("AdminData") ?? parseStoredObject("admin") ?? userData;
-  if (admin && (Object.keys(admin).length > 0 || localStorage.getItem("roletype") === "3")) {
+  if (session.role === "staff") {
     return {
-      role: "admin",
-      actorId: String(admin.id ?? admin.admin_id ?? admin.Admin_Id ?? admin.staff_id ?? admin.email ?? "admin").trim(),
-      actorName: String(admin.name ?? admin.username ?? admin.email ?? "Admin").trim(),
-      roletype: "0",
+      role: "staff",
+      actorId: String(user.staff_id ?? "").trim(),
+      actorName: String(user.staff_name ?? user.name ?? "Staff").trim(),
+      roletype: String(user.staff_roletype ?? "1").trim(),
     };
   }
 
-  return null;
+  return {
+    role: "admin",
+    actorId: String(user.staff_id ?? user.id ?? user.admin_id ?? user.Admin_Id ?? user.email ?? "admin").trim(),
+    actorName: String(user.staff_name ?? user.name ?? user.username ?? user.email ?? "Admin").trim(),
+    roletype: "0",
+  };
 }

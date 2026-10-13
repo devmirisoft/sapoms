@@ -1,8 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
-import { clearAuthStorage, normalizeRoleFromProfile, persistAuthenticatedSession, roleTypeForRole, type AuthSession, type StoredUser } from "@/lib/roleAccess";
+import type { AuthSession } from "@/lib/roleAccess";
+import { CURRENT_USER_KEY, fetchCurrentSession } from "@/lib/currentUser";
+import { getQueryClient } from "@/lib/queryClient";
 
 type ResolvedAuth =
   | { loading: true; session: null }
@@ -88,66 +91,22 @@ function installAxiosSessionRefresh() {
   );
 }
 
-async function fetchCurrentSession(): Promise<AuthSession> {
-  const res = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" });
-  if (!res.ok) return { status: "unauthenticated", reason: "missing" };
-
-  const json = await res.json();
-  const data = json?.data;
-  if (!data || typeof data !== "object" || Array.isArray(data)) {
-    return { status: "unauthenticated", reason: "invalid" };
-  }
-
-  const user = data as StoredUser;
-  const role = normalizeRoleFromProfile(user);
-  if (!role) return { status: "unauthenticated", reason: "unsupported-role" };
-
-  return {
-    status: "authenticated",
-    role,
-    roletype: roleTypeForRole(role, user),
-    // authRole keeps the server role ("nsm") that the app role collapses into "admin".
-    user: { ...user, authRole: user.role, role },
-  };
-}
+// /api/auth/me kept failing (5xx or network) and there is no earlier session to fall
+// back on. RouteGuard treats it like a broken session: clears local state, goes to login.
+const UNAVAILABLE: AuthSession = { status: "unauthenticated", reason: "invalid" };
 
 export function useAuthSession(): ResolvedAuth {
-  const [state, setState] = useState<ResolvedAuth>({ loading: true, session: null });
+  useEffect(installAxiosSessionRefresh, []);
 
-  useEffect(() => {
-    installAxiosSessionRefresh();
-    let cancelled = false;
+  // Pinned to the app-wide client so pages that mount their own QueryClientProvider
+  // still share one current-user entry (and one /api/auth/me request).
+  const query = useQuery(
+    { queryKey: CURRENT_USER_KEY, queryFn: fetchCurrentSession, staleTime: 60_000, retry: 2 },
+    getQueryClient(),
+  );
 
-    const resolve = async () => {
-      try {
-        const session = await fetchCurrentSession();
-        if (!cancelled) {
-          if (session.status === "authenticated") persistAuthenticatedSession(localStorage, session.user, session.role);
-          setState({ loading: false, session });
-        }
-      } catch {
-        if (!cancelled) setState({ loading: false, session: { status: "unauthenticated", reason: "invalid" } });
-      }
-    };
-
-    void resolve();
-
-    const handleAuthChanged = () => void resolve();
-    window.addEventListener("storage", handleAuthChanged);
-    window.addEventListener("omsons-auth-changed", handleAuthChanged);
-
-    return () => {
-      cancelled = true;
-      window.removeEventListener("storage", handleAuthChanged);
-      window.removeEventListener("omsons-auth-changed", handleAuthChanged);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!state.loading && state.session.status !== "authenticated" && state.session.reason !== "missing") {
-      clearAuthStorage(localStorage);
-    }
-  }, [state]);
-
-  return state;
+  if (query.data) return { loading: false, session: query.data };
+  if (query.isError) return { loading: false, session: UNAVAILABLE };
+  return { loading: true, session: null };
 }
+

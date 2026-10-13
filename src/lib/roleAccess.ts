@@ -27,10 +27,11 @@ export type AuthSession =
   | { status: "authenticated"; role: AppRole; roletype: string; user: StoredUser }
   | { status: "unauthenticated"; reason: "missing" | "invalid" | "unsupported-role" };
 
-export type AuthStorage = Pick<Storage, "getItem" | "removeItem">;
-export type AuthStorageWriter = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+export type AuthStorage = Pick<Storage, "removeItem">;
 
-export const AUTH_KEYS = [
+// Profile copies older builds kept in localStorage. Nothing writes them any more
+// (the current-user query holds the profile); they are only ever removed.
+export const LEGACY_AUTH_KEYS = [
   "status",
   "UserData",
   "roletype",
@@ -47,71 +48,12 @@ export const AUTH_KEYS = [
 export const LOGIN_ROUTE = "/auth/login";
 export const ACCOUNTANT_LOGIN_ROUTE = "/auth/accountant-login";
 
-
-function parseObject(storage: AuthStorage, key: string): StoredUser | null {
-  const raw = storage.getItem(key);
-  if (!raw) return null;
-  const parsed = JSON.parse(raw) as unknown;
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return null;
-  }
-  return parsed as StoredUser;
-}
-
-// The cart is cached until logout, so it is cleared with the auth keys.
-// Not in AUTH_KEYS: persistAuthenticatedSession would wipe it on every re-persist.
+// The cart is cached until logout, so it is cleared with the legacy auth keys.
 export const CART_STORAGE_KEY = "cart";
 
 export function clearAuthStorage(storage: AuthStorage) {
-  AUTH_KEYS.forEach((key) => storage.removeItem(key));
+  LEGACY_AUTH_KEYS.forEach((key) => storage.removeItem(key));
   storage.removeItem(CART_STORAGE_KEY);
-}
-
-// Browser-only. An admin signed in as a dealer gets their admin session back from the
-// server instead of being logged out; a full page load drops the dealer's client state.
-// Only the server's answer plus a fresh /api/auth/me decide the identity shown next.
-export async function logout() {
-  // 503 means a transient server error while ending an impersonation; the server kept what a retry
-  // needs. Two retries, then ?final=1 tells it to give up and clear everything.
-  const attempts = ["/api/auth/logout", "/api/auth/logout", "/api/auth/logout?final=1"];
-  let body: { data?: { restored?: unknown } } | null = null;
-  for (const [index, url] of attempts.entries()) {
-    const res = await fetch(url, { method: "POST", credentials: "include" }).catch(() => null);
-    if (res && res.status !== 503) {
-      body = await res.json().catch(() => null);
-      break;
-    }
-    if (index < attempts.length - 1) await new Promise((resolve) => setTimeout(resolve, 750 * (index + 1)));
-  }
-  const restored = body?.data?.restored === true;
-  clearAuthStorage(localStorage);
-  if (restored) {
-    const me = await fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .catch(() => null);
-    const session = me?.data ? persistAuthenticatedSession(localStorage, me.data as StoredUser) : null;
-    if (session?.status === "authenticated" && session.role === "admin") {
-      window.location.href = "/dashboard/admin/dealer/DealerList";
-      return;
-    }
-    clearAuthStorage(localStorage);
-  }
-  window.location.href = LOGIN_ROUTE;
-}
-
-// Browser-only. Admin signs in as the dealer; logout() brings the admin back.
-export async function loginAsDealer(dealerId: string | number) {
-  const res = await fetch("/api/auth/impersonate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dealerId: String(dealerId) }),
-    credentials: "include",
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data?.status) throw new Error(data?.message || "Unable to sign in as this dealer");
-  clearAuthStorage(localStorage);
-  persistAuthenticatedSession(localStorage, data.data as StoredUser);
-  window.location.href = "/home";
 }
 
 export function normalizeRoleFromProfile(profile: Record<string, unknown>): AppRole | null {
@@ -131,97 +73,6 @@ export function roleTypeForRole(role: AppRole, profile: Record<string, unknown> 
   if (role === "staff") return String(profile.staff_roletype ?? "1");
   if (role === "dealer") return "2";
   return "4";
-}
-
-export function persistAuthenticatedSession(storage: AuthStorageWriter, profile: StoredUser, roleOverride?: AppRole) {
-  const role = roleOverride ?? normalizeRoleFromProfile(profile);
-  if (!role) return null;
-
-  const user = { ...profile, role } as StoredUser;
-  const roletype = roleTypeForRole(role, user);
-  const userJson = JSON.stringify(user);
-  const next: Record<string, string> = { status: "true", UserData: userJson, roletype, role, roleType: roletype };
-  if (role === "admin") next.AdminData = userJson;
-  if (role === "staff") next.staffData = userJson;
-  if (role === "accountant") next.AccountantData = userJson;
-
-  // Only touch keys whose value actually changes. Every write fires a "storage"
-  // event in the other open tabs, whose useAuthSession re-fetches and persists
-  // again, so rewriting unchanged values made tabs ping-pong /api/auth/me forever.
-  AUTH_KEYS.forEach((key) => {
-    const value = next[key];
-    if (value === undefined) {
-      if (storage.getItem(key) !== null) storage.removeItem(key);
-    } else if (storage.getItem(key) !== value) {
-      storage.setItem(key, value);
-    }
-  });
-
-  return session(role, user, roletype);
-}
-
-function normalizeRoleFromRoleType(roletype: unknown): AppRole | null {
-  const value = String(roletype ?? "").trim().toLowerCase();
-  if (value === "3" || value === "0" || value === "admin") return "admin";
-  if (value === "1" || value === "staff") return "staff";
-  if (value === "2" || value === "dealer") return "dealer";
-  if (value === "4" || value === "accountant") return "accountant";
-  return null;
-}
-
-function normalizeRoleFromStaffRoleType(staffRoletype: unknown): AppRole | null {
-  const value = String(staffRoletype ?? "").trim().toLowerCase();
-  if (value === "0" || value === "admin") return "admin";
-  if (value === "1" || value === "2" || value === "staff" || value === "executive" || value === "field executive" || value === "rsm" || value === "asm") {
-    return "staff";
-  }
-  return null;
-}
-
-function session(role: AppRole, user: StoredUser, roletype?: unknown): AuthSession {
-  return {
-    status: "authenticated",
-    role,
-    roletype: String(roletype ?? (role === "admin" ? "3" : role === "staff" ? "1" : role === "dealer" ? "2" : "4")),
-    user: { ...user, role },
-  };
-}
-
-export function resolveStoredAuth(storage: AuthStorage): AuthSession {
-  try {
-    const userData = parseObject(storage, "UserData");
-    if (userData && Object.keys(userData).length > 0) {
-      const role = normalizeRoleFromProfile(userData) ?? normalizeRoleFromRoleType(storage.getItem("roletype") ?? userData.role);
-      if (role) return session(role, userData, roleTypeForRole(role, userData));
-      return { status: "unauthenticated", reason: "unsupported-role" };
-    }
-
-    const staff = parseObject(storage, "staffData");
-    if (staff?.staff_id) {
-      const role = normalizeRoleFromStaffRoleType(staff.staff_roletype);
-      if (role === "admin" || role === "staff") return session(role, staff, roleTypeForRole(role, staff));
-      return { status: "unauthenticated", reason: "unsupported-role" };
-    }
-
-    const admin = parseObject(storage, "AdminData") ?? parseObject(storage, "admin");
-    if (admin && Object.keys(admin).length > 0) {
-      const role = normalizeRoleFromProfile(admin) ?? normalizeRoleFromRoleType(storage.getItem("roletype") ?? admin.role);
-      if (role === "admin") return session("admin", admin, "3");
-      return { status: "unauthenticated", reason: "unsupported-role" };
-    }
-
-    const accountant = parseObject(storage, "AccountantData");
-    if (accountant && Object.keys(accountant).length > 0) {
-      const role = normalizeRoleFromProfile(accountant) ?? normalizeRoleFromRoleType(storage.getItem("roletype") ?? accountant.role);
-      if (role === "accountant") return session("accountant", accountant, "4");
-      return { status: "unauthenticated", reason: "unsupported-role" };
-    }
-
-    return { status: "unauthenticated", reason: "missing" };
-  } catch {
-    clearAuthStorage(storage);
-    return { status: "unauthenticated", reason: "invalid" };
-  }
 }
 
 type Policy = { pattern: RegExp; roles: AppRole[] };

@@ -4,6 +4,8 @@ import DateInput from "@/components/ui/date-input";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
+  customDiscountOnNet,
+  discountOnNet,
   normalizeCustomDiscountRequestRecord,
   type NormalizedCustomDiscountRequest,
 } from "@/lib/customDiscountRequests";
@@ -12,6 +14,7 @@ import { ViewToggle, type ViewMode } from "@/components/ViewToggle";
 import { DiscountReferencePreview } from "@/components/DiscountReferencePreview";
 import { LineApproveToggle, RejectedListItems, RejectedTableRows, ResubmissionNote, partialApproval, rejectedLineCount, toastReviewOutcome } from "@/components/LineApproveToggle";
 import { RequestedFirst } from "@/components/RequestedFirst";
+import { getCurrentUser } from "@/lib/currentUser";
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
 
@@ -50,14 +53,8 @@ function OrderNumberChip({ request }: { request: NormalizedCustomDiscountRequest
 }
 
 function resolveAdminName() {
-  if (typeof window === "undefined") return "Admin";
-  try {
-    const raw = localStorage.getItem("AdminData") || localStorage.getItem("admin") || localStorage.getItem("UserData") || "{}";
-    const parsed = JSON.parse(raw);
-    return parsed.name || parsed.username || parsed.staff_name || parsed.email || "Admin";
-  } catch {
-    return "Admin";
-  }
+  const parsed = getCurrentUser() ?? {};
+  return String(parsed.name || parsed.username || parsed.staff_name || parsed.email || "Admin");
 }
 
 function coverOf(request: NormalizedCustomDiscountRequest): "rsm" | "nsm" | null {
@@ -289,7 +286,7 @@ function RequestCard({
         {[
           { label: "Products", val: String(request.orderSnapshot.products.length), cls: "text-gray-900" },
           { label: "Pieces", val: String(totalPieces(request)), cls: "text-gray-900" },
-          { label: "Requested", val: `${request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent}%`, cls: "text-brand-600" },
+          { label: "Requested", val: `${discountOnNet(request.currentDiscountPercent, request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)}%`, cls: "text-brand-600" },
           { label: "Gross", val: money(request.orderSnapshot.grossAmount), cls: "text-gray-500" },
           { label: "Discount", val: `-${money(request.orderSnapshot.totalDiscountAmount)}`, cls: "text-amber-700" },
           { label: "Net Payable", val: money(request.orderSnapshot.requestedNetPayableAmount), cls: "text-emerald-700" },
@@ -334,7 +331,7 @@ function RequestCard({
                   Base {product.baseDiscountPercent}%
                 </span>
                 <span className={`rounded-full border px-2 py-0.5 ${product.usesCustomDiscount ? "border-brand-200 bg-brand-50 text-brand-600" : "border-gray-200 bg-gray-100 text-gray-600"}`}>
-                  {product.usesCustomDiscount ? `Custom ${product.requestedCustomDiscountPercent ?? 0}%` : "Standard Discount"}
+                  {product.usesCustomDiscount ? `Custom ${customDiscountOnNet(product.baseDiscountPercent, product.requestedCustomDiscountPercent)}% on net` : "Standard Discount"}
                 </span>
                 {product.isPriority && (
                   <span className="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-red-700">Priority</span>
@@ -720,7 +717,7 @@ export default function CustomDiscountApprovalsPage() {
                     <div className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-brand-500">Requested</p>
                       <p className="mt-1 font-mono text-[14px] font-bold text-brand-600">
-                        {request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent}%
+                        {discountOnNet(request.currentDiscountPercent, request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)}%
                       </p>
                     </div>
                     <div className="rounded-xl border border-gray-900 bg-gray-900 px-3 py-2 text-white">
@@ -814,7 +811,7 @@ export default function CustomDiscountApprovalsPage() {
                                 </td>
                                 <td className="px-3 py-3 font-mono text-[12px] text-brand-600">
                                   {product.usesCustomDiscount
-                                    ? `${product.requestedCustomDiscountPercent ?? 0}% · -${money(product.requestedCustomDiscountAmount ?? 0)}`
+                                    ? `${customDiscountOnNet(product.baseDiscountPercent, product.requestedCustomDiscountPercent)}% on net · -${money(product.requestedCustomDiscountAmount ?? 0)}`
                                     : "Standard Discount"}
                                 </td>
                                 <td className="px-3 py-3 font-mono text-[12px] font-bold text-emerald-700">{money(product.finalAmount)}</td>

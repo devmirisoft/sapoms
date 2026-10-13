@@ -19,7 +19,7 @@ import {
 } from 'lucide-react'
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay'
 import { billableOrders } from '@/components/ledger/DealerBillsPanel'
-import { resolveStoredAuth } from '@/lib/roleAccess'
+import { getCurrentRole } from '@/lib/currentUser'
 import { showToast } from "@/components/ui/toast";
 
 type AccountBook = {
@@ -228,11 +228,7 @@ function roundForInput(value: number) {
   return Math.round(value * 100) / 100
 }
 
-function getLedgerViewerRole() {
-  if (typeof window === 'undefined') return null
-  const session = resolveStoredAuth(window.localStorage)
-  return session.status === 'authenticated' ? session.role : null
-}
+const getLedgerViewerRole = getCurrentRole
 
 function isStaffLedgerSession() {
   return getLedgerViewerRole() === 'staff'

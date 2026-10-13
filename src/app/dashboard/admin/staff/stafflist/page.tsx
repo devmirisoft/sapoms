@@ -6,6 +6,7 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import axios from 'axios'
 import { Pencil, Trash2, Download, Search, Users, UserPlus, MoreVertical, ChevronDown, ChevronLeft, Network, Briefcase, User, X } from 'lucide-react'
 import { showToast } from "@/components/ui/toast";
+import { getCurrentRole } from "@/lib/currentUser";
 import { type FloatingMenuState, isMenuOpen, openFloatingMenu, measureFloatingMenu } from "@/components/ui/floating-menu";
 
 type StaffRelation = { id: string; name: string; email?: string } | null
@@ -136,11 +137,8 @@ function initials(name: string) {
 type AppRole = "admin" | "staff" | "accountant"
 
 function getRole(): AppRole {
-  if (typeof window === 'undefined') return 'admin'
-  if (localStorage.getItem('AccountantData')) return 'accountant'
-  const rt = localStorage.getItem('roletype')
-  if (rt === '1') return 'staff'
-  return 'admin'
+  const role = getCurrentRole()
+  return role === 'accountant' || role === 'staff' ? role : 'admin'
 }
 
 

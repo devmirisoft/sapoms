@@ -50,6 +50,7 @@ import cataloguePricing from "@/lib/cataloguePricing";
 import { COUPONS } from "@/lib/coupons";
 import { useTodaysSale } from "@/hooks/useTodaysSale";
 import { salePaise } from "@/components/SalePrice";
+import { getCurrentUser } from "@/lib/currentUser";
 import {
   buildOrderRemarks as buildLineRemarks,
 } from "@/lib/orderProductNotes.mjs";
@@ -578,6 +579,8 @@ function AddOrderPageInner() {
       [productKey]: requestedCustomDiscountPercent,
       [normalizeApprovalProductKey(productKey)]: requestedCustomDiscountPercent,
     }));
+    // The picker moves to the next product; clear % so it isn't requested implicitly.
+    setCustomDiscountInput("0");
   };
 
   const removeCustomProductDiscount = (productKey: string) => {
@@ -674,10 +677,8 @@ function AddOrderPageInner() {
   };
 
   useEffect(() => {
-    const stored = localStorage.getItem("UserData");
-    const loggedIn = localStorage.getItem("status");
-    if (!stored || JSON.parse(loggedIn ?? "false") !== true) { router.push("/login"); return; }
-    const u = JSON.parse(stored);
+    const u: any = getCurrentUser();
+    if (!u) { router.push("/login"); return; }
     setUser(u);
     setShipto(u.Dealer_Address[0].toUpperCase() + u.Dealer_Address.slice(1).toLowerCase());
   }, [router]);
@@ -1074,7 +1075,16 @@ function AddOrderPageInner() {
       draftApprovalState?.approvalRequestId ?? null,
     )
     : null;
-  const selectedCustomDiscountProduct = productRows.find((r) => getProductKey(r) === customDiscountProductKey) ?? productRows[0] ?? null;
+  const baseDiscountPayload = calculateStackedDiscount(subtotal, {
+    allocatedDiscountPercent: dealerDiscount,
+    couponDiscountPercent: couponDiscount,
+  });
+  // Products already added as a product discount chip are left out of the picker.
+  const customDiscountProductOptions = productRows.filter((r) => {
+    const k = getProductKey(r);
+    return !(Number(perProductDiscountInputs[k] ?? perProductDiscountInputs[normalizeApprovalProductKey(k)] ?? 0) > baseDiscountPayload.baseDiscountPercent);
+  });
+  const selectedCustomDiscountProduct = customDiscountProductOptions.find((r) => getProductKey(r) === customDiscountProductKey) ?? customDiscountProductOptions[0] ?? null;
   const selectedCustomDiscountSignature = selectedCustomDiscountProduct ? buildProductSignature(selectedCustomDiscountProduct) : "";
   const customDiscountBaseSubtotal = customDiscountScope === "product" && selectedCustomDiscountProduct
     ? rowPaise(selectedCustomDiscountProduct) / 100
@@ -1166,11 +1176,6 @@ function AddOrderPageInner() {
   // ── Sequential discount calculation ──────────────────────────────────
   // Base discount payload — uses the new sequential slab logic.
   // Slab is determined from amountBeforeSlab, NOT from gross subtotal.
-  const baseDiscountPayload = calculateStackedDiscount(subtotal, {
-    allocatedDiscountPercent: dealerDiscount,
-    couponDiscountPercent: couponDiscount,
-  });
-
   const getRowDiscountPercent = (row: ProductRow) => {
     const globalPercent = approvedCustomDiscountPercent ?? baseDiscountPayload.baseDiscountPercent;
     const productRequest = getApprovedProductCustomRequest(row);
@@ -3107,7 +3112,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 <div className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
                   <p className="font-bold uppercase tracking-wider text-brand-500">Requested</p>
                   <p className="mt-1 font-mono text-[13px] font-bold text-brand-600">
-                    {Math.max(0, Number(((visibleCustomRequest?.requestedOrderDiscountPercent ?? visibleCustomRequest?.requestedDiscountPercent ?? requestedCustomDiscountPercent) - baseDiscountPayload.baseDiscountPercent).toFixed(2)))}%
+                    {discountOnNet(baseDiscountPayload.baseDiscountPercent, visibleCustomRequest?.requestedOrderDiscountPercent ?? visibleCustomRequest?.requestedDiscountPercent ?? requestedCustomDiscountPercent)}%
                   </p>
                 </div>
               </div>
@@ -3134,7 +3139,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                       onChange={(e) => setCustomDiscountProductKey(e.target.value)}
                       className="mt-1 w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13.5px] font-semibold text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100"
                     >
-                      {productRows.map((row) => (
+                      {customDiscountProductOptions.map((row) => (
                         <option key={`${row.key}-${getProductKey(row)}`} value={getProductKey(row)}>
                           {row.variantCode || row.productname} - {shortProductName(row.displayName || "Product")}
                         </option>

@@ -13,6 +13,7 @@ import {
   type CustomDiscountProgress,
 } from '@/lib/customDiscountProgress'
 import { mergeFallbackProductNotes } from '@/lib/orderProductNotes.mjs'
+import { getCurrentUser } from '@/lib/currentUser'
 
 type OrderItem = {
   orderdata_id: string
@@ -99,10 +100,9 @@ export default function DispatchStatusPage() {
 
   const queryClient = useQueryClient()
 
-  // Load user from localStorage on client only
   useEffect(() => {
-    const stored = localStorage.getItem("staffData") || localStorage.getItem("UserData")
-    if (stored) setUser(JSON.parse(stored))
+    const stored = getCurrentUser()
+    if (stored) setUser(stored as unknown as UserData)
   }, [])
 
   const { data: response, isLoading, isError } = useQuery<OrderResponse>({
