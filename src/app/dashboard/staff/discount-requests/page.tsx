@@ -4,11 +4,13 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Receipt, RefreshCw, ArrowLeft } from "lucide-react";
-import { normalizeCustomDiscountRequestRecord } from "@/lib/customDiscountRequests";
+import { normalizeCustomDiscountRequestRecord, type ApprovalOrderSnapshot } from "@/lib/customDiscountRequests";
 import { SegmentedTabs } from "@/components/SegmentedTabs";
 import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
 import { ViewToggle, type ViewMode } from "@/components/ViewToggle";
 import { DiscountReferencePreview } from "@/components/DiscountReferencePreview";
+import { LineApproveToggle, RejectedListItems, RejectedTableRows, ResubmissionNote, partialApproval, rejectedLineCount, toastReviewOutcome } from "@/components/LineApproveToggle";
+import { RequestedFirst } from "@/components/RequestedFirst";
 
 type StaffUser = {
   staff_id: string;
@@ -54,6 +56,8 @@ type DiscountRequest = {
   nsmNote?: string;
   adminNote?: string;
   referenceFile?: { name: string; type: string } | null;
+  /** Raw snapshot; absent on legacy requests, which can't be split per line. */
+  orderSnapshot?: (Partial<ApprovalOrderSnapshot> & { rejectedProducts?: unknown[] }) | null;
   createdAt: string;
 };
 
@@ -100,7 +104,15 @@ export default function StaffDiscountRequestsPage() {
   const [tab, setTab] = useState<TabKey>("pending");
   const [updating, setUpdating] = useState<string | null>(null);
   const [notes, setNotes] = useState<Record<string, string>>({});
+  // Snapshot product indexes the RSM has unticked, per request.
+  const [rejectedLines, setRejectedLines] = useState<Record<string, number[]>>({});
   const [viewMode, setViewMode] = useState<ViewMode>("cards");
+  const toggleLine = (requestId: string, index: number) => setRejectedLines((prev) => {
+    const current = prev[requestId] ?? [];
+    return { ...prev, [requestId]: current.includes(index) ? current.filter((i) => i !== index) : [...current, index] };
+  });
+  const canSelectLines = (request: DiscountRequest) =>
+    isRsm && (request.rsmApprovalStatus ?? "pending") === "pending" && request.status === "pending" && Array.isArray(request.orderSnapshot?.products);
 
   useEffect(() => {
     try {
@@ -168,8 +180,9 @@ export default function StaffDiscountRequestsPage() {
 
   const review = async (request: DiscountRequest, rsmStatus: "approved" | "rejected") => {
     const rsmNote = (notes[request.id] ?? "").trim();
+    const rejected = rsmStatus === "approved" && canSelectLines(request) ? rejectedLines[request.id] ?? [] : [];
     // A disapproval must always carry a reason the dealer can act on.
-    if (rsmStatus === "rejected" && !rsmNote) {
+    if ((rsmStatus === "rejected" || rejected.length > 0) && !rsmNote) {
       setError("Add a note explaining the disapproval before rejecting this request.");
       return;
     }
@@ -183,11 +196,14 @@ export default function StaffDiscountRequestsPage() {
         body: JSON.stringify({
           rsmStatus,
           rsmNote: rsmNote || undefined,
+          ...(rejected.length ? { rejectedLines: rejected } : {}),
         }),
       });
       const json = await res.json();
       if (!json.success) throw new Error(json.message ?? "Update failed");
       setRequests((prev) => prev.map((row) => (row.id === request.id ? { ...row, ...json.data } : row)));
+      setRejectedLines((prev) => ({ ...prev, [request.id]: [] }));
+      toastReviewOutcome(json.data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update request");
     } finally {
@@ -225,6 +241,10 @@ export default function StaffDiscountRequestsPage() {
   const reviewPanel = (request: DiscountRequest) => {
     const rsmState = request.rsmApprovalStatus ?? "pending";
     const canReview = isRsm && rsmState === "pending" && request.status === "pending";
+    const rejectedCount = canSelectLines(request) ? (rejectedLines[request.id] ?? []).length : 0;
+    const partial = partialApproval(snapshots.get(request.id)?.products ?? [], rejectedCount, "goes on for approval");
+    const noteMissing = !(notes[request.id] ?? "").trim();
+    const earlierRejected = rejectedLineCount(request.orderSnapshot);
     if (!isRsm) {
       return (
         <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
@@ -245,7 +265,11 @@ export default function StaffDiscountRequestsPage() {
           <>
             <p className="mt-2 text-[12px] leading-5 text-gray-600">
               Approving forwards this request to Admin for final approval. Disapproving rejects it outright.
+              Untick a requested line to reject just that line.
             </p>
+            {partial && (
+              <p className="mt-2 text-[11px] font-medium text-red-600">{partial.message}</p>
+            )}
             <textarea
               value={notes[request.id] ?? ""}
               onChange={(e) => setNotes((prev) => ({ ...prev, [request.id]: e.target.value }))}
@@ -256,11 +280,12 @@ export default function StaffDiscountRequestsPage() {
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
-                disabled={updating === request.id}
+                disabled={updating === request.id || !!partial?.blocked || (!!partial && noteMissing)}
+                title={partial && noteMissing ? "Add a note for the rejected lines" : undefined}
                 onClick={() => void review(request, "approved")}
                 className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
               >
-                {updating === request.id ? "Saving..." : "Approve"}
+                {updating === request.id ? "Saving..." : partial ? partial.label : "Approve"}
               </button>
               <button
                 type="button"
@@ -298,6 +323,11 @@ export default function StaffDiscountRequestsPage() {
               <p className="mt-2 text-[12px] text-gray-600">Admin note: {request.adminNote}</p>
             )}
           </>
+        )}
+        {earlierRejected > 0 && (
+          <p className="mt-2 text-[12px] font-semibold text-red-600">
+            {earlierRejected} line(s) rejected — returned to dealer draft
+          </p>
         )}
         <p className="mt-3 text-[12px] text-gray-500">
           Created on {request.createdAt ? new Date(request.createdAt).toLocaleDateString("en-IN") : "-"}
@@ -438,23 +468,31 @@ export default function StaffDiscountRequestsPage() {
                     ))}
                   </div>
 
+                  <ResubmissionNote orderSnapshot={request.orderSnapshot} />
+
                   {products.length > 0 && (
                     <details className="overflow-hidden rounded-xl border border-gray-200">
                       <summary className="cursor-pointer list-none bg-gray-50 px-3 py-2 text-[11px] font-bold text-gray-700">
                         Products ({products.length})
+                        {rejectedLineCount(request.orderSnapshot) > 0 && <span className="text-red-600"> · {rejectedLineCount(request.orderSnapshot)} rejected</span>}
                       </summary>
-                      <div className="max-h-72 divide-y divide-gray-100 overflow-y-auto">
-                        {products.map((product, index) => (
+                      <RequestedFirst as="div" className="max-h-72 divide-y divide-gray-100 overflow-y-auto" items={products} isRequested={(p) => Boolean(p.usesCustomDiscount)} rejected={<RejectedListItems orderSnapshot={request.orderSnapshot} />}>
+                        {(product, index) => (
                           <div
                             key={`${request.id}-${product.productKey || product.sku}-${index}`}
-                            className={`px-3 py-2 ${product.usesCustomDiscount ? "bg-brand-50" : ""}`}
+                            className={`px-3 py-2 ${rejectedLines[request.id]?.includes(index) ? "bg-red-50" : product.usesCustomDiscount ? "bg-brand-50" : ""}`}
                           >
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0">
                                 <p className="font-mono text-[11px] font-bold text-amber-700">{product.catalogueNumber || product.sku || "-"}</p>
                                 <p className="truncate text-[12px] font-semibold text-gray-900">{product.productName || "-"}</p>
                               </div>
-                              <p className="shrink-0 font-mono text-[12px] font-bold text-emerald-700">{money(product.finalAmount)}</p>
+                              <div className="flex shrink-0 flex-col items-end gap-1">
+                                <p className="font-mono text-[12px] font-bold text-emerald-700">{money(product.finalAmount)}</p>
+                                {canSelectLines(request) && product.usesCustomDiscount && (
+                                  <LineApproveToggle checked={!rejectedLines[request.id]?.includes(index)} onChange={() => toggleLine(request.id, index)} />
+                                )}
+                              </div>
                             </div>
                             <p className="mt-1 font-mono text-[11px] text-gray-500">
                               {product.quantity} x {product.packSize} = {product.totalPieces} pcs · {money(product.unitPrice)}
@@ -471,8 +509,8 @@ export default function StaffDiscountRequestsPage() {
                               )}
                             </div>
                           </div>
-                        ))}
-                      </div>
+                        )}
+                      </RequestedFirst>
                     </details>
                   )}
 
@@ -574,6 +612,8 @@ export default function StaffDiscountRequestsPage() {
                       </div>
                     </div>
 
+                    <ResubmissionNote orderSnapshot={request.orderSnapshot} />
+
                     {(() => {
                       const snapshot = snapshots.get(request.id);
                       if (!snapshot || snapshot.products.length === 0) return null;
@@ -582,6 +622,7 @@ export default function StaffDiscountRequestsPage() {
                         <details className="overflow-hidden rounded-xl border border-gray-200" open>
                           <summary className="cursor-pointer bg-gray-50 px-4 py-3 text-[12px] font-bold text-gray-700">
                             Full order &middot; {snapshot.products.length} products &middot; {discounted} with requested discount
+                            {rejectedLineCount(request.orderSnapshot) > 0 && <span className="text-red-600"> &middot; {rejectedLineCount(request.orderSnapshot)} rejected</span>}
                             <span className="ml-2 font-normal text-gray-400">(click to minimise)</span>
                           </summary>
                           <div className="overflow-x-auto">
@@ -595,13 +636,20 @@ export default function StaffDiscountRequestsPage() {
                                   ))}
                                 </tr>
                               </thead>
-                              <tbody className="divide-y divide-gray-100">
-                                {snapshot.products.map((product, index) => (
+                              <RequestedFirst className="divide-y divide-gray-100" items={snapshot.products} isRequested={(p) => Boolean(p.usesCustomDiscount)} rejected={<RejectedTableRows orderSnapshot={request.orderSnapshot} />}>
+                                {(product, index) => (
                                   <tr
                                     key={`${request.id}-${product.productKey || product.sku}-${index}`}
-                                    className={product.usesCustomDiscount ? "bg-brand-50 ring-1 ring-inset ring-brand-200" : ""}
+                                    className={rejectedLines[request.id]?.includes(index) ? "bg-red-50 ring-1 ring-inset ring-red-200" : product.usesCustomDiscount ? "bg-brand-50 ring-1 ring-inset ring-brand-200" : ""}
                                   >
-                                    <td className="px-3 py-3 font-mono text-[12px] font-bold text-amber-700">{product.catalogueNumber || product.sku || "-"}</td>
+                                    <td className="px-3 py-3 font-mono text-[12px] font-bold text-amber-700">
+                                      {product.catalogueNumber || product.sku || "-"}
+                                      {canSelectLines(request) && product.usesCustomDiscount && (
+                                        <div className="mt-1">
+                                          <LineApproveToggle checked={!rejectedLines[request.id]?.includes(index)} onChange={() => toggleLine(request.id, index)} />
+                                        </div>
+                                      )}
+                                    </td>
                                     <td className="px-3 py-3">
                                       <p className="text-[12px] font-semibold text-gray-900">{product.productName || "-"}</p>
                                       <div className="mt-1 flex flex-wrap gap-1.5">
@@ -633,8 +681,8 @@ export default function StaffDiscountRequestsPage() {
                                     </td>
                                     <td className="px-3 py-3 font-mono text-[12px] font-bold text-emerald-700">{money(product.finalAmount)}</td>
                                   </tr>
-                                ))}
-                              </tbody>
+                                )}
+                              </RequestedFirst>
                             </table>
                           </div>
                           {snapshot.orderNote && (

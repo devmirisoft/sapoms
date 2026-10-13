@@ -331,9 +331,11 @@ export function summarizeSnapshotProducts(products: ApprovalSnapshotProduct[]) {
 }
 
 /**
- * Selective approval: Admin rejects some of the lines that asked for a custom
- * discount. The rest (approved + standard lines) become the order; the rejected
- * lines go back to the dealer. Rejecting every custom line is a full Reject.
+ * Selective approval: a reviewer rejects some of the lines that asked for a
+ * custom discount. The rest (approved + standard lines) carries on; the rejected
+ * lines go back to the dealer. With every custom line rejected, the standard
+ * lines are left (standardOnly) to go ahead as a normal order; with nothing left,
+ * it is a full Reject.
  */
 export function splitApprovalSnapshot<T extends { products: ApprovalSnapshotProduct[] }>(snapshot: T, rejectedIndexes: number[]) {
   const products = snapshot.products;
@@ -343,13 +345,12 @@ export function splitApprovalSnapshot<T extends { products: ApprovalSnapshotProd
   for (const index of rejectedSet) {
     if (!Number.isInteger(index) || !products[index]?.usesCustomDiscount) throw fail("Only lines with a requested discount can be rejected");
   }
-  if (products.every((product, index) => !product.usesCustomDiscount || rejectedSet.has(index))) {
-    throw fail("Every requested line is rejected; use Reject to return the whole order");
-  }
   const kept = products.filter((_, index) => !rejectedSet.has(index));
+  if (kept.length === 0) throw fail("Every item is rejected; use Reject to return the whole order");
   return {
     approved: { ...snapshot, products: kept, ...summarizeSnapshotProducts(kept) },
     rejected: products.filter((_, index) => rejectedSet.has(index)),
+    standardOnly: !kept.some((product) => product.usesCustomDiscount),
   };
 }
 

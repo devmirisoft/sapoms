@@ -11,9 +11,10 @@ import {
   jsonValue,
   mapCustomDiscount,
   paise,
+  rejectionRows,
   text,
 } from "@/lib/postgresDiscountDrafts";
-import { normalizeApprovalProductKey, splitApprovalSnapshot, type ApprovalSnapshotProduct } from "@/lib/customDiscountRequests";
+import { normalizeApprovalProductKey, requiresNsmReview, splitApprovalSnapshot, type ApprovalSnapshotProduct } from "@/lib/customDiscountRequests";
 import { placeOrderForApprovedDiscount } from "@/lib/discountApprovalOrder";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
@@ -53,20 +54,6 @@ async function assertRsmDiscountScope(actor: AuthActor, dealerId: bigint, reques
   if (Object.keys(dealerWhere).length === 0) throw Object.assign(new Error("This request is outside your RSM scope"), { status: 403 });
   const scoped = await prisma.dealerProfile.findFirst({ where: { id: dealerId, ...dealerWhere }, select: { id: true } });
   if (!scoped) throw Object.assign(new Error("This request is outside your RSM scope"), { status: 403 });
-}
-
-function rejectionRows(products: any[]) {
-  return products.slice(0, 100).map((product: any, index: number) => ({
-    key: index + 1,
-    productname: text(product.productName || product.catalogueNumber, 200),
-    displayName: text(product.productName || product.catalogueNumber, 300),
-    variantCode: text(product.catalogueNumber || product.sku, 160),
-    producQuanity: Number(product.quantity ?? 1),
-    price: Number(product.unitPrice ?? 0),
-    packSize: Number(product.packSize ?? 1),
-    isPriority: !!product.isPriority,
-    productNote: text(product.productNote, 500),
-  }));
 }
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -192,23 +179,56 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data.reviewedAt = nextStatus === "PENDING" ? null : new Date();
       data.allowReorder = nextStatus === "APPROVED" ? true : nextStatus === "REJECTED" ? false : existing.allowReorder;
     }
-    // Selective approval: the order is placed from the approved lines only, and
-    // the rejected ones go back to the dealer as a fresh draft (below).
+    // Selective approval, at any stage: the approved lines carry on (and become
+    // the order at Admin), the rejected ones go back to the dealer as a fresh draft (below).
     let partialRejected: ApprovalSnapshotProduct[] = [];
+    // Every custom line rejected: no discount is approved, and the standard
+    // lines go ahead as a normal order through the normal order approval flow.
+    let standardOnly = false;
+    // The final decision wins when one call carries several (Admin approving alone).
+    const partialStage = reviewUpdate ? "ADMIN" : nsmReviewUpdate ? "NSM" : "RSM";
+    const partialNote = text(partialStage === "ADMIN" ? data.adminNote : partialStage === "NSM" ? data.nsmNote : data.rsmNote, 1500);
     if (body.rejectedLines !== undefined) {
-      if (!(reviewUpdate && nextStatus === "APPROVED")) throw Object.assign(new Error("Lines can only be rejected while Admin approves"), { status: 400 });
+      const decisions = [reviewUpdate && nextStatus, rsmReviewUpdate && nextRsmStatus, nsmReviewUpdate && nextNsmStatus].filter(Boolean);
+      if (!decisions.length || decisions.some((decision) => decision !== "APPROVED")) throw Object.assign(new Error("Lines can only be rejected while approving"), { status: 400 });
       if (!Array.isArray(body.rejectedLines)) throw Object.assign(new Error("rejectedLines must be a list"), { status: 400 });
-      if (!data.adminNote) throw Object.assign(new Error("A disapproval note is required when rejecting a discount request"), { status: 400 });
+      if (!partialNote) throw Object.assign(new Error("A disapproval note is required when rejecting a discount request"), { status: 400 });
       const snapshot = (existing.orderSnapshot ?? {}) as Record<string, unknown>;
-      const { approved, rejected } = splitApprovalSnapshot(
+      const split = splitApprovalSnapshot(
         { ...snapshot, products: (Array.isArray(snapshot.products) ? snapshot.products : []) as ApprovalSnapshotProduct[] },
         body.rejectedLines.map(Number),
       );
+      const { approved, rejected } = split;
       partialRejected = rejected;
+      standardOnly = split.standardOnly;
+      if (standardOnly) {
+        // The discount itself is disapproved at this stage. next*Status stay as
+        // sent, so the full-rejection draft below does not also fire.
+        data.status = "REJECTED";
+        data.allowReorder = false;
+        if (partialStage === "RSM") {
+          data.rsmApprovalStatus = "REJECTED";
+          // A covering approval would have cleared the NSM stage too; a rejection does not.
+          for (const key of ["nsmApprovalStatus", "nsmReviewedByUserId", "nsmReviewedByName", "nsmReviewedAt", "nsmNote"]) delete data[key];
+        }
+        if (partialStage === "NSM") data.nsmApprovalStatus = "REJECTED";
+      }
       const keptKeys = new Set(approved.products.map((product) => normalizeApprovalProductKey(product.productKey)));
       const rejectedKeys = new Set(rejected.map((product) => normalizeApprovalProductKey(product.productKey)).filter((key) => !keptKeys.has(key)));
       const productDiscounts = (existing.requestedProductDiscounts ?? {}) as Record<string, unknown>;
-      data.orderSnapshot = jsonValue({ ...approved, rejectedProducts: rejected, rejectedNote: data.adminNote });
+      // Earlier stages may already have rejected lines; keep the whole history.
+      const earlier = Array.isArray(snapshot.rejectedProducts) ? snapshot.rejectedProducts : [];
+      data.orderSnapshot = jsonValue({
+        ...approved,
+        rejectedProducts: [...earlier, ...rejected.map((product) => ({ ...product, rejectedBy: partialStage, rejectedNote: partialNote }))],
+      });
+      // The NSM stage exists only for large asks; if the RSM rejected the large
+      // lines, what is left may no longer need it.
+      if (!standardOnly && partialStage === "RSM" && existing.nsmApprovalStatus === "PENDING" && data.nsmApprovalStatus === undefined) {
+        const base = Number(existing.currentDiscountPercent ?? 0);
+        const stillLarge = requiresNsmReview(base, approved.products.map((product) => base + (product.requestedCustomDiscountPercent ?? 0)));
+        if (!stillLarge) data.nsmApprovalStatus = null;
+      }
       data.requestedProductDiscounts = jsonValue(Object.fromEntries(Object.entries(productDiscounts).filter(([key]) => !rejectedKeys.has(normalizeApprovalProductKey(key)))));
       data.grossAmountPaise = paise(approved.grossAmount);
       data.requestedDiscountAmountPaise = paise(approved.requestedAdditionalDiscountAmount);
@@ -286,9 +306,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // Admin approval places the order straight from the approved snapshot and
       // retires the draft, so the dealer never has to resubmit what was signed off.
+      // A standard-only result is placed at any stage, as a normal order.
       let placedOrder: { id: bigint; orderNumber: string } | null = null;
-      if (reviewUpdate && nextStatus === "APPROVED") {
-        const created = await placeOrderForApprovedDiscount(tx, row, { userId: actor.userId });
+      if (standardOnly || (reviewUpdate && nextStatus === "APPROVED")) {
+        const created = await placeOrderForApprovedDiscount(tx, row, { userId: actor.userId }, { normalOrder: standardOnly });
         if (created) {
           placedOrder = { id: created.id, orderNumber: created.orderNumber };
           row = await tx.customDiscountRequest.update({
@@ -302,28 +323,29 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // The rejected lines return as a plain, unlinked draft: requesting them
       // again is a new request and, once approved, a new order number.
       if (partialRejected.length) {
+        // An order exists after Admin approval or a standard-only result; otherwise name the request.
         const orderNumber = placedOrder?.orderNumber ?? row.order?.orderNumber ?? "";
-        const note = text(data.adminNote, 1500);
+        const where = orderNumber ? `order ${orderNumber}` : `discount request #${row.id}`;
         const snapshot = (row.orderSnapshot ?? {}) as any;
         const draft = await tx.orderDraft.create({
           data: {
             dealerId: row.dealerId,
-            name: `Rejected lines from ${orderNumber || `request ${row.id}`}`,
+            name: `Rejected lines from ${where}`,
             snapshot: jsonValue({
               rows: rejectionRows(partialRejected),
               shipto: snapshot.shipto ?? null,
               refno: snapshot.refno ?? null,
               order_note: [
-                "--- ADMIN PARTIAL REJECTION ---",
-                orderNumber ? `Rejected on order ${orderNumber}` : "",
-                note,
+                `--- ${partialStage} PARTIAL REJECTION ---`,
+                `Rejected by ${partialStage} on ${where}`,
+                partialNote,
                 "Request the discount again to place these as a new order.",
-              ].filter(Boolean).join("\n\n"),
+              ].join("\n\n"),
               rejection_notes: {
-                rejected_by: "ADMIN",
+                rejected_by: partialStage,
                 rejected_at: new Date().toISOString(),
-                admin_note: note,
-                reason: orderNumber ? `Rejected on order ${orderNumber}: ${note}` : note,
+                [`${partialStage.toLowerCase()}_note`]: partialNote,
+                reason: `Rejected by ${partialStage} on ${where}: ${partialNote}`,
               },
               source: "custom_discount_rejection",
               source_request_id: row.id.toString(),
@@ -349,7 +371,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       // Two review stages write to the same row, so the action names whichever
       // decision this call carried; a dealer edit is a change, not a review.
-      const action = reviewUpdate
+      const action = standardOnly
+        ? AUDIT_ACTION.REJECT
+        : reviewUpdate
         ? nextStatus === "APPROVED" ? AUDIT_ACTION.APPROVE : nextStatus === "REJECTED" ? AUDIT_ACTION.REJECT : AUDIT_ACTION.STATUS_CHANGE
         : rsmReviewUpdate || nsmReviewUpdate
           ? (nextRsmStatus ?? nextNsmStatus) === "APPROVED" ? AUDIT_ACTION.APPROVE : AUDIT_ACTION.REJECT
@@ -389,6 +413,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           ...(row.nsmNote ? { nsmNote: row.nsmNote } : {}),
           ...(placedOrder ? { placedOrderNumber: placedOrder.orderNumber } : {}),
           ...(partialRejected.length ? { rejectedLineCount: partialRejected.length, partialRejectionDraftId: rejectionDraftId?.toString() } : {}),
+          ...(standardOnly ? { standardOnlyOrder: true } : {}),
         },
       });
 
@@ -397,6 +422,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const dto = mapCustomDiscount(updated.row) as any;
     if (updated.rejectionDraftId) dto.rejectionDraftId = updated.rejectionDraftId.toString();
+    if (partialRejected.length) dto.rejectedLineCount = partialRejected.length;
+    if (standardOnly) dto.standardOnlyOrder = true;
     if (updated.placedOrder) {
       dto.placedOrderId = updated.placedOrder.id.toString();
       dto.placedOrderNumber = updated.placedOrder.orderNumber;

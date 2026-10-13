@@ -79,6 +79,9 @@ export async function placeOrderForApprovedDiscount(
   tx: Prisma.TransactionClient,
   request: ApprovedRequest,
   actor: { userId: bigint },
+  // normalOrder: no discount was approved (every custom line rejected), so the
+  // standard lines go through the normal order flow, starting at RSM order review.
+  options: { normalOrder?: boolean } = {},
 ) {
   // Approval can be re-sent; never place a second order for one request.
   if (request.orderId) return null;
@@ -157,7 +160,7 @@ export async function placeOrderForApprovedDiscount(
       baseDiscountPercent: new Prisma.Decimal(baseDiscountPercent),
       baseDiscountAmountPaise,
       postBaseAmountPaise: grossAmountPaise - baseDiscountAmountPaise,
-      additionalDiscountType: "CUSTOM",
+      additionalDiscountType: options.normalOrder ? "NONE" : "CUSTOM",
       additionalDiscountAmountPaise: customDiscountAmountPaise,
       customDiscountAmountPaise,
       totalDiscountPercent: new Prisma.Decimal(totalDiscountPercent),
@@ -167,11 +170,14 @@ export async function placeOrderForApprovedDiscount(
       acceptanceStatus: "AWAITING",
       // The RSM already signed off on this exact order when approving the
       // discount, so it goes straight to the Staff member for accept/decline.
-      rsmApprovalStatus: "ACCEPTED",
-      rsmReviewedByUserId: request.rsmReviewedByUserId ?? null,
-      rsmReviewedByName: request.rsmReviewedByName ?? null,
-      rsmReviewedAt: request.rsmReviewedAt ?? new Date(),
-      rsmNote: request.rsmNote ?? null,
+      // A normal order keeps the default AWAITING and gets its RSM order review.
+      ...(options.normalOrder ? {} : {
+        rsmApprovalStatus: "ACCEPTED" as const,
+        rsmReviewedByUserId: request.rsmReviewedByUserId ?? null,
+        rsmReviewedByName: request.rsmReviewedByName ?? null,
+        rsmReviewedAt: request.rsmReviewedAt ?? new Date(),
+        rsmNote: request.rsmNote ?? null,
+      }),
       fulfilmentStatus: "PENDING",
       items: { create: items },
     },

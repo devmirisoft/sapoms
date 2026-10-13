@@ -2199,7 +2199,7 @@ export default function ViewOrderDealerPage() {
                     Changes made by the dealer ({revision.changes?.length ?? 0})
                   </p>
                   {(revision.changes?.length ?? 0) === 0 ? (
-                    <p className="mt-1 text-[13px] leading-6 text-gray-600">Resubmitted with the same products.</p>
+                    <p className="mt-1 text-[13px] font-semibold leading-6 text-amber-700">No changes were made.</p>
                   ) : (
                     <ul className="mt-1 list-disc pl-5">
                       {revision.changes!.map((change, changeIndex) => (

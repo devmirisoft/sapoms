@@ -11,6 +11,7 @@ import {
   type CustomDiscountStatus,
 } from "@/lib/customDiscountRequests";
 import { findCatalogueEntry } from "@/lib/catalogue";
+import { diffOrderRows, rowKey } from "@/lib/orderRejectionDraft.mjs";
 import { couponPercent } from "@/lib/coupons";
 import { linePricing, loadCatalogue } from "@/server/modules/products/catalogue";
 
@@ -227,6 +228,53 @@ async function serverPricedSnapshotProducts(rawProducts: unknown[]) {
   });
 }
 
+export function rejectionRows(products: any[]) {
+  return products.slice(0, 100).map((product: any, index: number) => ({
+    key: index + 1,
+    productname: text(product.productName || product.catalogueNumber, 200),
+    displayName: text(product.productName || product.catalogueNumber, 300),
+    variantCode: text(product.catalogueNumber || product.sku, 160),
+    producQuanity: Number(product.quantity ?? 1),
+    price: Number(product.unitPrice ?? 0),
+    packSize: Number(product.packSize ?? 1),
+    isPriority: !!product.isPriority,
+    productNote: text(product.productNote, 500),
+  }));
+}
+
+// A request raised from a rejection draft is diffed against what was rejected,
+// so reviewers can see when the dealer resubmitted without changing anything.
+async function buildResubmission(orderDraftId: bigint, dealerId: bigint, products: any[], requestedOrderDiscountPercent: number | null) {
+  const draft = await prisma.orderDraft.findFirst({ where: { id: orderDraftId, dealerId }, select: { snapshot: true } });
+  const snap = (draft?.snapshot ?? {}) as Record<string, any>;
+  const sourceId = text(snap.source_request_id, 40);
+  if (snap.source !== "custom_discount_rejection" || !/^\d+$/.test(sourceId)) return null;
+  const previous = await prisma.customDiscountRequest.findFirst({ where: { id: BigInt(sourceId), dealerId } });
+  if (!previous) return null;
+  const prevSnap = (previous.orderSnapshot ?? {}) as Record<string, any>;
+  const fullRejection = previous.status === "REJECTED";
+  const rejectedBy = text(snap.rejection_notes?.rejected_by, 20);
+  // A partial rejection only sent back the lines rejected at that stage.
+  const before: any[] = fullRejection
+    ? (Array.isArray(prevSnap.products) ? prevSnap.products : [])
+    : (Array.isArray(prevSnap.rejectedProducts) ? prevSnap.rejectedProducts : []).filter((product: any) => !rejectedBy || product.rejectedBy === rejectedBy);
+  const beforeRows = rejectionRows(before);
+  const afterRows = rejectionRows(products);
+  const changes: Array<{ type: string; catNo: string; summary: string }> = diffOrderRows(beforeRows, afterRows);
+  const beforePercent = new Map(before.map((product: any, index: number) => [rowKey(beforeRows[index]), num(product.requestedCustomDiscountPercent)]));
+  products.forEach((product: any, index: number) => {
+    const key = rowKey(afterRows[index]);
+    if (!beforePercent.has(key) || beforePercent.get(key) === num(product.requestedCustomDiscountPercent)) return;
+    const catNo = afterRows[index].variantCode || afterRows[index].productname;
+    changes.push({ type: "discount", catNo, summary: `${catNo}: extra discount ${beforePercent.get(key)}% → ${num(product.requestedCustomDiscountPercent)}%` });
+  });
+  const beforeOrderPercent = previous.requestedOrderDiscountPercent === null ? null : num(previous.requestedOrderDiscountPercent);
+  if (fullRejection && beforeOrderPercent !== requestedOrderDiscountPercent) {
+    changes.push({ type: "discount", catNo: "", summary: `Order discount ${beforeOrderPercent ?? "—"}% → ${requestedOrderDiscountPercent ?? "—"}%` });
+  }
+  return { previousRequestId: previous.id.toString(), rejectedBy: rejectedBy || null, changes };
+}
+
 export async function buildCustomDiscountCreate(body: Record<string, any>, dealerId: bigint, staffId?: bigint | null) {
   const requestedDiscountPercent = percent(body.requestedDiscountPercent);
   const dealer = await prisma.dealerProfile.findUnique({ where: { id: dealerId }, select: { discountPercent: true } });
@@ -249,6 +297,7 @@ export async function buildCustomDiscountCreate(body: Record<string, any>, deale
   const draftId = text(body.orderDraftId || body.order_draft_id, 120);
   if (!draftId) throw Object.assign(new Error("orderDraftId is required"), { status: 400 });
   const orderDraftId = BigInt(draftId);
+  const resubmission = await buildResubmission(orderDraftId, dealerId, orderSnapshot.products, requestedOrderDiscountPercent);
   return {
     dealerId,
     staffId,
@@ -267,7 +316,7 @@ export async function buildCustomDiscountCreate(body: Record<string, any>, deale
     requestedDiscountAmountPaise: paise(orderSnapshot.requestedAdditionalDiscountAmount),
     requestedNetPayableAmountPaise: paise(orderSnapshot.requestedNetPayableAmount),
     orderSignature: text(body.orderSignature, 400) || null,
-    orderSnapshot: jsonValue({ ...orderSnapshot, shipto: body.shipto ?? "", refno: body.refno ?? "", discountBreakdown: body.discountBreakdown ?? {} }),
+    orderSnapshot: jsonValue({ ...orderSnapshot, shipto: body.shipto ?? "", refno: body.refno ?? "", discountBreakdown: body.discountBreakdown ?? {}, ...(resubmission ? { resubmission } : {}) }),
   };
 }
 
