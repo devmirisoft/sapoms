@@ -173,9 +173,8 @@ export default function StaffDiscountRequestsPage() {
   const review = async (request: DiscountRequest, rsmStatus: "approved" | "rejected") => {
     const rsmNote = (notes[request.id] ?? "").trim();
     const rejected = rsmStatus === "approved" && canSelectLines(request) ? rejectedLines[request.id] ?? [] : [];
-    // A disapproval must always carry a reason the dealer can act on.
-    if ((rsmStatus === "rejected" || rejected.length > 0) && !rsmNote) {
-      setError("Add a note explaining the disapproval before rejecting this request.");
+    if (!rsmNote) {
+      setError("Add a remark before approving or disapproving this request.");
       return;
     }
     setUpdating(request.id);
@@ -265,15 +264,15 @@ export default function StaffDiscountRequestsPage() {
             <textarea
               value={notes[request.id] ?? ""}
               onChange={(e) => setNotes((prev) => ({ ...prev, [request.id]: e.target.value }))}
-              placeholder="Note for the dealer (required to disapprove)"
+              placeholder="Remark (required to approve or disapprove)"
               rows={3}
               className="mt-3 w-full rounded-lg border border-gray-200 px-3 py-2 text-[12px] text-gray-700 outline-none focus:border-brand-300"
             />
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
-                disabled={updating === request.id || !!partial?.blocked || (!!partial && noteMissing)}
-                title={partial && noteMissing ? "Add a note for the rejected lines" : undefined}
+                disabled={updating === request.id || !!partial?.blocked || noteMissing}
+                title={noteMissing ? "Add a remark to approve" : undefined}
                 onClick={() => void review(request, "approved")}
                 className="flex-1 rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
               >

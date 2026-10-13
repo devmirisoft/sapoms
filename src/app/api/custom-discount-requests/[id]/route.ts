@@ -141,9 +141,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // The RSM review UI posts its note as adminNote; keep it in its own column
       // so an RSM reason is never confused with, or overwritten by, an Admin one.
       data.rsmNote = text(body.rsmNote ?? body.rsm_note ?? body.adminNote ?? body.admin_note, 1500) || null;
+      // Every decision, approve or reject, at every stage must carry a remark.
+      if (!data.rsmNote) throw Object.assign(new Error("A remark is required to approve or reject a discount request"), { status: 400 });
       if (nextRsmStatus === "REJECTED") {
-        // A disapproval must always carry a reason the dealer can act on.
-        if (!data.rsmNote) throw Object.assign(new Error("A disapproval note is required when rejecting a discount request"), { status: 400 });
         data.status = "REJECTED";
         data.allowReorder = false;
       }
@@ -164,8 +164,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data.nsmReviewedByName = cover === "nsm" ? onBehalfName(actor, "NSM") : actor.displayName || actor.email;
       data.nsmReviewedAt = new Date();
       data.nsmNote = text(body.nsmNote ?? body.adminNote ?? body.admin_note, 1500) || null;
+      if (!data.nsmNote) throw Object.assign(new Error("A remark is required to approve or reject a discount request"), { status: 400 });
       if (nextNsmStatus === "REJECTED") {
-        if (!data.nsmNote) throw Object.assign(new Error("A disapproval note is required when rejecting a discount request"), { status: 400 });
         data.status = "REJECTED";
         data.allowReorder = false;
       }
@@ -173,8 +173,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (reviewUpdate && nextStatus) {
       data.status = nextStatus;
       data.adminNote = text(body.adminNote ?? body.admin_note, 1500) || null;
-      // A disapproval must always carry a reason the dealer can act on.
-      if (nextStatus === "REJECTED" && !data.adminNote) throw Object.assign(new Error("A disapproval note is required when rejecting a discount request"), { status: 400 });
+      if (nextStatus !== "PENDING" && !data.adminNote) throw Object.assign(new Error("A remark is required to approve or reject a discount request"), { status: 400 });
       data.reviewedByUserId = actor?.userId && actor.userId > BigInt(0) ? actor.userId : null;
       data.reviewedAt = nextStatus === "PENDING" ? null : new Date();
       data.allowReorder = nextStatus === "APPROVED" ? true : nextStatus === "REJECTED" ? false : existing.allowReorder;

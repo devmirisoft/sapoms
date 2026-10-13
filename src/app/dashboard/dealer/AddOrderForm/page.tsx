@@ -8,7 +8,7 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { notify as toast } from "@/components/ui/toast";
 import moment from "moment";
-import Select, { components, type FilterOptionOption, type StylesConfig } from "react-select";
+import Select, { components, type StylesConfig } from "react-select";
 import { useCartStore } from "@/Store/store";
 import { fetchDealerStatus } from "@/lib/dealerStatus";
 import discountUtils from "@/lib/discount";
@@ -1611,10 +1611,20 @@ function AddOrderPageInner() {
     );
   }, [catalogueIndex]);
 
-  const catalogueFilter = (option: FilterOptionOption<CatalogueNumberOption>, inputValue: string) => {
-    const needle = inputValue.trim().toLowerCase();
-    if (!needle) return true;
-    return option.data.searchText.includes(needle);
+  // Only one catalogue menu is open at a time, so one search string serves every row.
+  const [catalogueQuery, setCatalogueQuery] = useState("");
+  const CATALOGUE_MENU_LIMIT = 10;
+
+  // First matches only: rendering all ~5000 variants makes the menu sluggish; typing narrows it.
+  const catalogueOptionsFor = (selectedValue?: string) => {
+    const needle = catalogueQuery.trim().toLowerCase();
+    const matches: CatalogueNumberOption[] = [];
+    for (const option of optionList) {
+      if (matches.length >= CATALOGUE_MENU_LIMIT) break;
+      if (option.value !== selectedValue && usedCatalogueValues.has(option.value)) continue;
+      if (!needle || option.searchText.includes(needle)) matches.push(option);
+    }
+    return matches;
   };
 
   const catalogueSelectStyles: StylesConfig<CatalogueNumberOption, false> = {
@@ -3394,14 +3404,12 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                           )}
                           <div className="flex flex-col gap-1.5">
                             <Select<CatalogueNumberOption, false>
-                              options={optionList}
+                              options={catalogueOptionsFor(selectedCatalogueOption?.value)}
                               value={selectedCatalogueOption}
                               onChange={(option) => handleChangeSelect(idx, option?.value ?? "")}
                               isDisabled={orderLockedByPendingApproval}
-                              filterOption={(option, inputValue) =>
-                                (option.value === selectedCatalogueOption?.value || !usedCatalogueValues.has(option.value)) &&
-                                catalogueFilter(option, inputValue)
-                              }
+                              filterOption={null}
+                              onInputChange={(value) => setCatalogueQuery(value)}
                               isClearable
                               placeholder="Search Catalogue No."
                               noOptionsMessage={() => "No catalogue number found"}
