@@ -624,7 +624,7 @@ export default function DraftsPage() {
                                   <p className="text-[10px] font-bold uppercase tracking-wide text-red-700">
                                     {isOrderRejection
                                       ? `Order ${draft.source_order_number ?? ""} rejected by ${rejectionNote.rejected_by_name || "reviewer"} (${rejectionNote.rejected_by || "STAFF"})`
-                                      : rejectionNote.rejected_by === "RSM" ? "Rejected by RSM" : "Rejected by Admin"}
+                                      : `Rejected by ${rejectionNote.rejected_by && rejectionNote.rejected_by !== "ADMIN" ? rejectionNote.rejected_by : "Admin"}`}
                                   </p>
                                   <p className="mt-0.5 whitespace-pre-line text-[11px] leading-relaxed text-red-900">
                                     {rejectionNote.reason}

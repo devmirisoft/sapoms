@@ -10,6 +10,8 @@ import {
 import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
 import { ViewToggle, type ViewMode } from "@/components/ViewToggle";
 import { DiscountReferencePreview } from "@/components/DiscountReferencePreview";
+import { LineApproveToggle, RejectedListItems, RejectedTableRows, ResubmissionNote, partialApproval, rejectedLineCount, toastReviewOutcome } from "@/components/LineApproveToggle";
+import { RequestedFirst } from "@/components/RequestedFirst";
 
 type ApprovalStatus = "pending" | "approved" | "rejected";
 
@@ -83,6 +85,15 @@ function reviewBlocker(request: NormalizedCustomDiscountRequest, viewerIsNsm: bo
   return null;
 }
 
+function RsmStatusLine({ request, size }: { request: NormalizedCustomDiscountRequest; size: string }) {
+  const note = request.rsmNote ? ` - "${request.rsmNote}"` : "";
+  if (request.rsmApprovalStatus === "approved") {
+    return <p className={`${size} font-semibold text-emerald-700`}>RSM Approved{request.rsmReviewedBy ? ` by ${request.rsmReviewedBy}` : ""}{note}</p>;
+  }
+  if (request.rsmApprovalStatus === "rejected") return <p className={`${size} font-semibold text-red-600`}>RSM Rejected{note}</p>;
+  return <p className={`${size} font-semibold text-amber-600`}>Awaiting RSM Approval</p>;
+}
+
 function NsmStatusLine({ request, size }: { request: NormalizedCustomDiscountRequest; size: string }) {
   if (!request.nsmApprovalStatus) return null;
   const note = request.nsmNote ? ` - "${request.nsmNote}"` : "";
@@ -93,23 +104,9 @@ function NsmStatusLine({ request, size }: { request: NormalizedCustomDiscountReq
   return <p className={`${size} font-semibold text-amber-600`}>Awaiting NSM Approval</p>;
 }
 
-/** Per-line approval is Admin's final review; an Admin cover is final too (Admin is alone). */
+/** Whoever may decide this request (NSM or Admin) may also reject single lines. */
 function canSelectLines(request: NormalizedCustomDiscountRequest, viewerIsNsm: boolean) {
-  return !viewerIsNsm && !request.isLegacySnapshot && request.normalizedStatus === "pending" && !reviewBlocker(request, viewerIsNsm);
-}
-
-function rejectedLineCount(request: NormalizedCustomDiscountRequest) {
-  const rejected = (request.source.orderSnapshot as { rejectedProducts?: unknown[] } | null | undefined)?.rejectedProducts;
-  return Array.isArray(rejected) ? rejected.length : 0;
-}
-
-function LineApproveToggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
-  return (
-    <label className="inline-flex shrink-0 cursor-pointer items-center gap-1 text-[10px] font-bold text-gray-600">
-      <input type="checkbox" checked={checked} onChange={onChange} className="h-3.5 w-3.5 accent-emerald-600" />
-      Approve
-    </label>
-  );
+  return !request.isLegacySnapshot && request.normalizedStatus === "pending" && !reviewBlocker(request, viewerIsNsm);
 }
 
 function totalPieces(request: NormalizedCustomDiscountRequest) {
@@ -137,8 +134,7 @@ function DecisionPanel({
   onDecide: (status: ApprovalStatus) => void;
   onToggleReorder: () => void;
 }) {
-  const customCount = request.orderSnapshot.products.filter((product) => product.usesCustomDiscount).length;
-  const partial = rejectedCount > 0;
+  const partial = partialApproval(request.orderSnapshot.products, rejectedCount, viewerIsNsm ? "goes on to Admin" : "is placed as the order");
   return (
     <div className="rounded-xl border border-gray-200 bg-gray-50 p-4">
       <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500">{viewerIsNsm ? "NSM Note" : "Admin Note"}</label>
@@ -150,6 +146,12 @@ function DecisionPanel({
         placeholder="Add approval note (optional) or disapproval note (required)..."
         className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-gray-100 disabled:text-gray-500"
       />
+
+      {rejectedLineCount(request.source.orderSnapshot) > 0 && (
+        <p className="mt-2 text-[12px] font-semibold text-red-600">
+          {rejectedLineCount(request.source.orderSnapshot)} line(s) already rejected — returned to dealer draft
+        </p>
+      )}
 
       {blocker ? (
         <p className="mt-3 text-[12px] font-medium text-amber-700">{blocker}</p>
@@ -167,17 +169,17 @@ function DecisionPanel({
           ) : null}
           <p className="mt-2 text-[11px] font-medium text-red-600">
             {partial
-              ? `${rejectedCount} unticked line(s) will go back to the dealer as a new draft; the rest is placed as the order. A note is required.`
+              ? partial.message
               : "Rejecting this request will save the full order snapshot back to a dealer draft for correction."}
           </p>
           <div className="mt-3 flex gap-2">
             <button
               onClick={() => onDecide("approved")}
-              disabled={busy || (partial && !note.trim())}
+              disabled={busy || !!partial?.blocked || (!!partial && !note.trim())}
               title={partial && !note.trim() ? "Add a note for the rejected lines" : undefined}
               className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-[13px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
-              {busy ? "Saving..." : partial ? `Approve ${customCount - rejectedCount} of ${customCount} lines` : "Approve"}
+              {busy ? "Saving..." : partial ? partial.label : "Approve"}
             </button>
             <button
               onClick={() => onDecide("rejected")}
@@ -194,11 +196,6 @@ function DecisionPanel({
           <p className="mt-3 text-[12px] text-gray-500">
             Reviewed by {String(request.source?.reviewedBy || "Admin")} {request.reviewedAt ? `on ${new Date(request.reviewedAt).toLocaleString("en-IN")}` : ""}
           </p>
-          {rejectedLineCount(request) > 0 && (
-            <p className="mt-1 text-[12px] font-semibold text-red-600">
-              {rejectedLineCount(request)} line(s) rejected — returned to dealer draft
-            </p>
-          )}
           {request.normalizedStatus === "approved" && !viewerIsNsm && (
             <div className="mt-3 flex items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-3 py-2">
               <span className="text-[11px] text-gray-500">
@@ -279,15 +276,7 @@ function RequestCard({
         </span>
       </div>
 
-      {request.rsmApprovalStatus === "approved" ? (
-        <p className="text-[11px] font-semibold text-emerald-700">
-          RSM Approved{request.rsmReviewedBy ? ` by ${request.rsmReviewedBy}` : ""}
-        </p>
-      ) : request.rsmApprovalStatus === "rejected" ? (
-        <p className="text-[11px] font-semibold text-red-600">RSM Rejected</p>
-      ) : (
-        <p className="text-[11px] font-semibold text-amber-600">Awaiting RSM Approval</p>
-      )}
+      <RsmStatusLine request={request} size="text-[11px]" />
       <NsmStatusLine request={request} size="text-[11px]" />
 
       {request.discountScope === "product" && request.targetProduct && (
@@ -312,12 +301,15 @@ function RequestCard({
         ))}
       </div>
 
+      <ResubmissionNote orderSnapshot={request.source.orderSnapshot} />
+
       <details className="overflow-hidden rounded-xl border border-gray-200">
         <summary className="cursor-pointer list-none bg-gray-50 px-3 py-2 text-[11px] font-bold text-gray-700">
           Products ({request.orderSnapshot.products.length})
+          {rejectedLineCount(request.source.orderSnapshot) > 0 && <span className="text-red-600"> · {rejectedLineCount(request.source.orderSnapshot)} rejected</span>}
         </summary>
-        <div className="max-h-72 divide-y divide-gray-100 overflow-y-auto">
-          {request.orderSnapshot.products.map((product, index) => (
+        <RequestedFirst as="div" className="max-h-72 divide-y divide-gray-100 overflow-y-auto" items={request.orderSnapshot.products} isRequested={(p) => Boolean(p.usesCustomDiscount)} rejected={<RejectedListItems orderSnapshot={request.source.orderSnapshot} />}>
+          {(product, index) => (
             <div
               key={`${request.id}-${product.productKey || product.sku}-${index}`}
               className={`px-3 py-2 ${rejected.includes(index) ? "bg-red-50" : product.usesCustomDiscount ? "bg-brand-50" : ""}`}
@@ -350,8 +342,8 @@ function RequestCard({
               </div>
               {product.productNote && <p className="mt-1 text-[11px] text-gray-500">Product Note: {product.productNote}</p>}
             </div>
-          ))}
-        </div>
+          )}
+        </RequestedFirst>
       </details>
 
       <div className="grid gap-2 text-[11px] text-gray-600 sm:grid-cols-3">
@@ -501,6 +493,7 @@ export default function CustomDiscountApprovalsPage() {
       const normalized = normalizeCustomDiscountRequestRecord(json.data);
       setRequests((prev) => prev.map((row) => row.id === request.id ? normalized : row));
       setRejectedLines((prev) => ({ ...prev, [request.id]: [] }));
+      toastReviewOutcome(json.data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not update approval");
     } finally {
@@ -706,15 +699,7 @@ export default function CustomDiscountApprovalsPage() {
                       {request.assignedStaffId ? ` · Assigned Staff: ${request.assignedStaffId}` : ""}
                       {` · Submitted ${request.createdAt ? new Date(request.createdAt).toLocaleString("en-IN") : "-"}`}
                     </p>
-                    {request.rsmApprovalStatus === "approved" ? (
-                      <p className="text-[12px] font-semibold text-emerald-700">
-                        RSM Approved{request.rsmReviewedBy ? ` by ${request.rsmReviewedBy}` : ""}
-                      </p>
-                    ) : request.rsmApprovalStatus === "rejected" ? (
-                      <p className="text-[12px] font-semibold text-red-600">RSM Rejected</p>
-                    ) : (
-                      <p className="text-[12px] font-semibold text-amber-600">Awaiting RSM Approval</p>
-                    )}
+                    <RsmStatusLine request={request} size="text-[12px]" />
                     <NsmStatusLine request={request} size="text-[12px]" />
                     {request.discountScope === "product" && request.targetProduct && (
                       <p className="text-[12px] font-semibold text-brand-600">
@@ -770,10 +755,13 @@ export default function CustomDiscountApprovalsPage() {
                       </div>
                     </div>
 
+                    <ResubmissionNote orderSnapshot={request.source.orderSnapshot} />
+
                     <details className="overflow-hidden rounded-xl border border-gray-200" open>
                       <summary className="cursor-pointer list-none bg-gray-50 px-4 py-3 text-[12px] font-bold text-gray-700">
                         Complete Product List &middot; {request.orderSnapshot.products.length} products &middot;{" "}
                         {request.orderSnapshot.products.filter((p) => p.usesCustomDiscount).length} with requested discount
+                        {rejectedLineCount(request.source.orderSnapshot) > 0 && <span className="text-red-600"> &middot; {rejectedLineCount(request.source.orderSnapshot)} rejected</span>}
                       </summary>
                       <div className="overflow-x-auto">
                         <table className="w-full text-sm">
@@ -786,8 +774,8 @@ export default function CustomDiscountApprovalsPage() {
                               ))}
                             </tr>
                           </thead>
-                          <tbody className="divide-y divide-gray-100">
-                            {request.orderSnapshot.products.map((product, index) => (
+                          <RequestedFirst className="divide-y divide-gray-100" items={request.orderSnapshot.products} isRequested={(p) => Boolean(p.usesCustomDiscount)} rejected={<RejectedTableRows orderSnapshot={request.source.orderSnapshot} />}>
+                            {(product, index) => (
                               <tr
                                 key={`${request.id}-${product.productKey || product.sku}-${index}`}
                                 className={rejected.includes(index) ? "bg-red-50 ring-1 ring-inset ring-red-200" : product.usesCustomDiscount ? "bg-brand-50 ring-1 ring-inset ring-brand-200" : ""}
@@ -831,8 +819,8 @@ export default function CustomDiscountApprovalsPage() {
                                 </td>
                                 <td className="px-3 py-3 font-mono text-[12px] font-bold text-emerald-700">{money(product.finalAmount)}</td>
                               </tr>
-                            ))}
-                          </tbody>
+                            )}
+                          </RequestedFirst>
                         </table>
                       </div>
                     </details>

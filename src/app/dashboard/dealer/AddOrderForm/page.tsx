@@ -2,7 +2,7 @@
 // app/order/page.tsx
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo, Suspense } from "react";
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, Suspense } from "react";
 import axios from "axios";
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -1268,6 +1268,31 @@ function AddOrderPageInner() {
     })
     .filter(({ percent }) => percent > (approvedCustomDiscountPercent ?? baseDiscountPayload.baseDiscountPercent));
   const hasRequestedProductDiscounts = requestedProductDiscountRows.length > 0;
+  // Display order only: rows with a requested product discount float to the top. idx stays the arr1 index for handlers.
+  const requestedRowKeys = new Set(customDiscountScope === "product" ? requestedProductDiscountRows.map(({ row }) => row.key) : []);
+  const displayRows = arr1
+    .map((row, idx) => ({ row, idx }))
+    .sort((a, b) => Number(requestedRowKeys.has(b.row.key)) - Number(requestedRowKeys.has(a.row.key)));
+  const displayOrderKey = displayRows.map(({ row }) => row.key).join("|");
+  const productTbodyRef = useRef<HTMLTableSectionElement>(null);
+  const rowLayoutRef = useRef<{ order: string; tops: Map<string, number> }>({ order: "", tops: new Map() });
+  // FLIP shuffle: when the order changes, slide each row from its previous position to the new one.
+  useLayoutEffect(() => {
+    const rows = productTbodyRef.current?.querySelectorAll<HTMLTableRowElement>("tr[data-row-key]");
+    if (!rows) return;
+    const prev = rowLayoutRef.current;
+    const animate = prev.order !== "" && prev.order !== displayOrderKey && !window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const tops = new Map<string, number>();
+    rows.forEach((tr) => {
+      const key = tr.dataset.rowKey ?? "";
+      tops.set(key, tr.offsetTop);
+      const from = prev.tops.get(key);
+      if (animate && from !== undefined && from !== tr.offsetTop) {
+        tr.animate([{ transform: `translateY(${from - tr.offsetTop}px)` }, { transform: "translateY(0)" }], { duration: 400, easing: "cubic-bezier(0.22, 1, 0.36, 1)" });
+      }
+    });
+    rowLayoutRef.current = { order: displayOrderKey, tops };
+  });
   const customDiscountNetSubtotal = customDiscountBaseSubtotal * (1 - baseDiscountPayload.baseDiscountPercent / 100);
   const requestedCustomDiscountAmount = customDiscountNetSubtotal * (customDiscountOnNetPercent / 100);
   const requestedCustomFinalPayable = Math.max(0, customDiscountNetSubtotal - requestedCustomDiscountAmount);
@@ -1738,6 +1763,11 @@ function AddOrderPageInner() {
 
     return null;
   };
+
+  // Catalogue numbers already in the table; hidden from other rows' search so a product can't be added twice.
+  const usedCatalogueValues = new Set(
+    arr1.map((row) => findCatalogueOption(row, resolveRowSelection(row).variantSku)?.value).filter(Boolean),
+  );
 
   const getSelectedVariantSpecs = (variant: CatalogueVariant | null) => {
     const structuredSpecs = Object.entries(variant?.specs ?? {})
@@ -3077,7 +3107,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 <div className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
                   <p className="font-bold uppercase tracking-wider text-brand-500">Requested</p>
                   <p className="mt-1 font-mono text-[13px] font-bold text-brand-600">
-                    {visibleCustomRequest?.requestedOrderDiscountPercent ?? visibleCustomRequest?.requestedDiscountPercent ?? requestedCustomDiscountPercent}%
+                    {Math.max(0, Number(((visibleCustomRequest?.requestedOrderDiscountPercent ?? visibleCustomRequest?.requestedDiscountPercent ?? requestedCustomDiscountPercent) - baseDiscountPayload.baseDiscountPercent).toFixed(2)))}%
                   </p>
                 </div>
               </div>
@@ -3260,8 +3290,8 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     <th className="pl-3 pr-6 py-2.5 w-16"></th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {arr1.map((row, idx) => {
+                <tbody ref={productTbodyRef} className="divide-y divide-gray-50">
+                  {displayRows.map(({ row, idx }, displayIdx) => {
                     const listPrice = rowPaise(row);
                     const baseListPrice = rowSalePackPaise(row) / 100;
                     const rowSalePercent = getRowSalePercent(row);
@@ -3282,14 +3312,15 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                     // Product discounts are shown and edited as a % off the net after globalPercent.
                     const productExtraPercent = approvedProductReq ? discountOnNet(globalPercent, approvedProductTotal) : 0;
                     const pendingProductReq = getProductPendingRequest(row);
+                    const requestedRowDiscount = customDiscountScope === "product" ? requestedProductDiscountRows.find((r) => r.row.key === row.key) : undefined;
                     const isEditingThisRow = editingProductDiscountKey === productKey;
                     const currentProductInput = perProductDiscountInputs[productKey] ?? globalPercent;
                     const rowDisplayName = shortProductName(row.displayName || selectedProduct?.name || meta?.productName || row.productname);
 
                     return (
-                      <tr key={row.key} className={`hover:bg-gray-50/50 transition-colors${pendingProductReq ? " border-l-2 border-amber-400" : ""}`}>
+                      <tr key={row.key} data-row-key={row.key} className={`relative transition-colors${requestedRowDiscount ? " bg-brand-50/60 hover:bg-brand-50 border-l-2 border-brand-400" : pendingProductReq ? " hover:bg-gray-50/50 border-l-2 border-amber-400" : " hover:bg-gray-50/50"}`}>
                         <td className="pl-6 pr-3 py-2.5">
-                          <span className="text-[11px] text-gray-300 font-mono">{String(idx + 1).padStart(2, "0")}</span>
+                          <span className="text-[11px] text-gray-300 font-mono">{String(displayIdx + 1).padStart(2, "0")}</span>
                         </td>
                         <td className="px-3 py-2.5">
                             {(row.displayName || selectedProduct || row.productname) && (
@@ -3316,6 +3347,11 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                                   {row.variantCode && (
                                     <span className="ml-1.5 font-mono text-[10px] font-semibold text-amber-600">
                                       {row.variantCode}
+                                    </span>
+                                  )}
+                                  {requestedRowDiscount && (
+                                    <span className="ml-1.5 rounded-md border border-brand-200 bg-white px-1.5 py-0.5 font-mono text-[9.5px] font-bold text-brand-600">
+                                      Custom {discountOnNet(baseDiscountPayload.baseDiscountPercent, requestedRowDiscount.percent)}% on net
                                     </span>
                                   )}
                                 </p>
@@ -3357,7 +3393,10 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                               value={selectedCatalogueOption}
                               onChange={(option) => handleChangeSelect(idx, option?.value ?? "")}
                               isDisabled={orderLockedByPendingApproval}
-                              filterOption={catalogueFilter}
+                              filterOption={(option, inputValue) =>
+                                (option.value === selectedCatalogueOption?.value || !usedCatalogueValues.has(option.value)) &&
+                                catalogueFilter(option, inputValue)
+                              }
                               isClearable
                               placeholder="Search Catalogue No."
                               noOptionsMessage={() => "No catalogue number found"}
