@@ -140,7 +140,7 @@ function DecisionPanel({
         onChange={(e) => onNoteChange(e.target.value)}
         rows={4}
         disabled={!!blocker || request.normalizedStatus !== "pending" || busy}
-        placeholder="Add approval note (optional) or disapproval note (required)..."
+        placeholder="Remark (required to approve or reject)..."
         className="mt-2 w-full resize-none rounded-xl border border-gray-200 bg-white px-3 py-2 text-[13px] text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 disabled:bg-gray-100 disabled:text-gray-500"
       />
 
@@ -172,8 +172,8 @@ function DecisionPanel({
           <div className="mt-3 flex gap-2">
             <button
               onClick={() => onDecide("approved")}
-              disabled={busy || !!partial?.blocked || (!!partial && !note.trim())}
-              title={partial && !note.trim() ? "Add a note for the rejected lines" : undefined}
+              disabled={busy || !!partial?.blocked || !note.trim()}
+              title={!note.trim() ? "Add a remark to approve" : undefined}
               className="flex-1 rounded-xl bg-emerald-600 px-4 py-2.5 text-[13px] font-bold text-white hover:bg-emerald-700 disabled:opacity-50"
             >
               {busy ? "Saving..." : partial ? partial.label : "Approve"}
@@ -467,9 +467,8 @@ export default function CustomDiscountApprovalsPage() {
   const decide = async (request: NormalizedCustomDiscountRequest, status: ApprovalStatus) => {
     const adminNote = notes[request.id] ?? "";
     const rejected = status === "approved" && canSelectLines(request, viewerIsNsm) ? rejectedLines[request.id] ?? [] : [];
-    // A disapproval must always carry a reason the dealer can act on.
-    if ((status === "rejected" || rejected.length > 0) && !adminNote.trim()) {
-      setError("Add a note explaining the disapproval before rejecting this request.");
+    if (!adminNote.trim()) {
+      setError("Add a remark before approving or rejecting this request.");
       return;
     }
     setUpdating(request.id);
