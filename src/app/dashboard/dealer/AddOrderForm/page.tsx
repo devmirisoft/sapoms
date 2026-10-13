@@ -1538,7 +1538,7 @@ function AddOrderPageInner() {
           return;
         }
       }
-      toast.success("Custom discount request sent to admin.");
+      toast.success("Custom discount request sent.");
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Could not request custom discount.");
     } finally {
@@ -2423,7 +2423,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 max-h-[68vh] overflow-y-auto" style={{ zoom: 1.25 }}>
             <h3 className="text-[12.75px] font-bold text-gray-900 mb-1">Request Custom Discount</h3>
             <p className="text-[10.63px] text-gray-500 mb-4">
-              This order will not be placed now. It is sent to admin for discount approval and can be placed once approved.
+              This order will not be placed now. It is sent for discount approval and can be placed once approved.
             </p>
 
             <div className="rounded-xl border border-gray-200 divide-y divide-gray-100 text-[10.63px]">
