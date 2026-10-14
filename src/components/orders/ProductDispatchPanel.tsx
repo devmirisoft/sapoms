@@ -8,11 +8,14 @@ import {
   DISPATCH_STATUS_LABELS,
   isAcceptedOrderForDispatch,
   isDeletedOrderForDispatch,
+  shipmentLabel,
   type DispatchStatus,
+  type DispatchTrackingInfo,
   type DispatchUserSession,
   type OrderDispatchRecord,
 } from "@/lib/orderDispatch";
 import { showToast } from "@/components/ui/toast";
+import { EMPTY_SHIPMENT_PICK, ShipmentPicker, shipmentPickPayload, type ShipmentPick } from "@/components/orders/ShipmentFields";
 
 type DispatchPanelItem = {
   orderItemId?: string | null;
@@ -50,10 +53,11 @@ type Props = {
   acceptOrder?: string | null;
   delStatus?: string | null;
   items: DispatchPanelItem[];
+  shipments: DispatchTrackingInfo[];
   currentUser: DispatchUserSession | null;
   selectedItemId: string | null;
   onClose: () => void;
-  onRecordSaved: (records: OrderDispatchRecord[]) => void;
+  onRecordSaved: (records: OrderDispatchRecord[], shipments?: unknown) => void;
 };
 
 type FormState = {
@@ -105,6 +109,7 @@ function DispatchPanelDialog({
   acceptOrder,
   delStatus,
   selectedItem,
+  shipments,
   currentUser,
   onClose,
   onRecordSaved,
@@ -116,9 +121,10 @@ function DispatchPanelDialog({
   acceptOrder?: string | null;
   delStatus?: string | null;
   selectedItem: ResolvedDispatchPanelItem;
+  shipments: DispatchTrackingInfo[];
   currentUser: DispatchUserSession | null;
   onClose: () => void;
-  onRecordSaved: (records: OrderDispatchRecord[]) => void;
+  onRecordSaved: (records: OrderDispatchRecord[], shipments?: unknown) => void;
   onSaved: () => void;
 }) {
   const [form, setForm] = useState<FormState>({
@@ -129,6 +135,7 @@ function DispatchPanelDialog({
   });
   const [formError, setFormError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [shipmentPick, setShipmentPick] = useState<ShipmentPick>(EMPTY_SHIPMENT_PICK);
 
   const canEdit = canUserEditDispatch(currentUser, {
     dealerId,
@@ -189,6 +196,12 @@ function DispatchPanelDialog({
       setFormError("Operational Remark is required.");
       return;
     }
+    // Not-in-stock leaves nothing to ship.
+    const shipment = form.status === "not_in_stock" ? null : shipmentPickPayload(shipmentPick);
+    if (shipment && !shipment.ok) {
+      setFormError(shipment.message);
+      return;
+    }
 
     setSubmitting(true);
     setFormError("");
@@ -208,6 +221,7 @@ function DispatchPanelDialog({
           dispatchQuantity,
           status: form.status,
           remark: trimmedRemark,
+          ...(shipment?.ok ? shipment.value : {}),
           acceptOrder,
           delStatus,
           legacyReadyQuantity: selectedItem.dispatchedQuantity,
@@ -222,7 +236,7 @@ function DispatchPanelDialog({
       }
 
       // The API answers with every dispatch record on the order, not just the saved line.
-      onRecordSaved(Array.isArray(json.data) ? json.data as OrderDispatchRecord[] : [json.data as OrderDispatchRecord]);
+      onRecordSaved(Array.isArray(json.data) ? json.data as OrderDispatchRecord[] : [json.data as OrderDispatchRecord], json.tracking);
       onSaved();
       window.dispatchEvent(new CustomEvent("orderDispatchUpdated", {
         detail: {
@@ -244,16 +258,16 @@ function DispatchPanelDialog({
       onClick={onClose}
     >
       <div
-        className="max-h-[90vh] w-full max-w-5xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
+        className="max-h-[90vh] w-full max-w-7xl overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-start justify-between border-b border-slate-200 px-6 py-5">
           <div>
-            <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-slate-400">Dispatch Details</p>
-            <h2 className="mt-1 text-[20px] font-bold text-slate-900">
+            <p className="text-[9.5px] font-bold uppercase tracking-[0.18em] text-slate-400">Dispatch Details</p>
+            <h2 className="mt-1 text-[16px] font-bold text-slate-900">
               {selectedItem.product_name || selectedItem.orderdata_cat_no || "Product line"}
             </h2>
-            <p className="mt-1 text-[13px] text-slate-500">
+            <p className="mt-1 text-[11.5px] text-slate-500">
               Order ID: {orderId} · Line ID: {selectedItem.orderItemId || selectedItem.orderdata_id || "fallback"}
             </p>
           </div>
@@ -269,46 +283,46 @@ function DispatchPanelDialog({
           </button>
         </div>
 
-        <div className="grid max-h-[calc(90vh-96px)] grid-cols-1 gap-0 overflow-y-auto lg:grid-cols-[1.05fr_0.95fr]">
+        <div className="grid max-h-[calc(90vh-96px)] grid-cols-1 gap-0 overflow-y-auto lg:grid-cols-[minmax(0,1.5fr)_minmax(340px,1fr)]">
           <div className="border-b border-slate-200 p-6 lg:border-b-0 lg:border-r">
             <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Catalogue</p>
-                <p className="mt-1 font-mono text-[13px] font-semibold text-amber-700">{selectedItem.orderdata_cat_no || "-"}</p>
+                <p className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Catalogue</p>
+                <p className="mt-1 font-mono text-[11.5px] font-semibold text-amber-700">{selectedItem.orderdata_cat_no || "-"}</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Ordered</p>
-                <p className="mt-1 font-mono text-[15px] font-bold text-slate-900">{selectedItem.orderedQuantity * packSize} pcs</p>
+                <p className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Ordered</p>
+                <p className="mt-1 font-mono text-[12.5px] font-bold text-slate-900">{selectedItem.orderedQuantity * packSize} pcs</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Dispatched</p>
-                <p className="mt-1 font-mono text-[15px] font-bold text-emerald-700">{selectedItem.dispatchedQuantity * packSize} pcs</p>
+                <p className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Dispatched</p>
+                <p className="mt-1 font-mono text-[12.5px] font-bold text-emerald-700">{selectedItem.dispatchedQuantity * packSize} pcs</p>
               </div>
               <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
-                <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Remaining</p>
-                <p className="mt-1 font-mono text-[15px] font-bold text-rose-600">{selectedItem.remainingQuantity * packSize} pcs</p>
+                <p className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Remaining</p>
+                <p className="mt-1 font-mono text-[12.5px] font-bold text-rose-600">{selectedItem.remainingQuantity * packSize} pcs</p>
               </div>
             </div>
 
             <div className="mt-4 rounded-2xl border border-slate-200 p-4">
-              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Current Status</p>
-              <p className="mt-1 text-[14px] font-semibold text-slate-900">{statusSummary}</p>
+              <p className="text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Current Status</p>
+              <p className="mt-1 text-[12.5px] font-semibold text-slate-900">{statusSummary}</p>
               {selectedItem.product_discription && (
                 <>
-                  <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Specification</p>
-                  <p className="mt-1 text-[13px] leading-6 text-slate-700">{selectedItem.product_discription}</p>
+                  <p className="mt-4 text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Specification</p>
+                  <p className="mt-1 text-[11.5px] leading-6 text-slate-700">{selectedItem.product_discription}</p>
                 </>
               )}
               {noteText && (
                 <>
-                  <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Product Note</p>
-                  <p className="mt-1 text-[13px] leading-6 text-slate-700">{noteText}</p>
+                  <p className="mt-4 text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Product Note</p>
+                  <p className="mt-1 text-[11.5px] leading-6 text-slate-700">{noteText}</p>
                 </>
               )}
               {remarksText && (
                 <>
-                  <p className="mt-4 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">Original Order Remarks</p>
-                  <p className="mt-1 text-[13px] leading-6 text-slate-700">{remarksText}</p>
+                  <p className="mt-4 text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Original Order Remarks</p>
+                  <p className="mt-1 text-[11.5px] leading-6 text-slate-700">{remarksText}</p>
                 </>
               )}
             </div>
@@ -316,22 +330,22 @@ function DispatchPanelDialog({
             <div className="mt-4 rounded-2xl border border-slate-200">
               <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">Dispatch History</p>
-                  <p className="mt-1 text-[13px] text-slate-500">
+                  <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-slate-400">Dispatch History</p>
+                  <p className="mt-1 text-[11.5px] text-slate-500">
                     {selectedItem.dispatchHistory.length} update{selectedItem.dispatchHistory.length === 1 ? "" : "s"}
                   </p>
                 </div>
               </div>
 
               {selectedItem.dispatchHistory.length === 0 ? (
-                <div className="px-4 py-6 text-[13px] text-slate-500">No dispatch updates yet.</div>
+                <div className="px-4 py-6 text-[11.5px] text-slate-500">No dispatch updates yet.</div>
               ) : (
                 <div className="max-h-[320px] overflow-auto">
                   <table className="w-full border-collapse text-left">
                     <thead>
                       <tr className="border-b border-slate-100 bg-slate-50">
-                        {["S.No.", "Dispatch Quantity", "Status", "Operational Remark", "Updated By", "Role", "Date/Time"].map((label) => (
-                          <th key={label} className="px-4 py-3 text-[10px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                        {["S.No.", "Dispatch Quantity", "Status", "Shipment", "Operational Remark", "Updated By", "Role", "Date/Time"].map((label) => (
+                          <th key={label} className="px-4 py-3 text-[8.5px] font-bold uppercase tracking-[0.14em] text-slate-400">
                             {label}
                           </th>
                         ))}
@@ -340,13 +354,16 @@ function DispatchPanelDialog({
                     <tbody>
                       {selectedItem.dispatchHistory.map((entry, index) => (
                         <tr key={entry.id} className="border-b border-slate-100 align-top last:border-b-0">
-                          <td className="px-4 py-3 font-mono text-[11px] text-slate-500">{String(index + 1).padStart(2, "0")}</td>
-                          <td className="px-4 py-3 font-mono text-[12px] font-semibold text-slate-900">{entry.quantity * packSize} pcs</td>
-                          <td className="px-4 py-3 text-[12px] font-semibold text-brand-600">{statusSelectLabel(entry.status)}</td>
-                          <td className="px-4 py-3 text-[12px] leading-5 text-slate-700">{entry.remark}</td>
-                          <td className="px-4 py-3 text-[12px] text-slate-600">{entry.actorId}</td>
-                          <td className="px-4 py-3 text-[12px] capitalize text-slate-600">{entry.actorRole}</td>
-                          <td className="px-4 py-3 text-[11px] text-slate-500">
+                          <td className="px-4 py-3 font-mono text-[9.5px] text-slate-500">{String(index + 1).padStart(2, "0")}</td>
+                          <td className="px-4 py-3 font-mono text-[10.5px] font-semibold text-slate-900">{entry.quantity * packSize} pcs</td>
+                          <td className="px-4 py-3 text-[10.5px] font-semibold text-brand-600">{statusSelectLabel(entry.status)}</td>
+                          <td className="px-4 py-3 text-[10.5px] text-slate-700 whitespace-nowrap">
+                            {entry.shipmentId ? shipmentLabel(shipments.find((shipment) => shipment.id === entry.shipmentId)) : "—"}
+                          </td>
+                          <td className="px-4 py-3 text-[10.5px] leading-5 text-slate-700">{entry.remark}</td>
+                          <td className="px-4 py-3 text-[10.5px] text-slate-600">{entry.actorId}</td>
+                          <td className="px-4 py-3 text-[10.5px] capitalize text-slate-600">{entry.actorRole}</td>
+                          <td className="px-4 py-3 text-[9.5px] text-slate-500">
                             {new Date(entry.createdAt).toLocaleString("en-IN")}
                           </td>
                         </tr>
@@ -362,17 +379,17 @@ function DispatchPanelDialog({
             <div className="rounded-2xl border border-slate-200 p-5">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                  <p className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-slate-400">
                     {canEdit ? "Add Dispatch Detail" : "Dispatch Summary"}
                   </p>
-                  <p className="mt-1 text-[13px] text-slate-500">
+                  <p className="mt-1 text-[11.5px] text-slate-500">
                     {canEdit
                       ? "Dispatch Quantity is incremental for this update only."
                       : "This order can be viewed, but dispatch updates are not allowed for your current access."}
                   </p>
                 </div>
                 {!canEdit && (
-                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold text-slate-500">
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[9.5px] font-semibold text-slate-500">
                     Read only
                   </span>
                 )}
@@ -380,7 +397,7 @@ function DispatchPanelDialog({
 
               <div className="mt-5 space-y-4">
                 <div>
-                  <label htmlFor="dispatch-quantity" className="mb-1.5 block text-[12px] font-semibold text-slate-700">
+                  <label htmlFor="dispatch-quantity" className="mb-1.5 block text-[10.5px] font-semibold text-slate-700">
                     Dispatch Quantity (pieces{packSize > 1 ? `, pack of ${packSize}` : ""})
                   </label>
                   <input
@@ -391,12 +408,12 @@ function DispatchPanelDialog({
                     value={form.dispatchQuantity}
                     onChange={(event) => handleChange("dispatchQuantity", event.target.value)}
                     disabled={submitDisabled}
-                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-brand-300"
+                    className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-[11.5px] text-slate-900 outline-none transition focus:border-brand-300"
                   />
                 </div>
 
                 <div>
-                  <label htmlFor="dispatch-status" className="mb-1.5 block text-[12px] font-semibold text-slate-700">
+                  <label htmlFor="dispatch-status" className="mb-1.5 block text-[10.5px] font-semibold text-slate-700">
                     Status
                   </label>
                   <select
@@ -404,7 +421,7 @@ function DispatchPanelDialog({
                     value={form.status}
                     onChange={(event) => handleChange("status", event.target.value)}
                     disabled={submitDisabled}
-                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] text-slate-900 outline-none transition focus:border-brand-300"
+                    className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11.5px] text-slate-900 outline-none transition focus:border-brand-300"
                   >
                     <option value="">Select status</option>
                     {DISPATCH_MUTATION_STATUSES.map((status) => (
@@ -415,12 +432,24 @@ function DispatchPanelDialog({
                   </select>
                 </div>
 
+                {canEdit && form.status !== "not_in_stock" && (
+                  <div className="[&_label]:text-[10.5px] [&_select]:text-[11.5px]">
+                    <ShipmentPicker
+                      shipments={shipments}
+                      value={shipmentPick}
+                      onChange={setShipmentPick}
+                      disabled={submitDisabled}
+                      onError={setFormError}
+                    />
+                  </div>
+                )}
+
                 <div>
                   <div className="mb-1.5 flex items-center justify-between">
-                    <label htmlFor="dispatch-remark" className="block text-[12px] font-semibold text-slate-700">
+                    <label htmlFor="dispatch-remark" className="block text-[10.5px] font-semibold text-slate-700">
                       Operational Remark
                     </label>
-                    <span className="text-[11px] font-medium text-slate-400">
+                    <span className="text-[9.5px] font-medium text-slate-400">
                       {form.remark.length}/{REMARK_LIMIT}
                     </span>
                   </div>
@@ -431,25 +460,25 @@ function DispatchPanelDialog({
                     value={form.remark}
                     onChange={(event) => handleChange("remark", event.target.value)}
                     disabled={submitDisabled}
-                    className="w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 text-[13px] leading-6 text-slate-900 outline-none transition focus:border-brand-300"
+                    className="w-full resize-none rounded-2xl border border-slate-200 px-4 py-3 text-[11.5px] leading-6 text-slate-900 outline-none transition focus:border-brand-300"
                     placeholder="Add the operational dispatch remark"
                   />
                 </div>
 
                 {!isAccepted && (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[12px] text-amber-700">
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-[10.5px] text-amber-700">
                     Dispatch updates are blocked until this order is accepted.
                   </div>
                 )}
 
                 {isDeleted && (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12px] text-rose-700">
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[10.5px] text-rose-700">
                     Dispatch updates are blocked for deleted or declined orders.
                   </div>
                 )}
 
                 {formError && (
-                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12px] text-rose-700">
+                  <div className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[10.5px] text-rose-700">
                     {formError}
                   </div>
                 )}
@@ -458,7 +487,7 @@ function DispatchPanelDialog({
                   <button
                     type="button"
                     onClick={onClose}
-                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[13px] font-semibold text-slate-600 transition hover:bg-slate-50"
+                    className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-[11.5px] font-semibold text-slate-600 transition hover:bg-slate-50"
                   >
                     Close
                   </button>
@@ -466,7 +495,7 @@ function DispatchPanelDialog({
                     type="button"
                     onClick={handleSubmit}
                     disabled={submitDisabled}
-                    className="rounded-2xl bg-slate-900 px-4 py-3 text-[13px] font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="rounded-2xl bg-slate-900 px-4 py-3 text-[11.5px] font-semibold text-white transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {submitting ? "Saving..." : "Save Dispatch Update"}
                   </button>
@@ -488,6 +517,7 @@ export default function ProductDispatchPanel({
   acceptOrder,
   delStatus,
   items,
+  shipments,
   currentUser,
   selectedItemId,
   onClose,
@@ -517,6 +547,7 @@ export default function ProductDispatchPanel({
         acceptOrder={acceptOrder}
         delStatus={delStatus}
         selectedItem={selectedItem}
+        shipments={shipments}
         currentUser={currentUser}
         onClose={onClose}
         onRecordSaved={onRecordSaved}

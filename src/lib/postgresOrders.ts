@@ -6,7 +6,7 @@ import { rsmOrderScope } from "@/server/auth/sales-scope";
 import { normalizedMtStatus, normalizedOrderStatus, type OrderFilters, type OrdersActor } from "@/lib/orderPagination";
 import { summarizeOrderSettlement } from "@/lib/orderSettlement";
 import { normalizeSku } from "@/lib/orderProductNotes.mjs";
-import { normalizeDispatchStatus, type DispatchStatus, type OrderDispatchRecord } from "@/lib/orderDispatch";
+import { normalizeDispatchStatus, type DispatchStatus, type DispatchTrackingInfo, type OrderDispatchRecord } from "@/lib/orderDispatch";
 
 export const orderInclude = {
   dealer: {
@@ -35,6 +35,7 @@ export const orderInclude = {
   ledgerBills: { orderBy: { billDate: "desc" as const } },
   // Latest dispatch only, for the note shown on the order list.
   dispatches: { orderBy: { createdAt: "desc" as const }, take: 1, select: { remark: true, createdAt: true } },
+  shipments: { orderBy: { createdAt: "asc" as const } },
 } satisfies Prisma.OrderInclude;
 
 const orderDetailInclude = {
@@ -133,7 +134,17 @@ export function postgresOrderDedupeIds(order: PostgresOrderRecord) {
 // One record per order line, aggregating its dispatch rows. Clients merge these
 // onto the line items to show dispatched/left quantities and the line status, so
 // every payload that carries dispatchRecords must use this shape.
-type DispatchRowLike = { id?: bigint; quantity: number; remark?: string | null; status?: string; actorUserId?: bigint | null; actorRole?: string | null; createdAt?: Date };
+type DispatchRowLike = { id?: bigint; quantity: number; remark?: string | null; status?: string; actorUserId?: bigint | null; actorRole?: string | null; createdAt?: Date; shipmentId?: bigint | null };
+
+export function mapPostgresShipment(shipment: { id: bigint; dispatchPartner: string; trackingNumber: string | null; trackingLink: string | null }): DispatchTrackingInfo {
+  return {
+    id: shipment.id.toString(),
+    dispatchPartner: shipment.dispatchPartner || null,
+    trackingNumber: shipment.trackingNumber || null,
+    trackingLink: shipment.trackingLink || null,
+    dock: null,
+  };
+}
 
 export function mapPostgresOrderDispatchRecords(order: PostgresOrderLike): OrderDispatchRecord[] {
   const orderId = orderIdentity(order);
@@ -149,6 +160,7 @@ export function mapPostgresOrderDispatchRecords(order: PostgresOrderLike): Order
       actorId: dispatch.actorUserId?.toString() || "",
       actorRole: dispatch.actorRole === "ADMIN" || dispatch.actorRole === "NSM" ? "admin" as const : "staff" as const,
       createdAt: dispatch.createdAt as Date,
+      shipmentId: dispatch.shipmentId?.toString() ?? null,
     }));
     const currentStatus: DispatchStatus = dispatchedQuantity >= item.quantityPacks ? "successful" : dispatchedQuantity > 0 ? "dispatched" : "pending";
     return {
@@ -318,12 +330,7 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     acceptance_reviewed_at: order.acceptanceReviewedAt?.toISOString?.() ?? null,
     fulfilmentStatus: order.fulfilmentStatus,
     fulfilment_status: order.fulfilmentStatus,
-    dispatchPartner: order.dispatchPartner || "",
-    dispatch_partner: order.dispatchPartner || "",
-    trackingNumber: order.trackingNumber || "",
-    tracking_number: order.trackingNumber || "",
-    trackingLink: order.trackingLink || "",
-    tracking_link: order.trackingLink || "",
+    shipments: (order.shipments ?? []).map(mapPostgresShipment),
     dock: order.dock || "",
     dispatch_note: (order.dispatches ?? []).reduce<{ remark: string | null; createdAt: Date } | null>((latest, dispatch) => (!latest || dispatch.createdAt >= latest.createdAt ? dispatch : latest), null)?.remark || "",
     orderdata_item_quantity: String(orderDispatchPieces(order).ordered),
@@ -438,8 +445,7 @@ function orderSearchWhere(query: string): Prisma.OrderWhereInput {
       { refNo: contains },
       { note: contains },
       { shipTo: contains },
-      { trackingNumber: contains },
-      { dispatchPartner: contains },
+      { shipments: { some: { OR: [{ trackingNumber: contains }, { dispatchPartner: contains }] } } },
       { dealer: { OR: [{ businessName: contains }, { dealerCode: contains }, { phone: contains }, { city: contains }] } },
       { assignedStaff: { displayName: contains } },
     ],

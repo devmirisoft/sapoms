@@ -19,6 +19,8 @@ export type DispatchHistoryEntry = {
   actorId: string;
   actorRole: DispatchActorRole;
   createdAt: Date | string;
+  // The OrderShipment this quantity went out with; null for older or not-in-stock rows.
+  shipmentId?: string | null;
 };
 
 export type OrderDispatchRecord = {
@@ -95,7 +97,9 @@ export const TRACKING_NUMBER_LIMIT = 120;
 export const TRACKING_LINK_LIMIT = 2048;
 export const DOCK_LIMIT = 120;
 
+// One shipment of an order. `id` is set once it is saved as an OrderShipment.
 export type DispatchTrackingInfo = {
+  id?: string;
   dispatchPartner: string | null;
   trackingNumber: string | null;
   trackingLink: string | null;
@@ -180,16 +184,35 @@ export function normalizeDispatchTrackingInput(input: {
   };
 }
 
-// Reads tracking info off any order-shaped record (PostgreSQL row, legacy
-// PHP row, or the merged order meta used by the order details page).
-export function readDispatchTrackingInfo(source: Record<string, unknown> | null | undefined): DispatchTrackingInfo {
-  const record = source ?? {};
+function readDispatchTrackingInfo(record: Record<string, unknown>): DispatchTrackingInfo {
   return {
+    ...(record.id !== undefined && record.id !== null ? { id: String(record.id) } : {}),
     dispatchPartner: normalizeDispatchPartner(record.dispatchPartner ?? record.dispatch_partner),
     trackingNumber: normalizeTrackingNumber(record.trackingNumber ?? record.tracking_number),
     trackingLink: normalizeTrackingLink(record.trackingLink ?? record.tracking_link),
     dock: normalizeDock(record.dock),
   };
+}
+
+// Reads an order's shipments off any order-shaped record: the `shipments`
+// array of a PostgreSQL order, or the single flat tracking fields of a legacy
+// PHP row (an empty list when those are blank).
+export function readDispatchShipments(source: Record<string, unknown> | null | undefined): DispatchTrackingInfo[] {
+  const record = source ?? {};
+  if (Array.isArray(record.shipments)) {
+    return record.shipments
+      .filter((row): row is Record<string, unknown> => !!row && typeof row === "object")
+      .map(readDispatchTrackingInfo);
+  }
+  // The record's own id is the order's, not a shipment's.
+  const legacy = readDispatchTrackingInfo({ ...record, id: undefined });
+  return legacy.dispatchPartner || legacy.trackingNumber || legacy.trackingLink ? [legacy] : [];
+}
+
+// "BlueDart · AWB123" — how a shipment is named in pickers and history rows.
+export function shipmentLabel(shipment: DispatchTrackingInfo | null | undefined): string {
+  if (!shipment) return "—";
+  return [shipment.dispatchPartner, shipment.trackingNumber].filter(Boolean).join(" · ") || "—";
 }
 
 // Dealers and admins read tracking information; only the attached staff writes it.

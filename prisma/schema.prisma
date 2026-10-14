@@ -713,11 +713,9 @@ model Order {
 
   fulfilmentStatus OrderFulfilmentStatus @default(PENDING) @map("fulfilment_status")
 
-  // Dispatch tracking information filled by dispatching staff, read by dealers.
-  dispatchPartner String? @map("dispatch_partner")
-  trackingNumber  String? @map("tracking_number")
-  trackingLink    String? @map("tracking_link") @db.Text
-  dock            String?
+  // Courier/tracking details live on OrderShipment: a partially dispatched
+  // order can go out with several couriers.
+  dock String?
 
   acceptedAt   DateTime? @map("accepted_at") @db.Timestamptz(6)
   cancelledAt  DateTime? @map("cancelled_at") @db.Timestamptz(6)
@@ -737,6 +735,7 @@ model Order {
 
   items        OrderItem[]
   dispatches   OrderItemDispatch[]
+  shipments    OrderShipment[]
   productNotes OrderProductNote[]
 
   discountRequests          CustomDiscountRequest[]
@@ -877,15 +876,43 @@ model OrderItemDispatch {
   legacySource String? @map("legacy_source")
   legacyId     String? @map("legacy_id")
 
+  // The courier shipment this quantity went out with.
+  shipmentId BigInt? @map("shipment_id")
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-  order     Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  orderItem OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  order     Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderItem OrderItem      @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  shipment  OrderShipment? @relation(fields: [shipmentId], references: [id], onDelete: SetNull)
 
   @@index([orderId, createdAt])
   @@index([orderItemId, createdAt])
+  @@index([shipmentId])
   @@unique([legacySource, legacyId])
   @@map("order_item_dispatches")
+}
+
+// One courier consignment (AWB / shipment document) of an order. Partial
+// dispatches can go out with different couriers, so an order has many.
+model OrderShipment {
+  id BigInt @id @default(autoincrement())
+
+  orderId BigInt @map("order_id")
+
+  dispatchPartner String  @map("dispatch_partner")
+  trackingNumber  String? @map("tracking_number")
+  trackingLink    String? @map("tracking_link") @db.Text
+
+  createdByUserId BigInt? @map("created_by_user_id")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  order      Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  dispatches OrderItemDispatch[]
+
+  @@index([orderId, createdAt])
+  @@map("order_shipments")
 }
 
 model OrderSequence {
