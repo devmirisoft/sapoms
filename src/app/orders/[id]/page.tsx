@@ -22,6 +22,7 @@ import {
 } from "@/lib/orderDetailItems";
 import ProductDispatchPanel from "@/components/orders/ProductDispatchPanel";
 import DispatchTrackingCard from "@/components/orders/DispatchTrackingCard";
+import { EMPTY_SHIPMENT_PICK, ShipmentPicker, shipmentPickPayload, type ShipmentPick } from "@/components/orders/ShipmentFields";
 import {
   buildBulkDispatchPlan,
   buildBulkDispatchLineKey,
@@ -30,7 +31,7 @@ import {
   canUserEditDispatch,
   canUserEditDispatchTracking,
   dispatchPiecesToPacks,
-  readDispatchTrackingInfo,
+  readDispatchShipments,
   DISPATCH_MUTATION_STATUSES,
   DISPATCH_STATUS_LABELS,
   normalizeOrderAcceptance,
@@ -114,6 +115,7 @@ type OrderData = {
     actorId: string;
     actorRole: "staff" | "admin";
     createdAt: string | Date;
+    shipmentId?: string | null;
   }>;
   occurrence?: number;
 };
@@ -532,6 +534,7 @@ function TrackingModal({
   acceptOrder,
   delStatus,
   items,
+  shipments,
   currentUser,
   selectedItemId,
   onClose,
@@ -544,10 +547,11 @@ function TrackingModal({
   acceptOrder?: string;
   delStatus?: string;
   items: OrderData[];
+  shipments: DispatchTrackingInfo[];
   currentUser: DispatchUserSession | null;
   selectedItemId: string | null;
   onClose: () => void;
-  onRecordSaved: (records: OrderDispatchRecord[]) => void;
+  onRecordSaved: (records: OrderDispatchRecord[], shipments?: unknown) => void;
 }) {
   return (
     <ProductDispatchPanel
@@ -558,6 +562,7 @@ function TrackingModal({
       acceptOrder={acceptOrder}
       delStatus={delStatus}
       items={items}
+      shipments={shipments}
       currentUser={currentUser}
       selectedItemId={selectedItemId}
       onClose={onClose}
@@ -907,7 +912,8 @@ export default function ViewOrderDealerPage() {
   const [dispatchAllIdempotencyKey, setDispatchAllIdempotencyKey] = useState("");
   const [dispatchAllSaving, setDispatchAllSaving] = useState(false);
   const [dispatchAllError, setDispatchAllError] = useState("");
-  const [dispatchTrackingOverride, setDispatchTrackingOverride] = useState<DispatchTrackingInfo | null>(null);
+  const [dispatchTrackingOverride, setDispatchTrackingOverride] = useState<DispatchTrackingInfo[] | null>(null);
+  const [dispatchShipmentPick, setDispatchShipmentPick] = useState<ShipmentPick>(EMPTY_SHIPMENT_PICK);
   const [selectedDispatchKeys, setSelectedDispatchKeys] = useState<Set<string>>(new Set());
   const [dispatchSelectedQuantities, setDispatchSelectedQuantities] = useState<Record<string, string>>({});
   const [dispatchSelectedStatus, setDispatchSelectedStatus] = useState<Exclude<DispatchStatus, "pending">>("dispatched");
@@ -1236,7 +1242,9 @@ export default function ViewOrderDealerPage() {
     return mergeOrderItemsWithDispatchRecords(withProductNotes, dispatchRecords) as OrderData[];
   }, [dispatchRecords, fallbackProductNotes, id, localOrderFallback, overlayItems, overlayState?.isEdited, phpOrders, summaryOverride]);
 
-  const handleDispatchRecordsSaved = (records: OrderDispatchRecord[]) => {
+  const handleDispatchRecordsSaved = (records: OrderDispatchRecord[], shipments?: unknown) => {
+    // A dispatch can add a shipment; the response carries the order's full list.
+    if (Array.isArray(shipments)) setDispatchTrackingOverride(shipments as DispatchTrackingInfo[]);
     setDispatchRecords((previous) => {
       const copy = [...previous];
 
@@ -1345,9 +1353,9 @@ export default function ViewOrderDealerPage() {
     acceptOrder,
     delStatus: orderDeleted,
   }) && !overlayState?.isCancelled;
-  // Saved value wins until the order reloads with the stored tracking info.
-  const dispatchTracking = dispatchTrackingOverride
-    ?? readDispatchTrackingInfo(displayOrderMeta as unknown as Record<string, unknown>);
+  // Saved value wins until the order reloads with the stored shipments.
+  const dispatchShipments = dispatchTrackingOverride
+    ?? readDispatchShipments(displayOrderMeta as unknown as Record<string, unknown>);
   const canUseDispatchAll = canUserBulkDispatch(currentUser, {
     dealerId: dealerIdForDispatch,
     assignedStaffId,
@@ -1363,6 +1371,21 @@ export default function ViewOrderDealerPage() {
     [displayOrders, baseRowPricings]
   );
   const dispatchAllPlan = useMemo(() => buildBulkDispatchPlan(dispatchItems), [dispatchItems]);
+  // What went out in each shipment: "Flask 250 ml — 50 pcs" per product, keyed by shipment id.
+  const shipmentContents = useMemo(() => {
+    const contents: Record<string, string[]> = {};
+    for (const item of dispatchItems) {
+      const packsByShipment = new Map<string, number>();
+      for (const entry of item.dispatchHistory ?? []) {
+        if (entry.shipmentId) packsByShipment.set(entry.shipmentId, (packsByShipment.get(entry.shipmentId) ?? 0) + entry.quantity);
+      }
+      const name = item.product_name || item.orderdata_cat_no || "Product";
+      for (const [shipmentId, packs] of packsByShipment) {
+        (contents[shipmentId] ??= []).push(`${name} — ${packs * item.packSize} pcs`);
+      }
+    }
+    return contents;
+  }, [dispatchItems]);
   const showDispatchAllControl = canUseDispatchAll;
   const dispatchableByKey = useMemo(
     () => new Map(dispatchAllPlan.lines.map((line) => [buildBulkDispatchLineKey(line), line])),
@@ -1524,6 +1547,7 @@ export default function ViewOrderDealerPage() {
     setDispatchAllRemark("");
     setDispatchAllError("");
     setDispatchSelectedStatus("dispatched");
+    setDispatchShipmentPick(EMPTY_SHIPMENT_PICK);
     setDispatchSelectedQuantities(Object.fromEntries(
       selectedDispatchLines.map((line) => [buildBulkDispatchLineKey(line), String(line.remainingQuantity * line.packSize)])
     ));
@@ -1557,6 +1581,12 @@ export default function ViewOrderDealerPage() {
       setDispatchAllError(`Enter between ${invalidLine.packSize} and ${invalidLine.remainingQuantity * invalidLine.packSize} pieces${packNote} for ${invalidLine.productName || invalidLine.sku}.`);
       return;
     }
+    // Not-in-stock lines leave nothing to ship.
+    const shipment = dispatchSelectedStatus === "not_in_stock" ? null : shipmentPickPayload(dispatchShipmentPick);
+    if (shipment && !shipment.ok) {
+      setDispatchAllError(shipment.message);
+      return;
+    }
 
     setDispatchAllSaving(true);
     setDispatchAllError("");
@@ -1579,6 +1609,7 @@ export default function ViewOrderDealerPage() {
             status: line.status,
           })),
           remark,
+          ...(shipment?.ok ? shipment.value : {}),
           idempotencyKey: dispatchAllIdempotencyKey,
         }),
       });
@@ -1586,7 +1617,7 @@ export default function ViewOrderDealerPage() {
       const json = await response.json().catch(() => null);
       const records = Array.isArray(json?.data) ? json.data as OrderDispatchRecord[] : Array.isArray(json?.data?.records) ? json.data.records as OrderDispatchRecord[] : [];
       if (records.length > 0) {
-        handleDispatchRecordsSaved(records);
+        handleDispatchRecordsSaved(records, json?.tracking);
       }
 
       if (!response.ok || !json?.success) {
@@ -1987,7 +2018,8 @@ export default function ViewOrderDealerPage() {
               orderId={id}
               canEdit={canEditDispatchTracking}
               editingSupported={isPostgresDetail}
-              value={dispatchTracking}
+              value={dispatchShipments}
+              contents={shipmentContents}
               onSaved={setDispatchTrackingOverride}
             />
           )}
@@ -2357,6 +2389,7 @@ export default function ViewOrderDealerPage() {
         acceptOrder={acceptOrder}
         delStatus={orderDeleted}
         items={dispatchItems}
+        shipments={dispatchShipments}
         currentUser={currentUser}
         selectedItemId={activeDispatchItemId}
         onClose={() => setActiveDispatchItemId(null)}
@@ -2439,6 +2472,18 @@ export default function ViewOrderDealerPage() {
                   {DISPATCH_MUTATION_STATUSES.map((status) => <option key={status} value={status}>{DISPATCH_STATUS_LABELS[status]}</option>)}
                 </select>
               </div>
+
+              {dispatchSelectedStatus !== "not_in_stock" && (
+                <div className="mt-5">
+                  <ShipmentPicker
+                    shipments={dispatchShipments}
+                    value={dispatchShipmentPick}
+                    onChange={setDispatchShipmentPick}
+                    disabled={dispatchAllSaving}
+                    onError={setDispatchAllError}
+                  />
+                </div>
+              )}
 
               <div className="mt-5">
                 <div className="mb-1.5 flex items-center justify-between">

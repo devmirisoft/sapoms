@@ -128,6 +128,7 @@ export async function findOrderDetails(where: Prisma.OrderWhereInput, orderId: s
       dealer: { select: { businessName: true, dealerCode: true, city: true } },
       assignedStaff: { select: { displayName: true } },
       salesManager: { select: { displayName: true } },
+      shipments: { orderBy: { createdAt: "asc" }, select: { dispatchPartner: true, trackingNumber: true, trackingLink: true } },
     },
   });
   if (!order) return { error: "ORDER_NOT_FOUND", message: `No order ${orderId}${internal ? " that you can access" : " on this account"}.` };
@@ -160,9 +161,13 @@ export async function findOrderDetails(where: Prisma.OrderWhereInput, orderId: s
     }),
     hasMoreItems: order.items.length > MAX_ITEMS,
     ...(order.dispatchedAt ? { dispatchedOn: indiaDate(order.dispatchedAt) } : {}),
-    ...(order.dispatchPartner ? { courier: order.dispatchPartner } : {}),
-    ...(order.trackingNumber ? { trackingNo: order.trackingNumber } : {}),
-    ...(order.trackingLink ? { trackingLink: order.trackingLink } : {}),
+    ...(order.shipments.length ? {
+      shipments: order.shipments.map((shipment) => ({
+        courier: shipment.dispatchPartner,
+        ...(shipment.trackingNumber ? { trackingNo: shipment.trackingNumber } : {}),
+        ...(shipment.trackingLink ? { trackingLink: shipment.trackingLink } : {}),
+      })),
+    } : {}),
     ...(status === "Declined" ? { declineReason: order.acceptanceNote || order.rsmNote || undefined } : {}),
     ...(status === "Cancelled" && order.cancellationReason ? { cancellationReason: order.cancellationReason } : {}),
   };

@@ -1,15 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  DISPATCH_PARTNER_LIMIT,
-  DISPATCH_PARTNERS,
-  TRACKING_LINK_LIMIT,
-  TRACKING_NUMBER_LIMIT,
-  buildTrackingLink,
-  normalizeDispatchTrackingInput,
-  type DispatchTrackingInfo,
-} from "@/lib/orderDispatch";
+import { normalizeDispatchTrackingInput, type DispatchTrackingInfo } from "@/lib/orderDispatch";
+import { EMPTY_SHIPMENT_FORM, ShipmentFields, toShipmentForm, type ShipmentForm } from "@/components/orders/ShipmentFields";
 
 type Props = {
   orderId: string;
@@ -17,63 +10,14 @@ type Props = {
   canEdit: boolean;
   // Editing needs a PostgreSQL order; legacy PHP orders stay read-only.
   editingSupported: boolean;
-  value: DispatchTrackingInfo;
-  onSaved?: (tracking: DispatchTrackingInfo) => void;
-};
-
-type FormState = {
-  dispatchPartner: string;
-  trackingNumber: string;
-  trackingLink: string;
+  value: DispatchTrackingInfo[];
+  // What went out in each shipment, keyed by shipment id: "Flask 250 ml — 50 pcs".
+  contents?: Record<string, string[]>;
+  onSaved?: (shipments: DispatchTrackingInfo[]) => void;
 };
 
 const EMPTY = "—";
-const ADD_COURIER = "__add_courier__";
-
-type CourierOption = { name: string; trackingUrlPrefix: string | null };
-
-// Couriers are admin-managed (/dashboard/admin/couriers). The hardcoded list
-// stays only as the fallback when that fetch fails, so dispatch is never
-// blocked by an unreachable courier list.
-function useCourierOptions(enabled: boolean) {
-  const [couriers, setCouriers] = useState<CourierOption[]>(() =>
-    DISPATCH_PARTNERS.map((name) => ({ name, trackingUrlPrefix: null })),
-  );
-
-  useEffect(() => {
-    if (!enabled) return;
-    let active = true;
-
-    fetch("/api/couriers", { credentials: "include", cache: "no-store" })
-      .then((response) => response.json())
-      .then((json) => {
-        if (!active || !json?.success || !Array.isArray(json.data) || !json.data.length) return;
-        setCouriers(json.data.map((row: CourierOption) => ({
-          name: row.name,
-          trackingUrlPrefix: row.trackingUrlPrefix ?? null,
-        })));
-      })
-      .catch(() => undefined);
-
-    return () => {
-      active = false;
-    };
-  }, [enabled]);
-
-  const addCourier = (courier: CourierOption) =>
-    setCouriers((previous) =>
-      previous.some((option) => option.name === courier.name) ? previous : [...previous, courier]);
-
-  return [couriers, addCourier] as const;
-}
-
-function toFormState(value: DispatchTrackingInfo): FormState {
-  return {
-    dispatchPartner: value.dispatchPartner ?? "",
-    trackingNumber: value.trackingNumber ?? "",
-    trackingLink: value.trackingLink ?? "",
-  };
-}
+const NEW = "new";
 
 function ReadOnlyField({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -111,9 +55,10 @@ function TrackingNumberValue({ trackingNumber }: { trackingNumber: string | null
   );
 }
 
-export default function DispatchTrackingCard({ orderId, canEdit, editingSupported, value, onSaved }: Props) {
-  const [form, setForm] = useState<FormState>(() => toFormState(value));
-  const [editing, setEditing] = useState(false);
+export default function DispatchTrackingCard({ orderId, canEdit, editingSupported, value, contents, onSaved }: Props) {
+  const [form, setForm] = useState<ShipmentForm>(EMPTY_SHIPMENT_FORM);
+  // null = viewing; "new" = adding a shipment; otherwise the id being edited.
+  const [editing, setEditing] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [savedText, setSavedText] = useState("");
@@ -125,73 +70,11 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
   }, [savedText]);
 
   const editable = canEdit && editingSupported;
-  const [courierOptions, addCourierOption] = useCourierOptions(editable);
-  // null = not adding; an object = the name/prefix being typed inline.
-  const [newCourier, setNewCourier] = useState<CourierOption | null>(null);
-  const [addingCourier, setAddingCourier] = useState(false);
 
-  const prefixFor = (partner: string) =>
-    courierOptions.find((option) => option.name === partner)?.trackingUrlPrefix ?? null;
-
-  // Joining the courier's saved prefix to the tracking number is the whole
-  // point of storing the prefix, so it rewrites the link whenever either side
-  // changes. Selecting a courier shows its bare prefix until a number is typed;
-  // a courier with no prefix leaves a hand-typed link alone.
-  const linkFor = (prefix: string | null, trackingNumber: string) =>
-    buildTrackingLink(prefix, trackingNumber) ?? prefix;
-
-  const applyPartner = (partner: string, prefix?: string | null) => {
-    setForm((previous) => {
-      const next = { ...previous, dispatchPartner: partner };
-      const link = linkFor(prefix === undefined ? prefixFor(partner) : prefix, next.trackingNumber);
-      return link ? { ...next, trackingLink: link } : next;
-    });
+  const startEditing = (shipment: DispatchTrackingInfo | null) => {
+    setForm(shipment ? toShipmentForm(shipment) : EMPTY_SHIPMENT_FORM);
     setError("");
-  };
-
-  const handleAddCourier = async () => {
-    const name = (newCourier?.name ?? "").trim();
-    const trackingUrlPrefix = (newCourier?.trackingUrlPrefix ?? "").trim() || null;
-    if (!name) {
-      setError("Courier name is required.");
-      return;
-    }
-
-    setAddingCourier(true);
-    setError("");
-    try {
-      const response = await fetch("/api/couriers", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, trackingUrlPrefix }),
-      });
-      const json = await response.json().catch(() => null);
-      if (!response.ok || !json?.success) {
-        setError(json?.message || "Failed to add courier.");
-        return;
-      }
-      const saved: CourierOption = {
-        name: String(json.data?.name || name),
-        trackingUrlPrefix: json.data?.trackingUrlPrefix ?? trackingUrlPrefix,
-      };
-      addCourierOption(saved);
-      applyPartner(saved.name, saved.trackingUrlPrefix);
-      setNewCourier(null);
-    } catch {
-      setError("Failed to add courier.");
-    } finally {
-      setAddingCourier(false);
-    }
-  };
-
-  const handleChange = (field: keyof FormState, next: string) => {
-    setForm((previous) => {
-      if (field === "trackingLink") return { ...previous, trackingLink: next };
-      const updated = { ...previous, [field]: next };
-      const link = linkFor(prefixFor(updated.dispatchPartner), updated.trackingNumber);
-      return link ? { ...updated, trackingLink: link } : updated;
-    });
-    setError("");
+    setEditing(shipment?.id ?? NEW);
   };
 
   const handleSave = async () => {
@@ -210,6 +93,7 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
         body: JSON.stringify({
           action: "update_dispatch_tracking",
           orderId,
+          ...(editing && editing !== NEW ? { shipmentId: editing } : {}),
           ...validated.value,
         }),
       });
@@ -218,16 +102,47 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
         setError(json?.message || "Failed to save dispatch details.");
         return;
       }
-      const saved = (json.tracking ?? validated.value) as DispatchTrackingInfo;
-      setEditing(false);
-      setSavedText("Dispatch details saved.");
-      onSaved?.(saved);
+      setSavedText(editing === NEW ? "Shipment added." : "Shipment saved.");
+      setEditing(null);
+      if (Array.isArray(json.tracking)) onSaved?.(json.tracking as DispatchTrackingInfo[]);
     } catch {
       setError("Failed to save dispatch details.");
     } finally {
       setSaving(false);
     }
   };
+
+  const editor = (
+    <div className="space-y-4">
+      <ShipmentFields idPrefix="dispatch-details" value={form} onChange={setForm} disabled={saving} onError={setError} />
+
+      {error && (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12px] text-rose-700">{error}</div>
+      )}
+
+      <div className="flex items-center justify-end gap-3">
+        <button
+          type="button"
+          onClick={() => {
+            setError("");
+            setEditing(null);
+          }}
+          disabled={saving}
+          className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving}
+          className="rounded-xl bg-gray-900 px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {saving ? "Saving..." : "Save Shipment"}
+        </button>
+      </div>
+    </div>
+  );
 
   return (
     <div className="bg-white border border-gray-200 rounded-2xl p-5">
@@ -251,187 +166,76 @@ export default function DispatchTrackingCard({ orderId, canEdit, editingSupporte
               Read only
             </span>
           )}
-          {editable && !editing && (
+          {editable && editing === null && (
             <button
               type="button"
-              onClick={() => {
-                setForm(toFormState(value));
-                setError("");
-                setEditing(true);
-              }}
+              onClick={() => startEditing(null)}
               className="rounded-xl border border-brand-200 px-3 py-1.5 text-[12px] font-semibold text-brand-600 transition hover:bg-brand-50"
             >
-              Edit Dispatch Details
+              + Add Shipment
             </button>
           )}
         </div>
       </div>
 
-      {editing ? (
-        <div className="space-y-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
-            <div>
-              <label htmlFor="dispatch-partner" className="mb-1.5 block text-[12px] font-semibold text-gray-700">Dispatched By <span className="text-rose-600">*</span></label>
-              <select
-                id="dispatch-partner"
-                value={form.dispatchPartner}
-                onChange={(event) => {
-                  if (event.target.value === ADD_COURIER) {
-                    setNewCourier({ name: "", trackingUrlPrefix: "" });
-                    return;
-                  }
-                  applyPartner(event.target.value);
-                }}
-                disabled={saving}
-                className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-brand-300"
-              >
-                <option value="">Select dispatch partner</option>
-                {/* A courier saved earlier but since removed still shows, so
-                    editing another field cannot silently blank it. */}
-                {(form.dispatchPartner && !courierOptions.some((option) => option.name === form.dispatchPartner)
-                  ? [{ name: form.dispatchPartner, trackingUrlPrefix: null }, ...courierOptions]
-                  : courierOptions
-                ).map((option) => (
-                  <option key={option.name} value={option.name}>{option.name}</option>
-                ))}
-                <option value={ADD_COURIER}>+ Add dispatch partner...</option>
-              </select>
-              {newCourier !== null && (
-                <div className="mt-2 space-y-2">
-                  <input
-                    type="text"
-                    autoFocus
-                    maxLength={DISPATCH_PARTNER_LIMIT}
-                    value={newCourier.name}
-                    onChange={(event) => setNewCourier({ ...newCourier, name: event.target.value })}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        void handleAddCourier();
-                      }
-                      if (event.key === "Escape") setNewCourier(null);
-                    }}
-                    disabled={addingCourier || saving}
-                    placeholder="New partner name"
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none transition focus:border-brand-300"
-                  />
-                  <input
-                    type="url"
-                    maxLength={TRACKING_LINK_LIMIT}
-                    value={newCourier.trackingUrlPrefix ?? ""}
-                    onChange={(event) => setNewCourier({ ...newCourier, trackingUrlPrefix: event.target.value })}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") {
-                        event.preventDefault();
-                        void handleAddCourier();
-                      }
-                      if (event.key === "Escape") setNewCourier(null);
-                    }}
-                    disabled={addingCourier || saving}
-                    placeholder="Tracking link prefix, e.g. https://www.delhivery.com/track-v2/package/"
-                    className="w-full rounded-xl border border-gray-200 px-3 py-2 text-[13px] text-gray-900 outline-none transition focus:border-brand-300"
-                  />
-                  <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleAddCourier}
-                    disabled={addingCourier || saving}
-                    className="rounded-xl bg-brand-600 px-3 py-2 text-[12px] font-semibold text-white transition hover:bg-brand-500 disabled:opacity-50"
-                  >
-                    {addingCourier ? "Adding..." : "Add"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setNewCourier(null)}
-                    disabled={addingCourier}
-                    className="rounded-xl border border-gray-200 px-3 py-2 text-[12px] font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  </div>
-                </div>
+      {value.length === 0 && editing !== NEW && (
+        <p className="text-[13px] text-gray-500">No shipments yet.</p>
+      )}
+
+      <div className="divide-y divide-gray-100">
+        {value.map((shipment, index) => (
+          <div key={shipment.id ?? index} className="py-4 first:pt-0 last:pb-0">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-[12px] font-bold text-gray-700">Shipment {index + 1}</p>
+              {editable && editing === null && shipment.id && (
+                <button
+                  type="button"
+                  onClick={() => startEditing(shipment)}
+                  className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] font-semibold text-gray-600 transition hover:bg-gray-50"
+                >
+                  Edit
+                </button>
               )}
             </div>
-            <div>
-              <label htmlFor="tracking-number" className="mb-1.5 block text-[12px] font-semibold text-gray-700">Tracking Number</label>
-              <input
-                id="tracking-number"
-                type="text"
-                maxLength={TRACKING_NUMBER_LIMIT}
-                value={form.trackingNumber}
-                onChange={(event) => handleChange("trackingNumber", event.target.value)}
-                disabled={saving}
-                placeholder="AWB123456789"
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-brand-300"
-              />
-            </div>
-            <div>
-              <label htmlFor="tracking-link" className="mb-1.5 block text-[12px] font-semibold text-gray-700">Tracking Link</label>
-              <input
-                id="tracking-link"
-                type="url"
-                maxLength={TRACKING_LINK_LIMIT}
-                value={form.trackingLink}
-                onChange={(event) => handleChange("trackingLink", event.target.value)}
-                disabled={saving}
-                placeholder="https://..."
-                className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13px] text-gray-900 outline-none transition focus:border-brand-300"
-              />
-              {prefixFor(form.dispatchPartner) && (
-                <p className="mt-1 text-[11px] text-gray-500">
-                  Built from the tracking link prefix saved for {form.dispatchPartner}.
-                </p>
-              )}
-            </div>
-          </div>
-
-          {error && (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12px] text-rose-700">{error}</div>
-          )}
-
-          <div className="flex items-center justify-end gap-3">
-            <button
-              type="button"
-              onClick={() => {
-                setForm(toFormState(value));
-                setError("");
-                setEditing(false);
-              }}
-              disabled={saving}
-              className="rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-[13px] font-semibold text-gray-600 transition hover:bg-gray-50 disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleSave}
-              disabled={saving}
-              className="rounded-xl bg-gray-900 px-4 py-2.5 text-[13px] font-semibold text-white transition hover:bg-gray-700 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {saving ? "Saving..." : "Save Dispatch Details"}
-            </button>
-          </div>
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-8 gap-y-4">
-          <ReadOnlyField label="Dispatched By">{value.dispatchPartner || EMPTY}</ReadOnlyField>
-          <ReadOnlyField label="Tracking Number">
-            <TrackingNumberValue trackingNumber={value.trackingNumber} />
-          </ReadOnlyField>
-          <ReadOnlyField label="Tracking Link">
-            {value.trackingLink ? (
-              <a
-                href={value.trackingLink}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-brand-600 underline underline-offset-2 hover:text-brand-500"
-              >
-                Track Shipment →
-              </a>
-            ) : (
-              EMPTY
+            {editing !== null && editing === shipment.id ? editor : (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-8 gap-y-4">
+                <ReadOnlyField label="Dispatched By">{shipment.dispatchPartner || EMPTY}</ReadOnlyField>
+                <ReadOnlyField label="Tracking Number">
+                  <TrackingNumberValue trackingNumber={shipment.trackingNumber} />
+                </ReadOnlyField>
+                <ReadOnlyField label="Tracking Link">
+                  {shipment.trackingLink ? (
+                    <a
+                      href={shipment.trackingLink}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-brand-600 underline underline-offset-2 hover:text-brand-500"
+                    >
+                      Track Shipment →
+                    </a>
+                  ) : (
+                    EMPTY
+                  )}
+                </ReadOnlyField>
+                <ReadOnlyField label="Contents">
+                  {shipment.id && contents?.[shipment.id]?.length ? (
+                    <ul className="space-y-0.5 font-medium">
+                      {contents[shipment.id].map((line, lineIndex) => <li key={lineIndex}>{line}</li>)}
+                    </ul>
+                  ) : (
+                    EMPTY
+                  )}
+                </ReadOnlyField>
+              </div>
             )}
-          </ReadOnlyField>
+          </div>
+        ))}
+      </div>
+
+      {editing === NEW && (
+        <div className={value.length ? "mt-4 border-t border-gray-100 pt-4" : ""}>
+          <p className="mb-3 text-[12px] font-bold text-gray-700">Shipment {value.length + 1}</p>
+          {editor}
         </div>
       )}
     </div>

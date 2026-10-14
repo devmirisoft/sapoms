@@ -7,7 +7,7 @@ import type { AuthActor } from "@/server/auth/session";
 import { isStaffLike } from "@/server/auth/sales-scope";
 import { normalizeSku } from "@/lib/orderProductNotes.mjs";
 import { PostgresOrderStatusError, findPostgresStatusOrder } from "@/lib/postgresOrderStatus";
-import { mapPostgresOrderDispatchRecords, mapPostgresOrderItemToLegacy, mapPostgresOrderToLegacy, orderInclude, type PostgresOrderRecord } from "@/lib/postgresOrders";
+import { mapPostgresOrderDispatchRecords, mapPostgresOrderItemToLegacy, mapPostgresOrderToLegacy, mapPostgresShipment, orderInclude, type PostgresOrderRecord } from "@/lib/postgresOrders";
 import { normalizeDispatchOrderItemId, normalizeDispatchRemark, normalizeDispatchStatus, normalizeDispatchTrackingInput, safeDispatchInteger, type DispatchStatus, type DispatchTrackingInfo, type OrderDispatchRecord } from "@/lib/orderDispatch";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
@@ -109,38 +109,43 @@ export async function findPostgresOrderDispatchPayload(orderId: unknown, actor: 
   return { order, records: mapPostgresOrderDispatchRecords(order), tracking: mapPostgresDispatchTracking(order) };
 }
 
-export function mapPostgresDispatchTracking(order: Pick<PostgresDispatchOrder, "dispatchPartner" | "trackingNumber" | "trackingLink" | "dock">): DispatchTrackingInfo {
-  return {
-    dispatchPartner: order.dispatchPartner || null,
-    trackingNumber: order.trackingNumber || null,
-    trackingLink: order.trackingLink || null,
-    dock: order.dock || null,
-  };
+export function mapPostgresDispatchTracking(order: Pick<PostgresDispatchOrder, "shipments">): DispatchTrackingInfo[] {
+  return order.shipments.map(mapPostgresShipment);
 }
 
-// Order-level dispatch tracking information. Writers are the same roles that
-// may record a dispatch update; dealers are read-only via canWrite().
-export async function applyPostgresOrderDispatchTracking(orderId: unknown, actor: AuthActor, input: {
-  dispatchPartner?: unknown;
-  trackingNumber?: unknown;
-  trackingLink?: unknown;
-  dock?: unknown;
-}) {
+type ShipmentInput = { shipmentId?: unknown; dispatchPartner?: unknown; trackingNumber?: unknown; trackingLink?: unknown };
+
+function findOrderShipment(order: PostgresDispatchOrder, shipmentId: unknown) {
+  const id = String(shipmentId ?? "").trim();
+  const shipment = order.shipments.find((row) => row.id.toString() === id);
+  if (!shipment) throw new PostgresOrderStatusError(404, "shipment_not_found", "Shipment not found on this order");
+  return shipment;
+}
+
+function validateShipmentInput(input: ShipmentInput) {
+  const validated = normalizeDispatchTrackingInput(input);
+  if (!validated.ok) throw new PostgresOrderStatusError(400, "invalid_tracking", validated.message);
+  const { dispatchPartner, trackingNumber, trackingLink } = validated.value;
+  return { dispatchPartner: dispatchPartner ?? "", trackingNumber, trackingLink };
+}
+
+// Order shipments (courier + tracking). With shipmentId it edits that
+// shipment, without it adds a new one. Writers are the same roles that may
+// record a dispatch update; dealers are read-only via canWrite().
+export async function applyPostgresOrderDispatchTracking(orderId: unknown, actor: AuthActor, input: ShipmentInput) {
   const order = await loadPostgresDispatchOrder(orderId);
   if (!order) return null;
   if (!await canWrite(actor, order)) throw new PostgresOrderStatusError(403, "forbidden", "Unauthorized or unassigned dispatch update");
   if (order.acceptanceStatus !== "ACCEPTED") throw new PostgresOrderStatusError(409, "not_accepted", "Order must be accepted before dispatch.");
   if (order.status === "CANCELLED" || order.status === "DECLINED") throw new PostgresOrderStatusError(409, "terminal_order", "Terminal orders cannot be dispatched.");
 
-  const validated = normalizeDispatchTrackingInput(input);
-  if (!validated.ok) throw new PostgresOrderStatusError(400, "invalid_tracking", validated.message);
+  const existing = input.shipmentId ? findOrderShipment(order, input.shipmentId) : null;
+  const data = validateShipmentInput(input);
 
   const updated = await prisma.$transaction(async (tx) => {
-    const row = await tx.order.update({
-      where: { id: order.id },
-      data: validated.value,
-      include: postgresDispatchOrderInclude,
-    });
+    const shipment = existing
+      ? await tx.orderShipment.update({ where: { id: existing.id }, data })
+      : await tx.orderShipment.create({ data: { ...data, orderId: order.id, createdByUserId: actor.userId } });
 
     await createAuditLog({
       tx,
@@ -149,13 +154,13 @@ export async function applyPostgresOrderDispatchTracking(orderId: unknown, actor
       entity: AUDIT_ENTITY.DISPATCH,
       entityId: order.orderNumber || order.id.toString(),
       ...diffValues(
-        { dispatchPartner: order.dispatchPartner, trackingNumber: order.trackingNumber, trackingLink: order.trackingLink, dock: order.dock },
-        validated.value,
+        existing ? { dispatchPartner: existing.dispatchPartner, trackingNumber: existing.trackingNumber, trackingLink: existing.trackingLink } : {},
+        data,
       ),
-      metadata: { orderId: order.id.toString(), orderNumber: order.orderNumber, change: "tracking" },
+      metadata: { orderId: order.id.toString(), orderNumber: order.orderNumber, change: existing ? "shipment_updated" : "shipment_added", shipmentId: shipment.id.toString() },
     });
 
-    return row;
+    return tx.order.findUniqueOrThrow({ where: { id: order.id }, include: postgresDispatchOrderInclude });
   });
 
   return {
@@ -213,7 +218,7 @@ function resolveRequestedItem(order: PostgresDispatchOrder, input: DispatchLineI
   return null;
 }
 
-export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthActor, input: { items?: unknown[]; dispatchQuantity?: unknown; status?: unknown; remark?: unknown; orderItemId?: unknown; sku?: unknown; occurrence?: unknown; dispatchPartner?: unknown; trackingNumber?: unknown; trackingLink?: unknown; dock?: unknown; }) {
+export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthActor, input: { items?: unknown[]; dispatchQuantity?: unknown; status?: unknown; remark?: unknown; orderItemId?: unknown; sku?: unknown; occurrence?: unknown; shipmentId?: unknown; dispatchPartner?: unknown; trackingNumber?: unknown; trackingLink?: unknown; }) {
   const order = await loadPostgresDispatchOrder(orderId);
   if (!order) return null;
   if (!await canWrite(actor, order)) throw new PostgresOrderStatusError(403, "forbidden", "Unauthorized or unassigned dispatch update");
@@ -223,21 +228,18 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
   const remark = normalizeDispatchRemark(input.remark, 500);
   if (!remark) throw new PostgresOrderStatusError(400, "blank_remark", "Operational remark is required");
 
-  // Tracking information is optional here; when the dispatching staff member
-  // supplies it with the update it is saved on the same order record.
-  const trackingKeys = ["dispatchPartner", "trackingNumber", "trackingLink", "dock"] as const;
-  const hasTrackingInput = trackingKeys.some((key) => input[key] !== undefined);
-  const validatedTracking = hasTrackingInput ? normalizeDispatchTrackingInput(input) : null;
-  if (validatedTracking && !validatedTracking.ok) {
-    throw new PostgresOrderStatusError(400, "invalid_tracking", validatedTracking.message);
-  }
+  // The shipment these quantities went out with: an existing one of this
+  // order (shipmentId), or a new one from the courier fields sent alongside.
+  const existingShipment = input.shipmentId ? findOrderShipment(order, input.shipmentId) : null;
+  const hasNewShipment = !existingShipment && (["dispatchPartner", "trackingNumber", "trackingLink"] as const).some((key) => input[key] !== undefined);
+  const newShipment = hasNewShipment ? validateShipmentInput(input) : null;
 
   const rawLines = Array.isArray(input.items) && input.items.length > 0 ? input.items : [input];
   const lines = rawLines.map((line) => line && typeof line === "object" ? line as DispatchLineInput : null);
   if (lines.some((line) => !line)) throw new PostgresOrderStatusError(400, "invalid_items", "Each selected product must have a valid identity");
 
   const currentTotals = new Map(order.items.map((item) => [item.id.toString(), item.dispatches.reduce((sum, dispatch) => sum + dispatch.quantity, 0)]));
-  const creates: Array<{ orderId: bigint; orderItemId: bigint; quantity: number; status: OrderFulfilmentStatus; remark: string; actorUserId: bigint; actorRole: UserRole }> = [];
+  const creates: Array<{ orderId: bigint; orderItemId: bigint; quantity: number; status: OrderFulfilmentStatus; remark: string; actorUserId: bigint; actorRole: UserRole; shipmentId?: bigint }> = [];
 
   for (const line of lines as DispatchLineInput[]) {
     const item = resolveRequestedItem(order, line);
@@ -257,20 +259,28 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
     creates.push({ orderId: order.id, orderItemId: item.id, quantity, status, remark, actorUserId: actor.userId, actorRole: actor.role as UserRole });
   }
 
+  if (creates.some((create) => create.status === "DISPATCHED") && !existingShipment && !newShipment) {
+    throw new PostgresOrderStatusError(400, "shipment_required", "Select the shipment this dispatch went with");
+  }
+
   const totalOrdered = order.items.reduce((sum, item) => sum + item.quantityPacks, 0);
   const totalDispatched = Array.from(currentTotals.values()).reduce((sum, quantity) => sum + quantity, 0);
   const nextFulfilment = fulfilmentFromTotals(totalOrdered, totalDispatched);
   const now = new Date();
 
   const updated = await prisma.$transaction(async (tx) => {
-    await tx.orderItemDispatch.createMany({ data: creates });
+    const shipmentId = existingShipment?.id
+      ?? (newShipment ? (await tx.orderShipment.create({ data: { ...newShipment, orderId: order.id, createdByUserId: actor.userId } })).id : undefined);
+    // Not-in-stock lines did not leave the warehouse, so they ride no shipment.
+    await tx.orderItemDispatch.createMany({
+      data: creates.map((create) => create.status === "DISPATCHED" && shipmentId ? { ...create, shipmentId } : create),
+    });
     const row = await tx.order.update({
       where: { id: order.id },
       data: {
         fulfilmentStatus: nextFulfilment,
         status: orderStatusForFulfilment(nextFulfilment),
         dispatchedAt: nextFulfilment === "DISPATCHED" ? now : order.dispatchedAt,
-        ...(validatedTracking?.ok ? validatedTracking.value : {}),
       },
       include: postgresDispatchOrderInclude,
     });
@@ -287,7 +297,7 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
         orderId: order.id.toString(),
         orderNumber: order.orderNumber,
         lines: creates.length,
-        ...(validatedTracking?.ok ? { tracking: validatedTracking.value } : {}),
+        ...(shipmentId ? { shipmentId: shipmentId.toString() } : {}),
       },
     });
 

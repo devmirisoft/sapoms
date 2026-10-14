@@ -511,7 +511,7 @@ test("Order details page wires the selected-products dispatch flow", async () =>
   assert.match(source, /Dispatch Selected Products/);
   assert.match(source, /selectedDispatchLines\.map/);
   assert.match(source, /String\(line\.remainingQuantity \* line\.packSize\)/);
-  assert.match(source, /handleDispatchRecordsSaved\(records\)/);
+  assert.match(source, /handleDispatchRecordsSaved\(records, json\?\.tracking\)/);
   assert.doesNotMatch(source, /displayOrders\.forEach\(.*fetch/s);
 });
 
@@ -603,25 +603,32 @@ test("Dispatch tracking input validates the four fields together", () => {
   assert.equal(dispatch.normalizeDispatchTrackingInput({ dispatchPartner: "DTDC", trackingLink: "ftp://x" }).ok, false);
 });
 
-test("Legacy dispatch records without tracking information read as empty", () => {
-  assert.deepEqual(dispatch.readDispatchTrackingInfo(null), {
-    dispatchPartner: null,
-    trackingNumber: null,
-    trackingLink: null,
-    dock: null,
-  });
-  assert.deepEqual(dispatch.readDispatchTrackingInfo({ dispatch_partner: "", tracking_number: "", tracking_link: "", dock: "" }), {
-    dispatchPartner: null,
-    trackingNumber: null,
-    trackingLink: null,
-    dock: null,
-  });
-  assert.deepEqual(dispatch.readDispatchTrackingInfo({ dispatch_partner: "DTDC", tracking_number: "AWB9", tracking_link: "https://x.test/9", dock: "Dock 1" }), {
+test("Legacy dispatch records without tracking information have no shipments", () => {
+  assert.deepEqual(dispatch.readDispatchShipments(null), []);
+  assert.deepEqual(dispatch.readDispatchShipments({ id: "55", dispatch_partner: "", tracking_number: "", tracking_link: "", dock: "" }), []);
+  // A legacy row's id is the order's, so it must not read as a shipment id.
+  assert.deepEqual(dispatch.readDispatchShipments({ id: "55", dispatch_partner: "DTDC", tracking_number: "AWB9", tracking_link: "https://x.test/9", dock: "Dock 1" }), [{
     dispatchPartner: "DTDC",
     trackingNumber: "AWB9",
     trackingLink: "https://x.test/9",
     dock: "Dock 1",
-  });
+  }]);
+});
+
+test("An order's shipments read from its shipments array", () => {
+  assert.deepEqual(dispatch.readDispatchShipments({
+    dispatch_partner: "ignored",
+    shipments: [
+      { id: 1, dispatchPartner: "BlueDart", trackingNumber: "awb1", trackingLink: "https://x.test/1" },
+      { id: "2", dispatchPartner: "DTDC", trackingNumber: "", trackingLink: "ftp://bad" },
+      null,
+    ],
+  }), [
+    { id: "1", dispatchPartner: "BlueDart", trackingNumber: "awb1", trackingLink: "https://x.test/1", dock: null },
+    { id: "2", dispatchPartner: "DTDC", trackingNumber: null, trackingLink: null, dock: null },
+  ]);
+  assert.equal(dispatch.shipmentLabel({ dispatchPartner: "DTDC", trackingNumber: "AWB9" }), "DTDC · AWB9");
+  assert.equal(dispatch.shipmentLabel(undefined), "—");
 });
 
 test("Only the attached staff may edit dispatch tracking information", () => {
@@ -652,7 +659,7 @@ test("Dealers see dispatch tracking information read-only on the order details p
 
   const cardSource = await fs.readFile(path.resolve("src/components/orders/DispatchTrackingCard.tsx"), "utf8");
   assert.match(cardSource, /const editable = canEdit && editingSupported;/);
-  assert.match(cardSource, /Save Dispatch Details/);
+  assert.match(cardSource, /Save Shipment/);
   assert.match(cardSource, /Track Shipment/);
   assert.match(cardSource, /target="_blank"/);
   assert.match(cardSource, /rel="noopener noreferrer"/);

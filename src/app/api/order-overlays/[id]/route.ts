@@ -4,8 +4,8 @@ import { invalidatePendingProductsCache } from "@/lib/pendingProducts";
 import { requireAuth } from "@/server/auth/session";
 import { prisma } from "@/server/db/prisma";
 import { serializePrismaValue } from "@/server/db/prisma-serialize";
-import { findPostgresOrderByLookup } from "@/lib/postgresOrderAnnotations";
-import { mapPostgresOrderItemToLegacy, mapPostgresOrderToLegacy, type PostgresOrderRecord } from "@/lib/postgresOrders";
+import { normalizeLookup } from "@/lib/postgresOrderAnnotations";
+import { findPostgresOrderByLookupId, mapPostgresOrderItemToLegacy, mapPostgresOrderToLegacy } from "@/lib/postgresOrders";
 import { mapPostgresOrderDispatchRecords } from "@/lib/postgresOrderDispatch";
 import {
   buildOrderEditRevision,
@@ -43,7 +43,7 @@ function metadataRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
-function overlayDoc(rows: Awaited<ReturnType<typeof prisma.orderOverlay.findMany>>, order: Awaited<ReturnType<typeof findPostgresOrderByLookup>>): OrderOverlayDocument | null {
+function overlayDoc(rows: Awaited<ReturnType<typeof prisma.orderOverlay.findMany>>, order: Awaited<ReturnType<typeof findPostgresOrderByLookupId>>): OrderOverlayDocument | null {
   if (!order || rows.length === 0) return null;
   const cancelRow = [...rows].reverse().find((row) => row.type === "cancel" || row.status === "cancelled");
   const status = cancelRow ? "cancelled" : "active";
@@ -86,24 +86,16 @@ function overlayDoc(rows: Awaited<ReturnType<typeof prisma.orderOverlay.findMany
 }
 
 async function loadPostgresEffectiveContext(orderIdInput: string) {
-  const order = await findPostgresOrderByLookup(orderIdInput);
+  // The full detail include: the legacy mappers read dealer staff assignments,
+  // shipments, bills and dispatches, which the slim access include lacks.
+  const order = await findPostgresOrderByLookupId(normalizeLookup(orderIdInput));
   if (!order) return null;
   const orderId = order.legacyPhpId || order.id.toString();
-  const [overlayRows, dispatchOrder] = await Promise.all([
-    prisma.orderOverlay.findMany({ where: { orderId: order.id }, orderBy: { createdAt: "asc" } }),
-    prisma.order.findUnique({
-      where: { id: order.id },
-      include: {
-        dealer: { select: { id: true, businessName: true, dealerCode: true, phone: true, city: true, address: true, pincode: true, gstin: true, discountPercent: true } },
-        assignedStaff: { select: { id: true, displayName: true } },
-        items: { orderBy: { id: "asc" }, include: { dispatches: { orderBy: { createdAt: "asc" } } } },
-      },
-    }),
-  ]);
-  const originalOrder = mapPostgresOrderToLegacy(order as unknown as PostgresOrderRecord);
-  const originalItems = order.items.map((item) => mapPostgresOrderItemToLegacy(item, order as unknown as PostgresOrderRecord));
+  const overlayRows = await prisma.orderOverlay.findMany({ where: { orderId: order.id }, orderBy: { createdAt: "asc" } });
+  const originalOrder = mapPostgresOrderToLegacy(order);
+  const originalItems = order.items.map((item) => mapPostgresOrderItemToLegacy(item, order));
   const overlay = overlayDoc(overlayRows, order);
-  const dispatchRecords = dispatchOrder ? mapPostgresOrderDispatchRecords(dispatchOrder as any) : [];
+  const dispatchRecords = mapPostgresOrderDispatchRecords(order as any);
   const effective = resolveEffectiveOrder({ orderId, originalOrder, originalItems, overlay, dispatchRecords });
   return { effective, overlay, order };
 }
