@@ -368,11 +368,11 @@ function toWords(amount: number): string {
     return out + " Only";
 }
 
-// Discount is shown as a percentage of the row's list price.
+// Discount as a percentage of the row's list price; the column header carries the "%".
 export function pctText(discountAmount: number, grossAmount: number): string {
-    if (!(grossAmount > 0)) return "0%";
+    if (!(grossAmount > 0)) return "0";
     const value = (discountAmount / grossAmount) * 100;
-    return `${Number.isInteger(value) ? value : value.toFixed(2)}%`;
+    return `${Number.isInteger(value) ? value : value.toFixed(2)}`;
 }
 
 
@@ -614,7 +614,7 @@ export async function buildInvoiceTemplateData(
                 productNote: displayRow.descriptionNoteText,
                 capacity: displayRow.capacity,
                 qty: String(row.quantity),
-                packSize: `${row.quantity} x ${row.packSize}`,
+                packSize: `${row.quantity} × ${row.packSize}`,
                 units: String(row.pieces),
                 uom: row.productUnit,
                 unitPrice: fmt(displayRow.unitPrice),
@@ -647,7 +647,7 @@ export async function buildInvoiceTemplateData(
             productNote: fallbackDescription.noteText,
             capacity: resolveCapacity(displayOrder as any),
             qty: String(totalQty),
-            packSize: `${totalQty} x ${fpack}`,
+            packSize: `${totalQty} × ${fpack}`,
             units: String(fpieces),
             uom: "Pcs",
             unitPrice: fmt(fpieces > 0 ? gross / fpieces : gross),
@@ -819,7 +819,11 @@ async function renderInvoiceHtmlToPdf(html: string): Promise<Blob> {
                 windowHeight: frameDoc.documentElement.clientHeight,
             });
             if (index > 0) doc.addPage();
-            doc.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", 0, 0, 210, 297, undefined, "FAST");
+            // A single-sheet order with many rows runs taller than A4; scale it
+            // down to fit instead of squashing it into 210x297.
+            const height = Math.min(297, (210 * canvas.height) / canvas.width);
+            const width = (height * canvas.width) / canvas.height;
+            doc.addImage(canvas.toDataURL("image/jpeg", 0.92), "JPEG", (210 - width) / 2, 0, width, height, undefined, "FAST");
         }
         return doc.output("blob");
     } finally {

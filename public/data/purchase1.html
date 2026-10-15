@@ -760,45 +760,74 @@
             line-height: 1.55;
         }
 
+        .po-title {
+            text-align: center;
+        }
+
+        /* First word black, second green, ruled off from the document number. */
         .po-title h2 {
             font-size: 38px;
             line-height: 1.12;
             margin-bottom: 10px;
+            padding-bottom: 8px;
+            color: #000;
+            font-weight: 800;
+            text-decoration: none;
+            border-bottom: 4px solid #18cfae;
+        }
+
+        .po-title h2 span {
+            color: #04d469;
         }
 
         .po-number {
-            font-size: 20px;
+            font-size: 22px;
             line-height: 1.25;
             padding: 8px 28px;
             background: #f7fbfd;
+            color: #04d469;
+            font-weight: 700;
         }
 
         .po-number strong {
             font-size: 24px;
+            color: #000;
         }
 
         .quick-info {
-            height: 171px;
-            margin-bottom: 34px;
+            height: 157px;
+            margin-bottom: 32px;
             border: 2px solid #c9c9c9;
             border-radius: 10px;
         }
 
         .info-item {
+            display: flex;
+            align-items: center;
+            gap: 20px;
             min-height: 0;
-            padding: 23px 22px;
+            padding: 0 22px;
             border-right: 2px solid #d1d1d1;
             border-bottom: 2px solid #d1d1d1;
+        }
+
+        .info-icon {
+            width: 40px;
+            height: 40px;
+            flex-shrink: 0;
         }
 
         .info-item-label {
             font-size: 17px;
             margin-bottom: 9px;
-            gap: 10px;
+            color: #000;
+            text-transform: none;
         }
 
         .info-item-value {
-            font-size: 18px;
+            font-size: 17px;
+            font-weight: 400;
+            color: #000;
         }
 
         .two-column {
@@ -826,12 +855,12 @@
         }
 
         .detail-box-content {
-            padding: 23px 24px 24px;
+            padding: 20px 24px;
         }
 
         .detail-row {
             display: flex;
-            margin-bottom: 10px;
+            margin-bottom: 4px;
             font-size: 17px;
             line-height: 1.55;
             color: #000;
@@ -867,6 +896,7 @@
 
         .section-header-line {
             height: 5px;
+            background: linear-gradient(90deg, #04d469 0%, #19d3d0 100%);
         }
 
         .order-summary {
@@ -876,8 +906,8 @@
         }
 
         .summary-table td {
-            height: 49px;
-            padding: 10px 20px;
+            height: 43px;
+            padding: 8px 20px;
             border-right: 2px solid #c9c9c9;
             border-bottom: 2px solid #c9c9c9;
             font-size: 16px;
@@ -886,6 +916,11 @@
         .summary-remarks-cell {
             vertical-align: top;
             background: #f6fbfc;
+        }
+
+        /* Spans down to the last row, so the box border is its bottom edge. */
+        .summary-table .summary-remarks-cell {
+            border-bottom: 0;
         }
 
         .summary-remarks-title {
@@ -911,33 +946,52 @@
             width: 17%;
         }
 
+        .summary-label,
+        .summary-value {
+            font-weight: 400;
+            background: transparent;
+        }
+
+        .summary-value.summary-col2 {
+            text-align: center;
+        }
+
         .total-row td {
             background: #f6fbfc;
         }
 
         .net-amount-row td {
             background: #f6fbfc;
-            color: #08c978;
+            color: #04d469;
             font-size: 24px;
             border-right: 2px solid #c9c9c9;
         }
 
-        .net-amount-row td:first-child,
-        .net-amount-row td:last-child {
-            color: #08c978;
+        .net-amount-row td:first-child {
+            color: #04d469;
         }
 
+        .net-amount-row td:last-child {
+            color: #000;
+        }
+
+        /* One box split down the middle. */
         .amount-section {
             gap: 0;
             margin-bottom: 27px;
         }
 
         .amount-box {
-            min-height: 94px;
+            min-height: 0;
             padding: 14px 20px;
             border: 2px solid #c9c9c9;
-            border-radius: 12px;
+            border-radius: 12px 0 0 12px;
             background: #f6fbfc;
+        }
+
+        .amount-box + .amount-box {
+            border-left: 0;
+            border-radius: 0 12px 12px 0;
         }
 
         .amount-box-title {
@@ -948,11 +1002,10 @@
         .amount-box-value {
             font-size: 17px;
             line-height: 1.35;
+            font-weight: 400;
         }
 
         .terms-section {
-            height: 166px;
-            min-height: 0;
             margin-bottom: 25px;
             padding: 18px 20px;
             border: 2px solid #c9c9c9;
@@ -960,17 +1013,9 @@
             background: #f6fbfc;
         }
 
-        .terms-title {
-            font-size: 24px;
-            margin-bottom: 16px;
-        }
-
-        .terms-title::after {
-            height: 4px;
-        }
-
         .terms-list {
             gap: 8px 40px;
+            padding-left: 30px;
         }
 
         .terms-item {
@@ -981,20 +1026,34 @@
         .terms-divider {
             font-size: 15px;
             margin: 12px 0 0;
+            letter-spacing: 0;
+            color: #333;
         }
 
         .signature-section {
             gap: 180px;
-            margin-top: 27px;
+            margin-top: 30px;
+            padding: 0 14px;
+        }
+
+        .signature-box {
+            text-align: left;
+        }
+
+        .signature-name,
+        .signature-label {
+            font-size: 16px;
+            color: #000;
+        }
+
+        .signature-name {
+            margin-bottom: 52px;
         }
 
         .signature-line {
-            margin-top: 54px;
-            margin-bottom: 8px;
-        }
-
-        .signature-label {
-            font-size: 16px;
+            height: 2px;
+            margin: 0 0 8px;
+            background: #444;
         }
 
         .page-number {
@@ -1003,55 +1062,67 @@
             bottom: 8px;
             margin-top: 0;
             font-size: 15px;
+            font-style: italic;
+            color: #000;
         }
 
+        .continued-note {
+            text-align: right;
+            font-size: 17px;
+            font-style: italic;
+            color: #000;
+            margin-bottom: 30px;
+        }
+
+        /* Outer border carries the rounded corners; cells only draw the inner rules. */
         .line-items-table {
-            font-size: 16px;
+            font-size: 15px;
             margin-bottom: 70px;
+            border-collapse: separate;
+            border-spacing: 0;
+            border: 2px solid #c9c9c9;
+            border-radius: 12px;
+            overflow: hidden;
         }
 
         .line-items-table thead {
             background: #dff5fb;
         }
 
-        .line-items-table th {
-            height: 48px;
-            padding: 8px 8px;
+        .line-items-table th,
+        .line-items-table td {
             text-align: center;
             color: #111;
-            border: 2px solid #c9c9c9;
-            font-size: 16px;
+            border: 0;
+            border-right: 2px solid #c9c9c9;
+        }
+
+        .line-items-table td {
+            border-top: 2px solid #c9c9c9;
+        }
+
+        .line-items-table th:last-child,
+        .line-items-table td:last-child {
+            border-right: 0;
+        }
+
+        .line-items-table th {
+            height: 48px;
+            padding: 6px 4px;
+            font-size: 15px;
+            font-weight: 400;
+            line-height: 1.15;
         }
 
         .line-items-table td {
             height: 45px;
             padding: 6px 7px;
-            text-align: center;
-            border: 2px solid #c9c9c9;
-            color: #111;
             line-height: 1.1;
         }
 
-        .line-items-table td:nth-child(3) {
-            text-align: center;
-        }
-
-        .line-items-table tr:last-child td {
+        .line-items-table .grid-total td {
             background: #f1f9fb;
             font-weight: 700;
-        }
-
-        .line-items-table tr:last-child td:first-child {
-            border-bottom-left-radius: 12px;
-        }
-
-        .line-items-table tr:last-child td:last-child {
-            border-bottom-right-radius: 12px;
-        }
-
-        .page>div[style] {
-            font-size: 19px !important;
-            margin-bottom: 30px !important;
         }
 
         /* The items sheet carries no signature block of its own, and html2canvas
@@ -1092,7 +1163,7 @@
                 </div>
             </div>
             <div class="po-title">
-                <h2>{{TITLE_1}}<br>{{TITLE_2}}</h2>
+                <h2>{{TITLE_1}}<br><span>{{TITLE_2}}</span></h2>
                 <div class="po-number">
                     {{DOC_NO_LABEL}}<br>
                     <strong>{{DOC_NO}}</strong>
@@ -1101,26 +1172,43 @@
         </div>
 
         <!-- Quick Info -->
+        <!-- Icons are inline SVG with presentation attributes: html2canvas paints
+             an SVG as an image, so page CSS would not reach inside it. -->
         <div class="quick-info">
             <div class="info-item">
-                <div class="info-item-label">📅 Order Date</div>
-                <div class="info-item-value">{{ORDER_DATE}}</div>
+                <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7.5 14h2M11 14h2M14.5 14h2M7.5 17.5h2M11 17.5h2"/></svg>
+                <div>
+                    <div class="info-item-label">Order Date</div>
+                    <div class="info-item-value">{{ORDER_DATE}}</div>
+                </div>
             </div>
             <div class="info-item">
-                <div class="info-item-label">📅 {{DOC_DATE_LABEL}}</div>
-                <div class="info-item-value">{{DOC_DATE}}</div>
+                <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7.5 14h2M11 14h2M14.5 14h2M7.5 17.5h2M11 17.5h2"/></svg>
+                <div>
+                    <div class="info-item-label">{{DOC_DATE_LABEL}}</div>
+                    <div class="info-item-value">{{DOC_DATE}}</div>
+                </div>
             </div>
             <div class="info-item">
-                <div class="info-item-label">⏱️ Order Time</div>
-                <div class="info-item-value">{{ORDER_TIME}}</div>
+                <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+                <div>
+                    <div class="info-item-label">Order Time</div>
+                    <div class="info-item-value">{{ORDER_TIME}}</div>
+                </div>
             </div>
             <div class="info-item">
-                <div class="info-item-label">👤 Customer Name</div>
-                <div class="info-item-value">{{CUSTOMER_NAME}}</div>
+                <svg class="info-icon" viewBox="0 0 24 24" fill="#555"><circle cx="8.5" cy="8" r="3.5"/><circle cx="16.5" cy="9" r="2.8"/><path d="M1.5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5z"/><path d="M16.5 13c3.3 0 6 2.2 6 5.5V20h-5.5c0-2.6-1-4.7-2.6-6.1.6-.6 1.3-.9 2.1-.9z"/></svg>
+                <div>
+                    <div class="info-item-label">Customer Name</div>
+                    <div class="info-item-value">{{CUSTOMER_NAME}}</div>
+                </div>
             </div>
             <div class="info-item">
-                <div class="info-item-label">📅 Outstanding Date</div>
-                <div class="info-item-value">{{OUTSTANDING_DATE}}</div>
+                <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15.5l2 2 4-4"/></svg>
+                <div>
+                    <div class="info-item-label">Outstanding Date</div>
+                    <div class="info-item-value">{{OUTSTANDING_DATE}}</div>
+                </div>
             </div>
             <div class="info-item" aria-hidden="true"></div>
         </div>
@@ -1232,29 +1320,35 @@
         </div>
 
         <!-- Terms & Conditions -->
+        <div class="section-header">
+            <div class="section-header-label">Terms &amp; Conditions</div>
+            <div class="section-header-line"></div>
+        </div>
+
+        <!-- Two columns filled row by row, so the order reads 1-3 down the left. -->
         <div class="terms-section">
-            <div class="terms-title">Terms &amp; Conditions</div>
             <div class="terms-list">
-                <div class="terms-item"><strong>1.</strong> Goods once sold will not be taken back.</div>
-                <div class="terms-item"><strong>4.</strong> Any damage must be reported within 48 hours.</div>
-                <div class="terms-item"><strong>2.</strong> Delivery timeline as discussed.</div>
-                <div class="terms-item"><strong>5.</strong> Taxes as applicable.</div>
-                <div class="terms-item"><strong>3.</strong> Payment terms as agreed.</div>
-                <div class="terms-item"><strong>6.</strong> Subject to Ambala, Haryana jurisdiction.</div>
-                <div class="terms-divider">. . . . . . . . . . . . . . . . . . Items Details on next Page . . . . . . .
-                    . . . . . . . . . . .</div>
+                <div class="terms-item">1.&nbsp; Goods once sold will not be taken back.</div>
+                <div class="terms-item">4.&nbsp; GST and other applicable taxes are extra.</div>
+                <div class="terms-item">2.&nbsp; Delivery timeline as discussed.</div>
+                <div class="terms-item">5.&nbsp; Any damage must be reported within 48 hours.</div>
+                <div class="terms-item">3.&nbsp; Payment terms as agreed.</div>
+                <div class="terms-item">6.&nbsp; Subject to Ambala, Haryana jurisdiction.</div>
+                <div class="terms-divider">- - - - - - - - - - - - - - - - - -&nbsp;&nbsp; Items Details on next Page &nbsp;&nbsp;- - - - - - - - - - - - - - - - - -</div>
             </div>
         </div>
 
         <!-- Signature Section -->
         <div class="signature-section">
             <div class="signature-box">
+                <div class="signature-name">Checked by</div>
                 <div class="signature-line"></div>
-                <div class="signature-label">Checked by<br>Signature &amp; Date</div>
+                <div class="signature-label">Signature &amp; Date</div>
             </div>
             <div class="signature-box">
+                <div class="signature-name">Accepted by</div>
                 <div class="signature-line"></div>
-                <div class="signature-label">Accepted by<br>Signature &amp; Date</div>
+                <div class="signature-label">Signature &amp; Date</div>
             </div>
         </div>
 
@@ -1279,7 +1373,7 @@
                 </div>
             </div>
             <div class="po-title">
-                <h2>{{TITLE_1}}<br>{{TITLE_2}}</h2>
+                <h2>{{TITLE_1}}<br><span>{{TITLE_2}}</span></h2>
                 <div class="po-number">
                     {{DOC_NO_LABEL}}<br>
                     <strong>{{DOC_NO}}</strong>
@@ -1288,7 +1382,7 @@
         </div>
 
         <!-- Continued from Page 1 -->
-        <div style="font-size: 10px; color: #999; margin-bottom: 15px; font-style: italic;">{{CONTINUED_FROM}}</div>
+        <div class="continued-note">{{CONTINUED_FROM}}</div>
 
         <!-- Line Items Section -->
         <div class="section-header">
@@ -1299,16 +1393,16 @@
         <table class="line-items-table">
             <thead>
                 <tr>
-                    <th style="width: 5%;">Sr. No.</th>
-                    <th style="width: 7%;">Cat No.</th>
-                    <th style="width: 28%;">Product Description</th>
-                    <th style="width: 8%;">Capacity</th>
-                    <th style="width: 5%;">Qty.</th>
-                    <th style="width: 8%;">Pack Size</th>
-                    <th style="width: 8%;">No. of Units</th>
+                    <th style="width: 4%;">Sr.<br>No.</th>
+                    <th style="width: 8%;">Cat No.</th>
+                    <th style="width: 33%;">Product Description</th>
+                    <th style="width: 7%;">Capacity</th>
+                    <th style="width: 6%;">Qty.</th>
+                    <th style="width: 7%;">Pack<br>Size</th>
+                    <th style="width: 6%;">No. of<br>Units</th>
                     <th style="width: 5%;">UOM</th>
-                    <th style="width: 8%;">Unit Price</th>
-                    <th style="width: 7%;">Discount (%)</th>
+                    <th style="width: 7%;">Unit<br>Price</th>
+                    <th style="width: 7%;">Discount<br>(%)</th>
                     <th style="width: 10%;">Net Amount</th>
                 </tr>
             </thead>
@@ -1330,11 +1424,16 @@
                 <!--/ROW-->
                 {{ITEM_ROWS}}
                 <!--TOTAL_ROW-->
-                <tr style="background-color: #e8f5f1; font-weight: 600;">
-                    <td colspan="4" style="text-align: right;">TOTAL</td>
+                <tr class="grid-total">
+                    <td colspan="3">TOTAL</td>
+                    <td></td>
                     <td>{{TOTAL_QUANTITY}}</td>
-                    <td colspan="5"></td>
-                    <td colspan="1">{{TOTAL_NET}}</td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td>{{TOTAL_NET}}</td>
                 </tr>
                 <!--/TOTAL_ROW-->
             </tbody>

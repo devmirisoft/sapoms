@@ -24,7 +24,7 @@ globalThis.localStorage ??= { getItem: () => null, setItem: () => {}, removeItem
 globalThis.fetch ??= async () => ({ ok: false, json: async () => ({}) });
 
 const { buildInvoiceTemplateData, flattenUnpaintableCss } = await import('../src/lib/invoicegenerator.tsx');
-const { fillInvoiceTemplate, ROWS_PER_ITEMS_SHEET } = await import('../src/lib/invoiceTemplate.ts');
+const { fillInvoiceTemplate, ROWS_PER_ITEMS_SHEET, paginateInvoiceRows, estimateInvoiceRowHeight } = await import('../src/lib/invoiceTemplate.ts');
 
 const templates = {
   purchase1: readFileSync(resolvePath(ROOT, 'public/data/purchase1.html'), 'utf8'),
@@ -123,6 +123,23 @@ check(count(longHtml, 'class="signature-section"') === 1,
   `purchase1: expected signatures on the cover sheet only, found ${count(longHtml, 'class="signature-section"')}`);
 check(!/\.page:(nth-child|first-child|not)/.test(templates.purchase1),
   'purchase1: positional .page rules do not survive html2canvas cloning');
+
+// ── Long descriptions: tall rows move to later sheets instead of clipping ───
+// Each items sheet is a fixed height with overflow hidden, so 24 rows of
+// wrapped text used to cut off the last products of every sheet.
+const wordy = await render(makeItems(30).map((item, i) => ({
+  ...item,
+  productName: `Beakers, Low Form, with Spout 100 mL ${i + 1} - ABOUT THIS ITEM - Made from high quality Borosilicate 3.3 Glass. - Uniform wall thickness`,
+})));
+const wordyPages = count(fillInvoiceTemplate(templates.purchase1, wordy.data), 'class="line-items-table"');
+inspect('purchase1 (long descriptions)', wordy, 'purchase1', 1 + wordyPages);
+check(wordyPages > Math.ceil(30 / ROWS_PER_ITEMS_SHEET),
+  `purchase1: long descriptions should need more than ${Math.ceil(30 / ROWS_PER_ITEMS_SHEET)} items sheet(s), got ${wordyPages}`);
+const sheetBudget = ROWS_PER_ITEMS_SHEET * 45;
+paginateInvoiceRows(wordy.data.rows).forEach((rows, index) => {
+  const used = rows.reduce((sum, row) => sum + estimateInvoiceRowHeight(row), 0);
+  check(rows.length === 1 || used <= sheetBudget, `purchase1: items sheet ${index + 1} overflows (${used}px > ${sheetBudget}px)`);
+});
 
 // ── Short order: everything on one sheet ────────────────────────────────────
 const short = await render(makeItems(6));

@@ -370,11 +370,19 @@ export function buildCatalogueIndex<T extends CatalogueProduct>(products: T[]): 
 
     flatProducts.push(product);
     productsBySku[String(product.sku)] = product;
-    productsBySku[String(product.id)] = product;
 
     for (const variant of product.variants ?? []) {
       variantsBySku[String(variant.sku)] = { product, variant };
-      variantsBySku[String(variant.id)] = { product, variant };
+    }
+  }
+
+  // Ids are only a fallback. Postgres rows carry numeric DB ids that can equal another
+  // product's catalogue number (DB id 116 is Whirling Hygrometers; code "116" is a flask).
+  const taken = (key: string) => Object.hasOwn(productsBySku, key) || Object.hasOwn(variantsBySku, key);
+  for (const product of products) {
+    if (!taken(String(product.id))) productsBySku[String(product.id)] = product;
+    for (const variant of product.variants ?? []) {
+      if (!taken(String(variant.id))) variantsBySku[String(variant.id)] = { product, variant };
     }
   }
 

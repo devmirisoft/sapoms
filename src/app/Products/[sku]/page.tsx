@@ -288,8 +288,9 @@ export default function ProductDetailsPage() {
         const data = catalogueProducts as Product[];
         setAllProducts(data);
 
-        // Match by product sku or by variant sku
-        let found = data.find(p => p.sku === sku || p.id === sku);
+        // Match by product sku, then id, then variant. SKU must win: a Postgres DB id
+        // can equal another product's code (DB id 116 vs flask code "116").
+        let found = data.find(p => p.sku === sku) ?? data.find(p => p.id === sku);
         if (!found) {
           found = data.find(p => p.variants?.some(v => v.sku === sku || v.id === sku));
           if (found) {
