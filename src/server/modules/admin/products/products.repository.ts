@@ -51,7 +51,7 @@ export class PostgresAdminProductRepository {
   async create(input: ProductWriteInput): Promise<AdminProductRecord> {
     const categoryId = await resolveCategoryId(input.categoryName);
     return prisma.product.create({
-      data: { productCode: input.productCode || null, name: input.name, description: input.description || null, imageUrl: input.imageUrl || null, categoryId, active: input.active ?? true, variants: { create: input.variants.map((variant) => ({ sku: variant.sku || null, catalogueNumber: variant.catalogueNumber || variant.sku || null, unitName: variant.unitName || null, packSize: variant.packSize ?? null, unitPricePaise: variant.unitPricePaise ?? BigInt(0), packPricePaise: variant.packPricePaise ?? BigInt(0), active: variant.active ?? true })) } },
+      data: { productCode: input.productCode || null, name: input.name, description: input.description || null, imageUrl: input.imageUrl || null, categoryId, active: input.active ?? true, variants: { create: input.variants.map((variant) => ({ sku: variant.sku || null, catalogueNumber: variant.catalogueNumber || variant.sku || null, unitName: variant.unitName || null, packSize: variant.packSize ?? null, priceBasis: variant.priceBasis, unitPricePaise: variant.unitPricePaise ?? BigInt(0), packPricePaise: variant.packPricePaise ?? BigInt(0), active: variant.active ?? true })) } },
       include,
     });
   }
@@ -63,7 +63,7 @@ export class PostgresAdminProductRepository {
       const keepVariantIds = input.variants.map((variant) => variant.id).filter((id): id is string => Boolean(id && /^\d+$/.test(id))).map((id) => BigInt(id));
       await tx.productVariant.deleteMany({ where: { productId, ...(keepVariantIds.length ? { id: { notIn: keepVariantIds } } : {}) } });
       for (const variant of input.variants) {
-        const data = { sku: variant.sku || null, catalogueNumber: variant.catalogueNumber || variant.sku || null, unitName: variant.unitName || null, packSize: variant.packSize ?? null, unitPricePaise: variant.unitPricePaise ?? BigInt(0), packPricePaise: variant.packPricePaise ?? BigInt(0), active: variant.active ?? true };
+        const data = { sku: variant.sku || null, catalogueNumber: variant.catalogueNumber || variant.sku || null, unitName: variant.unitName || null, packSize: variant.packSize ?? null, priceBasis: variant.priceBasis, unitPricePaise: variant.unitPricePaise ?? BigInt(0), packPricePaise: variant.packPricePaise ?? BigInt(0), active: variant.active ?? true };
         if (variant.id && /^\d+$/.test(variant.id)) await tx.productVariant.update({ where: { id: BigInt(variant.id), productId }, data });
         else await tx.productVariant.create({ data: { ...data, productId } });
       }

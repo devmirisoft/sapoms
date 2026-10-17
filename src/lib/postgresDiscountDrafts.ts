@@ -13,7 +13,8 @@ import {
 import { findCatalogueEntry } from "@/lib/catalogue";
 import { diffOrderRows, rowKey } from "@/lib/orderRejectionDraft.mjs";
 import { couponPercent } from "@/lib/coupons";
-import { linePricing, loadCatalogue } from "@/server/modules/products/catalogue";
+import cataloguePricing from "@/lib/cataloguePricing";
+import { loadCatalogue } from "@/server/modules/products/catalogue";
 
 export function text(value: unknown, max = 1000) {
   return String(value ?? "").trim().slice(0, max);
@@ -213,17 +214,19 @@ async function serverPricedSnapshotProducts(rawProducts: unknown[]) {
     const product = raw && typeof raw === "object" ? raw as Record<string, any> : {};
     const catNo = text(product.sku ?? product.catalogueNumber ?? product.productKey, 160);
     const entry = catNo ? findCatalogueEntry(index, catNo) : null;
-    const pricing = entry?.variant ? linePricing(entry.product, entry.variant) : null;
-    if (!entry?.variant || !pricing) throw Object.assign(new Error(`${catNo || "A product"} is not a priced catalogue item`), { status: 422 });
     const quantity = Math.max(1, Math.trunc(num(product.quantity, 1)));
+    const pricing = entry?.variant ? cataloguePricing.linePricing(entry.variant, quantity) : null;
+    if (!entry?.variant || !pricing) throw Object.assign(new Error(`${catNo || "A product"} is not a priced catalogue item`), { status: 422 });
     return {
       ...product,
       sku: entry.variant.sku,
       catalogueNumber: entry.variant.sku,
       quantity,
       packSize: pricing.packSize,
-      unitPrice: pricing.unitPrice,
-      grossAmount: Math.round(pricing.packPrice * quantity * 100) / 100,
+      priceBasis: pricing.priceBasis,
+      unitPrice: pricing.piecePricePaise / 100,
+      packPrice: pricing.packPricePaise / 100,
+      grossAmount: pricing.linePaise / 100,
     };
   });
 }

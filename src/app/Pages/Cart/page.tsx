@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import axios from "axios";
-import { useCartStore } from "@/Store/store";
+import { cartPackPaise as packPaise, useCartStore } from "@/Store/store";
 import { SalePrice, salePaise } from "@/components/SalePrice";
 import { useTodaysSale } from "@/hooks/useTodaysSale";
 
@@ -129,11 +129,11 @@ export default function CartPage() {
   }, 0);
   const subtotalPaise = cart.reduce((acc, item) => {
     const ps = lookup[item.id]?.packSize ?? item.packSize ?? 1;
-    return acc + item.price * item.quantity * ps;
+    return acc + packPaise(item, ps) * item.quantity;
   }, 0);
   const saleSubtotalPaise = cart.reduce((acc, item) => {
     const ps = lookup[item.id]?.packSize ?? item.packSize ?? 1;
-    return acc + salePaise(item.price * item.quantity * ps, saleOf(item.id));
+    return acc + salePaise(packPaise(item, ps) * item.quantity, saleOf(item.id));
   }, 0);
   const savedPaise = subtotalPaise - saleSubtotalPaise;
   const subtotalText = savedPaise > 0 ? (
@@ -229,7 +229,7 @@ export default function CartPage() {
             {cart.map((item, idx) => {
               const meta       = lookup[item.id];
               const packSize   = meta?.packSize ?? item.packSize ?? 1;
-              const lineTotal  = item.price * item.quantity * packSize;
+              const lineTotal  = packPaise(item, packSize) * item.quantity;
               const pcsCount   = item.quantity * packSize;
               const nameParts  = item.name.split(" - ");
               const prodName   = nameParts[0] ?? item.name;
@@ -359,7 +359,7 @@ export default function CartPage() {
                       <SalePrice paise={lineTotal} percent={sale} />
                     </p>
                     {item.quantity > 1 && (
-                      <p style={{ fontSize: 11, color: "#9ca3af" }}>{fmt(salePaise(item.price * packSize, sale))} / pack</p>
+                      <p style={{ fontSize: 11, color: "#9ca3af" }}>{fmt(salePaise(packPaise(item, packSize), sale))} / pack</p>
                     )}
                     {packSize > 1 && (
                       <p style={{ fontSize: 11, color: "#9ca3af" }}>

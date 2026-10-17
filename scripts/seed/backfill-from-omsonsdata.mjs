@@ -8,7 +8,7 @@
 //
 //   DATABASE_URL='postgres://…' node scripts/seed/backfill-from-omsonsdata.mjs [--dry-run|--commit] [--show=<productCode>]
 //
-// Re-runnable: a second run finds nothing left to fill.
+// Re-runnable: a second run finds nothing left to fill. Needs the 20261017120000_pack_piece_pricing migration.
 import { readFile } from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -23,15 +23,15 @@ const target = new URL(DATABASE_URL);
 console.log(`TARGET host=${target.hostname} db=${target.pathname.slice(1)} mode=${commit ? "commit" : "dry-run"}`);
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const { getVariantOrderPricing } = createRequire(import.meta.url)(path.join(ROOT, "src/lib/cataloguePricing.js"));
+const { variantPricing, unitLabel, formatPriceLine } = createRequire(import.meta.url)(path.join(ROOT, "src/lib/cataloguePricing.js"));
 const { PrismaClient } = await import("../prisma.mjs");
 const prisma = new PrismaClient();
 
 const ABOUT = "ABOUT THIS ITEM";
 const SPECS = "VARIANT SPECIFICATIONS";
 const text = (v) => String(v ?? "").trim();
-const toPaise = (rupees) => BigInt(Math.round((Number(rupees) > 0 ? Number(rupees) : 0) * 100));
 const packOf = (variant) => Math.max(1, Math.trunc(Number(variant.pack)) || 1);
+const UNIT_NAMES = { pc: "Pcs.", m: "m", set: "Set" };
 // "Cap. (ml)", "Capacity (mL)" and "Capacity (ml)" are one column; spelling differences aren't conflicts.
 const keyForm = (key) => text(key).toLowerCase().replace(/^cap\.?(?=\s|\(|$)/, "capacity").replace(/[^a-z0-9]+/g, " ").trim();
 const specsForm = (specs) => JSON.stringify(Object.entries(specs ?? {}).map(([k, v]) => [keyForm(k), text(v)]).sort());
@@ -139,23 +139,30 @@ for (const dbProduct of dbProducts) {
   for (const fv of file.variants) {
     if (report.conflicts.has(fv.sku)) continue;
     const dbv = byKey.get(fv.sku);
-    const pack = packOf(fv);
-    const { baseListPrice } = getVariantOrderPricing(fv.price, pack, file);
+    const pricing = variantPricing(fv);
+    // The price columns as product_variants stores them: piece price, authoritative pack price, basis.
+    const priceData = {
+      packSize: pricing?.packSize ?? packOf(fv),
+      unitPricePaise: BigInt(pricing?.piecePricePaise ?? 0),
+      packPricePaise: BigInt(pricing?.packPricePaise ?? 0),
+      priceBasis: pricing?.priceBasis ?? "piece",
+      packAssumed: fv.packAssumed === true,
+    };
 
     if (!dbv) {
       if (takenSkus.has(fv.sku)) { report.skuTaken.push(`${code}: ${fv.sku}`); continue; }
       takenSkus.set(fv.sku, dbProduct.id);
-      creates.push({ sku: fv.sku, catalogueNumber: fv.sku, unitName: "Pcs.", packSize: pack, unitPricePaise: toPaise(fv.price), packPricePaise: toPaise(baseListPrice), active: fv.inStock !== false });
+      creates.push({ sku: fv.sku, catalogueNumber: fv.sku, unitName: UNIT_NAMES[unitLabel(fv.packUnit)], ...priceData, active: fv.inStock !== false });
       report.added.push(fv.sku);
       if (fv.inStock !== false) specCandidates.push(fv);
       continue;
     }
     if (!dbv.active) continue;
     specCandidates.push(fv);
-    if (dbv.unitPricePaise === 0n && Number(fv.price) > 0) {
-      updates.push({ id: dbv.id, data: { packSize: pack, unitPricePaise: toPaise(fv.price), packPricePaise: toPaise(baseListPrice) } });
-      report.priced.push(`${fv.sku} ₹${fv.price}×${pack}`);
-    } else if (dbv.unitPricePaise !== 0n && Number(fv.price) > 0 && dbv.unitPricePaise !== toPaise(fv.price)) {
+    if (dbv.unitPricePaise === 0n && pricing) {
+      updates.push({ id: dbv.id, data: priceData });
+      report.priced.push(`${fv.sku} ${formatPriceLine(pricing)}`);
+    } else if (dbv.unitPricePaise !== 0n && pricing && dbv.unitPricePaise !== priceData.unitPricePaise) {
       report.dbPriceDiffers++;
     }
   }

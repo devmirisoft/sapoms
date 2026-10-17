@@ -9,67 +9,38 @@ async function importCatalogueClient() {
   return jiti.import(path.resolve("src/lib/catalogueClient.ts"));
 }
 
-test("loadCatalogueProducts merges complete nested variants into enriched catalogue products", async () => {
+test("loadCatalogueProducts merges a product's per-page records into one", async () => {
   const originalFetch = globalThis.fetch;
   const client = await importCatalogueClient();
 
   globalThis.fetch = async (url) => {
     const pathName = String(url);
-    if (pathName.includes("omsons_products_from_excel_with_images")) {
+    if (pathName.includes("omsonsdata")) {
       return {
         ok: true,
         json: async () => [
-          {
-            id: "58",
-            sku: "58",
-            name: "Volumetric Flask Amber",
-            images: ["/image-enriched.jpg"],
-            variants: [
-              { id: "58/1", sku: "58/1", price: 100, images: ["/variant-enriched.jpg"] },
-              { id: "58/2", sku: "58/2", price: 200 },
-            ],
-          },
+          { id: "58", sku: "58", name: "Volumetric Flask Amber", images: ["/page-1.jpg"], variants: [{ id: "58/1", sku: "58/1", price: 100 }, { id: "58/2", sku: "58/2", price: 200 }] },
+          { id: "58--p2", sku: "58", name: "Volumetric Flask Amber", images: ["/page-2.jpg"], variants: [{ id: "58/3", sku: "58/3", price: 300 }] },
         ],
       };
     }
-
-    if (pathName.includes("nested_omsons_products")) {
-      return {
-        ok: true,
-        json: async () => [
-          {
-            id: "58",
-            sku: "58",
-            name: "Volumetric Flask Amber",
-            images: ["/nested.jpg"],
-            variants: [
-              { id: "58/1", sku: "58/1", price: 90 },
-              { id: "58/2", sku: "58/2", price: 190 },
-              { id: "58/3", sku: "58/3", price: 300 },
-            ],
-          },
-        ],
-      };
-    }
-
+    if (pathName === "/api/products") return { ok: false };
     throw new Error(`Unexpected URL ${pathName}`);
   };
 
   try {
     const products = await client.loadCatalogueProducts();
-    const product = products.find((item) => item.sku === "58");
-    assert.deepEqual(product.variants.map((variant) => variant.sku), ["58/1", "58/2", "58/3"]);
-    assert.equal(product.images[0], "/image-enriched.jpg");
-    assert.equal(product.variants[0].price, 100);
-    assert.equal(product.variants[0].images[0], "/variant-enriched.jpg");
-    assert.equal(product.variants[2].images[0], "/image-enriched.jpg");
+    const matches = products.filter((item) => item.sku === "58");
+    assert.equal(matches.length, 1);
+    assert.equal(matches[0].id, "58");
+    assert.deepEqual(matches[0].variants.map((variant) => variant.sku), ["58/1", "58/2", "58/3"]);
+    assert.equal(matches[0].images[0], "/page-1.jpg");
   } finally {
     globalThis.fetch = originalFetch;
   }
 });
 
-test("loadCatalogueProducts normalizes merged variant specification aliases", async () => {
-  const originalFetch = globalThis.fetch;
+test("mergeCatalogueProducts normalizes merged variant specification aliases", async () => {
   const client = await importCatalogueClient();
   const nestedVariants = Array.from({ length: 15 }, (_, index) => {
     const variantNumber = index + 1;
@@ -88,12 +59,7 @@ test("loadCatalogueProducts normalizes merged variant specification aliases", as
     };
   });
 
-  globalThis.fetch = async (url) => {
-    const pathName = String(url);
-    if (pathName.includes("omsons_products_from_excel_with_images")) {
-      return {
-        ok: true,
-        json: async () => [
+  const enriched = [
           {
             id: "58",
             sku: "58",
@@ -125,30 +91,11 @@ test("loadCatalogueProducts normalizes merged variant specification aliases", as
               },
             ],
           },
-        ],
-      };
-    }
+  ];
+  const nested = [{ id: "58", sku: "58", name: "Volumetric Flask Amber", images: ["/nested.jpg"], variants: nestedVariants }];
 
-    if (pathName.includes("nested_omsons_products")) {
-      return {
-        ok: true,
-        json: async () => [
-          {
-            id: "58",
-            sku: "58",
-            name: "Volumetric Flask Amber",
-            images: ["/nested.jpg"],
-            variants: nestedVariants,
-          },
-        ],
-      };
-    }
-
-    throw new Error(`Unexpected URL ${pathName}`);
-  };
-
-  try {
-    const products = await client.loadCatalogueProducts();
+  {
+    const products = client.mergeCatalogueProducts(enriched, nested);
     const product = products.find((item) => item.sku === "58");
     const expectedSkus = Array.from({ length: 15 }, (_, index) => `58/${index + 1}`);
     assert.deepEqual(product.variants.map((variant) => variant.sku), expectedSkus);
@@ -165,8 +112,6 @@ test("loadCatalogueProducts normalizes merged variant specification aliases", as
     assert.equal(product.variants[1].specs["Dia x Height (mm)"], "dia-2");
     assert.equal(product.variants[0].specs["Unrelated Spec"], "keep-enriched");
     assert.equal(product.variants[2].specs["Secondary Only"], "secondary-3");
-  } finally {
-    globalThis.fetch = originalFetch;
   }
 });
 
@@ -176,9 +121,9 @@ test("loadCatalogueProducts normalizes PostgreSQL products into the catalogue sh
 
   globalThis.fetch = async (url) => {
     const pathName = String(url);
-    if (pathName.includes("omsons_products_from_excel_with_images") || pathName.includes("nested_omsons_products")) return { ok: true, json: async () => [] };
+    if (pathName.includes("omsonsdata")) return { ok: true, json: async () => [] };
     if (pathName === "/api/products") {
-      return { ok: true, json: async () => ({ success: true, data: [{ id: "pg-152", sku: "PG-152", productCode: "PG-152", name: "Sandbox PostgreSQL Joint", category: "JOINTS", categories: ["JOINTS"], imageUrl: "https://res.cloudinary.com/demo/image/upload/sample.jpg", images: ["https://res.cloudinary.com/demo/image/upload/sample.jpg"], active: true, descriptionHtml: "Base description\n\nABOUT THIS ITEM\n- First point\n- Second point\n\nVARIANT SPECIFICATIONS\n152/1 - Socket Size: 10/19; Diameter: 13; Height: 120\n152/2 - Socket Size: 12/21; Diameter: 14; Height: 125", variants: [{ id: "v1", sku: "152/1", catalogueNumber: "152/1", packSize: 10, unitPricePaise: "9400", price: 94, active: true }, { id: "v2", sku: "152/2", catalogueNumber: "152/2", packSize: 10, unitPricePaise: "9900", price: 99, active: true }] }] }) };
+      return { ok: true, json: async () => ({ success: true, data: [{ id: "pg-152", sku: "PG-152", productCode: "PG-152", name: "Sandbox PostgreSQL Joint", category: "JOINTS", categories: ["JOINTS"], imageUrl: "https://res.cloudinary.com/demo/image/upload/sample.jpg", images: ["https://res.cloudinary.com/demo/image/upload/sample.jpg"], active: true, descriptionHtml: "Base description\n\nABOUT THIS ITEM\n- First point\n- Second point\n\nVARIANT SPECIFICATIONS\n152/1 - Socket Size: 10/19; Diameter: 13; Height: 120\n152/2 - Socket Size: 12/21; Diameter: 14; Height: 125", variants: [{ id: "v1", sku: "152/1", catalogueNumber: "152/1", packSize: 10, unitPricePaise: "9400", price: 94, priceBasis: "pack", unitName: "Pcs.", pricePerPack: 940, pricePerPiece: 94, packAssumed: false, active: true }, { id: "v2", sku: "152/2", catalogueNumber: "152/2", packSize: 10, unitPricePaise: "9900", price: 99, active: true }] }] }) };
     }
     throw new Error(`Unexpected URL ${pathName}`);
   };
@@ -197,6 +142,11 @@ test("loadCatalogueProducts normalizes PostgreSQL products into the catalogue sh
     assert.equal(product.variants[0].inStock, true);
     assert.equal(product.variants[0].specs["Socket Size"], "10/19");
     assert.equal(product.variants[1].specs.Height, "125");
+    // Explicit pack/piece pricing survives normalization; a row without it defaults to "piece".
+    assert.equal(product.variants[0].priceBasis, "pack");
+    assert.equal(product.variants[0].pricePerPack, 940);
+    assert.equal(product.variants[0].packUnit, "Pcs.");
+    assert.equal(product.variants[1].priceBasis, "piece");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -208,8 +158,7 @@ test("loadCatalogueProducts lets PostgreSQL products win duplicate catalogue SKU
 
   globalThis.fetch = async (url) => {
     const pathName = String(url);
-    if (pathName.includes("omsons_products_from_excel_with_images")) return { ok: true, json: async () => [{ id: "DUP", sku: "DUP", name: "JSON Product", variants: [] }] };
-    if (pathName.includes("nested_omsons_products")) return { ok: true, json: async () => [] };
+    if (pathName.includes("omsonsdata")) return { ok: true, json: async () => [{ id: "DUP", sku: "DUP", name: "JSON Product", variants: [] }] };
     if (pathName === "/api/products") return { ok: true, json: async () => ({ success: true, data: [{ id: "pg-dup", sku: "DUP", name: "PostgreSQL Product", active: true, variants: [{ id: "pg-v", sku: "DUP/1", catalogueNumber: "DUP/1", price: 12, packSize: 1, active: true }] }] }) };
     throw new Error(`Unexpected URL ${pathName}`);
   };

@@ -13,6 +13,7 @@ import { OrderAmountSource, withDisplayOrderAmounts } from "@/lib/orderAmounts";
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
 import { useAuthSession } from "@/hooks/useAuthSession";
 import type { SaleItem } from "@/lib/todaysSale";
+import { mergeCatalogueRecords, type CatalogueProduct } from "@/lib/catalogue";
 // import { getRecentlyViewed, pushRecentlyViewed, type RecentlyViewedItem } from "@/components/Header";
 
 import { getRecentlyViewed, pushRecentlyViewed, type RecentlyViewedItem } from "@/components/Header";
@@ -356,7 +357,7 @@ export default function Page() {
   // Fallback: first 6 products that have images in the local catalog
   useEffect(() => {
     Promise.all([
-      axios.get<JsonProduct[]>("/data/omsons_products_from_excel_with_images.json"),
+      axios.get<CatalogueProduct[]>("/data/omsonsdata.json"),
       fetch("/api/hot-items", { cache: "no-store" })
         .then((r) => r.json())
         .catch(() => ({ success: false, data: { items: [] } })),
@@ -368,7 +369,7 @@ export default function Page() {
         .catch(() => ({ success: false })),
     ])
       .then(([catalogRes, hotJson, saleJson, newJson]) => {
-        const { imageMap, nameMap, fallbackProducts, resolver } = buildCatalogLookups(catalogRes.data);
+        const { imageMap, nameMap, fallbackProducts, resolver } = buildCatalogLookups(mergeCatalogueRecords(catalogRes.data).products as unknown as JsonProduct[]);
         setCatalogResolver(resolver);
         setRelatedProducts(buildRelatedProducts(bottleProducts, resolver));
         const toDisplay = (item: { SKU: string; name: string; image: string }, badge: string): HotItemDisplay => {

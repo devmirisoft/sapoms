@@ -7,6 +7,7 @@ import {
   QueryClient,
   QueryClientProvider,
   useQueries,
+  useQueryClient,
 } from "@tanstack/react-query";
 import { CiSearch } from "react-icons/ci";
 import { useCartStore } from "@/Store/store";
@@ -223,6 +224,16 @@ async function fetchJson<T>(url: string): Promise<T> {
   return res.json();
 }
 
+// Slim rows (view=summary): the dashboard only counts and charts orders. One key
+// for loadDashboard and the summary cards, so both share a single request.
+// ponytail: limit=1000 caps the counts; move to server-side aggregates if a dealer nears 1000 orders.
+function dealerOrdersQuery(dealerId: string) {
+  return {
+    queryKey: ["dealerSidebarSummary", "orders", "dealer", dealerId],
+    queryFn: () => fetchJson<{ data: OrderHistoryItem[] }>(`/api/orders-data?page=1&limit=1000&search=&view=summary`),
+  };
+}
+
 async function safeFetch(url: string, options: RequestInit = {}) {
   const res  = await fetch(url, options);
   const text = await res.text();
@@ -304,6 +315,7 @@ function DealerDashboardInner() {
   // just once on mount.
   const { session } = useAuthSession();
   const sessionUser = session?.status === "authenticated" ? session.user : null;
+  const queryClient = useQueryClient();
 
   const loadDashboard = useCallback(async (parsed: DealerData) => {
     try {
@@ -348,9 +360,7 @@ function DealerDashboardInner() {
           .catch(() => setContacts([]))
           .finally(() => setContactsLoading(false));
 
-        const activeResponse = await fetchJson<{ data: OrderHistoryItem[] }>(
-          `/api/orders-data?page=1&limit=1000&search=`
-        );
+        const activeResponse = await queryClient.fetchQuery(dealerOrdersQuery(dealerId));
         const orderView = buildDealerOrderView(activeResponse.data, dealerId);
         setMonthlyOrders(orderView.monthly);
         setOrderHistory(orderView.orders as OrderHistoryItem[]);
@@ -359,7 +369,7 @@ function DealerDashboardInner() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [queryClient]);
 
   // Initial load, plus a re-load whenever the current-user query hands back a
   // different profile (its data keeps the same reference while nothing changed).
@@ -518,8 +528,7 @@ function DealerDashboardInner() {
         enabled: !!dealer.Dealer_Id,
       },
       {
-        queryKey: ["dealerSidebarSummary", "orders", "dealer", dealer.Dealer_Id],
-        queryFn: () => fetchJson<{ data: OrderHistoryItem[] }>(`/api/orders-data?page=1&limit=1000&search=`),
+        ...dealerOrdersQuery(dealer.Dealer_Id),
         enabled: !!dealer.Dealer_Id,
       },
     ],

@@ -45,6 +45,7 @@ export async function GET(req: NextRequest) {
       assignedDealerIds,
       page: requestedPage,
       pageSize: requestedLimit,
+      summary: req.nextUrl.searchParams.get("view") === "summary",
       filters: {
         search: String(req.nextUrl.searchParams.get("search") || "").slice(0, 200),
         accepted: req.nextUrl.searchParams.get("accepted") ?? "",

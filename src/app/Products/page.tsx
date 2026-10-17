@@ -12,6 +12,7 @@ import {
   matchesCatalogueQuery,
 } from '@/lib/catalogue';
 import { loadCatalogueProducts } from '@/lib/catalogueClient';
+import cataloguePricing from '@/lib/cataloguePricing';
 // ─────────────────────────────────────────────────────────────
 // TYPES
 // ─────────────────────────────────────────────────────────────
@@ -106,16 +107,9 @@ function getProductImage(product: Product): string | null {
   return (product.images ?? []).find(img => typeof img === "string" && img.length > 0) ?? null;
 }
 
-// Returns prices in paise (×100) so fmt() stays consistent throughout the app.
+// The cheapest pack in paise, from the one pricing function; drives the price sort.
 function getLowestPrice(product: Product): { regular: number | null; sale: number | null } {
-  const vs = product.variants ?? [];
-  const prices = vs
-    .map(v => (typeof v.price === "number" && v.price > 0 ? v.price * 100 : 0))
-    .filter(p => p > 0);
-  return {
-    regular: prices.length ? Math.min(...prices) : null,
-    sale:    null,
-  };
+  return { regular: cataloguePricing.cheapestPricing(product)?.packPricePaise ?? null, sale: null };
 }
 
 // Pack size is stored directly on each variant in the new JSON.

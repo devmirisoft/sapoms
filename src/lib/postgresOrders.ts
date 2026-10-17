@@ -49,9 +49,30 @@ const orderDetailInclude = {
   walletTransactions: { orderBy: { createdAt: "desc" as const } },
 } satisfies Prisma.OrderInclude;
 
+// The dashboards only count and chart orders (view=summary), so they skip
+// orderInclude's dozen relation queries: 4 round trips instead of 12. Items and
+// their dispatches stay because mtstatus is read off the dispatch rows.
+const orderSummarySelect = {
+  id: true,
+  legacyPhpId: true,
+  orderNumber: true,
+  dealerId: true,
+  orderDate: true,
+  grossAmountPaise: true,
+  totalDiscountAmountPaise: true,
+  finalPayableAmountPaise: true,
+  status: true,
+  acceptanceStatus: true,
+  rsmApprovalStatus: true,
+  fulfilmentStatus: true,
+  dealer: { select: { businessName: true } },
+  items: { select: { quantityPacks: true, packSize: true, dispatches: { select: { quantity: true } } } },
+} satisfies Prisma.OrderSelect;
+
 export type PostgresOrderRecord = Prisma.OrderGetPayload<{ include: typeof orderInclude }>;
 type PostgresOrderDetailRecord = Prisma.OrderGetPayload<{ include: typeof orderDetailInclude }>;
 type PostgresOrderLike = PostgresOrderRecord | PostgresOrderDetailRecord;
+type PostgresOrderSummaryRecord = Prisma.OrderGetPayload<{ select: typeof orderSummarySelect }>;
 
 function text(value: unknown) {
   return String(value ?? "").trim();
@@ -123,8 +144,48 @@ function legacyFulfilment(order: DispatchTotalsSource) {
   return dispatched >= ordered ? "Completed" : "Partial";
 }
 
-function orderIdentity(order: PostgresOrderRecord) {
+function orderIdentity(order: Pick<PostgresOrderRecord, "legacyPhpId" | "id">) {
   return order.legacyPhpId || order.id.toString();
+}
+
+// The fields of mapPostgresOrderToLegacy the dashboards read, computed the same way.
+function mapPostgresOrderSummaryToLegacy(order: PostgresOrderSummaryRecord) {
+  const orderId = orderIdentity(order);
+  const dealerId = order.dealerId.toString();
+  const orderDate = order.orderDate.toISOString();
+  const discountAmount = rupees(order.totalDiscountAmountPaise);
+  return {
+    __source: "postgres",
+    id: orderId,
+    orderId,
+    order_id: orderId,
+    order_number: order.orderNumber,
+    order_dealer: dealerId,
+    orderdata_dealerid: dealerId,
+    Dealer_Id: dealerId,
+    Dealer_Name: order.dealer.businessName,
+    order_date: orderDate,
+    orderdata_datetime: orderDate,
+    order_amount: rupees(order.grossAmountPaise),
+    grossAmount: rupees(order.grossAmountPaise),
+    grossAmountPaise: order.grossAmountPaise.toString(),
+    order_discount: discountAmount,
+    discountAmount,
+    discountAmountPaise: order.totalDiscountAmountPaise.toString(),
+    finalPayableAmount: rupees(order.finalPayableAmountPaise),
+    finalPayableAmountPaise: order.finalPayableAmountPaise.toString(),
+    status: order.status,
+    order_status: legacyOrderStatus(order.status),
+    accept_order: legacyAcceptance(order.acceptanceStatus),
+    rsmApprovalStatus: order.rsmApprovalStatus,
+    rsm_approval_status: order.rsmApprovalStatus,
+    acceptanceStatus: order.acceptanceStatus,
+    acceptance_status: order.acceptanceStatus,
+    fulfilmentStatus: order.fulfilmentStatus,
+    fulfilment_status: order.fulfilmentStatus,
+    mtstatus: legacyFulfilment(order),
+    del_status: legacyDeletion(order.status),
+  };
 }
 
 export function postgresOrderDedupeIds(order: PostgresOrderRecord) {
@@ -508,6 +569,7 @@ export async function listPostgresOrderPage(input: {
   filters?: OrderFilters;
   page: number;
   pageSize: number;
+  summary?: boolean;
 }) {
   const where: Prisma.OrderWhereInput = {
     AND: [
@@ -517,14 +579,21 @@ export async function listPostgresOrderPage(input: {
       ...(await orderFilterWhere(input.filters ?? {})),
     ],
   };
+  const page = {
+    where,
+    orderBy: [{ orderDate: "desc" as const }, { id: "desc" as const }],
+    skip: (input.page - 1) * input.pageSize,
+    take: input.pageSize,
+  };
+  if (input.summary) {
+    const [orders, total] = await Promise.all([
+      prisma.order.findMany({ ...page, select: orderSummarySelect }),
+      prisma.order.count({ where }),
+    ]);
+    return { rows: orders.map(mapPostgresOrderSummaryToLegacy), total };
+  }
   const [orders, total] = await Promise.all([
-    prisma.order.findMany({
-      where,
-      include: orderInclude,
-      orderBy: [{ orderDate: "desc" }, { id: "desc" }],
-      skip: (input.page - 1) * input.pageSize,
-      take: input.pageSize,
-    }),
+    prisma.order.findMany({ ...page, include: orderInclude }),
     prisma.order.count({ where }),
   ]);
   return { rows: orders.map(mapPostgresOrderToLegacy), total };

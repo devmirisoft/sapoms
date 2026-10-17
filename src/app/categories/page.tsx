@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
 import { SIDEBAR_CATEGORIES, compactCategoryList, matchesCategory } from '@/lib/categories';
+import { mergeCatalogueRecords } from '@/lib/catalogue';
+import cataloguePricing from '@/lib/cataloguePricing';
 
 type Variant = { inStock: boolean; images: string[]; price: number | null; pack: number };
 type Product = { sku: string; name: string; category?: string; categories: string[]; images: string[]; variants?: Variant[] };
@@ -28,8 +30,8 @@ export default function CategoriesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    axios.get('/data/omsons_products_from_excel_with_images.json')
-      .then(res => { setProducts(res.data); setLoading(false); })
+    axios.get('/data/omsonsdata.json')
+      .then(res => { setProducts(mergeCatalogueRecords(res.data).products as unknown as Product[]); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 
@@ -37,7 +39,7 @@ export default function CategoriesPage() {
     const matching = products.filter(p => matchesCategory(compactCategoryList([p.category, ...(p.categories ?? [])]), label));
     const image = matching.flatMap(p => p.images ?? []).find(Boolean) ?? null;
     const lowestPaise = matching
-      .flatMap(p => (p.variants ?? []).map(v => (typeof v.price === 'number' && v.price > 0 ? v.price * 100 : 0)))
+      .map(p => cataloguePricing.cheapestPricing(p)?.packPricePaise ?? 0)
       .filter(p => p > 0);
     const minPrice = lowestPaise.length ? Math.min(...lowestPaise) : null;
     return { label, count: matching.length, image, minPrice };

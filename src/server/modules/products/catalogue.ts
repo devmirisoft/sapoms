@@ -1,8 +1,7 @@
 import "server-only";
 
-import enrichedJson from "../../../../public/data/omsons_products_from_excel_with_images.json";
-import completeJson from "../../../../public/data/nested_omsons_products.json";
-import { buildCatalogueIndex, findCatalogueEntry, type CatalogueProduct, type CatalogueVariant } from "@/lib/catalogue";
+import catalogueJson from "../../../../public/data/omsonsdata.json";
+import { buildCatalogueIndex, findCatalogueEntry, mergeCatalogueRecords, type CatalogueProduct, type CatalogueVariant } from "@/lib/catalogue";
 import { mergeCatalogueProducts } from "@/lib/catalogueClient";
 import cataloguePricing from "@/lib/cataloguePricing";
 import productSearch from "@/lib/productSearch.js";
@@ -13,9 +12,10 @@ import { listPostgresCatalogue } from "@/server/modules/products/postgres-catalo
 // from Postgres), so the agent quotes exactly what the dealer would see there.
 const TTL_MS = 60_000;
 let cache: { at: number; value: Promise<ReturnType<typeof build>> } | null = null;
+const jsonProducts = mergeCatalogueRecords(catalogueJson as unknown as CatalogueProduct[]).products;
 
 function build(postgresProducts: CatalogueProduct[]) {
-  const products = mergeCatalogueProducts(enrichedJson as CatalogueProduct[], completeJson as CatalogueProduct[], postgresProducts);
+  const products = mergeCatalogueProducts(jsonProducts, [], postgresProducts);
   return { products, index: buildCatalogueIndex(products), searchable: products.map(productSearch.normalizeProductForSearch) };
 }
 
@@ -32,24 +32,16 @@ export async function findCatalogueItem(sku: string) {
   return findCatalogueEntry((await loadCatalogue()).index, sku);
 }
 
-const roundMoney = (value: number) => Math.round((value + Number.EPSILON) * 100) / 100;
-
-/** What one pack of a variant costs at list, in rupees. null when the catalogue has no price. */
-export function linePricing(product: CatalogueProduct, variant: CatalogueVariant) {
-  const packSize = Math.max(1, Math.trunc(Number(variant.pack)) || 1);
-  const { unitPrice, baseListPrice } = cataloguePricing.getVariantOrderPricing(variant.price, packSize, product);
-  return unitPrice ? { packSize, unitPrice, packPrice: baseListPrice } : null;
-}
-
-/** List and dealer-net price for one pack (the unit dealers order in). null when the catalogue has no price. */
-export function priceVariant(product: CatalogueProduct, variant: CatalogueVariant, discountPercent: number) {
-  const pricing = linePricing(product, variant);
+/** List and dealer-net price for one pack (the unit dealers order in), in rupees. null when the catalogue has no price. */
+export function priceVariant(variant: CatalogueVariant, discountPercent: number) {
+  const pricing = cataloguePricing.variantPricing(variant);
   if (!pricing) return null;
   return {
     packSize: pricing.packSize,
-    listPricePerPack: pricing.packPrice,
+    priceBasis: pricing.priceBasis,
+    listPricePerPack: pricing.packPricePaise / 100,
     discountPercent,
-    netPricePerPack: roundMoney(pricing.packPrice * (1 - discountPercent / 100)),
+    netPricePerPack: Math.round(pricing.packPricePaise * (1 - discountPercent / 100)) / 100,
   };
 }
 

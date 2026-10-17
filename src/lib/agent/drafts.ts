@@ -5,7 +5,8 @@ import { createDealerOrder, OrderError, priceDealerOrder, type CreateOrderActor,
 import { getDealerCreditStatus } from "@/lib/dealerCreditLimit";
 import { buildDraftApprovalState, buildOrderApprovalSnapshot, requiresNsmReview, stackDiscountOnNet } from "@/lib/customDiscountRequests";
 import { buildCustomDiscountCreate, dealerExists, draftSnapshot, jsonValue } from "@/lib/postgresDiscountDrafts";
-import { findCatalogueItem, linePricing } from "@/server/modules/products/catalogue";
+import cataloguePricing from "@/lib/cataloguePricing";
+import { findCatalogueItem } from "@/server/modules/products/catalogue";
 import type { DraftSummary } from "./types";
 
 export const DRAFT_TTL_MS = 15 * 60_000;
@@ -41,7 +42,7 @@ async function priceDraft(dealerId: bigint, rawItems: DraftItem[], ask: CustomDi
     const entry = await findCatalogueItem(item.productId);
     if (!entry?.variant) problems.push(`${item.productId} is not in the catalogue`);
     else if (entry.variant.inStock === false) problems.push(`${item.productId} is out of stock`);
-    else if (!linePricing(entry.product, entry.variant)) problems.push(`${item.productId} has no catalogue price`);
+    else if (!cataloguePricing.variantPricing(entry.variant)) problems.push(`${item.productId} has no catalogue price`);
   }
   if (problems.length) return fail("INVALID_ITEMS", `${problems.join("; ")}. Use search_products to find valid productIds.`);
 

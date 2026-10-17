@@ -1,5 +1,6 @@
 import { AdminRouteError } from "@/server/admin/admin-errors";
 import type { ProductWriteInput } from "@/server/modules/admin/products/products.types";
+import cataloguePricing from "@/lib/cataloguePricing";
 
 function text(value: unknown, max = 1000) { return String(value ?? "").trim().slice(0, max); }
 function bool(value: unknown, fallback = true) { return typeof value === "boolean" ? value : fallback; }
@@ -15,9 +16,16 @@ export function parseProductWriteInput(raw: unknown): ProductWriteInput {
   const variants = rawVariants.filter((variant): variant is Record<string, unknown> => Boolean(variant) && typeof variant === "object").map((variant) => {
     const sku = text(variant.sku ?? variant.catalogueNumber ?? variant.product_cat, 160);
     const packSize = int(variant.packSize ?? variant.product_quantity);
-    const unitPricePaise = rawPaise(variant.unitPricePaise) ?? paise(variant.unitPrice ?? variant.product_price ?? variant.price);
-    const packPricePaise = rawPaise(variant.packPricePaise) ?? unitPricePaise * BigInt(packSize ?? 1);
-    return { id: text(variant.id, 40) || undefined, sku, catalogueNumber: text(variant.catalogueNumber ?? variant.product_cat ?? sku, 160), unitName: text(variant.unitName ?? variant.product_unit, 80), packSize, unitPricePaise, packPricePaise, active: bool(variant.active, true) };
+    const priceBasis = variant.priceBasis === "pack" ? "pack" as const : variant.priceBasis === "piece" ? "piece" as const : undefined;
+    // The admin form sends the price as printed for its basis and the other is derived
+    // (pack price authoritative). Callers without printedPrice send a piece price.
+    const printedPaise = variant.printedPrice !== undefined
+      ? paise(variant.printedPrice)
+      : priceBasis === "pack"
+        ? rawPaise(variant.packPricePaise) ?? paise(variant.packPrice)
+        : rawPaise(variant.unitPricePaise) ?? paise(variant.unitPrice ?? variant.product_price ?? variant.price);
+    const prices = cataloguePricing.pricesFromPrinted(priceBasis ?? "piece", packSize ?? 1, Number(printedPaise));
+    return { id: text(variant.id, 40) || undefined, sku, catalogueNumber: text(variant.catalogueNumber ?? variant.product_cat ?? sku, 160), unitName: text(variant.unitName ?? variant.product_unit, 80), packSize, priceBasis, unitPricePaise: BigInt(prices.piecePricePaise), packPricePaise: BigInt(prices.packPricePaise), active: bool(variant.active, true) };
   });
   if (!variants.length || variants.every((variant) => !variant.sku && !variant.catalogueNumber)) throw new AdminRouteError("INVALID_REQUEST", "At least one catalogue number is required");
   return { productCode: text(input.productCode ?? input.product_code, 160) || undefined, name, description: text(input.description ?? input.product_discription, 20000), imageUrl: text(input.imageUrl ?? input.product_image, 1000), categoryName: text(input.categoryName ?? input.category ?? input.product_category, 160) || undefined, active: bool(input.active, true), variants };
