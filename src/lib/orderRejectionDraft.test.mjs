@@ -137,9 +137,9 @@ test("a declined order creates the draft, refunds the debit, and is retired on a
 
   // Both review stages (RSM and staff) must push the order back to drafts.
   assert.equal((status.match(/createOrderRejectionDraft\(tx, order/g) ?? []).length, 2);
-  assert.equal((status.match(/refundDeclinedOrderWallet\(tx, order\)/g) ?? []).length, 2);
+  assert.equal((status.match(/refundOrderWallet\(tx, order, "decline"\)/g) ?? []).length, 2);
   assert.match(status, /orderDraft\.updateMany\(\{ where: \{ orderId: order\.id, dealerId: order\.dealerId, status: "ACTIVE" \}, data: \{ status: "CONVERTED" \} \}\)/);
-  assert.match(drafts, /idempotencyKey: `order:\$\{order\.id\.toString\(\)\}:decline-refund`/);
+  assert.match(drafts, /idempotencyKey: `order:\$\{order\.id\.toString\(\)\}:\$\{reason\}-refund`/);
   assert.match(drafts, /WalletTransactionType\.REFUND/);
 });
 

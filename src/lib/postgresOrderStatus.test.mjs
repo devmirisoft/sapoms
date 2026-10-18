@@ -135,3 +135,10 @@ test("order list leaves accept/decline to the order detail page", () => {
   // order id alone would collide.
   assert.match(orderManagement, /key=\{order\.id \|\| order\.orderId\}/);
 });
+
+test("cancelling refunds the wallet inside the cancel's transaction and blocks a dispatched wallet order", () => {
+  assert.match(source, /prisma\.\$transaction\(async \(tx\) => \{\s+await refundWalletOnCancel\(tx, order\);/);
+  assert.match(overlayRoute, /status: "CANCELLED"[^\n]+\n\s+await refundWalletOnCancel\(tx, order\);/);
+  assert.match(source, /"wallet_order_dispatched"/);
+  assert.match(source, /refundOrderWallet\(tx, order, "cancel"\)/);
+});

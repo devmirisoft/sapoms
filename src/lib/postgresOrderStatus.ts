@@ -2,7 +2,7 @@ import type { OrderAcceptanceStatus, OrderFulfilmentStatus, OrderStatus, Prisma 
 import { prisma } from "@/server/db/prisma";
 import type { AuthActor } from "@/server/auth/session";
 import { coversRsmStage, isStaffLike, onBehalfName, orphanRsmOrderWhere, rsmOrderScope } from "@/server/auth/sales-scope";
-import { createOrderRejectionDraft, refundDeclinedOrderWallet } from "@/lib/orderRejectionDrafts";
+import { createOrderRejectionDraft, refundOrderWallet, walletDebitRemaining } from "@/lib/orderRejectionDrafts";
 import { AUDIT_ENTITY, type AuditAction } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
 
@@ -261,7 +261,7 @@ export async function updatePostgresOrderAcceptance(
       );
       if (next === "DECLINED") {
         await createOrderRejectionDraft(tx, order, { role: actor.role, name: actor.displayName || actor.email || "" }, reviewNote);
-        await refundDeclinedOrderWallet(tx, order);
+        await refundOrderWallet(tx, order, "decline");
       }
       return row;
     });
@@ -296,7 +296,7 @@ export async function updatePostgresOrderAcceptance(
     );
     if (next === "DECLINED") {
       await createOrderRejectionDraft(tx, order, { role: actor.role, name: actor.displayName || actor.email || "" }, reviewNote);
-      await refundDeclinedOrderWallet(tx, order);
+      await refundOrderWallet(tx, order, "decline");
     } else {
       // The rejection draft stays visible while its resubmission is under
       // review; acceptance is what finally retires it.
@@ -409,6 +409,24 @@ export async function updatePostgresOrderFulfilment(orderId: unknown, actor: Aut
   return { ...updated, accept_order: legacyAcceptOrderAlias(updated.acceptanceStatus), del_status: legacyDelStatusAlias(updated.status) };
 }
 
+/**
+ * Cancelling gives a wallet dealer their money back, in full, inside the cancel's
+ * own transaction. Once goods have shipped a full refund would be wrong and a
+ * partial one is a judgement call, so a wallet-paid order can no longer be
+ * cancelled; the refund is made deliberately through Wallet → Refund instead.
+ */
+export async function refundWalletOnCancel(
+  tx: Prisma.TransactionClient,
+  order: { id: bigint; dealerId: bigint; orderNumber: string; fulfilmentStatus: string },
+) {
+  if (await walletDebitRemaining(tx, order.id) <= BigInt(0)) return null;
+  const dispatched = order.fulfilmentStatus !== "PENDING" || await tx.orderItemDispatch.count({ where: { orderId: order.id } }) > 0;
+  if (dispatched) {
+    throw new PostgresOrderStatusError(409, "wallet_order_dispatched", "Dispatch has started on this wallet-paid order, so it can't be cancelled. Refund any unshipped amount from the dealer's wallet (Wallet → Refund).");
+  }
+  return refundOrderWallet(tx, order, "cancel");
+}
+
 export async function cancelPostgresOrder(orderId: unknown, actor: AuthActor, reason: unknown) {
   const order = await findPostgresStatusOrder(orderId);
   if (!order) return null;
@@ -418,6 +436,7 @@ export async function cancelPostgresOrder(orderId: unknown, actor: AuthActor, re
   const reasonText = String(reason ?? "").trim().slice(0, 1000);
   if (!reasonText) throw new PostgresOrderStatusError(400, "blank_reason", "Cancellation reason is required.");
   const updated = await prisma.$transaction(async (tx) => {
+    await refundWalletOnCancel(tx, order);
     const row = await tx.order.update({
       where: { id: order.id },
       data: {

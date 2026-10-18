@@ -21,6 +21,7 @@ import {
   cancelPostgresOrder,
   normalizeFulfilmentStatus,
   PostgresOrderStatusError,
+  refundWalletOnCancel,
   updatePostgresOrderAcceptance,
   updatePostgresOrderFulfilment,
   revivePostgresOrderAcceptance,
@@ -300,6 +301,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const reason = requestRow.reason || "Approved dealer cancellation request";
         await prisma.$transaction(async (tx) => {
           const order = await tx.order.update({ where: { id: requestRow.orderId }, data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: reason } });
+          await refundWalletOnCancel(tx, order);
           await tx.orderOverlay.create({ data: { orderId: requestRow.orderId, type: "cancel", status: "cancelled", reason, actorUserId: authActor.userId, actorRole: authActor.role, metadata: { source: "approved_order_cancel_request", requestId: requestRow.id.toString() } as Prisma.InputJsonValue } });
           await tx.orderOverlay.update({ where: { id: requestRow.id }, data: { status: "approved", metadata: { ...metadataRecord(requestRow.metadata), reviewedBy: authActor.userId.toString(), reviewedAt: new Date().toISOString(), decisionNote: safeText(body.decisionNote, 1000), appliedOrderStatus: order.status } as Prisma.InputJsonValue } });
         });
