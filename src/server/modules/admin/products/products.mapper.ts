@@ -9,6 +9,7 @@ function mapVariant(record: AdminProductVariantRecord) {
     packSize: record.packSize ?? 0,
     unitPricePaise: record.unitPricePaise.toString(),
     packPricePaise: record.packPricePaise.toString(),
+    priceBasis: record.priceBasis,
     active: record.active,
   };
 }

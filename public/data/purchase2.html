@@ -64,27 +64,32 @@
         }
 
         .po-title {
-            text-align: right;
+            text-align: center;
             min-width: 145px;
         }
 
+        /* First word black, second green, ruled off from the document number. */
         .po-title h2 {
-            color: #04b66d;
+            color: #000;
             font-size: 26px;
             line-height: 1.02;
             font-weight: 800;
-            text-decoration: underline;
-            text-decoration-thickness: 2px;
-            margin-bottom: 8px;
+            padding-bottom: 5px;
+            border-bottom: 2px solid #18cfae;
+            margin-bottom: 6px;
+        }
+
+        .po-title h2 span {
+            color: #04d469;
         }
 
         .po-number {
             background: #f6fbfc;
             padding: 7px 17px;
-            color: #04b66d;
+            color: #04d469;
             font-size: 14px;
             line-height: 1.05;
-            font-weight: 500;
+            font-weight: 700;
         }
 
         .po-number strong {
@@ -104,11 +109,20 @@
         }
 
         .info-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
             min-height: 45px;
             padding: 9px 12px;
             border-right: 1px solid #c9c9c9;
             border-bottom: 1px solid #c9c9c9;
             background: #fff;
+        }
+
+        .info-icon {
+            width: 24px;
+            height: 24px;
+            flex-shrink: 0;
         }
 
         .info-item:nth-child(3),
@@ -130,7 +144,7 @@
 
         .info-value {
             font-size: 10px;
-            font-weight: 600;
+            font-weight: 400;
         }
 
         .two-column {
@@ -206,8 +220,8 @@
         .section-title::after {
             content: "";
             flex: 1;
-            height: 2px;
-            background: #08c978;
+            height: 3px;
+            background: linear-gradient(90deg, #04d469 0%, #19d3d0 100%);
         }
 
         .line-items-table,
@@ -222,7 +236,7 @@
             margin-bottom: 13px;
             border: 1px solid #c9c9c9;
             border-radius: 7px;
-            font-size: 8px;
+            font-size: 9px;
         }
 
         .line-items-table th,
@@ -236,8 +250,8 @@
 
         .line-items-table th {
             background: #dff5fb;
-            font-size: 8px;
-            font-weight: 700;
+            font-size: 9px;
+            font-weight: 400;
         }
 
         .line-items-table td {
@@ -317,7 +331,6 @@
         .summary-table td:last-child {
             border-right: 0;
             text-align: right;
-            font-weight: 600;
         }
 
         .summary-table .strong td {
@@ -357,9 +370,8 @@
         }
 
         .amount-value {
-            font-size: 8px;
+            font-size: 9.5px;
             line-height: 1.35;
-            font-weight: 700;
         }
 
         .signature-section {
@@ -370,18 +382,17 @@
         }
 
         .signature-name {
-            font-size: 8px;
+            font-size: 9.5px;
             margin-bottom: 39px;
         }
 
         .signature-line {
-            border-top: 2px solid #444;
+            border-top: 1px solid #444;
             margin-bottom: 7px;
         }
 
         .signature-label {
-            font-size: 8px;
-            font-weight: 700;
+            font-size: 9.5px;
         }
 
         @page {
@@ -417,7 +428,7 @@
                 </div>
             </div>
             <div class="po-title">
-                <h2>{{TITLE_1}}<br>{{TITLE_2}}</h2>
+                <h2>{{TITLE_1}}<br><span>{{TITLE_2}}</span></h2>
                 <div class="po-number">
                     {{DOC_NO_LABEL}}
                     <strong>{{DOC_NO}}</strong>
@@ -425,26 +436,43 @@
             </div>
         </div>
 
+        <!-- Icons are inline SVG with presentation attributes: html2canvas paints
+             an SVG as an image, so page CSS would not reach inside it. -->
         <div class="quick-info">
             <div class="info-item">
-                <div class="info-label">Order Date</div>
-                <div class="info-value">{{ORDER_DATE}}</div>
+                <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7.5 14h2M11 14h2M14.5 14h2M7.5 17.5h2M11 17.5h2"/></svg>
+                <div>
+                    <div class="info-label">Order Date</div>
+                    <div class="info-value">{{ORDER_DATE}}</div>
+                </div>
             </div>
             <div class="info-item">
-                <div class="info-label">{{DOC_DATE_LABEL}}</div>
-                <div class="info-value">{{DOC_DATE}}</div>
+                <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M7.5 14h2M11 14h2M14.5 14h2M7.5 17.5h2M11 17.5h2"/></svg>
+                <div>
+                    <div class="info-label">{{DOC_DATE_LABEL}}</div>
+                    <div class="info-value">{{DOC_DATE}}</div>
+                </div>
             </div>
             <div class="info-item">
-                <div class="info-label">Order Time</div>
-                <div class="info-value">{{ORDER_TIME}}</div>
+                <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.6" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg>
+                <div>
+                    <div class="info-label">Order Time</div>
+                    <div class="info-value">{{ORDER_TIME}}</div>
+                </div>
             </div>
             <div class="info-item">
-                <div class="info-label">Customer Name</div>
-                <div class="info-value">{{CUSTOMER_NAME}}</div>
+                <svg class="info-icon" viewBox="0 0 24 24" fill="#555"><circle cx="8.5" cy="8" r="3.5"/><circle cx="16.5" cy="9" r="2.8"/><path d="M1.5 20c0-3.9 3.1-6.5 7-6.5s7 2.6 7 6.5z"/><path d="M16.5 13c3.3 0 6 2.2 6 5.5V20h-5.5c0-2.6-1-4.7-2.6-6.1.6-.6 1.3-.9 2.1-.9z"/></svg>
+                <div>
+                    <div class="info-label">Customer Name</div>
+                    <div class="info-value">{{CUSTOMER_NAME}}</div>
+                </div>
             </div>
             <div class="info-item">
-                <div class="info-label">Outstanding Date</div>
-                <div class="info-value">{{OUTSTANDING_DATE}}</div>
+                <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="#555" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4M9 15.5l2 2 4-4"/></svg>
+                <div>
+                    <div class="info-label">Outstanding Date</div>
+                    <div class="info-value">{{OUTSTANDING_DATE}}</div>
+                </div>
             </div>
             <div class="info-item" aria-hidden="true"></div>
         </div>
@@ -499,15 +527,15 @@
         <table class="line-items-table">
             <thead>
                 <tr>
-                    <th style="width: 6%;">Sr.<br>No.</th>
-                    <th style="width: 9%;">Cat No.</th>
-                    <th style="width: 27%;">Product Description</th>
-                    <th style="width: 9%;">Capacity</th>
+                    <th style="width: 5%;">Sr.<br>No.</th>
+                    <th style="width: 8%;">Cat No.</th>
+                    <th style="width: 31%;">Product Description</th>
+                    <th style="width: 8%;">Capacity</th>
                     <th style="width: 6%;">Qty.</th>
-                    <th style="width: 9%;">Pack<br>Size</th>
-                    <th style="width: 8%;">No. of<br>Units</th>
-                    <th style="width: 7%;">UOM</th>
-                    <th style="width: 8%;">Unit<br>Price</th>
+                    <th style="width: 7%;">Pack<br>Size</th>
+                    <th style="width: 6%;">No. of<br>Units</th>
+                    <th style="width: 6%;">UOM</th>
+                    <th style="width: 7%;">Unit<br>Price</th>
                     <th style="width: 7%;">Discount<br>(%)</th>
                     <th style="width: 9%;">Net Amount</th>
                 </tr>
@@ -531,9 +559,14 @@
                 {{ITEM_ROWS}}
                 <!--TOTAL_ROW-->
                 <tr>
-                    <td colspan="4">TOTAL</td>
+                    <td colspan="3">TOTAL</td>
+                    <td></td>
                     <td>{{TOTAL_QUANTITY}}</td>
-                    <td colspan="5"></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
+                    <td></td>
                     <td>{{TOTAL_NET}}</td>
                 </tr>
                 <!--/TOTAL_ROW-->
@@ -549,8 +582,8 @@
                     <li>Goods once sold will not be taken back.</li>
                     <li>Delivery timeline as discussed.</li>
                     <li>Payment terms as agreed.</li>
+                    <li>GST and other applicable taxes are extra.</li>
                     <li>Any damage must be reported within 48 hours.</li>
-                    <li>Taxes as applicable.</li>
                     <li>Subject to Ambala, Haryana jurisdiction.</li>
                 </ol>
             </div>

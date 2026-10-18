@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import catalogueProducts from "../../../../public/data/omsons_products_from_excel_with_images.json";
+import catalogueJson from "../../../../public/data/omsonsdata.json";
+import { mergeCatalogueRecords, type CatalogueProduct } from "@/lib/catalogue";
 import { prisma } from "@/server/db/prisma";
 import type { Warehouse } from "@prisma/client";
 import { orderActorFromAuth } from "@/lib/orderScopeServer";
@@ -33,6 +34,8 @@ import {
 export const runtime = "nodejs";
 
 const ORDER_SCAN_LIMIT = 5000;
+// The file has one record per catalogue page; reports work on whole products.
+const catalogueProducts = mergeCatalogueRecords(catalogueJson as unknown as CatalogueProduct[]).products;
 
 type PendingProductsActor = { role: PendingProductsRole; actorId: string; warehouse?: string };
 
@@ -210,7 +213,7 @@ export async function GET(req: NextRequest) {
       orderItemsByOrderId,
       dispatchRecordsByOrderId,
       dealerDirectoryById,
-      catalogueProducts: Array.isArray(catalogueProducts) ? catalogueProducts : [],
+      catalogueProducts,
     });
     const scopedLines = filterPendingProductLines(lines, { dealerId, assignedStaffId });
     const summary = buildPendingProductsSummaryFromLines(scopedLines);

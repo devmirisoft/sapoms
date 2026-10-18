@@ -15,7 +15,7 @@ import { SalePrice, salePaise } from '@/components/SalePrice';
 import { useTodaysSale } from '@/hooks/useTodaysSale';
 
 // ─────────────────────────────────────────────────────────────
-// TYPES  (matches omsons_products_from_excel_with_images.json)
+// TYPES  (matches omsonsdata.json)
 // ─────────────────────────────────────────────────────────────
 type Variant = {
   id: string;
@@ -25,10 +25,16 @@ type Variant = {
   specs: Record<string, string>;
   specsText: string;
   pack: number;
-  price: number | null;       // rupees
+  price: number | null;       // rupees, as printed; read prices only through cataloguePricing
   priceLabel: string;
   inStock: boolean;
   images: string[];
+  priceBasis?: "pack" | "piece";
+  packSize?: number;
+  packUnit?: string;
+  pricePerPack?: number | null;
+  pricePerPiece?: number | null;
+  packAssumed?: boolean;
 };
 
 type Product = {
@@ -76,17 +82,25 @@ function getVariantImage(product: Product, variant?: Variant | null): string | u
   return (variant?.images ?? []).find(Boolean) ?? product.images?.find(Boolean) ?? undefined;
 }
 
-// Cart prices are kept as paise per piece. Some catalogue sections list pack prices.
-function variantUnitPricePaise(product: Product | null, v: Variant | null): number | null {
-  if (typeof v?.price !== "number" || v.price <= 0) return null;
-  const pricing = cataloguePricing.getVariantOrderPricing(v.price, v.pack, product);
-  return pricing.unitPrice > 0 ? Math.round(pricing.unitPrice * 100) : null;
+type Pricing = NonNullable<ReturnType<typeof cataloguePricing.variantPricing>>;
+
+function variantPackPricePaise(v: Variant | null): number | null {
+  return cataloguePricing.variantPricing(v)?.packPricePaise ?? null;
 }
 
-function variantPackPricePaise(product: Product | null, v: Variant | null): number | null {
-  if (typeof v?.price !== "number" || v.price <= 0) return null;
-  const pricing = cataloguePricing.getVariantOrderPricing(v.price, v.pack, product);
-  return pricing.baseListPrice > 0 ? Math.round(pricing.baseListPrice * 100) : null;
+// Today's Sale takes the same percent off the pack and the piece price.
+function withSale(pricing: Pricing | null, percent: number): Pricing | null {
+  return pricing && percent > 0
+    ? { ...pricing, packPricePaise: salePaise(pricing.packPricePaise, percent), piecePricePaise: salePaise(pricing.piecePricePaise, percent) }
+    : pricing;
+}
+
+function PackAssumedBadge() {
+  return (
+    <span title="The catalogue doesn't print this pack size; it is assumed" style={{ fontSize: 10, fontWeight: 700, color: "#92400e", background: "#fef3c7", border: "1px solid #fde68a", padding: "1px 6px", borderRadius: 4, whiteSpace: "nowrap" }}>
+      Pack size assumed
+    </span>
+  );
 }
 
 function fmt(paise: number | null): string {
@@ -182,9 +196,7 @@ function NoImageBox({ height = 280 }: { height?: number }) {
 function RelatedCard({ product }: { product: Product }) {
   const img        = getImage(product, 0);
   const firstVar   = product.variants?.[0] ?? null;
-  const unitPricePaise = variantUnitPricePaise(product, firstVar);
-  const packSize   = firstVar?.pack ?? 1;
-  const packPricePaise = variantPackPricePaise(product, firstVar);
+  const pricing    = cataloguePricing.variantPricing(firstVar);
 
   return (
     <Link href={`/Products/${product.sku}`} style={{ textDecoration: "none" }}>
@@ -202,16 +214,8 @@ function RelatedCard({ product }: { product: Product }) {
         <div style={{ padding: "10px 12px 12px" }}>
           <h4 style={{ fontSize: 12, fontWeight: 600, color: "#0f172a", lineHeight: 1.4, margin: "0 0 4px" }}>{product.name}</h4>
           <span style={{ fontSize: 10.5, color: "#94a3b8", display: "block", marginBottom: 5 }}>SKU: {product.sku}</span>
-          {packPricePaise !== null ? (
-            <div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#6A5ACD" }}>{fmt(packPricePaise)}</span>
-              {packSize > 1 && (
-                <div style={{ display: "flex", gap: 6, marginTop: 2 }}>
-                  <span style={{ fontSize: 10, color: "#64748b", background: "#f1f5f9", padding: "1px 5px", borderRadius: 3 }}>Pack of {packSize}</span>
-                  {unitPricePaise && <span style={{ fontSize: 10, color: "#94a3b8" }}>{fmt(unitPricePaise)}/unit</span>}
-                </div>
-              )}
-            </div>
+          {pricing ? (
+            <span style={{ fontSize: 12, fontWeight: 700, color: "#6A5ACD" }}>{cataloguePricing.formatPriceLine(pricing)}</span>
           ) : (
             <p style={{ fontSize: 12, color: "#94a3b8", margin: 0 }}>On request</p>
           )}
@@ -288,8 +292,9 @@ export default function ProductDetailsPage() {
         const data = catalogueProducts as Product[];
         setAllProducts(data);
 
-        // Match by product sku or by variant sku
-        let found = data.find(p => p.sku === sku || p.id === sku);
+        // Match by product sku, then id, then variant. SKU must win: a Postgres DB id
+        // can equal another product's code (DB id 116 vs flask code "116").
+        let found = data.find(p => p.sku === sku) ?? data.find(p => p.id === sku);
         if (!found) {
           found = data.find(p => p.variants?.some(v => v.sku === sku || v.id === sku));
           if (found) {
@@ -376,9 +381,10 @@ export default function ProductDetailsPage() {
     ? rowPacks[selectedVariantSKU] ?? ""
     : "";
   const selectedQuantity  = quantityAsNumber(selectedQuantityValue);
-  const selectedPackSize = Math.max(1, selectedVariant?.pack ?? 1);
-  const perUnitPaise = variantUnitPricePaise(product, selectedVariant);
-  const packPricePaise = variantPackPricePaise(product, selectedVariant);
+  const selectedPricing = cataloguePricing.variantPricing(selectedVariant);
+  const selectedPackSize = selectedPricing?.packSize ?? Math.max(1, selectedVariant?.pack ?? 1);
+  const perUnitPaise = selectedPricing?.piecePricePaise ?? null;
+  const packPricePaise = selectedPricing?.packPricePaise ?? null;
   const lineTotalPaise =
     packPricePaise !== null
       ? packPricePaise * selectedQuantity
@@ -392,14 +398,16 @@ export default function ProductDetailsPage() {
     const quantityValue = rowPacks[variantSku] ?? "";
     const numPacks = quantityAsNumber(quantityValue);
     const variant = product?.variants?.find((item) => item.sku === variantSku);
-    const packSize = Math.max(1, variant?.pack ?? 1);
-    const unitPaise = variantUnitPricePaise(product, variant ?? null) ?? 0;
-    const packPaise = variantPackPricePaise(product, variant ?? null) ?? 0;
+    const pricing = cataloguePricing.variantPricing(variant ?? null);
+    const packSize = pricing?.packSize ?? Math.max(1, variant?.pack ?? 1);
+    const unitPaise = pricing?.piecePricePaise ?? 0;
+    const packPaise = pricing?.packPricePaise ?? 0;
 
     return {
       quantityValue,
       numPacks,
       packSize,
+      pricing,
       unitPaise,
       packPaise,
       totalPaise: packPaise * numPacks,
@@ -414,7 +422,7 @@ export default function ProductDetailsPage() {
       const cartItem = cart.find(item => item.id === variant.sku);
       if (!cartItem || cartItem.quantity <= 0) return null;
       const packSize = Math.max(1, variant.pack ?? 1);
-      const packPaise = variantPackPricePaise(product, variant) ?? 0;
+      const packPaise = variantPackPricePaise(variant) ?? 0;
       return {
         sku: variant.sku,
         name: variant.name || variant.sku,
@@ -466,17 +474,17 @@ export default function ProductDetailsPage() {
   };
 
   // ── Cart actions ──────────────────────────────────────────
-  const addVariant = (vSku: string, name: string, pricePaise: number, qty: number, packSize: number, image?: string) => {
-    putInCart({ id: vSku, name, price: pricePaise, packSize, image, initialQty: qty });
+  const addVariant = (vSku: string, name: string, pricePaise: number, packPricePaise: number, qty: number, packSize: number, image?: string) => {
+    putInCart({ id: vSku, name, price: pricePaise, packPrice: packPricePaise, packSize, image, initialQty: qty });
     setToast({ name, sku: vSku });
   };
 
   const addAll = () => {
     if (!product?.variants) return;
     product.variants.forEach(v => {
-      const { numPacks, packSize, unitPaise } = rowCalc(v.sku);
+      const { numPacks, packSize, unitPaise, packPaise } = rowCalc(v.sku);
       if (unitPaise <= 0 || numPacks <= 0 || !v.inStock) return;
-      putInCart({ id: v.sku, name: v.name, price: unitPaise, packSize, image: getVariantImage(product, v), initialQty: numPacks });
+      putInCart({ id: v.sku, name: v.name, price: unitPaise, packPrice: packPaise, packSize, image: getVariantImage(product, v), initialQty: numPacks });
     });
     setToast({ name: product.name, sku: `${product.variants.length} variants`, bulk: true });
   };
@@ -487,18 +495,18 @@ export default function ProductDetailsPage() {
       !product ||
       !selectedVariant ||
       perUnitPaise === null ||
+      packPricePaise === null ||
       selectedQuantity <= 0 ||
       !selectedVariant.inStock
     ) {
       return;
     }
 
-    const pricePerUnit = perUnitPaise;
-
     addVariant(
       selectedVariantSKU,
       selectedVariant.name ?? product.name,
-      pricePerUnit,
+      perUnitPaise,
+      packPricePaise,
       selectedQuantity,
       selectedPackSize,
       getVariantImage(product, selectedVariant)
@@ -508,9 +516,9 @@ export default function ProductDetailsPage() {
   const handleAddRow = (variantSku: string) => {
     if (!product) return;
     const vm = product.variants?.find(v => v.sku === variantSku);
-    const { numPacks, packSize, unitPaise } = rowCalc(variantSku);
+    const { numPacks, packSize, unitPaise, packPaise } = rowCalc(variantSku);
     if (!vm || unitPaise <= 0 || numPacks <= 0 || !vm.inStock) return;
-    addVariant(variantSku, vm?.name ?? product.name, unitPaise, numPacks, packSize, getVariantImage(product, vm));
+    addVariant(variantSku, vm?.name ?? product.name, unitPaise, packPaise, numPacks, packSize, getVariantImage(product, vm));
     setSelectedVariantSKU(variantSku);
   };
 
@@ -520,18 +528,18 @@ export default function ProductDetailsPage() {
       !selectedVariant ||
       !product ||
       perUnitPaise === null ||
+      packPricePaise === null ||
       selectedQuantity <= 0 ||
       !selectedVariant.inStock
     ) {
       return;
     }
 
-    const pricePerUnit = perUnitPaise;
-
     putInCart({
       id: selectedVariantSKU,
       name: selectedVariant.name ?? product.name,
-      price: pricePerUnit,
+      price: perUnitPaise,
+      packPrice: packPricePaise,
       packSize: selectedPackSize,
       image: getVariantImage(product, selectedVariant),
       initialQty: selectedQuantity,
@@ -798,16 +806,10 @@ export default function ProductDetailsPage() {
                       )}
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 5, flexWrap: "wrap" }}>
-                      {selectedPackSize > 1 && (
-                        <span style={{ fontSize: 11.5, color: "#64748b", background: "#f1f5f9", padding: "2px 8px", borderRadius: 4, fontWeight: 600 }}>
-                          Pack of {selectedPackSize}
-                        </span>
-                      )}
-                      {perUnitPaise !== null && (
-                        <span style={{ fontSize: 11.5, color: "#94a3b8" }}>
-                          = {fmt(salePaise(perUnitPaise, selectedSale))} / unit
-                        </span>
-                      )}
+                      <span style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>
+                        {cataloguePricing.formatPriceLine(withSale(selectedPricing, selectedSale))}
+                      </span>
+                      {selectedPricing?.packAssumed && <PackAssumedBadge />}
                     </div>
                     {selectedQuantity > 0 && lineTotalPaise !== null && (
                       <p style={{ fontSize: 12, color: "#64748b", margin: "6px 0 0" }}>
@@ -1001,7 +1003,7 @@ export default function ProductDetailsPage() {
                       ))}
                       <th style={{ padding: "12px 16px", fontWeight: 700, color: "#374151" }}>Qty</th>
                       <th style={{ padding: "12px 16px", fontWeight: 700, color: "#374151" ,  display:"none"}}>Price</th>
-                      <th style={{ padding: "12px 16px", fontWeight: 700, color: "#374151" }}>Price/Unit</th>
+                      <th style={{ padding: "12px 16px", fontWeight: 700, color: "#374151" }}>Price</th>
                       <th style={{ padding: "12px 16px", fontWeight: 700, color: "#374151" }}>Total</th>
                       <th style={{ padding: "12px 16px" }} />
                     </tr>
@@ -1009,7 +1011,7 @@ export default function ProductDetailsPage() {
                   <tbody>
                     {product.variants.map((v, idx) => {
                       const isSel    = v.sku === selectedVariantSKU;
-                      const { quantityValue, numPacks, packSize, unitPaise, packPaise, totalPaise } = rowCalc(v.sku);
+                      const { quantityValue, numPacks, packSize, pricing, unitPaise, packPaise, totalPaise } = rowCalc(v.sku);
                       const cartItem = cart.find(c => c.id === v.sku);
                       const canAddRow = unitPaise > 0 && numPacks > 0 && v.inStock;
 
@@ -1062,7 +1064,7 @@ export default function ProductDetailsPage() {
                               )}
                             </div>
                             <span style={{ fontSize: 10, color: "#1e1e1e", marginTop: 3, display: "block" }}>
-                              = {numPacks * packSize} {packSize > 1 ? "Pcs." : "Pcs."}
+                              = {numPacks * packSize} {!pricing || pricing.packUnit === "pc" ? "Pcs." : pricing.packUnit}
                             </span>
                           </td>
 
@@ -1071,7 +1073,8 @@ export default function ProductDetailsPage() {
                           </td>
 
                           <td style={{ padding: "11px 16px", color: "#1e1e1e", fontSize: 12 }}>
-                            {unitPaise ? <SalePrice paise={unitPaise} percent={saleFor(v.sku)} /> : "—"}
+                            {pricing ? cataloguePricing.formatPriceLine(withSale(pricing, saleFor(v.sku))) : "—"}
+                            {pricing?.packAssumed && <div style={{ marginTop: 3 }}><PackAssumedBadge /></div>}
                           </td>
 
                           <td style={{ padding: "11px 16px" }} onClick={e => e.stopPropagation()}>

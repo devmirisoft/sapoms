@@ -7,13 +7,19 @@ import { CART_STORAGE_KEY } from "@/lib/roleAccess";
 export type CartItem = {
   id: string;
   name: string;
-  price: number;     // per-pack discounted price
+  price: number;     // paise per piece
+  packPrice?: number; // paise per pack (authoritative); carts saved before it existed lack it
   quantity: number;  // number of packs
   packSize?: number;  // units per pack
   stock?: number;
   isPriority?: boolean;
   image?: string;
 };
+
+/** A line costs packs × pack price. Carts saved before the pack price was kept fall back to piece × pack size. */
+export function cartPackPaise(item: Pick<CartItem, "price" | "packPrice">, packSize: number): number {
+  return item.packPrice ?? item.price * packSize;
+}
 
 type CartStore = {
   cart: CartItem[];
@@ -70,6 +76,7 @@ export function useCartStore<T>(selector: (s: CartStore) => T): T {
                 ? {
                     ...i,
                     price: item.price,
+                    packPrice: item.packPrice,
                     packSize: item.packSize,
                     image: item.image || i.image,
                     quantity: i.stock ? Math.min(i.quantity + addQty, i.stock) : i.quantity + addQty,
@@ -83,6 +90,7 @@ export function useCartStore<T>(selector: (s: CartStore) => T): T {
               id: item.id,
               name: item.name,
               price: item.price,
+              packPrice: item.packPrice,
               packSize: item.packSize,
               stock: item.stock,
               isPriority: item.isPriority ?? false,

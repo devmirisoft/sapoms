@@ -20,6 +20,8 @@ type CatalogueRecord = {
     packSize: number | null;
     unitPricePaise: bigint;
     packPricePaise: bigint;
+    priceBasis: string;
+    packAssumed: boolean;
     active: boolean;
   }>;
 };
@@ -57,6 +59,12 @@ function mapProduct(record: CatalogueRecord) {
       product_price: rupeesFromPaise(variant.unitPricePaise),
       unitPricePaise: variant.unitPricePaise.toString(),
       packPricePaise: variant.packPricePaise.toString(),
+      // unit_price_paise is the piece price; pack_price_paise the authoritative pack price.
+      priceBasis: variant.priceBasis,
+      packUnit: variant.unitName || "",
+      pricePerPack: rupeesFromPaise(variant.packPricePaise),
+      pricePerPiece: rupeesFromPaise(variant.unitPricePaise),
+      packAssumed: variant.packAssumed,
       active: variant.active,
       inStock: record.active && variant.active,
       images: record.imageUrl ? [record.imageUrl] : [],

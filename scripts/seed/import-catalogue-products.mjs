@@ -23,28 +23,18 @@ console.log(`TARGET host=${target.hostname} db=${target.pathname.slice(1)} mode=
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const jiti = createJiti(import.meta.url, { alias: { "@": path.join(ROOT, "src") } });
-const { mergeCatalogueProducts } = await jiti.import(path.join(ROOT, "src/lib/catalogueClient.ts"));
-const { stripHtml } = await jiti.import(path.join(ROOT, "src/lib/catalogue.ts"));
-const { getVariantOrderPricing } = createRequire(import.meta.url)(path.join(ROOT, "src/lib/cataloguePricing.js"));
+const { mergeCatalogueRecords, stripHtml } = await jiti.import(path.join(ROOT, "src/lib/catalogue.ts"));
+const { variantPricing, unitLabel } = createRequire(import.meta.url)(path.join(ROOT, "src/lib/cataloguePricing.js"));
 const { PrismaClient } = await import("../prisma.mjs");
 const prisma = new PrismaClient();
 
 const text = (v) => String(v ?? "").trim();
+const UNIT_NAMES = { pc: "Pcs.", m: "m", set: "Set" };
 const readJson = async (file) => JSON.parse(await readFile(path.join(ROOT, "public/data", file), "utf8"));
-const products = mergeCatalogueProducts(
-  await readJson("omsons_products_from_excel_with_images.json"),
-  await readJson("nested_omsons_products.json"),
-);
+// Variants the file contradicts itself on come back unpriced; they import as "on request".
+const { products } = mergeCatalogueRecords(await readJson("omsonsdata.json"));
 
-const report = { catalogue: products.length, created: 0, existing: 0, noVariants: [], skuConflicts: [], lossySpecs: [], subPaisaPrices: [], noCategory: [] };
-
-/** Rupees → paise. Prices are at most 2 decimals; anything finer is reported, not silently rounded away. */
-function toPaise(rupees, where) {
-  const value = Number(rupees) > 0 ? Number(rupees) : 0;
-  const paise = Math.round(value * 100);
-  if (Math.abs(paise - value * 100) > 1e-6) report.subPaisaPrices.push(`${where}: ${rupees}`);
-  return BigInt(paise);
-}
+const report = { catalogue: products.length, created: 0, existing: 0, noVariants: [], skuConflicts: [], lossySpecs: [], noCategory: [] };
 
 /** Same layout the admin form's buildDescription writes and both description parsers read back. */
 function describe(product, variants) {
@@ -100,15 +90,16 @@ for (const product of [...products].reverse()) {
     active: true,
     variants: {
       create: variants.map((variant) => {
-        const pack = Math.max(1, Math.trunc(Number(variant.pack)) || 1);
-        const { baseListPrice } = getVariantOrderPricing(variant.price, pack, product);
+        const pricing = variantPricing(variant);
         return {
           sku: variant.sku,
           catalogueNumber: variant.sku,
-          unitName: "Pcs.",
-          packSize: pack,
-          unitPricePaise: toPaise(variant.price, variant.sku),
-          packPricePaise: BigInt(Math.round(baseListPrice * 100)),
+          unitName: UNIT_NAMES[unitLabel(variant.packUnit)],
+          packSize: pricing?.packSize ?? Math.max(1, Math.trunc(Number(variant.pack)) || 1),
+          priceBasis: pricing?.priceBasis ?? "piece",
+          packAssumed: variant.packAssumed === true,
+          unitPricePaise: BigInt(pricing?.piecePricePaise ?? 0),
+          packPricePaise: BigInt(pricing?.packPricePaise ?? 0),
           active: variant.inStock !== false,
         };
       }),
@@ -130,4 +121,3 @@ console.log(`variant SKU already taken (variant skipped): ${sample(report.skuCon
 console.log(`no importable variants (product skipped): ${sample(report.noVariants)}`);
 console.log(`no category: ${sample(report.noCategory)}`);
 console.log(`spec entries that won't round-trip (":" / ";" / newline): ${sample(report.lossySpecs)}`);
-console.log(`prices finer than a paisa: ${sample(report.subPaisaPrices)}`);

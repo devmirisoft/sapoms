@@ -21,6 +21,7 @@ export type AdminProductVariantRecord = {
   packSize: number | null;
   unitPricePaise: bigint;
   packPricePaise: bigint;
+  priceBasis: string;
   active: boolean;
 };
 
@@ -30,6 +31,8 @@ export type ProductVariantWriteInput = {
   catalogueNumber?: string;
   unitName?: string;
   packSize?: number;
+  // Omitted: an update keeps the stored basis, a create takes the DB default ("piece").
+  priceBasis?: "pack" | "piece";
   unitPricePaise?: bigint;
   packPricePaise?: bigint;
   active?: boolean;

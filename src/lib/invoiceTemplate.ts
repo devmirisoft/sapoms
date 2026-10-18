@@ -74,6 +74,48 @@ export type InvoiceTemplateData = {
    the total row. */
 export const ROWS_PER_ITEMS_SHEET = 24;
 
+/* The sheet is a fixed 1697px with overflow hidden, so a sheet of tall rows
+   (long product descriptions wrap) used to clip its last products. Sheets are
+   filled by estimated height instead: a row is 45px until its description
+   wraps past two lines, then 16.5px (15px x 1.1) per extra line. */
+const ROW_HEIGHT = 45;
+const ITEMS_SHEET_HEIGHT = ROWS_PER_ITEMS_SHEET * ROW_HEIGHT;
+const ROW_LINE_HEIGHT = 16.5;
+// ponytail: chars-per-line is a conservative average for the 33% column at
+// 15px Arial (~50 mixed-case chars fit); measure the rendered rows if a font
+// change makes this drift.
+const DESCRIPTION_CHARS_PER_LINE = 40;
+
+function wrappedLines(text: string): number {
+    return String(text ?? "")
+        .split(/\r?\n/)
+        .reduce((lines, line) => lines + Math.max(1, Math.ceil(line.trim().length / DESCRIPTION_CHARS_PER_LINE)), 0);
+}
+
+export function estimateInvoiceRowHeight(row: Pick<InvoiceTemplateRow, "description" | "productNote">): number {
+    const lines = wrappedLines(row.description) + (String(row.productNote ?? "").trim() ? wrappedLines(row.productNote) : 0);
+    return ROW_HEIGHT + Math.max(0, lines - 2) * ROW_LINE_HEIGHT;
+}
+
+/** Splits rows into item sheets so each fits the sheet height; every row lands on exactly one sheet. */
+export function paginateInvoiceRows<T extends Pick<InvoiceTemplateRow, "description" | "productNote">>(rows: T[]): T[][] {
+    if (rows.length === 0) return [[]];
+    const sheets: T[][] = [[]];
+    let used = 0;
+    for (const row of rows) {
+        const height = estimateInvoiceRowHeight(row);
+        const current = sheets[sheets.length - 1];
+        if (current.length > 0 && used + height > ITEMS_SHEET_HEIGHT) {
+            sheets.push([row]);
+            used = height;
+        } else {
+            current.push(row);
+            used += height;
+        }
+    }
+    return sheets;
+}
+
 // purchase2 is a single sheet, so it only holds a short order.
 export const SINGLE_SHEET_MAX_ITEMS = 8;
 
@@ -137,13 +179,6 @@ function renderRow(rowTemplate: string, row: InvoiceTemplateRow): string {
     });
 }
 
-function chunk<T>(items: T[], size: number): T[][] {
-    if (items.length === 0) return [[]];
-    const out: T[][] = [];
-    for (let i = 0; i < items.length; i += size) out.push(items.slice(i, i + size));
-    return out;
-}
-
 export function fillInvoiceTemplate(template: string, data: InvoiceTemplateData): string {
     // Both repeats leave a token behind, so the grid total stays inside <tbody>.
     const rowBlock = block(template, "ROW");
@@ -155,7 +190,7 @@ export function fillInvoiceTemplate(template: string, data: InvoiceTemplateData)
     let html: string;
     if (itemsPage.body) {
         // purchase1: the grid gets its own sheets, repeated until the rows run out.
-        const sheets = chunk(data.rows, ROWS_PER_ITEMS_SHEET);
+        const sheets = paginateInvoiceRows(data.rows);
         html = applyTokens(itemsPage.rest, {
             ITEMS_PAGES: sheets.map((sheetRows, index) => applyTokens(itemsPage.body, {
                 ITEM_ROWS: renderRows(sheetRows),

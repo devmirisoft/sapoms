@@ -38,7 +38,7 @@ export async function handler(args: z.infer<typeof argsSchema>, ctx: Partial<Too
     };
   }
 
-  const pricing = priceVariant(product, variant, ctx.dealerId ? await dealerDiscountPercent(ctx.dealerId) : 0);
+  const pricing = priceVariant(variant, ctx.dealerId ? await dealerDiscountPercent(ctx.dealerId) : 0);
   return {
     productId: variant.sku,
     name: product.name,

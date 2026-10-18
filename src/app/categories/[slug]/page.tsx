@@ -4,22 +4,19 @@ import { useEffect, useState, useMemo } from 'react';
 import Link from 'next/link';
 import axios from 'axios';
 import { SIDEBAR_CATEGORIES, compactCategoryList, labelFromSlug, matchesCategory, slugify } from '@/lib/categories';
+import { mergeCatalogueRecords } from '@/lib/catalogue';
+import cataloguePricing from '@/lib/cataloguePricing';
 
 type Variant = { sku: string; specs: Record<string, string>; pack: number; price: number | null; inStock: boolean; images: string[] };
 type Product  = { id: string; sku: string; name: string; category: string; categories: string[]; features: string[]; images: string[]; variants?: Variant[] };
 
 // ── Helpers ──────────────────────────────────────────────────
-function fmt(paise: number) {
-  return `₹${(paise / 100).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
 function getImage(p: Product) {
   return (p.images ?? []).find(Boolean) ?? null;
 }
+// The cheapest pack in paise, from the one pricing function; drives the price sort.
 function getLowestPaise(p: Product) {
-  const prices = (p.variants ?? [])
-    .map(v => (typeof v.price === 'number' && v.price > 0 ? v.price * 100 : 0))
-    .filter(x => x > 0);
-  return prices.length ? Math.min(...prices) : null;
+  return cataloguePricing.cheapestPricing(p)?.packPricePaise ?? null;
 }
 
 const PAGE_SIZE = 24;
@@ -27,10 +24,7 @@ const PAGE_SIZE = 24;
 // ── Product Card ─────────────────────────────────────────────
 function ProductCard({ product }: { product: Product }) {
   const img         = getImage(product);
-  const lowestPaise = getLowestPaise(product);
-  const firstVar    = product.variants?.[0];
-  const packSize    = firstVar?.pack ?? 1;
-  const perUnit     = lowestPaise && packSize > 1 ? Math.round(lowestPaise / packSize) : null;
+  const cheapest    = cataloguePricing.cheapestPricing(product);
   const inStock     = product.variants?.some(v => v.inStock) ?? false;
   const varCount    = product.variants?.length ?? 0;
   const bullet      = product.features?.[0] ?? '';
@@ -62,18 +56,10 @@ function ProductCard({ product }: { product: Product }) {
             {varCount > 1 && <span style={{ fontSize: 10.5, color: '#64748b' }}>{varCount} variants</span>}
           </div>
           <div style={{ marginTop: 'auto', paddingTop: 10 }}>
-            {lowestPaise !== null ? (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: '#1e3a5f' }}>{fmt(lowestPaise)}</span>
-                  {varCount > 1 && <span style={{ fontSize: 10, color: '#64748b' }}>onwards</span>}
-                </div>
-                {packSize > 1 && (
-                  <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>
-                    <span style={{ fontSize: 10.5, color: '#64748b', background: '#f1f5f9', padding: '1px 6px', borderRadius: 4 }}>Pack of {packSize}</span>
-                    {perUnit && <span style={{ fontSize: 10.5, color: '#94a3b8' }}>{fmt(perUnit)}/Pc.</span>}
-                  </div>
-                )}
+            {cheapest ? (
+              <div style={{ marginBottom: 8, display: 'flex', alignItems: 'baseline', gap: 5, flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 12.5, fontWeight: 800, color: '#1e3a5f' }}>{cataloguePricing.formatPriceLine(cheapest)}</span>
+                {varCount > 1 && <span style={{ fontSize: 10, color: '#64748b' }}>onwards</span>}
               </div>
             ) : (
               <p style={{ fontSize: 12, color: '#94a3b8', margin: '0 0 8px' }}>Price on request</p>
@@ -109,8 +95,8 @@ export default function CategoryPage({ params }: { params: Promise<{ slug: strin
   const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    axios.get('/data/omsons_products_from_excel_with_images.json')
-      .then(res => { setAllProducts(res.data); setLoading(false); })
+    axios.get('/data/omsonsdata.json')
+      .then(res => { setAllProducts(mergeCatalogueRecords(res.data).products as unknown as Product[]); setLoading(false); })
       .catch(() => setLoading(false));
   }, []);
 

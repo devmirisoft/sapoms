@@ -1,8 +1,8 @@
 #!/usr/bin/env node
-// Seeds staff, dealers, orders, order items, pending state and discount requests
+// Seeds staff, dealers, orders, order items, pending state, discount requests and lead forms
 // from the legacy JSON exports in docs/. Adapts to the schema; never alters it.
 //
-//   DATABASE_URL='postgres://…' node scripts/seed/seed-from-json.mjs [--dry-run|--commit|--verify] [--only=staff,dealers,orders,items,pending,discounts]
+//   DATABASE_URL='postgres://…' node scripts/seed/seed-from-json.mjs [--dry-run|--commit|--verify] [--only=staff,dealers,orders,items,pending,discounts,forms]
 //
 // --dry-run (default) reads the DB and reports what would change; --commit writes;
 // --verify runs the post-seed checks. Re-runnable: every entity upserts on a legacy key.
@@ -12,7 +12,8 @@ import { promisify } from "node:util";
 
 const ALLOWED_HOST = "dpg-dan6ad0ae00c73dlme1g-a";
 const DOCS = "docs";
-const STAMP = "2026-10-05";
+const STAMP = "2026-10-17";
+const PENDING_STAMP = "2026-10-05"; // no newer pending-orders export
 const EXPORT_DIR = "export";
 const ORDER_SEQUENCE_YEAR = 2026;
 
@@ -21,7 +22,7 @@ const args = process.argv.slice(2);
 const mode = args.includes("--verify") ? "verify" : args.includes("--commit") ? "commit" : "dry-run";
 const onlyArg = args.find((a) => a.startsWith("--only="))?.slice(7);
 // staff is opt-in (--only=staff): the seeded staff were removed on 2026-10-06 and must not come back by accident.
-const only = new Set(onlyArg ? onlyArg.split(",") : ["dealers", "orders", "items", "dispatches", "cancellations", "pending", "discounts"]);
+const only = new Set(onlyArg ? onlyArg.split(",") : ["dealers", "orders", "items", "dispatches", "cancellations", "pending", "discounts", "forms"]);
 
 // Read before prisma.mjs runs dotenv, so .env can never pick the target.
 const DATABASE_URL = process.env.DATABASE_URL;
@@ -123,19 +124,37 @@ export function staffRole(designation) {
 const DISCOUNT_TYPE = { slab: "SLAB", custom: "CUSTOM" };
 
 // ── load JSON ───────────────────────────────────────────────────────────────
-const load = async (name) => JSON.parse(await readFile(`${DOCS}/${name}-${STAMP}.json`, "utf8"));
+const load = async (name, stamp = STAMP) => JSON.parse(await readFile(`${DOCS}/${name}-${stamp}.json`, "utf8"));
 const staffRows = (await load("staff")).Staff;
 const dealerRows = (await load("dealers")).Dealers;
 const ordersJson = await load("orders");
 const activeOrders = ordersJson.Orders;
 const cancelledOrders = ordersJson.Cancelled_Orders;
-const pendingRows = (await load("pending-orders")).Pending_Orders;
+const pendingRows = (await load("pending-orders", PENDING_STAMP)).Pending_Orders;
 const discountRows = (await load("discount-requests")).Discount_Requests;
-const itemRows = JSON.parse(await readFile(`${DOCS}/allproductdata.json`, "utf8"));
-
+const formRows = (await load("forms")).Forms;
 // The legacy mirror reuses an orderdata_id for separate lines of one order and tells
 // them apart by `occurrence`; the first keeps the bare id so existing keys stay stable.
 const itemKey = (row) => (Number(row.occurrence) > 1 ? `${text(row.orderdata_id)}#${row.occurrence}` : text(row.orderdata_id));
+
+// Active orders carry their own item rows (same shape as allproductdata.json, minus the order
+// columns added here); allproductdata.json still supplies the cancelled orders' lines.
+// The 10-17 export has no dispatch history and lost some product notes, so a line keeps
+// what allproductdata.json had for those rather than wiping legacy dispatches.
+const activeOrderIds = new Set(activeOrders.map((r) => text(r.order_id)));
+const allProductData = JSON.parse(await readFile(`${DOCS}/allproductdata.json`, "utf8"));
+const previousLine = new Map(allProductData.map((r) => [itemKey(r), r]));
+const DISPATCH_FIELDS = ["dispatchHistory", "dispatchedQuantity", "remainingQuantity", "dispatchStatus"];
+const itemRows = [
+  ...activeOrders.flatMap((o) => o.items.map((item) => {
+    const row = { order_id: text(o.order_id), order_date: o.orderDate, dealer_id: text(o.order_dealer), dealer_name: o.Dealer_Name, order_cancelled: false, order_edited: Boolean(o.edited), ...item };
+    const prev = previousLine.get(itemKey(row));
+    if (prev?.dispatchHistory?.length && !row.dispatchHistory?.length) for (const f of DISPATCH_FIELDS) row[f] = prev[f];
+    if (prev && !text(row.fallbackProductNote)) row.fallbackProductNote = prev.fallbackProductNote;
+    return row;
+  })),
+  ...allProductData.filter((r) => !activeOrderIds.has(text(r.order_id))),
+];
 {
   const seen = new Set();
   for (const row of itemRows) {
@@ -163,7 +182,7 @@ const report = {
     items: ["product_price (current catalogue price, not the ordered price)", "product_unit (no item column)", "orderdata_productid / order_item_description / orderdata_capacity / orderdata_item_unit (empty)", "del_status / order_cancelled (only on items of cancelled orders; kept so the order shows what was ordered)", "discount (blank or '0' on most rows; percent derived from orderdata_discount ÷ orderdata_totalprice)", "dispatchedQuantity / remainingQuantity / dispatchStatus (derived from dispatchHistory rows instead)", "dispatchHistory actorId (staff removed → actor_user_id NULL, actor_role kept)", "readyquantity (all 0)", "notification", "order_edited / originalLineId / mirrorRepaired* / displayRemark", "order_discount / accept_order / staffid (header copies)"],
     discountRequests: ["orderDraftId / rejectionDraftId (Mongo drafts not in DB → NULL)", "staffId / assignedStaffId (single FK; untagged)", "reviewedBy 'Admin' (not resolvable → NULL)", "products / draftProducts (duplicate of orderSnapshot)", "shipto", "refno", "discountBreakdown", "reorderCount / lastReordered*", "linkedOrderAt", "dealer contact copies"],
   },
-  lineItems: "From docs/allproductdata.json (orderdata rows), plus approved discount-request snapshots for orders that have no item rows.",
+  lineItems: `From each active order's items in orders-${STAMP}.json and docs/allproductdata.json (cancelled orders), plus approved discount-request snapshots for orders that have no item rows.`,
 };
 const idMap = { staff: {}, dealers: {}, orders: {}, discountRequests: {} };
 const count = (entity, action) => {
@@ -194,11 +213,27 @@ async function runInTx(fn) {
 }
 
 // ── staff ───────────────────────────────────────────────────────────────────
+// TEST and warehouse are placeholder logins, not people.
+const SKIP_STAFF = new Set(["53", "55"]);
+
+/** The app account of a legacy staff row: same email, or a staff profile with the same name (staff were re-created by hand after 10-06). */
+async function findStaffUser(db, row) {
+  const byEmail = await db.user.findUnique({ where: { normalizedEmail: lower(row.staff_email) }, select: { id: true, role: true } });
+  if (byEmail) return byEmail;
+  const name = lower(row.staff_name).replace(/\s+/g, " ");
+  const profiles = await db.staffProfile.findMany({ select: { displayName: true, user: { select: { id: true, role: true } } } });
+  return profiles.find((p) => lower(p.displayName).replace(/\s+/g, " ") === name)?.user ?? null;
+}
+
 async function seedStaff() {
   await runInTx(async (tx) => {
     for (const row of staffRows) {
       const legacyId = text(row.staff_id);
       const ctx = { entity: "staff", legacyId };
+      if (SKIP_STAFF.has(legacyId)) { report.skipped.push({ ...ctx, reason: "placeholder login, not a person" }); count("staff", "skipped"); continue; }
+      // An existing account is the app's: linked by the forms step, never duplicated or changed here.
+      const appUser = await findStaffUser(tx, row);
+      if (appUser) { report.skipped.push({ ...ctx, reason: `already in the app as user ${appUser.id}` }); count("staff", "kept"); continue; }
       const { role, staffRoleType, defaulted } = staffRole(row.staff_designation);
       if (defaulted) report.defaultedRoles.push({ legacyId, name: text(row.staff_name), designation: text(row.staff_designation), role, staffRoleType });
 
@@ -260,10 +295,11 @@ async function seedDealers() {
       };
       if (write) {
         // RSM / region / creator are tagged in the app later: set empty on create, never touched on re-run.
-        const dealer = await tx.dealerProfile.upsert({ where: { legacyPhpId: legacyId }, update: data, create: { legacyPhpId: legacyId, userId: res.user.id, rsmUserId: null, createdByUserId: null, region: null, ...data } });
+        // Once a dealer exists the app owns its profile (edited there since 10-06), so a re-run only adds new dealers.
+        const dealer = await tx.dealerProfile.upsert({ where: { legacyPhpId: legacyId }, update: {}, create: { legacyPhpId: legacyId, userId: res.user.id, rsmUserId: null, createdByUserId: null, region: null, ...data } });
         idMap.dealers[legacyId] = { userId: res.user.id.toString(), dealerProfileId: dealer.id.toString() };
       }
-      count("dealers", existing ? "updated" : "inserted");
+      count("dealers", existing ? "kept" : "inserted");
     }
   });
 }
@@ -377,6 +413,8 @@ async function seedOrders() {
     const existingOrders = new Map((await tx.order.findMany({ where: { legacyPhpId: { not: null } }, select: { legacyPhpId: true, dealerId: true } })).map((o) => [o.legacyPhpId, o]));
     for (const { legacyId, legacyDealer, build } of sources) {
       const ctx = { entity: "order", legacyId, legacyDealer };
+      // Counted before any skip: a legacy number taken by an unseeded order is still taken.
+      if (BigInt(legacyId) > maxLegacyId) maxLegacyId = BigInt(legacyId);
       const dealerId = dealerIds.get(legacyDealer);
       // Isolation: an order only ever attaches to its own dealer; unresolved ⇒ skip, never a stand-in.
       if (!dealerId && !(mode === "dry-run" && jsonDealerIds.has(legacyDealer))) {
@@ -388,7 +426,6 @@ async function seedOrders() {
         report.skipped.push({ ...ctx, reason: `existing order belongs to dealer ${existing.dealerId}, not ${dealerId}` });
         count("orders", "skipped"); continue;
       }
-      if (BigInt(legacyId) > maxLegacyId) maxLegacyId = BigInt(legacyId);
       if (write) {
         // Once an order exists the app owns its workflow (staff tagging, accept/decline,
         // dispatch); a re-run only refreshes the legacy facts: number, date and amounts.
@@ -728,6 +765,43 @@ async function seedDiscounts() {
   });
 }
 
+// ── lead forms ──────────────────────────────────────────────────────────────
+// Same columns the app writes (src/lib/formSubmissions.ts); keyed on leadNo, and once a form
+// exists the app owns it, so a re-run only adds new ones.
+async function seedForms() {
+  const staffById = new Map(staffRows.map((r) => [text(r.staff_id), r]));
+  let maxLead = 0;
+  await runInTx(async (tx) => {
+    for (const form of formRows) {
+      const leadNo = text(form.leadNo);
+      const ctx = { entity: "form", legacyId: leadNo };
+      const submitterId = text(form.submittedBy?.userId);
+      if (SKIP_STAFF.has(submitterId)) { report.skipped.push({ ...ctx, reason: "submitted by a placeholder login" }); count("forms", "skipped"); continue; }
+      const staff = staffById.get(submitterId);
+      const user = staff ? await findStaffUser(tx, staff) : null;
+      if (!user && !(mode === "dry-run" && staff)) { report.skipped.push({ ...ctx, reason: `submitter ${submitterId} has no app account` }); count("forms", "skipped"); continue; }
+      const seq = /^OML-(\d+)$/.exec(leadNo);
+      if (seq) maxLead = Math.max(maxLead, Number(seq[1]));
+      const existing = await tx.formSubmission.findUnique({ where: { leadNo }, select: { id: true } });
+      if (write && !existing) {
+        await tx.formSubmission.create({ data: {
+          leadNo, products: form.products ?? [], customerDetails: form.customerDetails, commercialInfo: form.commercialInfo,
+          syringeFilter: form.syringeFilter ?? undefined, capsule: form.capsule ?? undefined, cartridgeFilter: form.cartridgeFilter ?? undefined,
+          companyName: text(form.customerDetails?.companyName),
+          submittedByUserId: user.id, submittedByName: text(form.submittedBy?.name) || text(staff.staff_name), submittedByRole: user.role,
+          visitedDate: legacyDate(form.visitedDate), submittedAt: legacyDate(form.submittedAt), createdAt: legacyDate(form.createdAt), updatedAt: legacyDate(form.updatedAt),
+        } });
+      }
+      count("forms", existing ? "kept" : "inserted");
+    }
+    // Next app lead must not reuse a legacy number. Only ever raise it.
+    const seqRow = await tx.formLeadSequence.findUnique({ where: { id: "leadNo" } });
+    const next = seqRow && seqRow.lastValue > BigInt(maxLead) ? seqRow.lastValue : BigInt(maxLead);
+    report.formLeadSequence = { from: seqRow?.lastValue.toString() ?? null, to: next.toString() };
+    if (write) await tx.formLeadSequence.upsert({ where: { id: "leadNo" }, update: { lastValue: next }, create: { id: "leadNo", lastValue: next } });
+  });
+}
+
 // ── verify ──────────────────────────────────────────────────────────────────
 async function verify() {
   const sum = (list, f) => list.reduce((s, r) => s + f(r), 0n);
@@ -744,6 +818,7 @@ async function verify() {
     snapshotItems: await n(`SELECT count(*) n FROM order_items WHERE legacy_php_order_item_id ~ '^discount-snapshot:'`),
     ordersWithoutItems: (await q(`SELECT o.legacy_php_id FROM orders o WHERE o.legacy_php_id IS NOT NULL AND NOT EXISTS (SELECT 1 FROM order_items i WHERE i.order_id = o.id) ORDER BY o.legacy_php_id::int`)).map((r) => r.legacy_php_id),
     discountRequests: await n(`SELECT count(*) n FROM custom_discount_requests WHERE order_snapshot->>'legacyId' IS NOT NULL`), discountJson: discountRows.length,
+    forms: await n(`SELECT count(*) n FROM form_submissions`), formsJson: formRows.length,
   };
   out.isolation = {
     ordersWithMissingDealer: await n(`SELECT count(*) n FROM orders o LEFT JOIN dealer_profiles d ON d.id = o.dealer_id WHERE d.id IS NULL`),
@@ -844,6 +919,7 @@ try {
     if (only.has("cancellations")) await step(seedCancellations);
     if (only.has("pending")) await step(checkPending);
     if (only.has("discounts")) await step(seedDiscounts);
+    if (only.has("forms")) await step(seedForms);
     await mkdir(EXPORT_DIR, { recursive: true });
     await writeFile(`${EXPORT_DIR}/seed-report.json`, `${JSON.stringify(report, null, 2)}\n`);
     if (write) {
@@ -853,7 +929,7 @@ try {
       const merged = Object.fromEntries(Object.keys(idMap).map((k) => [k, { ...previous[k], ...idMap[k] }]));
       await writeFile(`${EXPORT_DIR}/id-map.json`, `${JSON.stringify(merged, null, 2)}\n`);
     }
-    console.log(JSON.stringify({ counts: report.counts, orderSequence: report.orderSequence, ordersWithoutItems: report.ordersWithoutItems, skipped: report.skipped, warnings: report.warnings, defaultedRoles: report.defaultedRoles, derivedCount: report.derived.length, lineItems: report.lineItems }, null, 2));
+    console.log(JSON.stringify({ counts: report.counts, orderSequence: report.orderSequence, formLeadSequence: report.formLeadSequence, ordersWithoutItems: report.ordersWithoutItems, skipped: report.skipped, warnings: report.warnings, defaultedRoles: report.defaultedRoles, derivedCount: report.derived.length, lineItems: report.lineItems }, null, 2));
   }
 } finally {
   await prisma.$disconnect();

@@ -267,6 +267,15 @@ function mergeCatalogueSources(primaryProducts: CatalogueProduct[], fallbackProd
   return Array.from(merged.values());
 }
 
+// A catalogue variant's row prices in rupees, from the one pricing function. A variant
+// with no price gives zeros, so the server's "no catalogue price" check is what speaks.
+function catalogueRowPricing(variant: Parameters<typeof cataloguePricing.variantPricing>[0]) {
+  const pricing = cataloguePricing.variantPricing(variant);
+  return pricing
+    ? { unitPrice: pricing.piecePricePaise / 100, baseListPrice: pricing.packPricePaise / 100, packSize: pricing.packSize }
+    : { unitPrice: 0, baseListPrice: 0, packSize: Math.max(1, Math.trunc(Number(variant?.packSize ?? variant?.pack)) || 1) };
+}
+
 function rowSubtotalPaise(row: ProductRow): number {
   const quantity = safePositiveNumber(row.producQuanity);
   const packSize = safePositiveNumber(row.packSize) || 1;
@@ -954,11 +963,12 @@ function AddOrderPageInner() {
             const catalogueMatch = catalogueIndex ? findCatalogueEntry(catalogueIndex, String(item.variantCode).trim()) : null;
             const catalogueProduct = catalogueMatch?.product ?? null;
             const catalogueVariant = catalogueMatch?.variant ?? null;
-            const packSize = catalogueVariant?.pack ?? item.packSize ?? 1;
             const cartUnitPrice = cartPriceToRupees(item.unitPrice, match?.product_price);
-            const pricing = catalogueProduct && catalogueVariant
-              ? cataloguePricing.getVariantOrderPricing(catalogueVariant.price, packSize, catalogueProduct)
-              : { unitPrice: cartUnitPrice, baseListPrice: cartUnitPrice * packSize };
+            const fallbackPackSize = item.packSize ?? 1;
+            const pricing = catalogueVariant
+              ? catalogueRowPricing(catalogueVariant)
+              : { unitPrice: cartUnitPrice, baseListPrice: cartUnitPrice * fallbackPackSize, packSize: fallbackPackSize };
+            const packSize = pricing.packSize;
             return {
               key: i + 1,
               productname: catalogueVariant?.sku ?? (match ? String(match.product_cat) : item.variantCode),
@@ -1016,13 +1026,14 @@ function AddOrderPageInner() {
       const productName = nameParts[0] ?? item.name;
       const variantCode = catalogueVariant?.sku ?? (nameParts.length > 1 ? nameParts[nameParts.length - 1] : item.id);
       const localMeta = variantLookup[item.id];
-      const packSize = catalogueVariant?.pack ?? localMeta?.packSize ?? (item as any).packSize ?? 1;
       const cartPrice = Number(item.price);
       const apiPrice = match ? Number(match.product_price) : 0;
       const price = cartPriceToRupees(cartPrice, apiPrice);
-      const pricing = catalogueProduct && catalogueVariant
-        ? cataloguePricing.getVariantOrderPricing(catalogueVariant.price, packSize, catalogueProduct)
-        : { unitPrice: price, baseListPrice: price * packSize };
+      const fallbackPackSize = localMeta?.packSize ?? (item as any).packSize ?? 1;
+      const pricing = catalogueVariant
+        ? catalogueRowPricing(catalogueVariant)
+        : { unitPrice: price, baseListPrice: price * fallbackPackSize, packSize: fallbackPackSize };
+      const packSize = pricing.packSize;
 
       return {
         key: i + 1,
@@ -1734,8 +1745,8 @@ function AddOrderPageInner() {
     if (!product || !variant) return;
 
     const displayName = getCatalogueProductLabel(product);
-    const packSize = safePositiveNumber(variant.pack) || 1;
-    const pricing = cataloguePricing.getVariantOrderPricing(variant.price, packSize, product);
+    const pricing = catalogueRowPricing(variant);
+    const { packSize } = pricing;
     setArr((prev) => {
       const next = [...prev];
       next[idx] = {

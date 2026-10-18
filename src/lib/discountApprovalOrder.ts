@@ -116,7 +116,10 @@ export async function placeOrderForApprovedDiscount(
       quantityPacks,
       packSize,
       totalPieces: count(product.totalPieces, quantityPacks * packSize),
+      // Snapshots made before pack prices were stored carry only the gross amount.
+      priceBasis: product.priceBasis === "pack" || product.priceBasis === "piece" ? product.priceBasis : null,
       unitPricePaise: toPaise(product.unitPrice),
+      packPricePaise: toPaise(product.packPrice ?? Number(product.grossAmount) / quantityPacks),
       listPriceTotalPaise: grossAmount,
       discountPercent: new Prisma.Decimal(Number(product.baseDiscountPercent ?? 0) + Number(product.requestedCustomDiscountPercent ?? 0)),
       discountAmountPaise,

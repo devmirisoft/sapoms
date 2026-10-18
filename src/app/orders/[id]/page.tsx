@@ -21,7 +21,7 @@ import {
   resolveEffectiveOrderDetailItems,
 } from "@/lib/orderDetailItems";
 import ProductDispatchPanel from "@/components/orders/ProductDispatchPanel";
-import DispatchTrackingCard from "@/components/orders/DispatchTrackingCard";
+import DispatchTrackingCard, { type ShipmentContentLine } from "@/components/orders/DispatchTrackingCard";
 import { EMPTY_SHIPMENT_PICK, ShipmentPicker, shipmentPickPayload, type ShipmentPick } from "@/components/orders/ShipmentFields";
 import {
   buildBulkDispatchPlan,
@@ -916,6 +916,8 @@ export default function ViewOrderDealerPage() {
   const [dispatchShipmentPick, setDispatchShipmentPick] = useState<ShipmentPick>(EMPTY_SHIPMENT_PICK);
   const [selectedDispatchKeys, setSelectedDispatchKeys] = useState<Set<string>>(new Set());
   const [dispatchSelectedQuantities, setDispatchSelectedQuantities] = useState<Record<string, string>>({});
+  // Selected lines whose entered pieces are out of range or not whole packs.
+  const [dispatchInvalidKeys, setDispatchInvalidKeys] = useState<Set<string>>(new Set());
   const [dispatchSelectedStatus, setDispatchSelectedStatus] = useState<Exclude<DispatchStatus, "pending">>("dispatched");
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [overlayState, setOverlayState] = useState<EffectiveOrderOverlayState | null>(null);
@@ -1371,17 +1373,16 @@ export default function ViewOrderDealerPage() {
     [displayOrders, baseRowPricings]
   );
   const dispatchAllPlan = useMemo(() => buildBulkDispatchPlan(dispatchItems), [dispatchItems]);
-  // What went out in each shipment: "Flask 250 ml — 50 pcs" per product, keyed by shipment id.
+  // What went out in each shipment, per product, keyed by shipment id.
   const shipmentContents = useMemo(() => {
-    const contents: Record<string, string[]> = {};
+    const contents: Record<string, ShipmentContentLine[]> = {};
     for (const item of dispatchItems) {
       const packsByShipment = new Map<string, number>();
       for (const entry of item.dispatchHistory ?? []) {
         if (entry.shipmentId) packsByShipment.set(entry.shipmentId, (packsByShipment.get(entry.shipmentId) ?? 0) + entry.quantity);
       }
-      const name = item.product_name || item.orderdata_cat_no || "Product";
       for (const [shipmentId, packs] of packsByShipment) {
-        (contents[shipmentId] ??= []).push(`${name} — ${packs * item.packSize} pcs`);
+        (contents[shipmentId] ??= []).push({ catNo: item.orderdata_cat_no || "—", pieces: packs * item.packSize });
       }
     }
     return contents;
@@ -1548,6 +1549,7 @@ export default function ViewOrderDealerPage() {
     setDispatchAllError("");
     setDispatchSelectedStatus("dispatched");
     setDispatchShipmentPick(EMPTY_SHIPMENT_PICK);
+    setDispatchInvalidKeys(new Set());
     setDispatchSelectedQuantities(Object.fromEntries(
       selectedDispatchLines.map((line) => [buildBulkDispatchLineKey(line), String(line.remainingQuantity * line.packSize)])
     ));
@@ -1575,10 +1577,10 @@ export default function ViewOrderDealerPage() {
       const packs = dispatchPiecesToPacks(Number(dispatchSelectedQuantities[key]), line.packSize);
       return { ...line, key, dispatchQuantity: packs ?? 0, status: dispatchSelectedStatus };
     });
-    const invalidLine = requestedItems.find((line) => line.dispatchQuantity <= 0 || line.dispatchQuantity > line.remainingQuantity);
-    if (invalidLine) {
-      const packNote = invalidLine.packSize > 1 ? ` in multiples of ${invalidLine.packSize}` : "";
-      setDispatchAllError(`Enter between ${invalidLine.packSize} and ${invalidLine.remainingQuantity * invalidLine.packSize} pieces${packNote} for ${invalidLine.productName || invalidLine.sku}.`);
+    const invalidLines = requestedItems.filter((line) => line.dispatchQuantity <= 0 || line.dispatchQuantity > line.remainingQuantity);
+    if (invalidLines.length > 0) {
+      setDispatchInvalidKeys(new Set(invalidLines.map((line) => line.key)));
+      setDispatchAllError("");
       return;
     }
     // Not-in-stock lines leave nothing to ship.
@@ -2434,9 +2436,14 @@ export default function ViewOrderDealerPage() {
                   {selectedDispatchLines.map((line) => {
                     const lineKey = buildBulkDispatchLineKey(line);
                     return (
-                    <div key={lineKey} className="grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_repeat(5,minmax(72px,auto))] md:items-end">
+                    <div key={lineKey} className={`grid grid-cols-1 gap-3 px-4 py-3 md:grid-cols-[1fr_repeat(5,minmax(72px,auto))] md:items-end ${dispatchInvalidKeys.has(lineKey) ? "border-l-4 border-l-rose-500 bg-rose-50" : ""}`}>
                       <div>
-                        <p className="mt-1 font-mono text-[12px] text-amber-700">Catalogue Number: {line.sku || "-"}</p>
+                        <p className={`mt-1 font-mono text-[12px] ${dispatchInvalidKeys.has(lineKey) ? "font-bold text-rose-700" : "text-amber-700"}`}>Catalogue Number: {line.sku || "-"}</p>
+                        {dispatchInvalidKeys.has(lineKey) && (
+                          <p className="mt-1 text-[11px] font-semibold text-rose-600">
+                            Enter {line.packSize}–{line.remainingQuantity * line.packSize} pcs{line.packSize > 1 ? `, in multiples of ${line.packSize}` : ""}
+                          </p>
+                        )}
                       </div>
                       <div><p className="text-[10px] font-bold uppercase text-slate-400">Ordered</p><p className="font-mono text-[13px] font-bold">{line.orderedQuantity * line.packSize} pcs</p></div>
                       <div><p className="text-[10px] font-bold uppercase text-slate-400">Dispatched</p><p className="font-mono text-[13px] font-bold">{line.dispatchedQuantity * line.packSize} pcs</p></div>
@@ -2452,10 +2459,17 @@ export default function ViewOrderDealerPage() {
                           value={dispatchSelectedQuantities[lineKey] ?? ""}
                           onChange={(event) => {
                             setDispatchSelectedQuantities((previous) => ({ ...previous, [lineKey]: event.target.value }));
+                            setDispatchInvalidKeys((previous) => {
+                              if (!previous.has(lineKey)) return previous;
+                              const next = new Set(previous);
+                              next.delete(lineKey);
+                              return next;
+                            });
                             setDispatchAllError("");
                           }}
                           disabled={dispatchAllSaving}
-                          className="mt-1 w-24 rounded-xl border border-slate-200 px-3 py-2 font-mono text-[13px] text-slate-900 outline-none focus:border-brand-300"
+                          aria-invalid={dispatchInvalidKeys.has(lineKey)}
+                          className={`mt-1 w-24 rounded-xl border px-3 py-2 font-mono text-[13px] text-slate-900 outline-none ${dispatchInvalidKeys.has(lineKey) ? "border-rose-400 bg-white ring-2 ring-rose-100 focus:border-rose-500" : "border-slate-200 focus:border-brand-300"}`}
                         />
                       </label>
                     </div>
@@ -2506,6 +2520,25 @@ export default function ViewOrderDealerPage() {
                   placeholder="Add the operational dispatch remark"
                 />
               </div>
+
+              {dispatchInvalidKeys.size > 0 && (
+                <div role="alert" className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3">
+                  <p className="text-[12px] font-semibold text-rose-800">
+                    Fix the dispatch quantity for {dispatchInvalidKeys.size === 1 ? "this product" : `these ${dispatchInvalidKeys.size} products`}:
+                  </p>
+                  <ul className="mt-2 space-y-1.5">
+                    {selectedDispatchLines.filter((line) => dispatchInvalidKeys.has(buildBulkDispatchLineKey(line))).map((line) => (
+                      <li key={buildBulkDispatchLineKey(line)} className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-rose-700">
+                        <span className="rounded-lg bg-rose-600 px-2 py-0.5 font-mono font-bold text-white">{line.sku || "-"}</span>
+                        <span>
+                          Enter <strong>{line.packSize}–{line.remainingQuantity * line.packSize} pcs</strong>
+                          {line.packSize > 1 ? <> in multiples of <strong>{line.packSize}</strong></> : null}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
               {dispatchAllError && (
                 <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-[12px] text-rose-700">

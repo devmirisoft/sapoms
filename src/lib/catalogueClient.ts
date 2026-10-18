@@ -1,5 +1,5 @@
 import type { CatalogueProduct } from "@/lib/catalogue";
-import { addsNothingBeyond, stripHtml } from "@/lib/catalogue";
+import { addsNothingBeyond, mergeCatalogueRecords, stripHtml } from "@/lib/catalogue";
 
 let cachedProducts: CatalogueProduct[] | null = null;
 let cataloguePromise: Promise<CatalogueProduct[]> | null = null;
@@ -131,6 +131,12 @@ function normalizePostgresProduct(product: CatalogueProduct & Record<string, unk
       pack,
       price: numberValue(row.price ?? row.unitPrice ?? row.product_price, rupeesFromPaiseValue(row.unitPricePaise)),
       priceLabel: textValue(row.priceLabel),
+      priceBasis: row.priceBasis === "pack" ? "pack" as const : "piece" as const,
+      packSize: pack,
+      packUnit: textValue(row.packUnit ?? row.unitName),
+      pricePerPack: numberValue(row.pricePerPack, 0) || null,
+      pricePerPiece: numberValue(row.pricePerPiece, 0) || null,
+      packAssumed: row.packAssumed === true,
       inStock: row.inStock === undefined ? row.active !== false && product.active !== false : Boolean(row.inStock),
       images: Array.isArray(row.images) && row.images.length ? row.images.map(textValue).filter(Boolean) : images,
     };
@@ -360,13 +366,13 @@ export async function loadCatalogueProducts(): Promise<CatalogueProduct[]> {
   if (cachedProducts) return cachedProducts;
   if (cataloguePromise) return cataloguePromise;
 
+  // omsonsdata.json covers every product of the two older files, with explicit pack/piece pricing.
   cataloguePromise = Promise.all([
-    fetchCatalogueFile("/data/omsons_products_from_excel_with_images.json"),
-    fetchCatalogueFile("/data/nested_omsons_products.json").catch(() => []),
+    fetchCatalogueFile("/data/omsonsdata.json"),
     fetchPostgresCatalogueProducts(),
   ])
-    .then(([enrichedProducts, completeProducts, postgresProducts]) => {
-      cachedProducts = mergeCatalogueProducts(enrichedProducts, completeProducts, postgresProducts);
+    .then(([records, postgresProducts]) => {
+      cachedProducts = mergeCatalogueProducts(mergeCatalogueRecords(records).products, [], postgresProducts);
       return cachedProducts;
     })
     .finally(() => {

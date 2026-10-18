@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import products from '../../../../../public/data/omsons_products_from_excel_with_images.json'
-import { buildCatalogueSearchText, normalizeText } from '@/lib/catalogue'
+import catalogueJson from '../../../../../public/data/omsonsdata.json'
+import { buildCatalogueSearchText, mergeCatalogueRecords, normalizeText, type CatalogueProduct } from '@/lib/catalogue'
+
+// The file has one record per catalogue page; search works on whole products.
+const products = mergeCatalogueRecords(catalogueJson as unknown as CatalogueProduct[]).products
 
 interface Product {
   id: string

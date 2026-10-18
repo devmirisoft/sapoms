@@ -205,7 +205,8 @@ function ExecutiveDashboard() {
     queries: [
       {
         queryKey:  ["staffOrders", STAFF_ORDER_SCOPE_VERSION, user?.staff_id],
-        queryFn:   () => fetchJson<{ data: OrderItem[] }>(`/api/orders-data?page=1&limit=1000&search=`),
+        // Slim rows: the dashboard only counts and charts orders.
+        queryFn:   () => fetchJson<{ data: OrderItem[] }>(`/api/orders-data?page=1&limit=1000&search=&view=summary`),
         enabled,
         select:    (d: { data: OrderItem[] }) => (d.data ?? []).map((order) => ({
           ...order,

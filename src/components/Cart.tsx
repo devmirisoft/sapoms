@@ -1,5 +1,5 @@
 "use client";
-import { useCartStore } from "@/Store/store";
+import { cartPackPaise, useCartStore } from "@/Store/store";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import axios from "axios";
@@ -136,11 +136,11 @@ export default function Cart() {
   // Prices are in paise; quantity = number of packs
   const subtotalPaise = cart.reduce((acc, item) => {
   const ps = lookup[item.id]?.packSize ?? item.packSize ?? 1;
-  return acc + item.price * item.quantity * ps;
+  return acc + cartPackPaise(item, ps) * item.quantity;
 }, 0);
   const saleSubtotalPaise = cart.reduce((acc, item) => {
     const ps = lookup[item.id]?.packSize ?? item.packSize ?? 1;
-    return acc + salePaise(item.price * item.quantity * ps, saleOf(item.id));
+    return acc + salePaise(cartPackPaise(item, ps) * item.quantity, saleOf(item.id));
   }, 0);
   const subtotalText = saleSubtotalPaise < subtotalPaise ? (
     <>
@@ -187,7 +187,8 @@ export default function Cart() {
                   const meta      = lookup[item.id];
                   const packSize  = meta?.packSize ?? item.packSize ?? 1;
                   const unitPrice = item.price;                        // paise per piece
-                  const lineTotal = unitPrice * item.quantity * packSize;         // paise total
+                  const packPrice = cartPackPaise(item, packSize);     // paise per pack
+                  const lineTotal = packPrice * item.quantity;         // paise total
                   const totalUnitCount = item.quantity * packSize;
 
                   // Split name into product and variant.
@@ -310,7 +311,7 @@ export default function Cart() {
                         </p>
                         {item.quantity > 1 && (
                           <p className="text-xs text-[#565959]">
-                            {fmt(salePaise(unitPrice * packSize, sale))} / pack
+                            {fmt(salePaise(packPrice, sale))} / pack
                           </p>
                         )}
                         {packSize > 1 && (

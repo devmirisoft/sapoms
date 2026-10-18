@@ -3,6 +3,7 @@
 // import { useEffect, useMemo, useState } from 'react'
 // import { useRouter, useSearchParams } from 'next/navigation'
 // import { AlertCircle, ArrowLeft, CheckCircle, GripVertical, ImagePlus, Loader2, Package, Plus, Trash2, X } from 'lucide-react'
+// import cataloguePricing from '@/lib/cataloguePricing'
 
 // type ToastState = { text: string; ok: boolean } | null
 // type Column = { id: string; title: string; locked?: boolean; kind?: 'catalogue' | 'pack' | 'unitPrice' | 'packPrice' | 'availability' }
@@ -681,9 +682,10 @@
 import React, { useEffect, useMemo, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { AlertCircle, ArrowLeft, CheckCircle, GripVertical, ImagePlus, Loader2, Package, Plus, Trash2, X } from 'lucide-react'
+import cataloguePricing from '@/lib/cataloguePricing'
 
 type ToastState = { text: string; ok: boolean } | null
-type Column = { id: string; title: string; locked?: boolean; kind?: 'catalogue' | 'pack' | 'unitPrice' | 'packPrice' | 'availability' }
+type Column = { id: string; title: string; locked?: boolean; kind?: 'catalogue' | 'pack' | 'basis' | 'unitPrice' | 'packPrice' | 'availability' }
 type VariantRow = { id: string; values: Record<string, string>; active: boolean }
 type CategoryValue = string | { name?: string } | null | undefined
 type CategorySourceProduct = { category?: CategoryValue; categories?: CategoryValue[]; product_category?: CategoryValue; product_categories?: CategoryValue[] }
@@ -697,8 +699,10 @@ const unitOptions = ['Pcs.', 'Set', 'Pair', 'Pack', 'Box', 'Nos.', 'Kg', 'Gm', '
 const defaultColumns: Column[] = [
   { id: 'catalogueNumber', title: 'Catalogue No.', locked: true, kind: 'catalogue' },
   { id: 'packSize', title: 'Pack Size', locked: true, kind: 'pack' },
-  { id: 'unitPrice', title: 'Price / Unit', locked: true, kind: 'unitPrice' },
-  { id: 'packPrice', title: 'Price / Pack', locked: true, kind: 'packPrice' },
+  { id: 'priceBasis', title: 'Price Basis', locked: true, kind: 'basis' },
+  // The price exactly as the catalogue prints it: per pack or per piece by the basis.
+  { id: 'unitPrice', title: 'Printed Price', locked: true, kind: 'unitPrice' },
+  { id: 'packPrice', title: 'Pack / Piece', locked: true, kind: 'packPrice' },
   { id: 'availability', title: 'Availability', locked: true, kind: 'availability' },
 ]
 
@@ -710,8 +714,8 @@ const initialVariant = (): VariantRow => ({
   values: {
     catalogueNumber: '',
     packSize: '1',
+    priceBasis: 'piece',
     unitPrice: '',
-    packPrice: '',
     availability: 'In Stock',
   },
 })
@@ -726,13 +730,10 @@ function num(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 0
 }
 
-// Price / Pack is always derived — never typed in directly. Whenever pack
-// size or unit price changes (editing, loading a product, adding a
-// variant, etc.) this is the single place that recomputes it.
-function computePackPrice(packSizeValue: string, unitPriceValue: string) {
-  const packSize = Math.max(1, Math.trunc(num(packSizeValue || '1')) || 1)
-  const unitPrice = num(unitPriceValue || '')
-  return unitPrice ? String(packSize * unitPrice) : ''
+// The printed price is the pack or the piece price by its basis; the other is always
+// derived, never typed in (pack price is authoritative, piece price rounded to the paisa).
+function rowPrices(values: Record<string, string>) {
+  return cataloguePricing.pricesFromPrinted(values.priceBasis, values.packSize || '1', Math.round(num(values.unitPrice || '') * 100))
 }
 
 function categoryText(value: CategoryValue) {
@@ -857,9 +858,10 @@ export default function AddProductPage() {
   const [dragOverColId, setDragOverColId] = useState<string | null>(null)
 
   const selectedVariant = variants.find((row) => row.id === selectedVariantId) ?? variants[0]
-  const selectedPack = Math.max(1, Math.trunc(num(selectedVariant?.values.packSize || '1')) || 1)
-  const selectedUnitPrice = num(selectedVariant?.values.unitPrice || '')
-  const selectedPackPrice = selectedPack * selectedUnitPrice
+  const selectedPrices = rowPrices(selectedVariant?.values ?? {})
+  const selectedPack = selectedPrices.packSize
+  const selectedUnitPrice = selectedPrices.piecePricePaise / 100
+  const selectedPackPrice = selectedPrices.packPricePaise / 100
   const availability = selectedVariant?.values.availability || 'In Stock'
   const effectiveCategory = customCategory.trim() || category.trim()
 
@@ -936,13 +938,12 @@ export default function AddProductPage() {
         const nextRows: VariantRow[] = (product.variants || []).map((variant: any) => {
           const catalogueNumber = variant.catalogueNumber || variant.sku || ''
           const specs = parsed.specRows.get(catalogueNumber) || parsed.specRows.get(variant.sku) || {}
-          const packSizeStr = String(variant.packSize || 1)
-          const unitPriceStr = rupeesFromPaise(variant.unitPricePaise)
+          const priceBasis = variant.priceBasis === 'pack' ? 'pack' : 'piece'
           const values: Record<string, string> = {
             catalogueNumber,
-            packSize: packSizeStr,
-            unitPrice: unitPriceStr,
-            packPrice: computePackPrice(packSizeStr, unitPriceStr),
+            packSize: String(variant.packSize || 1),
+            priceBasis,
+            unitPrice: rupeesFromPaise(priceBasis === 'pack' ? variant.packPricePaise : variant.unitPricePaise),
             availability: variant.active ? 'In Stock' : 'Out of Stock',
           }
           extraColumns.forEach((column) => { values[column.id] = specs[column.title] || '' })
@@ -989,11 +990,7 @@ export default function AddProductPage() {
   const updateRow = (rowId: string, columnId: string, value: string) => {
     setVariants((rows) => rows.map((row) => {
       if (row.id !== rowId) return row
-      const values = { ...row.values, [columnId]: value }
-      if (columnId === 'packSize' || columnId === 'unitPrice') {
-        values.packPrice = computePackPrice(values.packSize, values.unitPrice)
-      }
-      return { ...row, values }
+      return { ...row, values: { ...row.values, [columnId]: value } }
     }))
   }
 
@@ -1096,11 +1093,9 @@ export default function AddProductPage() {
           active: true,
           description: buildDescription(description, aboutItems, columns, variants),
           variants: variants.map((row) => {
-            const packSize = Math.max(1, Math.trunc(num(row.values.packSize || '1')) || 1)
-            const unitPrice = num(row.values.unitPrice || '')
-            const packPrice = packSize * unitPrice
+            const { priceBasis, packSize } = rowPrices(row.values)
             const catalogueNumber = row.values.catalogueNumber?.trim()
-            return { id: /^\d+$/.test(row.id) ? row.id : undefined, sku: catalogueNumber, catalogueNumber, unitName: unit || 'Pcs.', packSize, unitPrice, packPrice, active: row.values.availability !== 'Out of Stock' }
+            return { id: /^\d+$/.test(row.id) ? row.id : undefined, sku: catalogueNumber, catalogueNumber, unitName: unit || 'Pcs.', packSize, priceBasis, printedPrice: num(row.values.unitPrice || ''), active: row.values.availability !== 'Out of Stock' }
           }),
         }),
       })
@@ -1386,9 +1381,17 @@ export default function AddProductPage() {
                             {column.kind === 'catalogue' ? (
                               <div className="catalogue-cell">{row.values.catalogueNumber}</div>
                             ) : column.kind === 'packPrice' ? (
-                              <div className="catalogue-cell" title="Auto-calculated: Price / Unit × Pack Size">
-                                {row.values.packPrice ? money(num(row.values.packPrice)) : 'On request'}
+                              <div className="catalogue-cell" title="Auto-calculated from the printed price, its basis and the pack size">
+                                {(() => {
+                                  const prices = rowPrices(row.values)
+                                  return prices.packPricePaise ? cataloguePricing.formatPriceLine({ ...prices, packUnit: cataloguePricing.unitLabel(unit) }) : 'On request'
+                                })()}
                               </div>
+                            ) : column.kind === 'basis' ? (
+                              <select className="table-input" value={row.values.priceBasis === 'pack' ? 'pack' : 'piece'} onChange={(event) => updateRow(row.id, column.id, event.target.value)} disabled={loading}>
+                                <option value="piece">Per piece</option>
+                                <option value="pack">Per pack</option>
+                              </select>
                             ) : column.kind === 'availability' ? (
                               <select className="table-input" value={row.values[column.id] || 'In Stock'} onChange={(event) => updateRow(row.id, column.id, event.target.value)} disabled={loading}>
                                 <option>In Stock</option>

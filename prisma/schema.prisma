@@ -185,8 +185,12 @@ model ProductVariant {
   catalogueNumber String?  @map("catalogue_number")
   unitName        String?  @map("unit_name")
   packSize        Int?     @map("pack_size")
+  // Piece price; packPricePaise is the authoritative pack price. priceBasis says which one
+  // the catalogue prints ("pack" | "piece", checked in the migration).
   unitPricePaise  BigInt   @default(0) @map("unit_price_paise")
   packPricePaise  BigInt   @default(0) @map("pack_price_paise")
+  priceBasis      String   @default("piece") @map("price_basis")
+  packAssumed     Boolean  @default(false) @map("pack_assumed")
   active          Boolean  @default(true)
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
@@ -825,6 +829,8 @@ model OrderItem {
   packSize      Int @map("pack_size")
   totalPieces   Int @map("total_pieces")
 
+  // Snapshot of the variant's pricing at order time; null on orders placed before it was kept.
+  priceBasis          String? @map("price_basis")
   unitPricePaise      BigInt @default(0) @map("unit_price_paise")
   packPricePaise      BigInt @default(0) @map("pack_price_paise")
   listPriceTotalPaise BigInt @default(0) @map("list_price_total_paise")

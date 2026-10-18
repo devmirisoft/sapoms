@@ -10,6 +10,13 @@ export type CatalogueVariant = {
   priceLabel?: string;
   inStock?: boolean;
   images?: string[];
+  // How the catalogue prints this variant's price; read only through cataloguePricing.js.
+  priceBasis?: "pack" | "piece";
+  packSize?: number;
+  packUnit?: string;
+  pricePerPack?: number | null;
+  pricePerPiece?: number | null;
+  packAssumed?: boolean;
 };
 
 export type CatalogueProduct = {
@@ -370,11 +377,19 @@ export function buildCatalogueIndex<T extends CatalogueProduct>(products: T[]): 
 
     flatProducts.push(product);
     productsBySku[String(product.sku)] = product;
-    productsBySku[String(product.id)] = product;
 
     for (const variant of product.variants ?? []) {
       variantsBySku[String(variant.sku)] = { product, variant };
-      variantsBySku[String(variant.id)] = { product, variant };
+    }
+  }
+
+  // Ids are only a fallback. Postgres rows carry numeric DB ids that can equal another
+  // product's catalogue number (DB id 116 is Whirling Hygrometers; code "116" is a flask).
+  const taken = (key: string) => Object.hasOwn(productsBySku, key) || Object.hasOwn(variantsBySku, key);
+  for (const product of products) {
+    if (!taken(String(product.id))) productsBySku[String(product.id)] = product;
+    for (const variant of product.variants ?? []) {
+      if (!taken(String(variant.id))) variantsBySku[String(variant.id)] = { product, variant };
     }
   }
 
@@ -383,6 +398,57 @@ export function buildCatalogueIndex<T extends CatalogueProduct>(products: T[]): 
     products: flatProducts,
     productsBySku,
     variantsBySku,
+  };
+}
+
+// "Cap. (ml)", "Capacity (mL)" and "Capacity (ml)" name one spec; spelling alone isn't a conflict.
+function specKeyForm(key: string): string {
+  return key.trim().toLowerCase().replace(/^cap\.?(?=\s|\(|$)/, "capacity").replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function variantFingerprint(productSku: string, variant: CatalogueVariant): string {
+  const specs = Object.entries(variant.specs ?? {}).map(([key, value]) => [specKeyForm(key), String(value ?? "").trim()]).sort();
+  return JSON.stringify([productSku, variant.priceBasis ?? null, variant.packSize ?? variant.pack ?? null, variant.pricePerPack ?? variant.price ?? null, specs]);
+}
+
+/**
+ * The catalogue file has one record per printed page, so one product can span several
+ * records ("670", "670--p2", …). Merges them by product sku with the union of their variants.
+ * A variant sku whose copies disagree (price, pack, basis or specs, or listed under two
+ * products) is kept once with its prices removed, so neither copy is picked, and is
+ * returned in `conflicts`.
+ */
+export function mergeCatalogueRecords(records: CatalogueProduct[]): { products: CatalogueProduct[]; conflicts: Set<string> } {
+  const products = new Map<string, CatalogueProduct & { variants: CatalogueVariant[] }>();
+  const fingerprints = new Map<string, string>();
+  const conflicts = new Set<string>();
+
+  for (const record of records) {
+    const sku = String(record.sku ?? "").trim();
+    if (!sku) continue;
+    const product = products.get(sku) ?? { ...record, id: sku, variants: [] };
+    if (!product.features?.length && record.features?.length) product.features = record.features;
+    for (const variant of record.variants ?? []) {
+      const variantSku = String(variant.sku ?? "").trim();
+      const fingerprint = variantFingerprint(sku, variant);
+      const seen = variantSku ? fingerprints.get(variantSku) : undefined;
+      if (seen === undefined) {
+        if (variantSku) fingerprints.set(variantSku, fingerprint);
+        product.variants.push(variant);
+      } else if (seen !== fingerprint) {
+        conflicts.add(variantSku);
+      }
+    }
+    products.set(sku, product);
+  }
+
+  const unpriced = { price: null, priceLabel: "on request", pricePerPack: null, pricePerPiece: null };
+  return {
+    products: Array.from(products.values(), (product) => ({
+      ...product,
+      variants: product.variants.map((variant) => (conflicts.has(String(variant.sku ?? "").trim()) ? { ...variant, ...unpriced } : variant)),
+    })),
+    conflicts,
   };
 }
 

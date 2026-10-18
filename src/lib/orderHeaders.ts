@@ -19,6 +19,7 @@ type LoadOrderHeadersInput = {
   filters?: OrderFilters;
   page: number;
   pageSize: number;
+  summary?: boolean;
 };
 
 // One page of order headers; filtering and paging happen in the database.

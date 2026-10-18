@@ -5,6 +5,7 @@ import type { CatalogueProduct } from "@/lib/catalogue";
 import {
   getCatalogueProductDescriptor,
 } from "@/lib/catalogue";
+import cataloguePricing from "@/lib/cataloguePricing";
 
 type CatalogueProductCardProps = {
   product: CatalogueProduct;
@@ -17,28 +18,6 @@ function getProductImage(product: CatalogueProduct): string | null {
   return (product.images ?? []).find((image) => typeof image === "string" && image.length > 0) ?? null;
 }
 
-function getLowestPrice(product: CatalogueProduct): { regular: number | null; sale: number | null } {
-  const prices = (product.variants ?? [])
-    .map((variant) => (typeof variant.price === "number" ? variant.price * 100 : 0))
-    .filter((price) => price > 0);
-
-  return {
-    regular: prices.length ? Math.min(...prices) : null,
-    sale: null,
-  };
-}
-
-function getFirstPackSize(product: CatalogueProduct): number {
-  return product.variants?.[0]?.pack ?? 1;
-}
-
-function formatPrice(paise: number): string {
-  return `₹${(paise / 100).toLocaleString("en-IN", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
 export default function CatalogueProductCard({
   product,
   href,
@@ -46,10 +25,7 @@ export default function CatalogueProductCard({
   descriptionOverride,
 }: CatalogueProductCardProps) {
   const image = getProductImage(product);
-  const { regular, sale } = getLowestPrice(product);
-  const displayPrice = sale ?? regular;
-  const packSize = displayPrice !== null ? getFirstPackSize(product) : 1;
-  const perUnitPrice = displayPrice !== null && packSize > 1 ? Math.round(displayPrice / packSize) : null;
+  const cheapest = cataloguePricing.cheapestPricing(product);
   const variantCount = product.variants?.length ?? 0;
   const descriptor = descriptionOverride || getCatalogueProductDescriptor(product) || product.features?.[0] || "";
   const multiVariant = variantCount > 1;
@@ -172,36 +148,10 @@ export default function CatalogueProductCard({
           </div>
 
           <div style={{ marginTop: "auto", paddingTop: 10 }}>
-            {displayPrice !== null ? (
-              <div style={{ marginBottom: 8 }}>
-                <div style={{ display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
-                  <span style={{ fontSize: 15, fontWeight: 800, color: "#1e3a5f" }}>{formatPrice(displayPrice)}</span>
-                  {sale !== null && regular !== null && (
-                    <span style={{ fontSize: 11, color: "#94a3b8", textDecoration: "line-through" }}>
-                      {formatPrice(regular)}
-                    </span>
-                  )}
-                  
-                  {multiVariant && <span style={{ fontSize: 10, color: "#64748b" }}>onwards</span>}
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
-                  {packSize > 1 && (
-                    <span
-                      style={{
-                        fontSize: 10.5,
-                        color: "#64748b",
-                        background: "#f1f5f9",
-                        padding: "1px 6px",
-                        borderRadius: 4,
-                      }}
-                    >
-                      Pack of {packSize}
-                    </span>
-                  )}
-                  {perUnitPrice !== null && (
-                    <span style={{ fontSize: 10.5, color: "#94a3b8" }}>{formatPrice(perUnitPrice)}/unit</span>
-                  )}
-                </div>
+            {cheapest ? (
+              <div style={{ marginBottom: 8, display: "flex", alignItems: "baseline", gap: 5, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12.5, fontWeight: 800, color: "#1e3a5f" }}>{cataloguePricing.formatPriceLine(cheapest)}</span>
+                {multiVariant && <span style={{ fontSize: 10, color: "#64748b" }}>onwards</span>}
               </div>
             ) : (
               <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 8px" }}>Price on request</p>

@@ -7,7 +7,8 @@ import { findCatalogueEntry, type CatalogueIndex } from "@/lib/catalogue";
 import { couponPercent } from "@/lib/coupons";
 import { normalizeApprovalProductKey } from "@/lib/customDiscountRequests";
 import discountUtils from "@/lib/discount";
-import { linePricing, loadCatalogue } from "@/server/modules/products/catalogue";
+import cataloguePricing from "@/lib/cataloguePricing";
+import { loadCatalogue } from "@/server/modules/products/catalogue";
 import { liveSalePercents } from "@/server/todays-sale";
 
 /**
@@ -42,7 +43,9 @@ type ParsedItem = {
   quantityPacks: number;
   packSize: number;
   totalPieces: number;
+  priceBasis: "pack" | "piece";
   unitPricePaise: bigint;
+  packPricePaise: bigint;
   listPriceTotalPaise: bigint;
   discountPercent: number;
   discountAmountPaise: bigint;
@@ -59,7 +62,6 @@ type ParsedItem = {
 export function text(value: unknown, max = 1000) { return String(value ?? "").trim().slice(0, max); }
 function optionalBigInt(value: unknown) { const raw = text(value, 40); return /^\d+$/.test(raw) ? BigInt(raw) : undefined; }
 function num(value: unknown) { const n = Number(String(value ?? "").replace(/,/g, "").trim()); return Number.isFinite(n) ? n : 0; }
-function paise(value: unknown) { return BigInt(Math.round(num(value) * 100)); }
 export function fromPaise(value: bigint) { return Number(value) / 100; }
 function clampPercent(value: unknown) { return Math.min(100, Math.max(0, num(value))); }
 
@@ -99,7 +101,7 @@ function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIn
     const entry = submittedCatNo ? findCatalogueEntry(catalogue, submittedCatNo) : null;
     if (!entry?.variant) throw new OrderError(`${submittedCatNo || "A product"} is not in the catalogue.`, 422, "unknown_product");
     const { product, variant } = entry;
-    const pricing = linePricing(product, variant);
+    const pricing = cataloguePricing.variantPricing(variant);
     if (!pricing) throw new OrderError(`${submittedCatNo} has no catalogue price.`, 422, "unpriced_product");
     const { packSize } = pricing;
 
@@ -108,8 +110,8 @@ function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIn
     const productName = text(row.productName ?? row.productname, 300) || product.name;
     const catNo = variant.sku || submittedCatNo;
     const salePercent = salePercents.get(catNo.toLowerCase()) ?? salePercents.get(product.sku.toLowerCase()) ?? 0;
-    const packPricePaise = paise(pricing.packPrice);
-    const unitPricePaise = paise(pricing.unitPrice);
+    const packPricePaise = BigInt(pricing.packPricePaise);
+    const unitPricePaise = BigInt(pricing.piecePricePaise);
     const listPriceTotalPaise = (packPricePaise - share(packPricePaise, salePercent)) * BigInt(quantityPacks);
     const saleNote = salePercent > 0 ? `Today's Sale: ${salePercent}% off` : "";
     const productNote = text(row.productNote ?? row.product_note ?? row.note, 1500);
@@ -121,7 +123,9 @@ function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIn
       quantityPacks,
       packSize,
       totalPieces: quantityPacks * packSize,
+      priceBasis: pricing.priceBasis,
       unitPricePaise: unitPricePaise - share(unitPricePaise, salePercent),
+      packPricePaise: packPricePaise - share(packPricePaise, salePercent),
       listPriceTotalPaise,
       discountPercent: 0,
       discountAmountPaise: BigInt(0),
@@ -321,7 +325,9 @@ export async function createDealerOrder(
         quantityPacks: item.quantityPacks,
         packSize: item.packSize,
         totalPieces: item.totalPieces,
+        priceBasis: item.priceBasis,
         unitPricePaise: item.unitPricePaise,
+        packPricePaise: item.packPricePaise,
         listPriceTotalPaise: item.listPriceTotalPaise,
         discountPercent: new Prisma.Decimal(item.discountPercent),
         discountAmountPaise: item.discountAmountPaise,

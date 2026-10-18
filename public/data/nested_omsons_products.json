@@ -18370,7 +18370,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "5",
+          "Socket Size": "10/19"
+        },
+        "specsText": "Capacity (ml): 5; Socket Size: 10/19"
       },
       {
         "id": "116/3",
@@ -18380,7 +18386,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "10",
+          "Socket Size": "10/19"
+        },
+        "specsText": "Capacity (ml): 10; Socket Size: 10/19"
       },
       {
         "id": "116/5",
@@ -18390,7 +18402,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "25",
+          "Socket Size": "14/23"
+        },
+        "specsText": "Capacity (ml): 25; Socket Size: 14/23"
       },
       {
         "id": "116/8",
@@ -18400,7 +18418,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "50",
+          "Socket Size": "14/23"
+        },
+        "specsText": "Capacity (ml): 50; Socket Size: 14/23"
       },
       {
         "id": "116/9",
@@ -18410,7 +18434,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "50",
+          "Socket Size": "19/26"
+        },
+        "specsText": "Capacity (ml): 50; Socket Size: 19/26"
       },
       {
         "id": "116/10",
@@ -18420,7 +18450,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "50",
+          "Socket Size": "24/29"
+        },
+        "specsText": "Capacity (ml): 50; Socket Size: 24/29"
       },
       {
         "id": "116/12",
@@ -18430,7 +18466,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "100",
+          "Socket Size": "14/23"
+        },
+        "specsText": "Capacity (ml): 100; Socket Size: 14/23"
       },
       {
         "id": "116/13",
@@ -18440,7 +18482,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "100",
+          "Socket Size": "19/26"
+        },
+        "specsText": "Capacity (ml): 100; Socket Size: 19/26"
       },
       {
         "id": "116/14",
@@ -18450,7 +18498,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "100",
+          "Socket Size": "24/29"
+        },
+        "specsText": "Capacity (ml): 100; Socket Size: 24/29"
       },
       {
         "id": "116/15",
@@ -18460,7 +18514,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "100",
+          "Socket Size": "34/35"
+        },
+        "specsText": "Capacity (ml): 100; Socket Size: 34/35"
       },
       {
         "id": "116/16",
@@ -18470,7 +18530,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "150",
+          "Socket Size": "19/26"
+        },
+        "specsText": "Capacity (ml): 150; Socket Size: 19/26"
       },
       {
         "id": "116/17",
@@ -18480,7 +18546,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "150",
+          "Socket Size": "24/29"
+        },
+        "specsText": "Capacity (ml): 150; Socket Size: 24/29"
       },
       {
         "id": "116/18",
@@ -18490,7 +18562,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "150",
+          "Socket Size": "29/32"
+        },
+        "specsText": "Capacity (ml): 150; Socket Size: 29/32"
       },
       {
         "id": "116/19",
@@ -18500,7 +18578,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "150",
+          "Socket Size": "34/35"
+        },
+        "specsText": "Capacity (ml): 150; Socket Size: 34/35"
       },
       {
         "id": "116/20",
@@ -18510,7 +18594,13 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "250",
+          "Socket Size": "19/26"
+        },
+        "specsText": "Capacity (ml): 250; Socket Size: 19/26"
       },
       {
         "id": "116/21",
@@ -18520,7 +18610,461 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
-        ]
+        ],
+        "pack": 10,
+        "specs": {
+          "Capacity (ml)": "250",
+          "Socket Size": "24/29"
+        },
+        "specsText": "Capacity (ml): 250; Socket Size: 24/29"
+      },
+      {
+        "id": "116/22",
+        "sku": "116/22",
+        "slug": "116-22",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/22",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "250",
+          "Socket Size": "29/32"
+        },
+        "specsText": "Capacity (ml): 250; Socket Size: 29/32"
+      },
+      {
+        "id": "116/23",
+        "sku": "116/23",
+        "slug": "116-23",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/23",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "250",
+          "Socket Size": "34/35"
+        },
+        "specsText": "Capacity (ml): 250; Socket Size: 34/35"
+      },
+      {
+        "id": "116/24",
+        "sku": "116/24",
+        "slug": "116-24",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/24",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "500",
+          "Socket Size": "19/26"
+        },
+        "specsText": "Capacity (ml): 500; Socket Size: 19/26"
+      },
+      {
+        "id": "116/25",
+        "sku": "116/25",
+        "slug": "116-25",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/25",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "500",
+          "Socket Size": "24/29"
+        },
+        "specsText": "Capacity (ml): 500; Socket Size: 24/29"
+      },
+      {
+        "id": "116/26",
+        "sku": "116/26",
+        "slug": "116-26",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/26",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "500",
+          "Socket Size": "29/32"
+        },
+        "specsText": "Capacity (ml): 500; Socket Size: 29/32"
+      },
+      {
+        "id": "116/27",
+        "sku": "116/27",
+        "slug": "116-27",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/27",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "500",
+          "Socket Size": "34/35"
+        },
+        "specsText": "Capacity (ml): 500; Socket Size: 34/35"
+      },
+      {
+        "id": "116/28",
+        "sku": "116/28",
+        "slug": "116-28",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/28",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "1000",
+          "Socket Size": "24/29"
+        },
+        "specsText": "Capacity (ml): 1000; Socket Size: 24/29"
+      },
+      {
+        "id": "116/29",
+        "sku": "116/29",
+        "slug": "116-29",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/29",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "1000",
+          "Socket Size": "29/32"
+        },
+        "specsText": "Capacity (ml): 1000; Socket Size: 29/32"
+      },
+      {
+        "id": "116/30",
+        "sku": "116/30",
+        "slug": "116-30",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/30",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "1000",
+          "Socket Size": "34/35"
+        },
+        "specsText": "Capacity (ml): 1000; Socket Size: 34/35"
+      },
+      {
+        "id": "116/31",
+        "sku": "116/31",
+        "slug": "116-31",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/31",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "2000",
+          "Socket Size": "24/29"
+        },
+        "specsText": "Capacity (ml): 2000; Socket Size: 24/29"
+      },
+      {
+        "id": "116/32",
+        "sku": "116/32",
+        "slug": "116-32",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/32",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "2000",
+          "Socket Size": "29/32"
+        },
+        "specsText": "Capacity (ml): 2000; Socket Size: 29/32"
+      },
+      {
+        "id": "116/33",
+        "sku": "116/33",
+        "slug": "116-33",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/33",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 2,
+        "specs": {
+          "Capacity (ml)": "2000",
+          "Socket Size": "34/35"
+        },
+        "specsText": "Capacity (ml): 2000; Socket Size: 34/35"
+      },
+      {
+        "id": "116/34",
+        "sku": "116/34",
+        "slug": "116-34",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/34",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "3000",
+          "Socket Size": "24/29"
+        },
+        "specsText": "Capacity (ml): 3000; Socket Size: 24/29"
+      },
+      {
+        "id": "116/35",
+        "sku": "116/35",
+        "slug": "116-35",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/35",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "3000",
+          "Socket Size": "34/35"
+        },
+        "specsText": "Capacity (ml): 3000; Socket Size: 34/35"
+      },
+      {
+        "id": "116/36",
+        "sku": "116/36",
+        "slug": "116-36",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/36",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "3000",
+          "Socket Size": "40/38"
+        },
+        "specsText": "Capacity (ml): 3000; Socket Size: 40/38"
+      },
+      {
+        "id": "116/37",
+        "sku": "116/37",
+        "slug": "116-37",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/37",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "5000",
+          "Socket Size": "24/29"
+        },
+        "specsText": "Capacity (ml): 5000; Socket Size: 24/29"
+      },
+      {
+        "id": "116/38",
+        "sku": "116/38",
+        "slug": "116-38",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/38",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "5000",
+          "Socket Size": "34/35"
+        },
+        "specsText": "Capacity (ml): 5000; Socket Size: 34/35"
+      },
+      {
+        "id": "116/39",
+        "sku": "116/39",
+        "slug": "116-39",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/39",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "5000",
+          "Socket Size": "40/38"
+        },
+        "specsText": "Capacity (ml): 5000; Socket Size: 40/38"
+      },
+      {
+        "id": "116/40",
+        "sku": "116/40",
+        "slug": "116-40",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/40",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "5000",
+          "Socket Size": "45/40"
+        },
+        "specsText": "Capacity (ml): 5000; Socket Size: 45/40"
+      },
+      {
+        "id": "116/41",
+        "sku": "116/41",
+        "slug": "116-41",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/41",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "5000",
+          "Socket Size": "50/42"
+        },
+        "specsText": "Capacity (ml): 5000; Socket Size: 50/42"
+      },
+      {
+        "id": "116/42",
+        "sku": "116/42",
+        "slug": "116-42",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/42",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "10000",
+          "Socket Size": "34/35"
+        },
+        "specsText": "Capacity (ml): 10000; Socket Size: 34/35"
+      },
+      {
+        "id": "116/43",
+        "sku": "116/43",
+        "slug": "116-43",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/43",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "10000",
+          "Socket Size": "40/38"
+        },
+        "specsText": "Capacity (ml): 10000; Socket Size: 40/38"
+      },
+      {
+        "id": "116/44",
+        "sku": "116/44",
+        "slug": "116-44",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/44",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "10000",
+          "Socket Size": "45/40"
+        },
+        "specsText": "Capacity (ml): 10000; Socket Size: 45/40"
+      },
+      {
+        "id": "116/45",
+        "sku": "116/45",
+        "slug": "116-45",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/45",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "10000",
+          "Socket Size": "50/42"
+        },
+        "specsText": "Capacity (ml): 10000; Socket Size: 50/42"
+      },
+      {
+        "id": "116/46",
+        "sku": "116/46",
+        "slug": "116-46",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/46",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "10000",
+          "Socket Size": "55/44"
+        },
+        "specsText": "Capacity (ml): 10000; Socket Size: 55/44"
+      },
+      {
+        "id": "116/47",
+        "sku": "116/47",
+        "slug": "116-47",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/47",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "20000",
+          "Socket Size": "40/38"
+        },
+        "specsText": "Capacity (ml): 20000; Socket Size: 40/38"
+      },
+      {
+        "id": "116/48",
+        "sku": "116/48",
+        "slug": "116-48",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/48",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "20000",
+          "Socket Size": "50/42"
+        },
+        "specsText": "Capacity (ml): 20000; Socket Size: 50/42"
+      },
+      {
+        "id": "116/49",
+        "sku": "116/49",
+        "slug": "116-49",
+        "name": "Boiling Flasks, Flat Bottom, Clear IS : 1381 Part-2 Single Neck, with Socket 3.3 - 116/49",
+        "inStock": true,
+        "images": [
+          "https://omsonslabs.com/wp-content/uploads/Flasks-Boiling-Flat-Bottom-Single-Neck-with-Socket.jpg"
+        ],
+        "pack": 1,
+        "specs": {
+          "Capacity (ml)": "20000",
+          "Socket Size": "55/44"
+        },
+        "specsText": "Capacity (ml): 20000; Socket Size: 55/44"
       }
     ]
   },
@@ -86812,7 +87356,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-NY-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20"
+        },
+        "specsText": "Pore Size (µm): 0.20"
       },
       {
         "id": "OM571-045",
@@ -86822,7 +87370,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-NY-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.45"
       },
       {
         "id": "OM571-02-08",
@@ -86832,7 +87384,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-NY-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20",
+          "Pre Filter (µm)": "0.8"
+        },
+        "specsText": "Pore Size (µm): 0.20; Pre Filter (µm): 0.8"
       },
       {
         "id": "OM571-02-045",
@@ -86842,7 +87399,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-NY-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20",
+          "Pre Filter (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.20; Pre Filter (µm): 0.45"
       },
       {
         "id": "OM571-045-08",
@@ -86852,7 +87414,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-NY-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45",
+          "Pre Filter (µm)": "0.8"
+        },
+        "specsText": "Pore Size (µm): 0.45; Pre Filter (µm): 0.8"
       }
     ]
   },
@@ -86886,7 +87453,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PP-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.10"
+        },
+        "specsText": "Pore Size (µm): 0.10"
       },
       {
         "id": "OM572-02",
@@ -86896,7 +87467,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PP-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20"
+        },
+        "specsText": "Pore Size (µm): 0.20"
       },
       {
         "id": "OM572-045",
@@ -86906,7 +87481,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PP-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.45"
       },
       {
         "id": "OM572-01-02",
@@ -86916,7 +87495,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PP-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.10",
+          "Pre Filter (µm)": "0.2"
+        },
+        "specsText": "Pore Size (µm): 0.10; Pre Filter (µm): 0.2"
       },
       {
         "id": "OM572-01-045",
@@ -86926,7 +87510,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PP-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.10",
+          "Pre Filter (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.10; Pre Filter (µm): 0.45"
       },
       {
         "id": "OM572-01-08",
@@ -86936,7 +87525,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PP-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.10",
+          "Pre Filter (µm)": "0.8"
+        },
+        "specsText": "Pore Size (µm): 0.10; Pre Filter (µm): 0.8"
       },
       {
         "id": "OM572-02-08",
@@ -86946,7 +87540,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PP-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20",
+          "Pre Filter (µm)": "0.8"
+        },
+        "specsText": "Pore Size (µm): 0.20; Pre Filter (µm): 0.8"
       },
       {
         "id": "OM572-02-045",
@@ -86956,7 +87555,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PP-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20",
+          "Pre Filter (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.20; Pre Filter (µm): 0.45"
       },
       {
         "id": "OM572-045-08",
@@ -86966,7 +87570,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PP-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45",
+          "Pre Filter (µm)": "0.8"
+        },
+        "specsText": "Pore Size (µm): 0.45; Pre Filter (µm): 0.8"
       }
     ]
   },
@@ -87000,7 +87609,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.10"
+        },
+        "specsText": "Pore Size (µm): 0.10"
       },
       {
         "id": "OM573-02",
@@ -87010,7 +87623,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20"
+        },
+        "specsText": "Pore Size (µm): 0.20"
       },
       {
         "id": "OM573-045",
@@ -87020,7 +87637,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.45"
       },
       {
         "id": "OM573-01-02",
@@ -87030,7 +87651,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.10",
+          "Pre Filter (µm)": "0.2"
+        },
+        "specsText": "Pore Size (µm): 0.10; Pre Filter (µm): 0.2"
       },
       {
         "id": "OM573-01-045",
@@ -87040,7 +87666,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.10",
+          "Pre Filter (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.10; Pre Filter (µm): 0.45"
       },
       {
         "id": "OM573-01-08",
@@ -87050,7 +87681,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.10",
+          "Pre Filter (µm)": "0.8"
+        },
+        "specsText": "Pore Size (µm): 0.10; Pre Filter (µm): 0.8"
       },
       {
         "id": "OM573-02-045",
@@ -87060,7 +87696,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20",
+          "Pre Filter (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.20; Pre Filter (µm): 0.45"
       },
       {
         "id": "OM573-02-065",
@@ -87070,7 +87711,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20",
+          "Pre Filter (µm)": "0.65"
+        },
+        "specsText": "Pore Size (µm): 0.20; Pre Filter (µm): 0.65"
       },
       {
         "id": "OM573-02-08",
@@ -87080,7 +87726,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20",
+          "Pre Filter (µm)": "0.8"
+        },
+        "specsText": "Pore Size (µm): 0.20; Pre Filter (µm): 0.8"
       },
       {
         "id": "OM573-045-65",
@@ -87090,7 +87741,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45",
+          "Pre Filter (µm)": "0.65"
+        },
+        "specsText": "Pore Size (µm): 0.45; Pre Filter (µm): 0.65"
       },
       {
         "id": "OM573-045-08",
@@ -87100,7 +87756,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PES-PS-Cartridge-Filter.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45",
+          "Pre Filter (µm)": "0.8"
+        },
+        "specsText": "Pore Size (µm): 0.45; Pre Filter (µm): 0.8"
       }
     ]
   },
@@ -87134,7 +87795,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophobic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20"
+        },
+        "specsText": "Pore Size (µm): 0.20"
       },
       {
         "id": "OM574-045",
@@ -87144,7 +87809,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophobic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.45"
       },
       {
         "id": "OM574-020-045",
@@ -87154,7 +87823,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophobic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20",
+          "Pre Filter (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.20; Pre Filter (µm): 0.45"
       },
       {
         "id": "OM574-045-08",
@@ -87164,7 +87838,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophobic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45",
+          "Pre Filter (µm)": "0.2"
+        },
+        "specsText": "Pore Size (µm): 0.45; Pre Filter (µm): 0.2"
       }
     ]
   },
@@ -87196,7 +87875,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.10"
+        },
+        "specsText": "Pore Size (µm): 0.10"
       },
       {
         "id": "OM575-02",
@@ -87206,7 +87889,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20"
+        },
+        "specsText": "Pore Size (µm): 0.20"
       },
       {
         "id": "OM575-045",
@@ -87216,7 +87903,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.45"
       },
       {
         "id": "OM575-01-02",
@@ -87226,7 +87917,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.1",
+          "Pre Filter (µm)": "0.2"
+        },
+        "specsText": "Pore Size (µm): 0.1; Pre Filter (µm): 0.2"
       },
       {
         "id": "OM575-01-045",
@@ -87236,7 +87932,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.1",
+          "Pre Filter (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.1; Pre Filter (µm): 0.45"
       },
       {
         "id": "OM575-02-045",
@@ -87246,7 +87947,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.2",
+          "Pre Filter (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.2; Pre Filter (µm): 0.45"
       },
       {
         "id": "OM575-02-08",
@@ -87256,7 +87962,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.2",
+          "Pre Filter (µm)": "0.8"
+        },
+        "specsText": "Pore Size (µm): 0.2; Pre Filter (µm): 0.8"
       },
       {
         "id": "OM575-05-08",
@@ -87266,7 +87977,12 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PVDF-PS-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45",
+          "Pre Filter (µm)": "0.8"
+        },
+        "specsText": "Pore Size (µm): 0.45; Pre Filter (µm): 0.8"
       }
     ]
   },
@@ -87300,7 +88016,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PTFE-PP-Cartridge-Filter-Hydrophobic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.20"
+        },
+        "specsText": "Pore Size (µm): 0.20"
       },
       {
         "id": "OM576-045",
@@ -87310,7 +88030,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PTFE-PP-Cartridge-Filter-Hydrophobic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.45"
+        },
+        "specsText": "Pore Size (µm): 0.45"
       }
     ]
   },
@@ -87344,7 +88068,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PP-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "0.5"
+        },
+        "specsText": "Pore Size (µm): 0.5"
       },
       {
         "id": "OM577-10",
@@ -87354,7 +88082,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PP-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "1.0"
+        },
+        "specsText": "Pore Size (µm): 1.0"
       },
       {
         "id": "OM577-25",
@@ -87364,7 +88096,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PP-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "2.5"
+        },
+        "specsText": "Pore Size (µm): 2.5"
       },
       {
         "id": "OM577-50",
@@ -87374,7 +88110,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PP-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "5.0"
+        },
+        "specsText": "Pore Size (µm): 5.0"
       },
       {
         "id": "OM577-100",
@@ -87384,7 +88124,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PP-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "10.0"
+        },
+        "specsText": "Pore Size (µm): 10.0"
       },
       {
         "id": "OM577-200",
@@ -87394,7 +88138,11 @@
         "inStock": true,
         "images": [
           "https://omsonslabs.com/wp-content/uploads/PuriSure-PP-Cartridge-Filter-Hydrophilic.webp"
-        ]
+        ],
+        "specs": {
+          "Pore Size (µm)": "20.0"
+        },
+        "specsText": "Pore Size (µm): 20.0"
       }
     ]
   },

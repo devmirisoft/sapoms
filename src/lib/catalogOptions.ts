@@ -1,4 +1,5 @@
 // Catalogue-JSON lookups shared by the admin Hot Items and Today's Sale pages.
+import { mergeCatalogueRecords, type CatalogueProduct } from "@/lib/catalogue";
 
 export type CatalogOption = {
   sku: string;
@@ -204,10 +205,12 @@ export function buildCatalogOptions(products: CatalogueProductRecord[]): Catalog
 
 export async function fetchCatalogueProducts(): Promise<CatalogueProductRecord[]> {
   const json = await fetchJson<unknown>(
-    "/data/omsons_products_from_excel_with_images.json",
+    "/data/omsonsdata.json",
     { cache: "no-store" },
     "Catalogue JSON"
   );
 
-  return Array.isArray(json) ? (json.filter(isRecord) as CatalogueProductRecord[]) : [];
+  return Array.isArray(json)
+    ? (mergeCatalogueRecords(json.filter(isRecord) as unknown as CatalogueProduct[]).products as unknown as CatalogueProductRecord[])
+    : [];
 }
