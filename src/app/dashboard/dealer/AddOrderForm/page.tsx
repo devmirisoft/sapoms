@@ -1944,64 +1944,6 @@ function AddOrderPageInner() {
     }).catch(() => { });
   };
 
-  const saveOrderSummaryOverride = async (orderId: string, items: Array<Record<string, unknown>>) => {
-    if (!orderId || !user?.Dealer_Id) return;
-
-    const approvedDiscountPercent = hasApprovedCustomDiscount
-      ? Number(payloadAmount(Math.max(0, approvedCustomDiscountPercent ?? 0)))
-      : 0;
-    const readableReason = discountPayload.additionalDiscountType === "custom"
-      ? `Approved custom discount applied: Rs. ${discountPayload.customDiscountAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-      : discountPayload.additionalDiscountType === "slab" && discountPayload.slabDiscountAmount > 0
-        ? `slab discount applied: ${discountPayload.slabDiscountPercent}% (Rs. ${discountPayload.slabDiscountAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })})`
-        : "frontend_discount_override";
-    const shouldSaveOverride =
-      discountPayload.discountAmount > 0 &&
-      (
-        discountPayload.additionalDiscountType !== null ||
-        discountPayload.couponDiscountPercent > 0 ||
-        approvedDiscountPercent > 0 ||
-        hasApprovedCustomDiscount ||
-        discountPayload.discountPercent > discountPayload.allocatedDiscountPercent
-      );
-
-    if (!shouldSaveOverride) return;
-
-    await fetch("/api/order-summary-overrides", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        orderId,
-        order_id: orderId,
-        dealerId: user.Dealer_Id,
-        order_dealer: user.Dealer_Id,
-        dealerName: user.Dealer_Name,
-        grossAmount: payloadAmount(discountPayload.subtotal),
-        order_amount: payloadAmount(discountPayload.subtotal),
-        discountAmount: payloadAmount(discountPayload.discountAmount),
-        discount_amount: payloadAmount(discountPayload.discountAmount),
-        netPayableAmount: payloadAmount(discountPayload.finalPayableAmount),
-        order_discount: payloadAmount(discountPayload.finalPayableAmount),
-        discountPercent: discountPayload.discountPercent,
-        allocatedDiscountPercent: discountPayload.allocatedDiscountPercent,
-        baseDiscountPercent: discountPayload.baseDiscountPercent,
-        baseDiscountAmount: payloadAmount(discountPayload.baseDiscountAmount),
-        postBaseAmount: payloadAmount(discountPayload.postBaseAmount),
-        additionalDiscountType: discountPayload.additionalDiscountType,
-        additionalDiscountAmount: payloadAmount(discountPayload.additionalDiscountAmount),
-        customDiscountAmount: payloadAmount(discountPayload.customDiscountAmount),
-        slabDiscountPercent: discountPayload.slabDiscountPercent,
-        slabDiscountAmount: payloadAmount(discountPayload.slabDiscountAmount),
-        couponDiscountPercent: discountPayload.couponDiscountPercent,
-        approvedDiscountPercent,
-        items,
-        reason: readableReason,
-      }),
-    }).catch((err) => {
-      console.error("[order-summary-overrides] save failed:", err);
-    });
-  };
-
   // ── Submit Order ──────────────────────────────────────────────────────────
 const verifySubmittedProductNotes = async (orderId: string) => {
   if (!orderId || !user?.Dealer_Id) return;
@@ -2326,7 +2268,6 @@ const verifySubmittedProductNotes = async (orderId: string) => {
       });
       await Promise.allSettled([
         saveOrderNoteForHistory(placedOrderId),
-        saveOrderSummaryOverride(placedOrderId, payload),
         linkCustomDiscountRequestsToOrder(customDiscountSources, placedOrderId),
         verifySubmittedProductNotes(placedOrderId),
       ]);

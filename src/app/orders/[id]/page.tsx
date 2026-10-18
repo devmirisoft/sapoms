@@ -1276,9 +1276,11 @@ export default function ViewOrderDealerPage() {
   };
 
   const firstOrder = displayOrders[0];
+  // Totals are the server's. The browser's own copy from submit (localOrderFallback) only
+  // stands in for missing lines above, never for amounts.
   const resolvedSummary = useMemo(
-    () => mergeOrderSummarySources(summaryOverride ?? localOrderFallback, overlayTotals) as OrderSummaryOverride,
-    [localOrderFallback, overlayTotals, summaryOverride]
+    () => mergeOrderSummarySources(summaryOverride, overlayTotals) as OrderSummaryOverride,
+    [overlayTotals, summaryOverride]
   );
   const displayOrderMeta = useMemo(
     () => ({ ...(activeOrderHeader ?? {}), ...(orderMeta ?? {}), ...resolvedSummary }) as OrderMeta,

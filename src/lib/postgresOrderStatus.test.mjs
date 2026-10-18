@@ -142,3 +142,9 @@ test("cancelling refunds the wallet inside the cancel's transaction and blocks a
   assert.match(source, /"wallet_order_dispatched"/);
   assert.match(source, /refundOrderWallet\(tx, order, "cancel"\)/);
 });
+
+test("dealer edits are repriced and applied to the order inside one transaction", () => {
+  assert.match(overlayRoute, /const applied = await applyOrderEdit\(tx, context\.order\.id, revision\);/);
+  assert.match(overlayRoute, /const applied = await applyOrderEdit\(tx, requestRow\.orderId, revision\);/);
+  assert.match(overlayRoute, /revision: applied\.revision/);
+});

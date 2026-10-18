@@ -1,13 +1,12 @@
-import { Prisma, OrderDiscountType, WalletTransactionType } from "@prisma/client";
+import { Prisma, WalletTransactionType } from "@prisma/client";
 import { applyWalletChange } from "@/lib/postgresWallet";
 import { reserveDealerCredit } from "@/lib/dealerCreditLimit";
 import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
 import { buildEditLogEntry, diffOrderRows, orderItemsToDraftRows, ORDER_REJECTION_SOURCE } from "@/lib/orderRejectionDraft.mjs";
 import { findCatalogueEntry, type CatalogueIndex } from "@/lib/catalogue";
 import { couponPercent } from "@/lib/coupons";
-import { normalizeApprovalProductKey } from "@/lib/customDiscountRequests";
-import discountUtils from "@/lib/discount";
 import cataloguePricing from "@/lib/cataloguePricing";
+import { orderTotals, share } from "@/lib/orderTotals";
 import { loadCatalogue } from "@/server/modules/products/catalogue";
 import { liveSalePercents } from "@/server/todays-sale";
 
@@ -36,7 +35,7 @@ export function formToFields(form: FormData): OrderFormFields {
   return fields;
 }
 
-type ParsedItem = {
+export type ParsedItem = {
   productname: string;
   productName: string;
   catNo: string;
@@ -84,9 +83,6 @@ async function nextOrderNumber(tx: Prisma.TransactionClient) {
   return `OM/${yearRange}/DMS-${sequence.lastValue.toString().padStart(3, "0")}`;
 }
 
-/** A percent share of a paise amount, rounded to the paisa. */
-function share(amountPaise: bigint, percent: number) { return BigInt(Math.round(Number(amountPaise) * percent / 100)); }
-
 /**
  * Only the catalogue number and the pack count are the dealer's to choose. Unit
  * price and pack size are looked up from the catalogue here, so an edited request
@@ -94,7 +90,7 @@ function share(amountPaise: bigint, percent: number) { return BigInt(Math.round(
  * A live Today's Sale lowers the product's own price here, so every discount after
  * it (base, custom, slab) works on the sale price exactly as on a normal price.
  */
-function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIndex, salePercents: Map<string, number>): ParsedItem[] {
+export function parseItems(rows: Array<Record<string, unknown>>, catalogue: CatalogueIndex, salePercents: Map<string, number>): ParsedItem[] {
   const items: ParsedItem[] = [];
   for (const row of rows) {
     const submittedCatNo = text(row.catNo ?? row.variantCode ?? row.productname, 160);
@@ -169,55 +165,15 @@ export async function priceDealerOrder(
 ) {
   const { index } = await loadCatalogue();
   const items = parseItems(parseProductOrder(fields), index, await liveSalePercents(tx));
-  const grossAmountPaise = items.reduce((sum, item) => sum + item.listPriceTotalPaise, BigInt(0));
 
   // Every percent is decided here, never read from the submission: the dealer's own
   // discount plus a re-validated coupon (one base percent, as the order form shows it),
   // then either approved custom requests from the DB or the slab table.
   const couponDiscountPercent = couponPercent(fields.coupon_code);
-  const baseDiscountPercent = clampPercent(num(dealer.discountPercent ?? 0) + couponDiscountPercent);
-  const baseDiscountAmountPaise = share(grossAmountPaise, baseDiscountPercent);
-  const postBaseAmountPaise = grossAmountPaise - baseDiscountAmountPaise;
-
   const customRequests = await validateCustomDiscounts(tx, fields, dealer.id);
-  const customDiscountAmountPaise = customRequests.reduce((sum, request) => sum + (request.requestedDiscountAmountPaise ?? BigInt(0)), BigInt(0));
+  const totals = orderTotals(items, clampPercent(num(dealer.discountPercent ?? 0) + couponDiscountPercent), customRequests);
 
-  const slabDiscountPercent = customRequests.length ? 0 : discountUtils.getSlabPercent(fromPaise(postBaseAmountPaise));
-  const slabDiscountAmountPaise = share(postBaseAmountPaise, slabDiscountPercent);
-  const additionalDiscountType = customRequests.length ? OrderDiscountType.CUSTOM : slabDiscountPercent > 0 ? OrderDiscountType.SLAB : OrderDiscountType.NONE;
-  const additionalDiscountAmountPaise = customRequests.length ? customDiscountAmountPaise : slabDiscountAmountPaise;
-
-  const discountSum = baseDiscountAmountPaise + additionalDiscountAmountPaise;
-  const totalDiscountAmountPaise = discountSum < grossAmountPaise ? discountSum : grossAmountPaise;
-  const finalPayableAmountPaise = grossAmountPaise - totalDiscountAmountPaise;
-  const totalDiscountPercent = grossAmountPaise > BigInt(0) ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise) : 0;
-  // Already taken off the product prices, so it is a record here, not a discount.
-  const saleDiscountAmountPaise = items.reduce((sum, item) => sum + item.saleSavedPaise, BigInt(0));
-
-  // Row discounts mirror the order form: the base percent, raised to an approved
-  // order-wide or per-product custom percent (both are totals that include the base).
-  const orderCustomPercent = Math.max(0, ...customRequests
-    .filter((request) => request.scope === "ORDER")
-    .map((request) => num(request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)));
-  for (const item of items) {
-    const key = normalizeApprovalProductKey(item.catNo);
-    const productPercent = Math.max(0, ...customRequests
-      .filter((request) => request.scope === "PRODUCT")
-      .map((request) => num((request.requestedProductDiscounts as Record<string, unknown> | null)?.[key])));
-    item.discountPercent = clampPercent(Math.max(baseDiscountPercent, orderCustomPercent, productPercent));
-    item.discountAmountPaise = share(item.listPriceTotalPaise, item.discountPercent);
-    item.finalAmountPaise = item.listPriceTotalPaise - item.discountAmountPaise;
-  }
-
-  return {
-    items, customRequests,
-    grossAmountPaise, baseDiscountPercent, baseDiscountAmountPaise, postBaseAmountPaise,
-    saleDiscountAmountPaise,
-    additionalDiscountType, slabDiscountPercent, slabDiscountAmountPaise,
-    customDiscountAmountPaise, additionalDiscountAmountPaise,
-    couponDiscountPercent,
-    totalDiscountAmountPaise, totalDiscountPercent, finalPayableAmountPaise,
-  };
+  return { items, customRequests, couponDiscountPercent, ...totals };
 }
 
 export type CreateOrderActor = { userId: bigint; role: string; displayName?: string | null; sessionId?: string | null };

@@ -227,20 +227,6 @@ export async function listSummaryOverrides(actor: AuthActor, orderIds: string[])
   return rows.map((row) => summaryOverrideDoc(row, byOrder.get(row.orderId.toString())!));
 }
 
-export async function createSummaryOverride(actor: AuthActor, body: Record<string, unknown>) {
-  const order = await requirePostgresOrderAccess(body.orderId || body.order_id, actor);
-  if (!order) return null;
-  const grossAmountPaise = toPaise(body.grossAmount ?? body.gross_amount ?? body.order_amount);
-  const discountAmountPaise = toPaise(body.discountAmount ?? body.discount_amount ?? body.order_discount_amount);
-  const finalPayableAmountPaise = toPaise(body.netPayableAmount ?? body.net_payable_amount ?? body.order_net_amount);
-  if (grossAmountPaise < BigInt(0) || finalPayableAmountPaise < BigInt(0)) throw new PostgresOrderAnnotationError(400, "invalid_amount", "Valid summary amounts are required");
-  const discountPercent = Number(body.discountPercent ?? body.discount_percent ?? 0) || 0;
-  const row = await prisma.$transaction(async (tx) => {
-    await tx.order.update({ where: { id: order.id }, data: { grossAmountPaise, totalDiscountAmountPaise: discountAmountPaise, finalPayableAmountPaise, totalDiscountPercent: new Prisma.Decimal(discountPercent) } });
-    return tx.orderSummaryOverride.create({ data: { orderId: order.id, grossAmountPaise, discountAmountPaise, finalPayableAmountPaise, discountPercent: new Prisma.Decimal(discountPercent), reason: text(body.reason, 1000) || null, actorUserId: actor.userId, actorRole: actor.role } });
-  });
-  return summaryOverrideDoc(row, order);
-}
 
 export async function createOrderOverlayRecord(actor: AuthActor, order: PgOrder, input: { type: string; status?: string | null; value?: string | null; reason?: string | null; metadata?: Record<string, unknown> }) {
   return prisma.orderOverlay.create({ data: { orderId: order.id, type: input.type, status: input.status ?? null, value: input.value ?? null, reason: input.reason ?? null, metadata: input.metadata as Prisma.InputJsonValue | undefined, actorUserId: actor.userId, actorRole: actor.role } });
