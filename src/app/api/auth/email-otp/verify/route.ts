@@ -40,7 +40,7 @@ export async function POST(request: NextRequest) {
     });
 
     const response = NextResponse.json(compatibilitySuccess(actor.profile));
-    setAuthCookies(response, accessToken, refreshToken);
+    setAuthCookies(response, accessToken, refreshToken, request);
     return response;
   } catch {
     await writeAuthAuditLog({

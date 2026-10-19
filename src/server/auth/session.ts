@@ -89,19 +89,27 @@ export function signAccessToken(input: { userId: bigint; sessionId: string; role
   );
 }
 
-function cookieOptions(maxAge: number, sameSite: "lax" | "strict", path: string) {
+// TLS ends at nginx, so the scheme the browser used arrives as X-Forwarded-Proto (Next fills in
+// "http" when the proxy leaves it out). A browser drops a Secure cookie sent over plain HTTP, so
+// those visitors get the cookies without the flag.
+function isHttpsRequest(request: NextRequest) {
+  return request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() === "https";
+}
+
+function cookieOptions(maxAge: number, sameSite: "lax" | "strict", path: string, isHttps: boolean) {
   return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: isHttps,
     sameSite,
     path,
     maxAge,
   } as const;
 }
 
-export function setAuthCookies(response: NextResponse, accessToken: string, refreshToken: string) {
-  response.cookies.set(ACCESS_COOKIE, accessToken, cookieOptions(ACCESS_TTL_SECONDS, "lax", "/"));
-  response.cookies.set(REFRESH_COOKIE, refreshToken, cookieOptions(REFRESH_TTL_SECONDS, "strict", "/api/auth"));
+export function setAuthCookies(response: NextResponse, accessToken: string, refreshToken: string, request: NextRequest) {
+  const secure = isHttpsRequest(request);
+  response.cookies.set(ACCESS_COOKIE, accessToken, cookieOptions(ACCESS_TTL_SECONDS, "lax", "/", secure));
+  response.cookies.set(REFRESH_COOKIE, refreshToken, cookieOptions(REFRESH_TTL_SECONDS, "strict", "/api/auth", secure));
 }
 
 // While an admin is signed in as a dealer this holds only the opaque restoration token; the
@@ -109,19 +117,20 @@ export function setAuthCookies(response: NextResponse, accessToken: string, refr
 // refresh cookie, so only the auth routes (logout among them) ever receive it.
 export const IMPERSONATOR_COOKIE = "omsons_impersonator";
 
-export function clearAccessCookie(response: NextResponse) {
-  response.cookies.set(ACCESS_COOKIE, "", { ...cookieOptions(0, "lax", "/"), expires: new Date(0) });
+export function clearAccessCookie(response: NextResponse, request: NextRequest) {
+  response.cookies.set(ACCESS_COOKIE, "", { ...cookieOptions(0, "lax", "/", isHttpsRequest(request)), expires: new Date(0) });
 }
 
-export function clearAuthCookies(response: NextResponse) {
-  clearAccessCookie(response);
-  response.cookies.set(REFRESH_COOKIE, "", { ...cookieOptions(0, "strict", "/api/auth"), expires: new Date(0) });
-  response.cookies.set(IMPERSONATOR_COOKIE, "", { ...cookieOptions(0, "strict", "/api/auth"), expires: new Date(0) });
+export function clearAuthCookies(response: NextResponse, request: NextRequest) {
+  const secure = isHttpsRequest(request);
+  clearAccessCookie(response, request);
+  response.cookies.set(REFRESH_COOKIE, "", { ...cookieOptions(0, "strict", "/api/auth", secure), expires: new Date(0) });
+  response.cookies.set(IMPERSONATOR_COOKIE, "", { ...cookieOptions(0, "strict", "/api/auth", secure), expires: new Date(0) });
 }
 
-export function setImpersonatorCookie(response: NextResponse, restorationToken: string, expiresAt: Date) {
+export function setImpersonatorCookie(response: NextResponse, restorationToken: string, expiresAt: Date, request: NextRequest) {
   const maxAge = Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000));
-  response.cookies.set(IMPERSONATOR_COOKIE, restorationToken, cookieOptions(maxAge, "strict", "/api/auth"));
+  response.cookies.set(IMPERSONATOR_COOKIE, restorationToken, cookieOptions(maxAge, "strict", "/api/auth", isHttpsRequest(request)));
 }
 
 export function impersonationDeps(): ImpersonationDeps {

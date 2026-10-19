@@ -25,6 +25,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..")
 const jiti = createJiti(import.meta.url, { alias: { "@": path.join(ROOT, "src") } });
 const { mergeCatalogueRecords, stripHtml } = await jiti.import(path.join(ROOT, "src/lib/catalogue.ts"));
 const { variantPricing, unitLabel } = createRequire(import.meta.url)(path.join(ROOT, "src/lib/cataloguePricing.js"));
+const { describe } = await import("./omsonsdata-describe.mjs");
 const { PrismaClient } = await import("../prisma.mjs");
 const prisma = new PrismaClient();
 
@@ -35,22 +36,6 @@ const readJson = async (file) => JSON.parse(await readFile(path.join(ROOT, "publ
 const { products } = mergeCatalogueRecords(await readJson("omsonsdata.json"));
 
 const report = { catalogue: products.length, created: 0, existing: 0, noVariants: [], skuConflicts: [], lossySpecs: [], noCategory: [] };
-
-/** Same layout the admin form's buildDescription writes and both description parsers read back. */
-function describe(product, variants) {
-  const parts = [stripHtml(product.descriptionHtml)].filter(Boolean);
-  const features = (product.features ?? []).map(text).filter(Boolean);
-  if (features.length) parts.push(`ABOUT THIS ITEM\n${features.map((item) => `- ${item}`).join("\n")}`);
-  const specLines = variants.map((variant) => {
-    const specs = Object.entries(variant.specs ?? {}).map(([key, value]) => [text(key), text(value)]).filter(([key, value]) => key && value);
-    for (const [key, value] of specs) {
-      if (/[:;\n]/.test(key) || /[;\n]/.test(value)) report.lossySpecs.push(`${variant.sku} ${key}: ${value}`);
-    }
-    return specs.length ? `${text(variant.sku)} - ${specs.map(([key, value]) => `${key}: ${value}`).join("; ")}` : "";
-  }).filter(Boolean);
-  if (specLines.length) parts.push(`VARIANT SPECIFICATIONS\n${specLines.join("\n")}`);
-  return parts.join("\n\n");
-}
 
 const existingCodes = new Set((await prisma.product.findMany({ select: { productCode: true } })).map((row) => text(row.productCode)).filter(Boolean));
 const takenSkus = new Set((await prisma.productVariant.findMany({ select: { sku: true } })).map((row) => text(row.sku)).filter(Boolean));
@@ -84,7 +69,7 @@ for (const product of [...products].reverse()) {
   const data = {
     productCode: code,
     name: text(product.name).slice(0, 300) || code,
-    description: describe(product, variants) || null,
+    description: describe(stripHtml(product.descriptionHtml), product.features, variants, { lossy: report.lossySpecs }) || null,
     imageUrl: text(product.images?.[0]) || null,
     categoryId: await categoryIdFor(product.category),
     active: true,

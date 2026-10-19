@@ -66,8 +66,8 @@ export async function POST(request: NextRequest) {
     });
 
     const response = NextResponse.json(compatibilitySuccess(dealer.profile));
-    setAuthCookies(response, accessToken, refreshToken);
-    setImpersonatorCookie(response, started.restorationToken, started.expiresAt);
+    setAuthCookies(response, accessToken, refreshToken, request);
+    setImpersonatorCookie(response, started.restorationToken, started.expiresAt, request);
     return response;
   } catch (error) {
     console.error("[POST /api/auth/impersonate]", error);

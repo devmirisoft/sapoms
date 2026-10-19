@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
 
     const rotated = await rotateRefreshToken(refreshToken, request);
     const response = NextResponse.json(compatibilitySuccess({}, "Session refreshed"));
-    setAuthCookies(response, rotated.accessToken, rotated.refreshToken);
+    setAuthCookies(response, rotated.accessToken, rotated.refreshToken, request);
     return response;
   } catch (error) {
     console.error("[POST /api/auth/refresh]", error);
