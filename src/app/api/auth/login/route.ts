@@ -114,7 +114,7 @@ export async function POST(request: NextRequest) {
 
     const { accessToken, refreshToken } = await createSessionForUser(actor, request);
     const response = NextResponse.json(compatibilitySuccess(actor.profile));
-    setAuthCookies(response, accessToken, refreshToken);
+    setAuthCookies(response, accessToken, refreshToken, request);
     return response;
   } catch (error) {
     console.error("[POST /api/auth/login]", error);

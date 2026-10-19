@@ -56,7 +56,7 @@ test("Email OTP routes reuse PostgreSQL user loading and the existing session co
   assert.match(requestRoute, /sendLoginOtp/);
   assert.doesNotMatch(requestRoute, /return NextResponse\.json\([^;]*otp/i);
   assert.match(verifyRoute, /createSessionForUser\(actor, request\)/);
-  assert.match(verifyRoute, /setAuthCookies\(response, accessToken, refreshToken\)/);
+  assert.match(verifyRoute, /setAuthCookies\(response, accessToken, refreshToken, request\)/);
   assert.match(verifyRoute, /compatibilitySuccess\(actor\.profile\)/);
   assert.match(loginRoute, /postgresAuthenticationProvider\.authenticate/);
 });

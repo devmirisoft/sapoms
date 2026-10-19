@@ -13,7 +13,7 @@ const variants = new Map(products.flatMap((product) => product.variants.map((var
 
 // [catalogue number, packs, expected line total in paise]
 const LINES = [
-  ["OM501-45", 1, 740000],   // ₹7,400 per pack of 100
+  ["OM501-45", 1, 185000],   // ₹1,850 per pack of 25 (₹74/pc)
   ["OM260-020", 2, 960000],  // ₹9,600
   ["OM426-20", 3, 690000],   // ₹6,900
   ["159/1", 1, 440000],      // ₹4,400: ₹440/pc × 10
@@ -36,13 +36,13 @@ for (const [sku, packs, expected] of LINES) {
 }
 
 test("a variant the file contradicts itself on is reported, not priced", () => {
-  assert.ok(conflicts.has("172A/1"));
-  assert.equal(pricing.variantPricing(variants.get("172A/1")), null);
+  assert.ok(conflicts.has("126/8"));
+  assert.equal(pricing.variantPricing(variants.get("126/8")), null);
 });
 
 test("price lines read as the catalogue prints them", () => {
   const line = (sku) => pricing.formatPriceLine(pricing.variantPricing(variants.get(sku)));
-  assert.equal(line("OM501-45"), "₹7,400 / pack of 100 (₹74/pc)");
+  assert.equal(line("OM501-45"), "₹1,850 / pack of 25 (₹74/pc)");
   assert.equal(line("159/1"), "₹440/pc · pack of 10 = ₹4,400");
   assert.equal(line("364/1"), "₹454 / pack of 10 m (₹45.40/m)");
   assert.equal(line("227/1"), "₹466/set");

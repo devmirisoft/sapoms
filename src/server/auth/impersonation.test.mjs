@@ -289,7 +289,7 @@ test("only an ADMIN can start impersonation, of an active dealer, and a failed s
   assert.match(provider, /role: "DEALER", dealerProfile: \{ id: dealerId \}/);
   assert.match(provider, /if \(!user \|\| user\.deletedAt \|\| user\.status !== "ACTIVE"\) throw new Error\("Dealer account is not active"\)/);
   assert.match(route, /catch \(error\) \{\s*\/\/ Never leave an unlinked dealer session behind\.\s*await revokeSession\(session\.id, request\)/);
-  assert.match(route, /setImpersonatorCookie\(response, started\.restorationToken, started\.expiresAt\)/);
+  assert.match(route, /setImpersonatorCookie\(response, started\.restorationToken, started\.expiresAt, request\)/);
 });
 
 test("audit rows never carry tokens", async () => {
@@ -307,7 +307,7 @@ test("logout revokes the current session before restoring and only then sets adm
   assert.match(route, /dealerSessionId: sessionId/);
   assert.match(route, /IMPERSONATION_ENDED/);
   assert.match(route, /IMPERSONATION_RESTORE_FAILED/);
-  assert.ok(route.indexOf("clearAuthCookies(response)") < route.indexOf("if (restored) setAuthCookies(response"));
+  assert.ok(route.indexOf("clearAuthCookies(response, request)") < route.indexOf("if (restored) setAuthCookies(response"));
   assert.match(route, /compatibilitySuccess\(\{ restored: true \}/);
   assert.match(route, /role: result\.adminRole/);
   assert.doesNotMatch(route, /rotateRefreshToken/);
@@ -318,7 +318,7 @@ test("a transient logout error keeps what a retry needs, and ?final=1 gives up c
   const catchBlock = route.slice(route.indexOf("} catch (error) {"), route.indexOf("const response = NextResponse.json(restored"));
   assert.match(catchBlock, /if \(restorationToken && !request\.nextUrl\.searchParams\.has\("final"\)\)/);
   assert.match(catchBlock, /status: 503/);
-  assert.match(catchBlock, /clearAccessCookie\(response\)/);
+  assert.match(catchBlock, /clearAccessCookie\(response, request\)/);
   assert.doesNotMatch(catchBlock, /clearAuthCookies/, "refresh and restoration cookies survive for the retry");
 });
 
@@ -334,15 +334,17 @@ test("cookies keep their names, paths and flags; the impersonator cookie holds o
   assert.match(session, /export const ACCESS_COOKIE = "omsons_access"/);
   assert.match(session, /export const REFRESH_COOKIE = "omsons_refresh"/);
   assert.match(session, /export const IMPERSONATOR_COOKIE = "omsons_impersonator"/);
-  assert.match(session, /httpOnly: true,\s*secure: process\.env\.NODE_ENV === "production"/);
+  // Secure follows the scheme the browser used, which nginx passes on as X-Forwarded-Proto.
+  assert.match(session, /httpOnly: true,\s*secure: isHttps,/);
+  assert.match(session, /request\.headers\.get\("x-forwarded-proto"\)\?\.split\(","\)\[0\]\?\.trim\(\) === "https"/);
   // Unchanged normal login/refresh cookies.
-  assert.match(session, /response\.cookies\.set\(ACCESS_COOKIE, accessToken, cookieOptions\(ACCESS_TTL_SECONDS, "lax", "\/"\)\)/);
-  assert.match(session, /response\.cookies\.set\(REFRESH_COOKIE, refreshToken, cookieOptions\(REFRESH_TTL_SECONDS, "strict", "\/api\/auth"\)\)/);
-  assert.match(session, /response\.cookies\.set\(IMPERSONATOR_COOKIE, restorationToken, cookieOptions\(maxAge, "strict", "\/api\/auth"\)\)/);
+  assert.match(session, /response\.cookies\.set\(ACCESS_COOKIE, accessToken, cookieOptions\(ACCESS_TTL_SECONDS, "lax", "\/", secure\)\)/);
+  assert.match(session, /response\.cookies\.set\(REFRESH_COOKIE, refreshToken, cookieOptions\(REFRESH_TTL_SECONDS, "strict", "\/api\/auth", secure\)\)/);
+  assert.match(session, /response\.cookies\.set\(IMPERSONATOR_COOKIE, restorationToken, cookieOptions\(maxAge, "strict", "\/api\/auth", isHttpsRequest\(request\)\)\)/);
   // Deletion uses the same name and path each cookie was set with.
-  assert.match(session, /set\(ACCESS_COOKIE, "", \{ \.\.\.cookieOptions\(0, "lax", "\/"\), expires: new Date\(0\) \}\)/);
-  assert.match(session, /set\(REFRESH_COOKIE, "", \{ \.\.\.cookieOptions\(0, "strict", "\/api\/auth"\), expires: new Date\(0\) \}\)/);
-  assert.match(session, /set\(IMPERSONATOR_COOKIE, "", \{ \.\.\.cookieOptions\(0, "strict", "\/api\/auth"\), expires: new Date\(0\) \}\)/);
+  assert.match(session, /set\(ACCESS_COOKIE, "", \{ \.\.\.cookieOptions\(0, "lax", "\/", isHttpsRequest\(request\)\), expires: new Date\(0\) \}\)/);
+  assert.match(session, /set\(REFRESH_COOKIE, "", \{ \.\.\.cookieOptions\(0, "strict", "\/api\/auth", secure\), expires: new Date\(0\) \}\)/);
+  assert.match(session, /set\(IMPERSONATOR_COOKIE, "", \{ \.\.\.cookieOptions\(0, "strict", "\/api\/auth", secure\), expires: new Date\(0\) \}\)/);
   assert.doesNotMatch(session, /adminRefreshToken\}|readImpersonatorCookie/);
 });
 

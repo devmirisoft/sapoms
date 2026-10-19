@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     // and let the client retry. The client's last attempt sends ?final=1 to give up and clear all.
     if (restorationToken && !request.nextUrl.searchParams.has("final")) {
       const response = NextResponse.json(compatibilityFailure("Could not finish signing out. Try again."), { status: 503 });
-      clearAccessCookie(response);
+      clearAccessCookie(response, request);
       return response;
     }
   }
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json(restored
     ? compatibilitySuccess({ restored: true }, "Signed back in as admin")
     : compatibilitySuccess({}, "Logged out successfully"));
-  clearAuthCookies(response);
-  if (restored) setAuthCookies(response, restored.accessToken, restored.refreshToken);
+  clearAuthCookies(response, request);
+  if (restored) setAuthCookies(response, restored.accessToken, restored.refreshToken, request);
   return response;
 }
