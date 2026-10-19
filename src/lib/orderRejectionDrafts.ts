@@ -59,22 +59,34 @@ export async function createOrderRejectionDraft(
   });
 }
 
+/** What the wallet still holds for this order: its debits (placement and edits) less what was already refunded. */
+export async function walletDebitRemaining(tx: Tx, orderId: bigint) {
+  const rows = await tx.walletTransaction.findMany({
+    where: { orderId, type: { in: [WalletTransactionType.ORDER_DEBIT, WalletTransactionType.REFUND] } },
+    select: { type: true, amountPaise: true },
+  });
+  return rows.reduce((sum, row) => sum + (row.type === WalletTransactionType.ORDER_DEBIT ? row.amountPaise : -row.amountPaise), BigInt(0));
+}
+
+const REFUND_NOTE = { decline: "Refund for disapproved order", cancel: "Refund for cancelled order" } as const;
+
 /**
  * Give back what the order took.
  *
- * The dealer resubmits a rejected order as a new order, which debits the wallet
- * again, so the declined order must release its own debit or the same cart is
- * paid for twice. Idempotency-keyed, so a re-run cannot double-credit.
+ * A declined order is resubmitted as a new order, which debits the wallet again;
+ * a cancelled one simply never ships. Either way its own debit must come back.
+ * Only the unrefunded remainder is returned, so a declined order that is later
+ * cancelled is not paid back twice. Idempotency-keyed, so a re-run cannot double-credit.
  */
-export async function refundDeclinedOrderWallet(tx: Tx, order: { id: bigint; dealerId: bigint; orderNumber: string }) {
-  const debit = await tx.walletTransaction.findFirst({ where: { orderId: order.id, type: WalletTransactionType.ORDER_DEBIT } });
-  if (!debit || debit.amountPaise <= BigInt(0)) return null;
-  return applyWalletChange(tx, order.dealerId, WalletTransactionType.REFUND, Number(debit.amountPaise) / 100, {
+export async function refundOrderWallet(tx: Tx, order: { id: bigint; dealerId: bigint; orderNumber: string }, reason: "decline" | "cancel") {
+  const remaining = await walletDebitRemaining(tx, order.id);
+  if (remaining <= BigInt(0)) return null;
+  return applyWalletChange(tx, order.dealerId, WalletTransactionType.REFUND, Number(remaining) / 100, {
     orderId: order.id,
-    idempotencyKey: `order:${order.id.toString()}:decline-refund`,
+    idempotencyKey: `order:${order.id.toString()}:${reason}-refund`,
     reference: order.orderNumber,
-    note: "Refund for disapproved order",
-    metadata: { orderNumber: order.orderNumber, reason: "order_declined" },
+    note: REFUND_NOTE[reason],
+    metadata: { orderNumber: order.orderNumber, reason: reason === "decline" ? "order_declined" : "order_cancelled" },
   });
 }
 

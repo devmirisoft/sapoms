@@ -7,6 +7,7 @@ import { serializePrismaValue } from "@/server/db/prisma-serialize";
 import { normalizeLookup } from "@/lib/postgresOrderAnnotations";
 import { findPostgresOrderByLookupId, mapPostgresOrderItemToLegacy, mapPostgresOrderToLegacy } from "@/lib/postgresOrders";
 import { mapPostgresOrderDispatchRecords } from "@/lib/postgresOrderDispatch";
+import { applyOrderEdit } from "@/lib/orderEditApply";
 import {
   buildOrderEditRevision,
   ORDER_OVERLAY_VERSION,
@@ -21,6 +22,7 @@ import {
   cancelPostgresOrder,
   normalizeFulfilmentStatus,
   PostgresOrderStatusError,
+  refundWalletOnCancel,
   updatePostgresOrderAcceptance,
   updatePostgresOrderFulfilment,
   revivePostgresOrderAcceptance,
@@ -260,17 +262,22 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const updatedContext = await loadPostgresEffectiveContext(id);
         return NextResponse.json(serializePrismaValue({ success: true, requested: true, data: { ...updatedContext?.effective, itemContract: "complete", overlay: toSafeOverlay(updatedContext?.overlay ?? null) } }));
       }
-      await prisma.orderOverlay.create({
-        data: {
-          orderId: context.order.id,
-          type: "edit",
-          status: "active",
-          value: String(revision.revision),
-          actorUserId: authActor.userId,
-          actorRole: authActor.role,
-          metadata: { source: "postgres_order_edit", revision } as Prisma.InputJsonValue,
-        },
+      // The edit lands on the order itself, repriced by the server, with the history row beside it.
+      await prisma.$transaction(async (tx) => {
+        const applied = await applyOrderEdit(tx, context.order.id, revision);
+        await tx.orderOverlay.create({
+          data: {
+            orderId: context.order.id,
+            type: "edit",
+            status: "active",
+            value: String(applied.revision.revision),
+            actorUserId: authActor.userId,
+            actorRole: authActor.role,
+            metadata: { source: "postgres_order_edit", revision: applied.revision } as Prisma.InputJsonValue,
+          },
+        });
       });
+      invalidatePendingProductsCache();
       const updatedContext = await loadPostgresEffectiveContext(id);
       return NextResponse.json(serializePrismaValue({ success: true, data: { ...updatedContext?.effective, itemContract: "complete", overlay: toSafeOverlay(updatedContext?.overlay ?? null) } }));
     }
@@ -293,13 +300,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         const revision = metadataRecord(metadataRecord(requestRow.metadata).request).revision as OrderEditRevision | undefined;
         if (!revision) return NextResponse.json({ success: false, message: "Edit request payload is missing." }, { status: 409 });
         await prisma.$transaction(async (tx) => {
-          await tx.orderOverlay.create({ data: { orderId: requestRow.orderId, type: "edit", status: "active", value: String(revision.revision), actorUserId: authActor.userId, actorRole: authActor.role, metadata: { source: "approved_order_edit_request", requestId: requestRow.id.toString(), revision } as Prisma.InputJsonValue } });
+          // Priced and charged at approval time, against the order as it stands now.
+          const applied = await applyOrderEdit(tx, requestRow.orderId, revision);
+          await tx.orderOverlay.create({ data: { orderId: requestRow.orderId, type: "edit", status: "active", value: String(applied.revision.revision), actorUserId: authActor.userId, actorRole: authActor.role, metadata: { source: "approved_order_edit_request", requestId: requestRow.id.toString(), revision: applied.revision } as Prisma.InputJsonValue } });
           await tx.orderOverlay.update({ where: { id: requestRow.id }, data: { status: "approved", metadata: { ...metadataRecord(requestRow.metadata), reviewedBy: authActor.userId.toString(), reviewedAt: new Date().toISOString(), decisionNote: safeText(body.decisionNote, 1000) } as Prisma.InputJsonValue } });
         });
+        invalidatePendingProductsCache();
       } else {
         const reason = requestRow.reason || "Approved dealer cancellation request";
         await prisma.$transaction(async (tx) => {
           const order = await tx.order.update({ where: { id: requestRow.orderId }, data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: reason } });
+          await refundWalletOnCancel(tx, order);
           await tx.orderOverlay.create({ data: { orderId: requestRow.orderId, type: "cancel", status: "cancelled", reason, actorUserId: authActor.userId, actorRole: authActor.role, metadata: { source: "approved_order_cancel_request", requestId: requestRow.id.toString() } as Prisma.InputJsonValue } });
           await tx.orderOverlay.update({ where: { id: requestRow.id }, data: { status: "approved", metadata: { ...metadataRecord(requestRow.metadata), reviewedBy: authActor.userId.toString(), reviewedAt: new Date().toISOString(), decisionNote: safeText(body.decisionNote, 1000), appliedOrderStatus: order.status } as Prisma.InputJsonValue } });
         });

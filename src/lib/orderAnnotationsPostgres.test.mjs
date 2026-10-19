@@ -34,8 +34,9 @@ test("PostgreSQL branch uses JWT auth and Prisma delegates", () => {
 test("effective order fields update transactionally with history records", () => {
   assert.match(source.helper, /tx\.order\.update\(\{ where: \{ id: order\.id \}, data: \{ note \}/);
   assert.match(source.helper, /tx\.orderItem\.update\(\{ where: \{ id: item\.id \}, data: \{ productNote: note \}/);
-  assert.match(source.helper, /tx\.order\.update\(\{ where: \{ id: order\.id \}, data: \{ grossAmountPaise/);
-  assert.match(source.helper, /tx\.orderSummaryOverride\.create/);
+  // Order money is never written from a client-supplied summary.
+  assert.doesNotMatch(source.helper, /order\.update\([^\n]*(grossAmountPaise|finalPayableAmountPaise)/);
+  assert.doesNotMatch(source.helper, /orderSummaryOverride\.create/);
   assert.match(source.status, /prisma\.\$transaction/);
   assert.match(source.status, /status: "CANCELLED"/);
   assert.match(source.status, /tx\.orderOverlay\.create/);
@@ -48,7 +49,9 @@ test("PostgreSQL-only routes keep legacy aliases without Mongo or PHP fallback",
   assert.match(source.orderNotes, /upsertOrderNote\(actor, body\)/);
   assert.match(source.productNotes, /listProductNotes\(actor/);
   assert.match(source.productNotes, /upsertProductNote\(actor, body\)/);
-  assert.match(source.summary, /createSummaryOverride\(actor, body\)/);
+  // Order totals are server-priced and never written from a client.
+  assert.doesNotMatch(source.summary, /export async function POST/);
+  assert.doesNotMatch(source.helper, /createSummaryOverride/);
   assert.match(source.overlay, /cancelPostgresOrder\(id, authActor, body\.reason\)/);
   assert.match(source.cancelled, /listPostgresCancelledOverlays/);
   assert.doesNotMatch(source.orderNotes + source.productNotes + source.summary + source.overlay + source.cancelled, /mongodb|getDb|php-compat|orderdatalist|orderhispegination|orderpegination|mirisoft|dealerapi/);
@@ -68,3 +71,8 @@ test("permission coverage includes dealer ownership, assigned staff, denied staf
   assert.match(source.helper, /isAdminLike\(actor\)/);
 });
 
+test("the dealer order form no longer posts its own totals after submit", async () => {
+  const form = await fs.readFile(path.resolve("src/app/dashboard/dealer/AddOrderForm/page.tsx"), "utf8");
+  assert.doesNotMatch(form, /saveOrderSummaryOverride/);
+  assert.doesNotMatch(form, /fetch\("\/api\/order-summary-overrides", \{\s*method: "POST"/);
+});

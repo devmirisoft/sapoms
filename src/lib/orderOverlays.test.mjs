@@ -372,3 +372,51 @@ test("the saved-edit response exposes effectiveItems/effectiveTotals, not an edi
   assert.equal(responseData.effectiveTotals.grossAmount, 120);
   assert.equal(responseData.changeHistory[0].type, "quantity_changed");
 });
+
+test("an edit cannot set a line's price, pack size, name or total; only its quantity moves", () => {
+  const originalItems = overlays.normalizeOrderItems({
+    data: [{ orderdata_id: "9200", orderdata_cat_no: "CAT-A", product_name: "Real Product", orderdata_item_quantity: "2", packSize: 10, orderdata_price: "5" }],
+  }, "900").items;
+
+  const revision = overlays.buildOrderEditRevision({
+    orderId: "900",
+    originalItems,
+    requestedItems: [{
+      ...originalItems[0],
+      originalLineId: "9200",
+      orderdata_item_quantity: "3",
+      packSize: 1, pack_size: 1,
+      orderdata_price: "0.01", unitPrice: 0.01,
+      listPriceTotal: 1, list_price_total: 1,
+      product_name: "Fake Product",
+    }],
+    expectedRevision: 0,
+    actor: { actorId: "1", role: "dealer" },
+  });
+
+  const line = revision.effectiveItems[0];
+  assert.equal(line.orderdata_item_quantity, "3");
+  assert.equal(line.packSize, 10);
+  assert.equal(line.totalPieces, 30);
+  assert.equal(line.orderdata_price, "5");
+  assert.equal(line.product_name, "Real Product");
+  assert.equal(line.listPriceTotal, undefined);
+  assert.equal(revision.totals.grossAmount, 150);
+});
+
+test("an edit cannot add a line that is not on the order", () => {
+  assert.throws(
+    () => overlays.buildOrderEditRevision({
+      orderId: "5001",
+      baseOrder,
+      originalItems: baseItems,
+      requestedItems: [
+        { ...baseItems[0], originalLineId: "L-1" },
+        { orderdata_id: "NEW-1", orderdata_cat_no: "ZZ-1", orderdata_item_quantity: "1", orderdata_price: "1" },
+      ],
+      expectedRevision: 0,
+      actor: { role: "dealer", actorId: "D-1" },
+    }),
+    (error) => error.code === "new_line_not_allowed"
+  );
+});

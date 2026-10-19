@@ -339,7 +339,13 @@ function itemSummary(item: Record<string, unknown>) {
   return cat ? `${name} - Cat. No. ${cat}` : name;
 }
 
-function mergeRequestedItem(original: Record<string, unknown> | undefined, requested: Record<string, unknown>) {
+// All a dealer edit may change on a line: its quantity, or its catalogue number. Pack size,
+// prices, totals and name stay the original line's; the server reprices the result
+// (src/lib/orderEditApply.ts), so nothing the browser sends can set what the order costs.
+const EDITABLE_FIELDS = ["orderdata_cat_no", QUANTITY_FIELD, ...QUANTITY_ALIASES] as const;
+
+function mergeRequestedItem(original: Record<string, unknown> | undefined, requestedInput: Record<string, unknown>) {
+  const requested = Object.fromEntries(EDITABLE_FIELDS.filter((key) => key in requestedInput).map((key) => [key, requestedInput[key]]));
   const merged: Record<string, unknown> = { ...(original ?? {}), ...requested };
   if (!(QUANTITY_FIELD in requested)) return merged;
 
@@ -370,6 +376,7 @@ export function buildOrderEditRevision(input: {
   const effectiveItems = input.requestedItems.map((item, index) => {
     const originalId = text(item.originalLineId ?? item.orderdata_id ?? item.orderItemId);
     const original = originalsById.get(originalId);
+    if (!original) throw new OrderOverlayError(422, "new_line_not_allowed", "Add new products as a new order.");
     const normalized = normalizeItem(mergeRequestedItem(original, item), input.orderId, index);
     const lineId = original ? text(original.orderdata_id) : firstNonEmpty(item.orderdata_id, item.orderItemId, `overlay:${input.orderId}:${randomUUID()}`);
     return { ...normalized, orderdata_id: lineId.startsWith("overlay:") || original ? lineId : `overlay:${input.orderId}:${lineId}` };
