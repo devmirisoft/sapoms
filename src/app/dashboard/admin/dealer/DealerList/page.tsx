@@ -2,7 +2,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
-import { CheckCircle2, Search, Trash2, Eye, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, X, UserPlus, Inbox, LogIn } from 'lucide-react'
+import { Search, Trash2, Eye, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, X, UserPlus, Inbox, LogIn } from 'lucide-react'
 import { confirmAlert } from 'react-confirm-alert'
 import { staffRoleBadge } from '@/lib/staffRoleLabel'
 import { showToast } from "@/components/ui/toast";
@@ -280,7 +280,7 @@ export default function DealerListPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
   const [openMenu, setOpenMenu] = useState<FloatingMenuState>(null)
   const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null)
-  const [bulkActivating, setBulkActivating] = useState(false)
+  const [bulkTarget, setBulkTarget] = useState<"active" | "inactive" | null>(null)
   const [statusOverrides, setStatusOverrides] = useState<Record<string, DealerStatus>>({})
   const [nameSort, setNameSort] = useState<"" | "asc" | "desc">("")
 
@@ -448,14 +448,18 @@ export default function DealerListPage() {
     }
   }
 
-  const fetchAllDealerIds = async () => {
+  /** Every dealer (all pages, no filters) with its current status. */
+  const fetchAllDealers = async () => {
     const dealerUrl = (pageNumber: number) => `${ADMIN_DEALERS_URL}?page=${pageNumber}&limit=100&search=`
+    const dealers = new Map<string, DealerStatus>()
+    const collect = (rows: Dealer[] = []) => rows.forEach((dealer) => {
+      const dealerId = String(dealer.Dealer_Id ?? "").trim()
+      if (dealerId) dealers.set(dealerId, normalizeDealerStatus(dealer.status))
+    })
 
     const firstPage = await fetchJson<DealerResponse>(dealerUrl(1))
-    const dealerIds = new Set(
-      (firstPage.data ?? []).map((dealer) => String(dealer.Dealer_Id ?? "").trim()).filter(Boolean)
-    )
-    const totalDealerCount = getDealerResponseTotal(firstPage, dealerIds.size)
+    collect(firstPage.data)
+    const totalDealerCount = getDealerResponseTotal(firstPage, dealers.size)
     const detectedPageSize = Math.max(1, firstPage.data?.length || ITEMS_PER_PAGE)
     const lastPage = Math.max(1, Number(firstPage.last_page) || Math.ceil(totalDealerCount / detectedPageSize))
 
@@ -463,89 +467,102 @@ export default function DealerListPage() {
       const remainingPages = await Promise.all(
         Array.from({ length: lastPage - 1 }, (_, index) => fetchJson<DealerResponse>(dealerUrl(index + 2)))
       )
-
-      remainingPages.forEach((pageResponse) => {
-        const pageDealers = pageResponse.data ?? []
-        pageDealers.forEach((dealer) => {
-          const dealerId = String(dealer.Dealer_Id ?? "").trim()
-          if (dealerId) dealerIds.add(dealerId)
-        })
-      })
+      remainingPages.forEach((pageResponse) => collect(pageResponse.data))
     }
 
     let nextPage = lastPage + 1
-    while (dealerIds.size < totalDealerCount) {
+    while (dealers.size < totalDealerCount) {
       const nextResponse = await fetchJson<DealerResponse>(dealerUrl(nextPage))
-      const pageDealers = nextResponse.data ?? []
-      if (pageDealers.length === 0) break
-
-      pageDealers.forEach((dealer) => {
-        const dealerId = String(dealer.Dealer_Id ?? "").trim()
-        if (dealerId) dealerIds.add(dealerId)
-      })
-
+      if (!nextResponse.data?.length) break
+      collect(nextResponse.data)
       nextPage += 1
     }
 
-    return Array.from(dealerIds)
+    return dealers
   }
 
-  const activateAllDealers = async () => {
-    setBulkActivating(true)
+  // Each dealer goes through the single-dealer status route, so every change keeps
+  // its audit row and a deactivation still signs that dealer out.
+  // ponytail: one request per dealer, 10 at a time; add a server-side bulk route if dealers reach the thousands.
+  const setAllDealersStatus = async (target: "active" | "inactive") => {
+    const verb = target === "active" ? "activate" : "deactivate"
+    setBulkTarget(target)
     try {
-      const dealerIds = await fetchAllDealerIds()
+      const dealers = await fetchAllDealers()
+      // Activate everyone not active; deactivate only the active ones (suspended stay suspended).
+      const dealerIds = Array.from(dealers)
+        .filter(([, status]) => (target === "active" ? status !== "active" : status === "active"))
+        .map(([dealerId]) => dealerId)
 
       if (dealerIds.length === 0) {
-        showToast("error", "No dealers found to activate.")
+        showToast("success", `All dealers are already ${target}.`)
         return
       }
 
-      await Promise.all(dealerIds.map((dealerId) => fetch(`${ADMIN_DEALERS_URL}/${encodeURIComponent(dealerId)}/status`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ status: "ACTIVE" }),
-      }).then(async (response) => {
-        const payload = await response.json()
-        if (!response.ok || !payload.success) throw new Error(payload.message ?? "Failed to activate all dealers")
-      })))
+      const updated: string[] = []
+      let failed = 0
+      for (let i = 0; i < dealerIds.length; i += 10) {
+        const batch = dealerIds.slice(i, i + 10)
+        const results = await Promise.allSettled(batch.map((dealerId) => fetch(`${ADMIN_DEALERS_URL}/${encodeURIComponent(dealerId)}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ status: toApiStatus(target) }),
+        }).then(async (response) => {
+          const payload = await response.json()
+          if (!response.ok || !payload.success) throw new Error(payload.message ?? `Failed to ${verb} dealer`)
+        })))
+        results.forEach((result, index) => {
+          if (result.status === "fulfilled") updated.push(batch[index])
+          else failed += 1
+        })
+      }
 
       setStatusOverrides((prev) => {
         const next = { ...prev }
-        dealerIds.forEach((dealerId) => {
-          next[dealerId] = "active"
+        updated.forEach((dealerId) => {
+          next[dealerId] = target
         })
         return next
       })
 
-      showToast("success", `Activated ${dealerIds.length} dealers successfully.`)
+      const done = `${target === "active" ? "Activated" : "Deactivated"} ${updated.length} dealer${updated.length === 1 ? "" : "s"}`
+      if (failed) showToast("error", `${done}; ${failed} failed. Try again to retry the rest.`)
+      else showToast("success", `${done} successfully.`)
       void refetch()
       void queryClient.invalidateQueries({ queryKey: ["adminDealerSummaryCounts"] })
     } catch (error) {
-      console.error("Failed to activate all dealers", error)
-      showToast("error", error instanceof Error ? error.message : "Failed to activate all dealers")
+      console.error(`Failed to ${verb} all dealers`, error)
+      showToast("error", error instanceof Error ? error.message : `Failed to ${verb} all dealers`)
     } finally {
-      setBulkActivating(false)
+      setBulkTarget(null)
     }
   }
 
-  const confirmActivateAllDealers = () => {
+  const confirmAllDealersStatus = (target: "active" | "inactive") => {
+    const isDeactivating = target === "inactive"
     confirmAlert({
       customUI: ({ onClose }) => (
         <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 px-4">
           <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white p-6 shadow-xl">
             <div className="mb-3 flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-50">
-                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+              <div className={`flex h-10 w-10 items-center justify-center rounded-full ${isDeactivating ? "bg-red-50" : "bg-emerald-50"}`}>
+                {isDeactivating
+                  ? <PowerOff className="h-5 w-5 text-red-600" />
+                  : <Power className="h-5 w-5 text-emerald-600" />}
               </div>
-              {/* <div>
-                <h3 className="text-base font-semibold text-gray-900">Activate All Dealers</h3>
-                <p className="text-sm text-gray-500">This will update every dealer account.</p>
-              </div> */}
+              <div>
+                <h3 className="text-base font-semibold text-gray-900">
+                  {isDeactivating ? "Deactivate All Dealers" : "Activate All Dealers"}
+                </h3>
+                <p className="text-sm text-gray-500">This updates every dealer account at once.</p>
+              </div>
             </div>
 
             <p className="text-sm leading-6 text-gray-600">
-              All dealers will be marked active and able to pass the dealer status check.
+              {isDeactivating
+                ? "Every active dealer will be signed out and blocked from the dealer application until their account is activated again."
+                : "Every inactive or suspended dealer will be able to access the dealer application again."}
             </p>
 
             <div className="mt-5 flex justify-end gap-2">
@@ -560,11 +577,11 @@ export default function DealerListPage() {
                 type="button"
                 onClick={() => {
                   onClose()
-                  void activateAllDealers()
+                  void setAllDealersStatus(target)
                 }}
-                className={`rounded-lg bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 ${pressable}`}
+                className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${pressable} ${isDeactivating ? "bg-red-500 hover:bg-red-600" : "bg-emerald-600 hover:bg-emerald-700"}`}
               >
-                Activate all
+                {isDeactivating ? "Deactivate all" : "Activate all"}
               </button>
             </div>
           </div>
@@ -789,17 +806,29 @@ export default function DealerListPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* {canManageDealers && (
-              <button
-                type="button"
-                onClick={confirmActivateAllDealers}
-                disabled={bulkActivating}
-                className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <CheckCircle2 className="h-4 w-4" />
-                {bulkActivating ? "Activating..." : "Activate all dealers"}
-              </button>
-            )} */}
+            {/* Admin only: the status route behind these refuses Staff. */}
+            {role === "admin" && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => confirmAllDealersStatus("active")}
+                  disabled={bulkTarget !== null}
+                  className={`inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-2 text-sm font-medium text-emerald-700 hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 ${pressable}`}
+                >
+                  <Power className="h-4 w-4" />
+                  {bulkTarget === "active" ? "Activating..." : "Activate all"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => confirmAllDealersStatus("inactive")}
+                  disabled={bulkTarget !== null}
+                  className={`inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60 ${pressable}`}
+                >
+                  <PowerOff className="h-4 w-4" />
+                  {bulkTarget === "inactive" ? "Deactivating..." : "Deactivate all"}
+                </button>
+              </>
+            )}
             <Link
               href={role === "staff" ? "/dashboard/staff/dealer-requests" : "/dashboard/admin/dealer/requests"}
               className={`inline-flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 ${pressable}`}
