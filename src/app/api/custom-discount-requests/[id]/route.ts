@@ -19,6 +19,7 @@ import { placeOrderForApprovedDiscount } from "@/lib/discountApprovalOrder";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
 import { diffValues } from "@/server/audit/audit-sanitize";
+import { notifyApprover, notifyDealer } from "@/server/notify/dealer-email";
 
 export const runtime = "nodejs";
 
@@ -254,6 +255,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const updated = await prisma.$transaction(async (tx) => {
       let rejectionDraftId: bigint | null = null;
+      let rejectionReason: string | null = null;
       // A rejection can come from either stage, so the draft carries whichever
       // note was written. Both are surfaced structurally in rejection_notes and
       // flattened into order_note for anything that only reads the text.
@@ -267,6 +269,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         const rsmNoteText = rejectedByRsm ? text(data.rsmNote, 1500) : text(existing.rsmNote, 1500);
         const nsmNoteText = rejectedBy === "NSM" ? text(data.nsmNote, 1500) : rejectedBy === "ADMIN" ? text(existing.nsmNote, 1500) : "";
         const reasonText = (rejectedBy === "RSM" ? rsmNoteText : rejectedBy === "NSM" ? nsmNoteText : adminNoteText) || DEFAULT_REJECTION_NOTE;
+        rejectionReason = reasonText;
         const rejectionNotes = {
           rejected_by: rejectedBy,
           rejected_at: new Date().toISOString(),
@@ -416,8 +419,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         },
       });
 
-      return { row, rejectionDraftId, placedOrder };
+      return { row, rejectionDraftId, rejectionReason, placedOrder };
     });
+
+    if (updated.placedOrder) {
+      notifyDealer({ orderNumber: updated.placedOrder.orderNumber }, { kind: "placed" });
+      notifyApprover(updated.placedOrder.orderNumber);
+    }
+    if (updated.rejectionReason) notifyDealer({ dealerId: existing.dealerId }, { kind: "discount_rejected", requestId: existing.id.toString(), note: updated.rejectionReason });
+    if (partialRejected.length) notifyDealer({ dealerId: existing.dealerId }, { kind: "discount_rejected", requestId: existing.id.toString(), note: partialNote, partial: true });
 
     const dto = mapCustomDiscount(updated.row) as any;
     if (updated.rejectionDraftId) dto.rejectionDraftId = updated.rejectionDraftId.toString();

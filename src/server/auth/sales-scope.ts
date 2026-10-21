@@ -85,9 +85,9 @@ export async function resolveDealerRequestRoute(
    stored, so pending and future items both follow it and go back to an RSM as
    soon as one is active again. */
 
-const ACTIVE_USER = { status: "ACTIVE", deletedAt: null } satisfies Prisma.UserWhereInput;
+export const ACTIVE_USER = { status: "ACTIVE", deletedAt: null } satisfies Prisma.UserWhereInput;
 const ACTIVE_RSM_USER = { role: "RSM", ...ACTIVE_USER } satisfies Prisma.UserWhereInput;
-const ACTIVE_RSM = { user: ACTIVE_RSM_USER } satisfies Prisma.StaffProfileWhereInput;
+export const ACTIVE_RSM = { user: ACTIVE_RSM_USER } satisfies Prisma.StaffProfileWhereInput;
 
 /**
  * Orders an RSM handles. The order climbs through the lowest sales person the

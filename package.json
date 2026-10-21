@@ -15,6 +15,7 @@
     "test:date-input": "node scripts/verify-date-input.mjs",
     "test:invoice-layout": "node scripts/verify-invoice-layout.mjs",
     "test:order-pricing": "node -r dotenv/config scripts/verify-order-pricing.mjs",
+    "test:order-emails": "node -r dotenv/config scripts/verify-order-emails.mjs",
     "test:partial-discount": "node scripts/verify-partial-discount.mjs",
     "auth:create-user": "node scripts/create-auth-user.mjs",
     "agent:hello": "node -r dotenv/config scripts/agent-hello.mjs",

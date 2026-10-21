@@ -268,9 +268,10 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
   const nextFulfilment = fulfilmentFromTotals(totalOrdered, totalDispatched);
   const now = new Date();
 
-  const updated = await prisma.$transaction(async (tx) => {
-    const shipmentId = existingShipment?.id
-      ?? (newShipment ? (await tx.orderShipment.create({ data: { ...newShipment, orderId: order.id, createdByUserId: actor.userId } })).id : undefined);
+  const { row: updated, shipment } = await prisma.$transaction(async (tx) => {
+    const shipment = existingShipment
+      ?? (newShipment ? await tx.orderShipment.create({ data: { ...newShipment, orderId: order.id, createdByUserId: actor.userId } }) : null);
+    const shipmentId = shipment?.id;
     // Not-in-stock lines did not leave the warehouse, so they ride no shipment.
     await tx.orderItemDispatch.createMany({
       data: creates.map((create) => create.status === "DISPATCHED" && shipmentId ? { ...create, shipmentId } : create),
@@ -301,12 +302,16 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
       },
     });
 
-    return row;
+    return { row, shipment };
   });
 
   return {
     order: mapPostgresOrderToLegacy(updated as unknown as PostgresOrderRecord),
     tracking: mapPostgresDispatchTracking(updated),
     records: mapPostgresOrderDispatchRecords(updated).map(mapPostgresDispatchRecordForResponse),
+    // Set only when goods left the warehouse; not-in-stock lines alone ship nothing.
+    shipped: creates.some((create) => create.status === "DISPATCHED")
+      ? { orderNumber: order.orderNumber, full: nextFulfilment === "DISPATCHED", shipment }
+      : null,
   };
 }

@@ -8,6 +8,7 @@ import { normalizeLookup } from "@/lib/postgresOrderAnnotations";
 import { findPostgresOrderByLookupId, mapPostgresOrderItemToLegacy, mapPostgresOrderToLegacy } from "@/lib/postgresOrders";
 import { mapPostgresOrderDispatchRecords } from "@/lib/postgresOrderDispatch";
 import { applyOrderEdit } from "@/lib/orderEditApply";
+import { notifyApprover, notifyDealer, notifyReviewers } from "@/server/notify/dealer-email";
 import {
   buildOrderEditRevision,
   ORDER_OVERLAY_VERSION,
@@ -168,6 +169,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const updated = await updatePostgresOrderAcceptance(id, authActor, "ACCEPTED", body.note ?? body.acceptanceNote ?? body.rsmNote);
       if (!updated) return NextResponse.json({ success: false, message: "Historical PHP orders are read-only for PostgreSQL status updates." }, { status: 409 });
       invalidatePendingProductsCache();
+      // The RSM step leaves acceptance AWAITING and hands the order to Staff; the final staff step tells the dealer.
+      if (updated.acceptanceStatus === "ACCEPTED") notifyDealer({ orderNumber: updated.orderNumber }, { kind: "accepted", note: updated.acceptanceNote });
+      else if (updated.rsmApprovalStatus === "ACCEPTED") notifyApprover(updated.orderNumber);
       return NextResponse.json(serializePrismaValue({ success: true, data: updated }));
     }
 
@@ -184,6 +188,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       const updated = await updatePostgresOrderAcceptance(id, authActor, "DECLINED", body.note ?? body.acceptanceNote ?? body.rsmNote);
       if (!updated) return NextResponse.json({ success: false, message: "Historical PHP orders are read-only for PostgreSQL status updates." }, { status: 409 });
       invalidatePendingProductsCache();
+      notifyDealer({ orderNumber: updated.orderNumber }, { kind: "declined", note: updated.acceptanceNote ?? updated.rsmNote });
       return NextResponse.json(serializePrismaValue({ success: true, data: updated }));
     }
 
@@ -210,12 +215,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           request: { kind: "cancel", note: safeText(body.reason, 1000), originalOrder: context.effective.originalOrder, originalItems: context.effective.effectiveItems },
         });
         if (!request) return NextResponse.json({ success: false, message: "Cancellation request note is required." }, { status: 400 });
+        notifyReviewers(context.order.orderNumber, "cancel", request.reason);
         const updatedContext = await loadPostgresEffectiveContext(id);
         return NextResponse.json(serializePrismaValue({ success: true, requested: true, data: { ...updatedContext?.effective, itemContract: "complete", overlay: toSafeOverlay(updatedContext?.overlay ?? null) } }));
       }
       const updated = await cancelPostgresOrder(id, authActor, body.reason);
       if (!updated) return NextResponse.json({ success: false, message: "Historical PHP orders are read-only for PostgreSQL cancellation." }, { status: 409 });
       invalidatePendingProductsCache();
+      notifyDealer({ orderNumber: updated.orderNumber }, { kind: "cancelled", reason: updated.cancellationReason });
       return NextResponse.json(serializePrismaValue({ success: true, data: { ...updated, cancellation: { reason: updated.cancellationReason, cancelledAt: updated.cancelledAt?.toISOString(), cancelledBy: { id: authActor.profileId.toString(), role: actorRole(authActor.role), name: authActor.displayName } } } }));
     }
 
@@ -259,6 +266,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           request: { kind: "edit", note, revision, originalItems: context.effective.effectiveItems, proposedItems: revision.effectiveItems },
         });
         if (!request) return NextResponse.json({ success: false, message: "Edit request note is required." }, { status: 400 });
+        notifyReviewers(context.order.orderNumber, "edit", request.reason);
         const updatedContext = await loadPostgresEffectiveContext(id);
         return NextResponse.json(serializePrismaValue({ success: true, requested: true, data: { ...updatedContext?.effective, itemContract: "complete", overlay: toSafeOverlay(updatedContext?.overlay ?? null) } }));
       }
@@ -308,13 +316,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         invalidatePendingProductsCache();
       } else {
         const reason = requestRow.reason || "Approved dealer cancellation request";
-        await prisma.$transaction(async (tx) => {
+        const cancelled = await prisma.$transaction(async (tx) => {
           const order = await tx.order.update({ where: { id: requestRow.orderId }, data: { status: "CANCELLED", cancelledAt: new Date(), cancellationReason: reason } });
           await refundWalletOnCancel(tx, order);
           await tx.orderOverlay.create({ data: { orderId: requestRow.orderId, type: "cancel", status: "cancelled", reason, actorUserId: authActor.userId, actorRole: authActor.role, metadata: { source: "approved_order_cancel_request", requestId: requestRow.id.toString() } as Prisma.InputJsonValue } });
           await tx.orderOverlay.update({ where: { id: requestRow.id }, data: { status: "approved", metadata: { ...metadataRecord(requestRow.metadata), reviewedBy: authActor.userId.toString(), reviewedAt: new Date().toISOString(), decisionNote: safeText(body.decisionNote, 1000), appliedOrderStatus: order.status } as Prisma.InputJsonValue } });
+          return order;
         });
         invalidatePendingProductsCache();
+        notifyDealer({ orderNumber: cancelled.orderNumber }, { kind: "cancelled", reason });
       }
       const updatedContext = await loadPostgresEffectiveContext(id);
       return NextResponse.json(serializePrismaValue({ success: true, data: { ...updatedContext?.effective, itemContract: "complete", overlay: toSafeOverlay(updatedContext?.overlay ?? null) } }));
