@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireAuth, type AuthActor } from "@/server/auth/session";
 import { cancelDraft, confirmDraft } from "@/lib/agent/drafts";
+import { notifyApprover, notifyDealer } from "@/server/notify/dealer-email";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -21,6 +22,11 @@ export async function POST(request: NextRequest) {
     const result = parsed.data.action === "cancel"
       ? await cancelDraft(parsed.data.draftId, actor.dealerId)
       : await confirmDraft(parsed.data.draftId, actor.dealerId, { userId: actor.userId, role: actor.role, displayName: actor.displayName, sessionId: actor.sessionId });
+    const body = result.body as { status?: string; orderNumber?: string };
+    if (body.status === "ORDER_PLACED" && body.orderNumber) {
+      notifyDealer({ orderNumber: body.orderNumber }, { kind: "placed" });
+      notifyApprover(body.orderNumber);
+    }
     return NextResponse.json(result.body, { status: result.status });
   } catch (error) {
     console.error("[POST /api/agent/confirm]", error);

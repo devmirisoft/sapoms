@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.env*
+*.log
+export
+tmp
+.vercel
+.claude
+.windsurf
+.agents
+.refact
+*Zone.Identifier

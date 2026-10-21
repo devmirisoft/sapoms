@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireAuth } from "@/server/auth/session";
 import { createDealerOrder, formToFields, text } from "@/lib/dealerOrderCreate";
+import { notifyApprover, notifyDealer } from "@/server/notify/dealer-email";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,10 @@ export async function POST(request: NextRequest) {
       displayName: actor.displayName,
       sessionId: actor.sessionId,
     }, { idempotencyKey }));
+    if (!result.duplicate) {
+      notifyDealer({ orderNumber: result.order.orderNumber }, { kind: "placed" });
+      notifyApprover(result.order.orderNumber);
+    }
 
     return NextResponse.json(JSON.parse(JSON.stringify({
       status: true,

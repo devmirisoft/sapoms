@@ -5,6 +5,7 @@ import { errorStatus } from "@/server/http/auth-error";
 import { serializePrismaValue } from "@/server/db/prisma-serialize";
 import { normalizeFulfilmentStatus, PostgresOrderStatusError } from "@/lib/postgresOrderStatus";
 import { applyPostgresOrderDispatch, applyPostgresOrderDispatchTracking, findPostgresOrderDispatchPayload, mapPostgresDispatchRecordForResponse } from "@/lib/postgresOrderDispatch";
+import { notifyDealer } from "@/server/notify/dealer-email";
 
 export const runtime = "nodejs";
 
@@ -81,6 +82,7 @@ export async function POST(req: NextRequest) {
     }
 
     invalidatePendingProductsCache();
+    if (updated.shipped) notifyDealer({ orderNumber: updated.shipped.orderNumber }, { kind: "dispatched", full: updated.shipped.full, shipment: updated.shipped.shipment });
     return NextResponse.json(serializePrismaValue({ success: true, data: updated.records, tracking: updated.tracking, order: updated.order, failures: [] }), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[POST /api/order-dispatch]", error);

@@ -14,7 +14,6 @@ const ALLOWED_HOST = "dpg-dan6ad0ae00c73dlme1g-a";
 const DOCS = "docs";
 const STAMP = "2026-10-17";
 const PENDING_STAMP = "2026-10-05"; // no newer pending-orders export
-const EXPORT_DIR = "export";
 const ORDER_SEQUENCE_YEAR = 2026;
 
 // ── args / target ───────────────────────────────────────────────────────────
@@ -29,8 +28,11 @@ const DATABASE_URL = process.env.DATABASE_URL;
 if (!DATABASE_URL) { console.error("Pass DATABASE_URL inline; .env is deliberately not used."); process.exit(1); }
 const target = new URL(DATABASE_URL);
 console.log(`TARGET host=${target.hostname} db=${target.pathname.slice(1)} mode=${mode} only=${[...only].join(",")}`);
-if (mode === "commit" && !target.hostname.startsWith(ALLOWED_HOST)) {
-  console.error(`Refusing --commit: host is not ${ALLOWED_HOST}.`); process.exit(1);
+const isLocal = ["localhost", "127.0.0.1"].includes(target.hostname);
+// export/ holds Render's report and id-map; a local run must not merge its ids into them.
+const EXPORT_DIR = isLocal ? "export/local" : "export";
+if (mode === "commit" && !isLocal && !target.hostname.startsWith(ALLOWED_HOST)) {
+  console.error(`Refusing --commit: host is not ${ALLOWED_HOST} or localhost.`); process.exit(1);
 }
 
 const { PrismaClient } = await import("../prisma.mjs");
@@ -286,6 +288,9 @@ async function seedDealers() {
       const status = lower(row.dealer_status) === "active" ? "ACTIVE" : "INACTIVE";
       const res = await upsertUser(tx, { email: row.Dealer_Email, username: row.Dealer_Username, role: "DEALER", status }, ctx);
       if (res.skip) { count("dealers", "skipped"); continue; }
+      // A login that already owns an app-created profile can't take a second one (user_id is unique).
+      const owned = !existing && res.user.id ? await tx.dealerProfile.findUnique({ where: { userId: res.user.id } }) : null;
+      if (owned) { report.skipped.push({ ...ctx, reason: `login already has dealer profile ${owned.id}` }); count("dealers", "skipped"); continue; }
       const creditDays = zeroAsNull(row.creditdays);
       const data = {
         dealerCode, businessName: text(row.Dealer_Name), phone: orNull(row.Dealer_Number), city: orNull(row.Dealer_City),

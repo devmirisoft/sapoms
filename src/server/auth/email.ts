@@ -14,18 +14,17 @@ function getTransporter() {
   return transporter;
 }
 
-export async function sendLoginOtp(email: string, otp: string) {
+export async function sendEmail(to: string, subject: string, html: string) {
   const from = process.env.EMAIL_FROM?.trim();
   if (!from) throw new Error("Email delivery is not configured");
 
-  return getTransporter().sendMail({
-    from,
-    to: email,
-    subject: "Your SAPOMS login code",
-    html: `
+  return getTransporter().sendMail({ from, to, subject, html });
+}
+
+export async function sendLoginOtp(email: string, otp: string) {
+  return sendEmail(email, "Your SAPOMS login code", `
       <p>Your SAPOMS login code is:</p>
       <h1>${otp}</h1>
       <p>This code expires in 5 minutes.</p>
-    `,
-  });
+    `);
 }

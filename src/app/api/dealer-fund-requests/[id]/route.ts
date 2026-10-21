@@ -12,6 +12,7 @@ import {
   type FundRequestStage,
 } from "@/lib/dealerFundRequests";
 import { fundRequestInclude } from "../route";
+import { notifyApprover, notifyDealer } from "@/server/notify/dealer-email";
 
 export const runtime = "nodejs";
 
@@ -204,6 +205,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const dto = mapFundRequest(result.row) as any;
     if (result.placedOrder) {
+      notifyDealer({ orderNumber: result.placedOrder.orderNumber }, { kind: "placed" });
+      notifyApprover(result.placedOrder.orderNumber);
       dto.placedOrderId = result.placedOrder.id.toString();
       dto.placedOrderNumber = result.placedOrder.orderNumber;
     }
