@@ -252,7 +252,7 @@ export default function Sidebar({ open, onClose }: { open: boolean; onClose: () 
 
   const grouped: { section?: string; items: NavItem[] }[] = [];
   const hiddenSections = user?.authRole === "nsm" ? NSM_HIDDEN_SECTIONS : null;
-  (role ? NAV[role] : []).forEach(item => {
+  (role ? NAV[role] : []).filter(item => !(item.badgeKey === "terms" && user?.termsActive === false)).forEach(item => {
     if (item.section) {
       grouped.push({ section: item.section, items: [item] });
     } else {
