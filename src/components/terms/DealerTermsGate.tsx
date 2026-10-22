@@ -22,7 +22,8 @@ export default function DealerTermsGate() {
     setAcceptedAt(typeof dealer?.termsAcceptedAt === "string" ? dealer.termsAcceptedAt : null);
   }, [dealer?.Dealer_Id, dealer?.termsAcceptedAt]);
 
-  const shouldShow = Boolean(dealer?.Dealer_Id) && !hasAcceptedTerms(acceptedAt ?? dealer?.termsAcceptedAt);
+  const shouldShow =
+    Boolean(dealer?.Dealer_Id) && dealer?.termsActive !== false && !hasAcceptedTerms(acceptedAt ?? dealer?.termsAcceptedAt);
 
   if (!shouldShow) return null;
 

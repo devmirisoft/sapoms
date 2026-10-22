@@ -5,6 +5,7 @@ import { termsRequest } from "@/components/TermsModal";
 import { TermsDocument, type TermsBlock } from "@/components/terms/TermsDocument";
 
 type DealerTerms = {
+  active: boolean;
   blocks: TermsBlock[];
   acceptedAt: string | null;
   updatedAt: string | null;
@@ -50,7 +51,7 @@ export default function DealerTermsPage() {
       <div className="mx-auto max-w-4xl">
         <div className="mb-6">
           <h1 className="text-2xl font-semibold">Terms &amp; Conditions</h1>
-          {terms && (
+          {terms?.active && (
             <p className="mt-1 text-sm text-[#667085]">
               Accepted on {formatDate(terms.acceptedAt)} · Last updated {formatDate(terms.updatedAt)}
             </p>
@@ -74,7 +75,9 @@ export default function DealerTermsPage() {
         {error && <p className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{error}</p>}
 
         <div className="space-y-3 rounded border border-[#dfe3ec] bg-white px-8 py-6 text-sm leading-relaxed text-slate-700 shadow-sm">
-          {terms ? <TermsDocument blocks={terms.blocks} /> : !error && <p className="text-[#667085]">Loading terms...</p>}
+          {terms && !terms.active ? (
+            <p className="text-[#667085]">No Terms &amp; Conditions document is active for your account.</p>
+          ) : terms ? <TermsDocument blocks={terms.blocks} /> : !error && <p className="text-[#667085]">Loading terms...</p>}
         </div>
       </div>
     </main>

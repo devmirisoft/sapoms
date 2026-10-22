@@ -21,8 +21,9 @@ export default function DealerPasswordGate() {
   // Terms first: both gates are siblings in the root layout, so the ordering has
   // to be explicit - this one stays hidden until the terms modal is done.
   // updatedAt closes the modal immediately on success, before the session refetch lands.
-  const shouldShow =
-    Boolean(dealer?.Dealer_Id) && isSet(dealer?.termsAcceptedAt) && !isSet(updatedAt ?? dealer?.passwordUpdatedAt);
+  // A dealer with the T&C switched off has no terms modal to wait for.
+  const termsDone = isSet(dealer?.termsAcceptedAt) || dealer?.termsActive === false;
+  const shouldShow = Boolean(dealer?.Dealer_Id) && termsDone && !isSet(updatedAt ?? dealer?.passwordUpdatedAt);
 
   if (!shouldShow) return null;
 

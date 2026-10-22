@@ -67,6 +67,7 @@ export function mapDealerProfile(user: UserLike, profile: DealerProfile) {
     currentlimit: String(Number(profile.creditLimitPaise ?? 0) / 100),
     annualtarget: String(Number(profile.annualTargetPaise ?? 0) / 100),
     termsAcceptedAt: profile.termsAcceptedAt?.toISOString() ?? "",
+    termsActive: profile.termsActive,
     passwordUpdatedAt: user.passwordUpdatedAt?.toISOString() ?? "",
     role: "dealer",
   });

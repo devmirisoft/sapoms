@@ -412,6 +412,8 @@ model DealerProfile {
   secondaryContactEmail String? @map("secondary_contact_email")
   additionalContacts    Json?   @map("additional_contacts")
   termsAcceptedAt  DateTime? @map("terms_accepted_at") @db.Timestamptz(6)
+  // Off = the dealer never sees a T&C document: no login gate, page or update notice.
+  termsActive      Boolean   @default(true) @map("terms_active")
   imageUrl         String?   @map("image_url")
   region           SalesRegion?
   rsmUserId        BigInt?   @map("rsm_user_id")

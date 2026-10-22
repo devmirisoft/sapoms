@@ -8,18 +8,21 @@ export async function GET() {
   try {
     const actor = await requireRole("DEALER");
     const [profile, terms] = await Promise.all([
-      prisma.dealerProfile.findUnique({ where: { id: actor.dealerId! }, select: { termsAcceptedAt: true } }),
+      prisma.dealerProfile.findUnique({ where: { id: actor.dealerId! }, select: { termsAcceptedAt: true, termsActive: true } }),
       // This dealer's own document, or the global template.
       getDealerTerms(actor.dealerId!),
     ]);
+    // Admin switched this dealer's document off: nothing to show or accept.
+    const active = profile?.termsActive !== false;
 
     return NextResponse.json(
       compatibilitySuccess({
+        active,
         accepted: Boolean(profile?.termsAcceptedAt),
         acceptedAt: profile?.termsAcceptedAt?.toISOString() ?? null,
-        blocks: terms.blocks,
+        blocks: active ? terms.blocks : [],
         updatedAt: terms.updatedAt?.toISOString() ?? null,
-        updatedSinceAccepted: isTermsUpdatedSinceAccepted(terms.updatedAt, profile?.termsAcceptedAt),
+        updatedSinceAccepted: active && isTermsUpdatedSinceAccepted(terms.updatedAt, profile?.termsAcceptedAt),
       }),
     );
   } catch {

@@ -14,6 +14,7 @@ type TermsRow = {
   city: string | null;
   state: string | null;
   acceptedAt: string | null;
+  active: boolean;
   createdAt: string;
 };
 
@@ -31,6 +32,51 @@ export default function TermsAcceptancePage() {
   const [tab, setTab] = useState<Tab>("pending");
   const [search, setSearch] = useState("");
   const [docDealer, setDocDealer] = useState<TermsRow | null>(null);
+  const [toggling, setToggling] = useState<string | null>(null);
+
+  async function toggleActive(row: TermsRow) {
+    const active = !row.active;
+    if (!active && !window.confirm(`Hide the Terms & Conditions document from ${row.businessName}? They won't be asked to accept it.`)) return;
+    setToggling(row.id);
+    try {
+      const response = await fetch(`/api/admin/dealers/${encodeURIComponent(row.id)}/terms`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.msg || payload?.message || "Failed to update document status.");
+      setRows((current) => current.map((item) => (item.id === row.id ? { ...item, active } : item)));
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to update document status.");
+    } finally {
+      setToggling(null);
+    }
+  }
+
+  async function setAllActive(active: boolean) {
+    const message = active
+      ? "Show the Terms & Conditions document to every dealer? Dealers who haven't accepted will be blocked until they do."
+      : "Hide the Terms & Conditions document from every dealer? None of them will be asked to accept it.";
+    if (!window.confirm(message)) return;
+    setToggling("all");
+    try {
+      const response = await fetch("/api/admin/terms-acceptance", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok) throw new Error(payload?.msg || payload?.message || "Failed to update document status.");
+      setRows((current) => current.map((item) => ({ ...item, active })));
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Failed to update document status.");
+    } finally {
+      setToggling(null);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -57,12 +103,14 @@ export default function TermsAcceptancePage() {
   }, []);
 
   const acceptedCount = rows.filter((row) => row.acceptedAt).length;
+  // Dealers with the document off are never blocked, so they aren't "yet to accept".
+  const pendingCount = rows.filter((row) => !row.acceptedAt && row.active).length;
 
   const visible = useMemo(() => {
     const query = search.trim().toLowerCase();
     return rows.filter((row) => {
       if (tab === "accepted" && !row.acceptedAt) return false;
-      if (tab === "pending" && row.acceptedAt) return false;
+      if (tab === "pending" && (row.acceptedAt || !row.active)) return false;
       if (!query) return true;
       return [row.businessName, row.dealerCode, row.phone, row.email, row.city, row.state]
         .some((field) => field?.toLowerCase().includes(query));
@@ -72,12 +120,34 @@ export default function TermsAcceptancePage() {
   return (
     <main className="min-h-screen bg-[#f4f6fa] px-6 py-7 text-[#1f2937]">
       <div className="admin-page-shell">
-        <div className="mb-6">
-          <h1 className="text-2xl font-semibold">Terms Acceptance</h1>
-          <p className="mt-1 text-sm text-[#667085]">
-            Dealers are blocked from the platform until they accept the Terms &amp; Conditions.
-            {!loading && !error ? ` ${acceptedCount} of ${rows.length} have accepted.` : ""}
-          </p>
+        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold">Terms Acceptance</h1>
+            <p className="mt-1 text-sm text-[#667085]">
+              Dealers are blocked from the platform until they accept the Terms &amp; Conditions.
+              {!loading && !error ? ` ${acceptedCount} of ${rows.length} have accepted.` : ""}
+            </p>
+          </div>
+          {!loading && !error && rows.length > 0 && (
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={() => setAllActive(true)}
+                disabled={toggling !== null}
+                className="h-9 rounded border border-emerald-200 bg-white px-4 text-sm font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50"
+              >
+                Activate all
+              </button>
+              <button
+                type="button"
+                onClick={() => setAllActive(false)}
+                disabled={toggling !== null}
+                className="h-9 rounded border border-red-200 bg-white px-4 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                {toggling === "all" ? "Saving..." : "Deactivate all"}
+              </button>
+            </div>
+          )}
         </div>
 
         <details className="mb-6 rounded border border-[#dfe3ec] bg-white shadow-sm">
@@ -99,7 +169,7 @@ export default function TermsAcceptancePage() {
                 label: "Yet to accept",
                 tone: "amber",
                 title: "Dealers still blocked by the terms modal",
-                count: loading || error ? null : rows.length - acceptedCount,
+                count: loading || error ? null : pendingCount,
                 icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>,
               },
               {
@@ -174,16 +244,34 @@ export default function TermsAcceptancePage() {
                     }`}>
                       {row.acceptedAt ? "Accepted" : "Yet to accept"}
                     </span>
+                    {!row.active && (
+                      <span className="ml-1.5 inline-flex rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600">Document off</span>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-[#59677a]">{formatDate(row.acceptedAt)}</td>
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => setDocDealer(row)}
-                      className="h-8 rounded border border-[#d6dbe4] bg-white px-3 text-xs font-medium text-[#344054] hover:bg-[#f7f9fc]"
-                    >
-                      Document
-                    </button>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setDocDealer(row)}
+                        className="h-8 rounded border border-[#d6dbe4] bg-white px-3 text-xs font-medium text-[#344054] hover:bg-[#f7f9fc]"
+                      >
+                        Document
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => toggleActive(row)}
+                        disabled={toggling !== null}
+                        title={row.active ? "Hide the document from this dealer" : "Show the document to this dealer"}
+                        className={`h-8 rounded border px-3 text-xs font-medium disabled:opacity-50 ${
+                          row.active
+                            ? "border-red-200 bg-white text-red-600 hover:bg-red-50"
+                            : "border-emerald-200 bg-white text-emerald-700 hover:bg-emerald-50"
+                        }`}
+                      >
+                        {toggling === row.id ? "Saving..." : row.active ? "Deactivate" : "Activate"}
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

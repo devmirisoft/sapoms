@@ -25,8 +25,9 @@ export function isTermsUpdatedSinceAccepted(updatedAt: Date | null, acceptedAt: 
 export async function dealerTermsUpdatedAt(dealerId: bigint): Promise<Date | null> {
   const [{ updatedAt }, profile] = await Promise.all([
     getDealerTerms(dealerId),
-    prisma.dealerProfile.findUnique({ where: { id: dealerId }, select: { termsAcceptedAt: true } }),
+    prisma.dealerProfile.findUnique({ where: { id: dealerId }, select: { termsAcceptedAt: true, termsActive: true } }),
   ]);
+  if (profile?.termsActive === false) return null;
   return isTermsUpdatedSinceAccepted(updatedAt, profile?.termsAcceptedAt) ? updatedAt : null;
 }
 
