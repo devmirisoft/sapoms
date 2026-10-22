@@ -51,9 +51,32 @@ export async function saveTermsBlocks(blocks: TermsBlock[], dealerId?: bigint) {
   const flat = (list: TermsBlock[]) => JSON.stringify(list.map((block) => [block.type, block.text]));
   const current = await prisma.appSetting.findUnique({ where: { key } });
   if (current && flat(current.value as TermsBlock[]) === flat(blocks)) return;
+  if (dealerId === undefined) await keepAcceptedVersion(current);
   await prisma.appSetting.upsert({
     where: { key },
     create: { key, value: blocks },
     update: { value: blocks },
+  });
+}
+
+// Before the template changes, every dealer who accepted it gets their own copy, so what
+// they accepted never changes under them. updatedAt carries over, so a dealer who hadn't
+// re-accepted the last edit still gets that "updated" notice and nobody gets a new one.
+// Dealers who already have their own document are left alone (skipDuplicates).
+// ponytail: a dealer accepting between this and the template write follows the new
+// version; wrap both in one transaction if that window ever matters.
+async function keepAcceptedVersion(template: { value: unknown; updatedAt: Date } | null) {
+  const accepted = await prisma.dealerProfile.findMany({
+    where: { termsAcceptedAt: { not: null } },
+    select: { id: true, termsAcceptedAt: true },
+  });
+  if (!accepted.length) return;
+  await prisma.appSetting.createMany({
+    data: accepted.map((dealer) => ({
+      key: dealerKey(dealer.id),
+      value: template ? (template.value as TermsBlock[]) : DEFAULT_TERMS_BLOCKS,
+      updatedAt: template?.updatedAt ?? dealer.termsAcceptedAt!,
+    })),
+    skipDuplicates: true,
   });
 }
