@@ -47,6 +47,7 @@ export function mapStaffProfile(user: UserLike, profile: Pick<StaffProfile, "id"
     staff_location: valueOrEmpty(profile.location),
     sales_region: valueOrEmpty(profile.salesRegion),
     salesRegion: valueOrEmpty(profile.salesRegion),
+    passwordUpdatedAt: user.passwordUpdatedAt?.toISOString() ?? "",
     role: "staff",
   });
 }

@@ -9,10 +9,11 @@ export const runtime = "nodejs";
 const MIN_LENGTH = 10;
 const MAX_LENGTH = 200;
 
+// Staff (STAFF/RSM/ASM) change their own password here too, including the forced first-login popup.
 export async function POST(request: NextRequest) {
   let actor;
   try {
-    actor = await requireRole("DEALER");
+    actor = await requireRole(["DEALER", "STAFF", "RSM", "ASM"]);
   } catch {
     return NextResponse.json(compatibilityFailure("Unauthenticated"), { status: 401 });
   }
@@ -60,7 +61,7 @@ export async function POST(request: NextRequest) {
         data: {
           sessionId: actor.sessionId,
           role: actor.role,
-          eventType: "DEALER_PASSWORD_CHANGED",
+          eventType: actor.role === "DEALER" ? "DEALER_PASSWORD_CHANGED" : "STAFF_PASSWORD_CHANGED",
           metadata: {
             userId: actor.userId.toString(),
             dealerId: actor.dealerId?.toString(),

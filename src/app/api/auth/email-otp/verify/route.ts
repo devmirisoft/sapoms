@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { compatibilityFailure, compatibilitySuccess } from "@/server/http/compat-response";
 import { findActivePostgresUserByLoginIdentifier, normalizeLoginIdentifier } from "@/server/auth/providers/postgres-auth.provider";
-import { isEmailOtpEnabled, verifyEmailOtpForUser } from "@/server/auth/email-otp";
+import { isEmailOtpEnabled, requiresEmailOtp, verifyEmailOtpForUser } from "@/server/auth/email-otp";
 import { createSessionForUser, setAuthCookies, writeAuthAuditLog } from "@/server/auth/session";
 
 const verifySchema = z.object({
@@ -25,8 +25,8 @@ export async function POST(request: NextRequest) {
 
     loginIdentifier = normalizeLoginIdentifier(parsed.data.email);
     const actor = await findActivePostgresUserByLoginIdentifier(loginIdentifier);
-    // A code alone never mints a session for staff or admins; only dealers use this route.
-    if (actor.role !== "DEALER") throw new Error("Invalid credentials");
+    // A code alone never mints a session for admins, NSMs or accountants; only dealers and staff use this route.
+    if (!requiresEmailOtp(actor.role)) throw new Error("Invalid credentials");
 
     await verifyEmailOtpForUser(actor.userId, parsed.data.otp);
 

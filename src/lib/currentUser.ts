@@ -88,6 +88,8 @@ export async function logout() {
   // 503 means a transient server error while ending an impersonation; the server kept what a retry
   // needs. Two retries, then ?final=1 tells it to give up and clear everything.
   const attempts = ["/api/auth/logout", "/api/auth/logout", "/api/auth/logout?final=1"];
+  // Read before the cache is cleared: an admin leaving a staff account goes back to the staff list.
+  const wasStaff = getCurrentRole() === "staff";
   let body: { data?: { restored?: unknown } } | null = null;
   for (const [index, url] of attempts.entries()) {
     const res = await fetch(url, { method: "POST", credentials: "include" }).catch(() => null);
@@ -103,26 +105,34 @@ export async function logout() {
   if (body?.data?.restored === true) {
     const session = await fetchCurrentSession().catch(() => null);
     if (session?.status === "authenticated" && session.role === "admin") {
-      window.location.href = "/dashboard/admin/dealer/DealerList";
+      window.location.href = wasStaff ? "/dashboard/admin/staff/stafflist" : "/dashboard/admin/dealer/DealerList";
       return;
     }
   }
   window.location.href = LOGIN_ROUTE;
 }
 
-// Browser-only. Admin signs in as the dealer; logout() brings the admin back.
-export async function loginAsDealer(dealerId: string | number) {
+// Browser-only. Admin signs in as a dealer or staff member; logout() brings the admin back.
+async function impersonate(target: { dealerId: string } | { staffId: string }, home: string) {
   const res = await fetch("/api/auth/impersonate", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dealerId: String(dealerId) }),
+    body: JSON.stringify(target),
     credentials: "include",
   });
   const data = await res.json().catch(() => null);
-  if (!res.ok || !data?.status) throw new Error(data?.message || "Unable to sign in as this dealer");
+  if (!res.ok || !data?.status) throw new Error(data?.message || "Unable to sign in as this account");
   clearAuthStorage(localStorage);
   announceAuthChange();
-  window.location.href = "/home";
+  window.location.href = home;
+}
+
+export function loginAsDealer(dealerId: string | number) {
+  return impersonate({ dealerId: String(dealerId) }, "/home");
+}
+
+export function loginAsStaff(staffId: string | number) {
+  return impersonate({ staffId: String(staffId) }, "/dashboard/staff");
 }
 
 // Browsers that ran the old build still hold profile copies; drop them.

@@ -25,7 +25,10 @@ export async function resolveOrderStaffStamp(tx: Prisma.TransactionClient, deale
 
 /**
  * After a dealer's assignments change, orders still waiting on the RSM move to
- * the new Sales Manager / Staff member. Reviewed orders keep their history.
+ * the new Sales Manager / Staff member. Reviewed orders keep their history,
+ * except orders with no Staff member at all (legacy imports, or placed while
+ * the dealer had nobody): they take the new one, or a warehouse-pinned Staff
+ * member could never see them.
  */
 export async function restampPendingOrders(tx: Prisma.TransactionClient, dealerId: bigint) {
   const stamp = await resolveOrderStaffStamp(tx, dealerId);
@@ -33,4 +36,7 @@ export async function restampPendingOrders(tx: Prisma.TransactionClient, dealerI
     where: { dealerId, rsmApprovalStatus: "AWAITING", status: { notIn: ["CANCELLED", "DECLINED"] } },
     data: stamp,
   });
+  if (stamp.assignedStaffId) {
+    await tx.order.updateMany({ where: { dealerId, assignedStaffId: null }, data: { assignedStaffId: stamp.assignedStaffId } });
+  }
 }

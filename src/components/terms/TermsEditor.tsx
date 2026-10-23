@@ -4,8 +4,10 @@ import { useEffect, useState } from "react";
 import { TERMS_BLOCK_TYPES, TermsDocument, type TermsBlock, type TermsBlockType } from "@/components/terms/TermsDocument";
 
 const TYPE_LABEL: Record<TermsBlockType, string> = {
-  h1: "Heading 1", h2: "Heading 2", h3: "Heading 3", h4: "Heading 4", h5: "Heading 5", h6: "Heading 6", p: "Paragraph",
+  h1: "Heading 1", h2: "Heading 2", h3: "Heading 3", h4: "Heading 4", h5: "Heading 5", h6: "Heading 6", p: "Paragraph", sign: "Signatures",
 };
+
+const DEFAULT_SIGNATURES = "Authorized Signatory\nDealer signature\nSales person’s signature";
 
 const buttonClass = "h-8 rounded border border-[#d6dbe4] bg-white px-3 text-xs font-medium text-[#344054] hover:bg-[#f7f9fc] disabled:opacity-40";
 
@@ -92,7 +94,7 @@ export function TermsBlocksEditor({
 
   const remove = (index: number) => onChange(blocks.filter((_, i) => i !== index));
 
-  const add = (type: TermsBlockType) => onChange([...blocks, { type, text: "" }]);
+  const add = (type: TermsBlockType) => onChange([...blocks, { type, text: type === "sign" ? DEFAULT_SIGNATURES : "" }]);
 
   return (
     <div className="grid gap-5 lg:grid-cols-2">
@@ -125,8 +127,8 @@ export function TermsBlocksEditor({
             <textarea
               value={block.text}
               onChange={(event) => update(index, { text: event.target.value })}
-              rows={block.type === "p" ? 4 : 1}
-              placeholder={TYPE_LABEL[block.type]}
+              rows={block.type === "p" ? 4 : block.type === "sign" ? 3 : 1}
+              placeholder={block.type === "sign" ? "One signature label per line" : TYPE_LABEL[block.type]}
               className="w-full rounded border border-[#d6dbe4] px-3 py-2 text-sm outline-none focus:border-[#5d7df0] focus:ring-2 focus:ring-[#dfe6ff]"
             />
           </div>
@@ -135,7 +137,7 @@ export function TermsBlocksEditor({
         <div className="flex flex-wrap items-center gap-2">
           {TERMS_BLOCK_TYPES.map((type) => (
             <button key={type} type="button" onClick={() => add(type)} className={buttonClass}>
-              + {type === "p" ? "Paragraph" : type.toUpperCase()}
+              + {type.startsWith("h") ? type.toUpperCase() : TYPE_LABEL[type]}
             </button>
           ))}
         </div>

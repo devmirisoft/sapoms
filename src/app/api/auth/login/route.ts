@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { compatibilityFailure, compatibilitySuccess } from "@/server/http/compat-response";
 import { postgresAuthenticationProvider, normalizeLoginIdentifier } from "@/server/auth/providers/postgres-auth.provider";
-import { createEmailOtpForUser, invalidateEmailOtp, isEmailOtpEnabled } from "@/server/auth/email-otp";
+import { createEmailOtpForUser, invalidateEmailOtp, isEmailOtpEnabled, requiresEmailOtp } from "@/server/auth/email-otp";
 import { sendLoginOtp } from "@/server/auth/email";
 import { createSessionForUser, setAuthCookies, writeAuthAuditLog } from "@/server/auth/session";
 import type { AuthenticatedPostgresUser } from "@/server/auth/providers/postgres-auth.provider";
@@ -35,9 +35,9 @@ function maskEmail(email: string) {
   return `${local.slice(0, 2)}${"*".repeat(Math.max(local.length - 2, 1))}@${domain}`;
 }
 
-// Dealers get a second factor: a valid password alone never mints a session for them.
-// Staff and admins keep signing in with one step.
-async function requireDealerOtp(actor: AuthenticatedPostgresUser, request: NextRequest, loginIdentifier: string) {
+// Dealers and staff get a second factor: a valid password alone never mints a session for them.
+// Admins, NSMs and accountants keep signing in with one step.
+async function requireEmailOtp(actor: AuthenticatedPostgresUser, request: NextRequest, loginIdentifier: string) {
   let record: Awaited<ReturnType<typeof createEmailOtpForUser>>["record"] | undefined;
   try {
     const created = await createEmailOtpForUser(actor.userId);
@@ -108,9 +108,9 @@ export async function POST(request: NextRequest) {
       roleType: parsed.data.roletype,
     });
 
-    // A diagnostic password is issued by an admin to sign in as the dealer, who
-    // has no access to the dealer's inbox, so it skips the emailed code.
-    if (actor.role === "DEALER" && isEmailOtpEnabled() && !actor.diagnosticPasswordId) return requireDealerOtp(actor, request, loginIdentifier);
+    // A diagnostic password is issued by an admin to sign in as the dealer or staff
+    // member, who has no access to that inbox, so it skips the emailed code.
+    if (requiresEmailOtp(actor.role) && isEmailOtpEnabled() && !actor.diagnosticPasswordId) return requireEmailOtp(actor, request, loginIdentifier);
 
     const { accessToken, refreshToken } = await createSessionForUser(actor, request);
     const response = NextResponse.json(compatibilitySuccess(actor.profile));

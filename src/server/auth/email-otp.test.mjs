@@ -72,32 +72,37 @@ test("Login OTP email is sent over SMTP with the configured env vars", async () 
   assert.match(mailer, /secure: port === 465|secure = .*port === 465/);
 });
 
-test("dealer password login is gated behind an emailed code, other roles sign in directly", async () => {
+test("dealer and staff password login is gated behind an emailed code, other roles sign in directly", async () => {
   const route = await read("src/app/api/auth/login/route.ts");
   const page = await read("src/app/auth/login/page.tsx");
+  const helper = await read("src/server/auth/email-otp.ts");
 
-  // The dealer branch returns before a session is ever minted, so the gate cannot be skipped.
-  assert.match(route, /actor\.role === "DEALER" && isEmailOtpEnabled\(\) && !actor\.diagnosticPasswordId\)/);
-  assert.ok(route.indexOf('actor.role === "DEALER"') < route.indexOf("createSessionForUser(actor, request)"));
+  // Exactly the dealer and staff-profile roles get the code; admins, NSMs and accountants never do.
+  const roles = helper.match(/EMAIL_OTP_ROLES = new Set<AuthRole>\(\[([^\]]*)\]\)/)?.[1] ?? "";
+  assert.deepEqual(roles.match(/[A-Z]+/g)?.sort(), ["ASM", "DEALER", "RSM", "STAFF"]);
+
+  // The OTP branch returns before a session is ever minted, so the gate cannot be skipped.
+  assert.match(route, /requiresEmailOtp\(actor\.role\) && isEmailOtpEnabled\(\) && !actor\.diagnosticPasswordId\)/);
+  assert.ok(route.indexOf("requiresEmailOtp(actor.role)") < route.indexOf("createSessionForUser(actor, request)"));
   assert.match(route, /otpRequired: true/);
   // Bad credentials never reach the OTP branch; they fall through to the generic rejection.
   assert.match(route, /return failed\(\);/);
 
   assert.match(page, /import \{ InputOTP, InputOTPGroup, InputOTPSlot \} from "@\/components\/ui\/input-otp"/);
   assert.match(page, /data\?\.data\?\.otpRequired/);
-  assert.match(page, /showOtp \? "mt-3 grid-rows-\[1fr\]/);
+  assert.match(page, /showOtp \? "mt-4 grid-rows-\[1fr\]/);
 });
 
-test("The OTP routes are dealer-only, so a code never signs in staff or admins", async () => {
+test("The OTP routes are dealer- and staff-only, so a code never signs in admins", async () => {
   const requestRoute = await read("src/app/api/auth/email-otp/request/route.ts");
   const verifyRoute = await read("src/app/api/auth/email-otp/verify/route.ts");
   const page = await read("src/app/auth/login/page.tsx");
 
   // Both routes look a user up by identifier alone, with no password, so each needs the guard.
-  assert.match(requestRoute, /actor\.role !== "DEALER"/);
-  assert.match(verifyRoute, /actor\.role !== "DEALER"/);
+  assert.match(requestRoute, /!requiresEmailOtp\(actor\.role\)/);
+  assert.match(verifyRoute, /!requiresEmailOtp\(actor\.role\)/);
   // The guard has to run before any session is minted, or it is decoration.
-  assert.ok(verifyRoute.indexOf('actor.role !== "DEALER"') < verifyRoute.indexOf("createSessionForUser(actor, request)"));
+  assert.ok(verifyRoute.indexOf("!requiresEmailOtp(actor.role)") < verifyRoute.indexOf("createSessionForUser(actor, request)"));
 
   // The password-free entry point is gone: the panel opens only on the server's otpRequired.
   assert.doesNotMatch(page, /Login with Email OTP/);
