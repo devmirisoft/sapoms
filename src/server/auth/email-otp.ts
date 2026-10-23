@@ -2,13 +2,21 @@ import "server-only";
 
 import { createHash, randomInt, timingSafeEqual } from "crypto";
 import { prisma } from "@/server/db/prisma";
+import type { AuthRole } from "@/server/auth/providers/types";
 
 export const OTP_TTL_MS = 5 * 60 * 1000;
 export const OTP_MAX_ATTEMPTS = 5;
 export const OTP_RESEND_COOLDOWN_MS = 30 * 1000;
 
+// Dealers and staff-profile roles get an emailed second factor; admins, NSMs and accountants use a password alone.
+const EMAIL_OTP_ROLES = new Set<AuthRole>(["DEALER", "STAFF", "RSM", "ASM"]);
+
 export function isEmailOtpEnabled() {
   return process.env.ENABLE_EMAIL_OTP === "true";
+}
+
+export function requiresEmailOtp(role: AuthRole) {
+  return EMAIL_OTP_ROLES.has(role);
 }
 
 function otpPepper() {

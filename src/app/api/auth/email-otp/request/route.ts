@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { compatibilitySuccess } from "@/server/http/compat-response";
 import { findActivePostgresUserByLoginIdentifier, normalizeLoginIdentifier } from "@/server/auth/providers/postgres-auth.provider";
-import { createEmailOtpForUser, invalidateEmailOtp, isEmailOtpEnabled } from "@/server/auth/email-otp";
+import { createEmailOtpForUser, invalidateEmailOtp, isEmailOtpEnabled, requiresEmailOtp } from "@/server/auth/email-otp";
 import { sendLoginOtp } from "@/server/auth/email";
 import { writeAuthAuditLog } from "@/server/auth/session";
 
@@ -26,8 +26,8 @@ export async function POST(request: NextRequest) {
     let actor;
     try {
       actor = await findActivePostgresUserByLoginIdentifier(loginIdentifier);
-      // Only dealers use email codes; every other role signs in with a password.
-      if (actor.role !== "DEALER") throw new Error("Invalid credentials");
+      // Only dealers and staff use email codes; admins, NSMs and accountants sign in with a password.
+      if (!requiresEmailOtp(actor.role)) throw new Error("Invalid credentials");
     } catch {
       await writeAuthAuditLog({
         eventType: "EMAIL_OTP_REQUEST_IGNORED",

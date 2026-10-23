@@ -1,0 +1,18 @@
+(globalThis.TURBOPACK_CHUNK_LISTS || (globalThis.TURBOPACK_CHUNK_LISTS = [])).push({
+    script: typeof document === "object" ? document.currentScript : undefined,
+    chunks: [
+  "static/chunks/[root-of-the-server]__4551b335._.css",
+  "static/chunks/src_components_agent_ChatPanel_tsx_1ab031aa._.js",
+  "static/chunks/src_41cd3193._.js",
+  "static/chunks/node_modules_@tanstack_query-core_build_modern_8126cfd0._.js",
+  "static/chunks/node_modules_axios_lib_abd7c0de._.js",
+  "static/chunks/node_modules_@base-ui_react_1b1f9a46._.js",
+  "static/chunks/node_modules_tailwind-merge_dist_bundle-mjs_mjs_56b6fd65._.js",
+  "static/chunks/node_modules_4ce92604._.js"
+],
+    source: "dynamic"
+});
+odules_ba0a2647._.js"
+],
+    source: "dynamic"
+});

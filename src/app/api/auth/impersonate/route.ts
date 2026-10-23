@@ -4,7 +4,7 @@ import { compatibilityFailure, compatibilitySuccess } from "@/server/http/compat
 import { adminErrorResponse } from "@/server/admin/admin-errors";
 import { requireAdminOnly } from "@/server/admin/admin-route";
 import { ImpersonationError, startImpersonation } from "@/server/auth/impersonation";
-import { findActivePostgresDealer } from "@/server/auth/providers/postgres-auth.provider";
+import { findActivePostgresDealer, findActivePostgresStaff } from "@/server/auth/providers/postgres-auth.provider";
 import {
   REFRESH_COOKIE,
   createSessionForUser,
@@ -15,9 +15,9 @@ import {
   writeAuthAuditLog,
 } from "@/server/auth/session";
 
-const schema = z.object({ dealerId: z.coerce.bigint() });
+const schema = z.union([z.object({ dealerId: z.coerce.bigint() }), z.object({ staffId: z.coerce.bigint() })]);
 
-// Signs an admin in as a dealer, skipping the dealer's password and emailed code. The admin's own
+// Signs an admin in as a dealer or staff member, skipping their password and emailed code. The admin's own
 // session is paused, not ended; logout from the dealer session resumes it (see impersonation.ts).
 // Lives under /api/auth so the admin's refresh cookie (path /api/auth) is sent here: presenting it
 // proves this browser holds the admin session being paused.
@@ -28,10 +28,12 @@ export async function POST(request: NextRequest) {
     if (!adminRefreshToken) return NextResponse.json(compatibilityFailure("Unauthenticated"), { status: 401 });
 
     const parsed = schema.safeParse(await request.json().catch(() => null));
-    if (!parsed.success) return NextResponse.json(compatibilityFailure("Invalid dealer"), { status: 400 });
+    if (!parsed.success) return NextResponse.json(compatibilityFailure("Invalid account"), { status: 400 });
 
-    const dealer = await findActivePostgresDealer(parsed.data.dealerId);
-    const { session, accessToken, refreshToken } = await createSessionForUser(dealer, request);
+    const target = "dealerId" in parsed.data
+      ? { entity: "DEALER", id: parsed.data.dealerId, user: await findActivePostgresDealer(parsed.data.dealerId) }
+      : { entity: "STAFF", id: parsed.data.staffId, user: await findActivePostgresStaff(parsed.data.staffId) };
+    const { session, accessToken, refreshToken } = await createSessionForUser(target.user, request);
 
     let started: Awaited<ReturnType<typeof startImpersonation>>;
     try {
@@ -51,8 +53,8 @@ export async function POST(request: NextRequest) {
       role: admin.role,
       eventType: "IMPERSONATION_STARTED",
       action: "IMPERSONATE",
-      entity: "DEALER",
-      entityId: parsed.data.dealerId.toString(),
+      entity: target.entity,
+      entityId: target.id.toString(),
       actorName: admin.displayName,
       actorEmail: admin.email,
       request,
@@ -60,17 +62,17 @@ export async function POST(request: NextRequest) {
         impersonationId: started.impersonationId,
         adminSessionId: admin.sessionId,
         dealerSessionId: session.id,
-        dealerUserId: dealer.userId.toString(),
+        dealerUserId: target.user.userId.toString(),
         expiresAt: started.expiresAt.toISOString(),
       },
     });
 
-    const response = NextResponse.json(compatibilitySuccess(dealer.profile));
+    const response = NextResponse.json(compatibilitySuccess(target.user.profile));
     setAuthCookies(response, accessToken, refreshToken, request);
     setImpersonatorCookie(response, started.restorationToken, started.expiresAt, request);
     return response;
   } catch (error) {
     console.error("[POST /api/auth/impersonate]", error);
-    return adminErrorResponse(error, "Unable to sign in as this dealer");
+    return adminErrorResponse(error, "Unable to sign in as this account");
   }
 }

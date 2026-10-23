@@ -112,6 +112,14 @@ export async function findActivePostgresDealer(dealerId: bigint): Promise<Authen
   return toAuthenticatedPostgresUser(user);
 }
 
+// Same, for an admin signing in as a staff member (never an NSM, who lives in admin_profiles).
+export async function findActivePostgresStaff(staffId: bigint): Promise<AuthenticatedPostgresUser> {
+  const user = await prisma.user.findFirst({ where: { role: { in: ["STAFF", "RSM", "ASM"] }, staffProfile: { id: staffId } }, include: authUserInclude });
+  if (!user || user.deletedAt || user.status !== "ACTIVE") throw new Error("Staff account is not active");
+
+  return toAuthenticatedPostgresUser(user);
+}
+
 export class PrismaPostgresAuthenticationProvider implements PostgresAuthenticationProvider {
   async authenticate(input: { email: string; password: string; roleType?: string }): Promise<AuthenticatedPostgresUser> {
     const expectedRole = input.roleType ? LEGACY_ROLE_MAP[input.roleType as LegacyRoleType] : undefined;

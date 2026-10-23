@@ -55,7 +55,7 @@ export default function Login() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
 
-  // Only the server opens the code panel, and only for a dealer whose password already checked out.
+  // Only the server opens the code panel, and only for a dealer or staff member whose password already checked out.
   const showOtp = otpRequired
   const otpInputRef = useRef<HTMLInputElement>(null)
 
@@ -140,7 +140,7 @@ export default function Login() {
       const responseMessage = typeof data?.message === "string" ? data.message : "Invalid credentials"
 
       if (res.ok && data?.status) {
-        // Dealers need a second factor; staff and admins already hold a session here.
+        // Dealers and staff need a second factor; admins and accountants already hold a session here.
         if (data?.data?.otpRequired) {
           setOtpRequired(true)
           setOtpCode("")
@@ -281,7 +281,7 @@ export default function Login() {
             </label>
           </div>
 
-          {/* Dealer second factor: slides open only after the password check passes. */}
+          {/* Dealer and staff second factor: slides open only after the password check passes. */}
           <div
             className={cn(
               "grid transition-all duration-300 ease-out",

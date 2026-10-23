@@ -6,7 +6,8 @@ import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-quer
 import axios from 'axios'
 import { Pencil, Trash2, Download, Search, Users, UserPlus, MoreVertical, ChevronDown, ChevronLeft, Network, Briefcase, User, X } from 'lucide-react'
 import { showToast } from "@/components/ui/toast";
-import { getCurrentRole } from "@/lib/currentUser";
+import { getCurrentRole, loginAsStaff } from "@/lib/currentUser";
+import { useAuthSession } from "@/hooks/useAuthSession";
 import { type FloatingMenuState, isMenuOpen, openFloatingMenu, measureFloatingMenu } from "@/components/ui/floating-menu";
 
 type StaffRelation = { id: string; name: string; email?: string } | null
@@ -41,6 +42,7 @@ const SHIMMER = "animate-pulse bg-gray-200 rounded"
 const ADMIN_STAFF_URL = "/api/admin/staff"
 const ITEMS_PER_PAGE = 10
 const getStaffEditRoute = (staffId: string) => `/dashboard/admin/staff/${encodeURIComponent(staffId)}`
+const getStaffViewRoute = (staffId: string) => `${getStaffEditRoute(staffId)}/view`
 
 // Shared feedback classes: press-down responds instantly (Apple's "respond
 // on pointer-down, not release"), and prefers-reduced-motion drops the
@@ -496,6 +498,9 @@ export default function StaffListPage() {
   const [openMenu, setOpenMenu] = useState<FloatingMenuState>(null)
   const [role, setRole] = useState<AppRole>('admin')
   const [hierarchyOpen, setHierarchyOpen] = useState(false)
+  const auth = useAuthSession()
+  // Only the ADMIN may sign in as staff; the NSM also maps to client role "admin", so check the server role.
+  const canLoginAsStaff = auth.session?.status === "authenticated" && auth.session.user.authRole === "admin"
 
   const queryClient = useQueryClient()
 
@@ -1157,7 +1162,16 @@ export default function StaffListPage() {
                                 style={{ top: openMenu?.top ?? 0, left: openMenu?.left ?? 0 }}
                                 className={`staff-menu${openMenu?.flip ? " flip" : ""} fixed w-44 bg-white border border-gray-200 rounded-md shadow-lg ring-1 ring-black/5 z-[9999] py-1 overflow-hidden`}
                               >
+                                <Link href={getStaffViewRoute(apiId(staff))} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">View</Link>
                                 <Link href={getStaffEditRoute(apiId(staff))} className="block px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">Edit</Link>
+                                {canLoginAsStaff && !isNsmRow(staff) && normalizeStaffStatus(staff.status) === "ACTIVE" && (
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); setOpenMenu(null); loginAsStaff(staff.staff_id).catch((error) => showToast('error', error instanceof Error ? error.message : "Unable to sign in as this staff member")) }}
+                                    className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                  >
+                                    Login as staff
+                                  </button>
+                                )}
                                 <button onClick={(e) => { e.stopPropagation(); setStatusConfirm(staff); setOpenMenu(null) }} className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50">
                                   {normalizeStaffStatus(staff.status) === "ACTIVE" ? "Deactivate" : "Activate"}
                                 </button>

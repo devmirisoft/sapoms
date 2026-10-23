@@ -288,6 +288,10 @@ test("only an ADMIN can start impersonation, of an active dealer, and a failed s
   assert.match(route, /findActivePostgresDealer\(parsed\.data\.dealerId\)/);
   assert.match(provider, /role: "DEALER", dealerProfile: \{ id: dealerId \}/);
   assert.match(provider, /if \(!user \|\| user\.deletedAt \|\| user\.status !== "ACTIVE"\) throw new Error\("Dealer account is not active"\)/);
+  // Staff too, but never an NSM (admin_profiles): only staff-profile roles resolve.
+  assert.match(route, /findActivePostgresStaff\(parsed\.data\.staffId\)/);
+  assert.match(provider, /role: \{ in: \["STAFF", "RSM", "ASM"\] \}, staffProfile: \{ id: staffId \}/);
+  assert.match(provider, /if \(!user \|\| user\.deletedAt \|\| user\.status !== "ACTIVE"\) throw new Error\("Staff account is not active"\)/);
   assert.match(route, /catch \(error\) \{\s*\/\/ Never leave an unlinked dealer session behind\.\s*await revokeSession\(session\.id, request\)/);
   assert.match(route, /setImpersonatorCookie\(response, started\.restorationToken, started\.expiresAt, request\)/);
 });
@@ -361,13 +365,14 @@ test("a paused admin session is refused, and refresh still rotates only the pres
 });
 
 test("client logout trusts only the server and /api/auth/me before showing the admin UI", async () => {
-  const roleAccess = await read("src/lib/roleAccess.ts");
-  const body = roleAccess.slice(roleAccess.indexOf("export async function logout"), roleAccess.indexOf("export async function loginAsDealer"));
+  const currentUser = await read("src/lib/currentUser.ts");
+  const body = currentUser.slice(currentUser.indexOf("export async function logout"), currentUser.indexOf("async function impersonate"));
   assert.match(body, /data\?\.restored === true/);
   assert.match(body, /"\/api\/auth\/logout", "\/api\/auth\/logout", "\/api\/auth\/logout\?final=1"/);
   assert.match(body, /res\.status !== 503/);
-  assert.match(body, /fetch\("\/api\/auth\/me"/);
-  assert.match(body, /session\.role === "admin"[\s\S]*"\/dashboard\/admin\/dealer\/DealerList"/);
+  assert.match(currentUser, /fetchCurrentSession\(\): Promise<AuthSession> \{\s*const res = await fetch\("\/api\/auth\/me"/);
+  assert.match(body, /await fetchCurrentSession\(\)/);
+  assert.match(body, /session\.role === "admin"[\s\S]*wasStaff \? "\/dashboard\/admin\/staff\/stafflist" : "\/dashboard\/admin\/dealer\/DealerList"/);
   assert.match(body, /window\.location\.href = LOGIN_ROUTE/);
 });
 
