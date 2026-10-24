@@ -686,7 +686,7 @@ import cataloguePricing from '@/lib/cataloguePricing'
 
 type ToastState = { text: string; ok: boolean } | null
 type Column = { id: string; title: string; locked?: boolean; kind?: 'catalogue' | 'pack' | 'basis' | 'unitPrice' | 'packPrice' | 'availability' }
-type VariantRow = { id: string; values: Record<string, string>; active: boolean }
+type VariantRow = { id: string; values: Record<string, string>; active: boolean; catalogueEdited?: boolean }
 type CategoryValue = string | { name?: string } | null | undefined
 type CategorySourceProduct = { category?: CategoryValue; categories?: CategoryValue[]; product_category?: CategoryValue; product_categories?: CategoryValue[] }
 
@@ -742,9 +742,9 @@ function categoryText(value: CategoryValue) {
   return String(value.name ?? '')
 }
 
-// Catalogue numbers are always derived from the SKU + the row's position in
-// the table: "<SKU>/<position>". Reordering or adding/removing rows keeps
-// every catalogue number in sync automatically.
+// Catalogue numbers are derived from the SKU + the row's position in the
+// table: "<SKU>/<position>". Reordering or adding/removing rows keeps every
+// catalogue number in sync automatically, unless it was typed over by hand.
 function catalogueNumberFor(sku: string, position: number) {
   return `${sku.trim() || 'SKU'}/${position}`
 }
@@ -868,17 +868,18 @@ export default function AddProductPage() {
   // Stable key that only changes when the row *order* or *count* changes
   // (not when values inside a row change) — used to re-derive catalogue
   // numbers without looping on our own writes.
-  const variantOrderKey = variants.map((row) => row.id).join('|')
+  const variantOrderKey = variants.map((row) => `${row.id}${row.catalogueEdited ? '*' : ''}`).join('|')
 
   // SKU is the source of truth for every *new* catalogue number: it is
   // used as the prefix, and the position in the table (which updates as
   // rows are dragged, added, or removed) supplies the running suffix.
   // Rows already saved (numeric DB id) keep their stored number — imported
   // catalogue numbers like "OM285-020" are what orders and dealers know.
+  // Hand-typed numbers are kept the same way.
   useEffect(() => {
     setVariants((rows) => {
       let changed = false
-      const isSaved = (row: VariantRow) => /^\d+$/.test(row.id) && Boolean(row.values.catalogueNumber?.trim())
+      const isSaved = (row: VariantRow) => row.catalogueEdited || (/^\d+$/.test(row.id) && Boolean(row.values.catalogueNumber?.trim()))
       const taken = new Set(rows.filter(isSaved).map((row) => row.values.catalogueNumber))
       const next = rows.map((row, index) => {
         if (isSaved(row)) return row
@@ -992,6 +993,11 @@ export default function AddProductPage() {
       if (row.id !== rowId) return row
       return { ...row, values: { ...row.values, [columnId]: value } }
     }))
+  }
+
+  // A typed catalogue number sticks; leaving it empty hands the row back to auto-numbering.
+  const editCatalogueNumber = (rowId: string, value: string, edited = true) => {
+    setVariants((rows) => rows.map((row) => row.id === rowId ? { ...row, catalogueEdited: edited, values: { ...row.values, catalogueNumber: value } } : row))
   }
 
   const addAboutItem = () => {
@@ -1176,6 +1182,8 @@ export default function AddProductPage() {
         .table-input { min-width: 120px; height: 34px; padding: 7px 9px; }
         .column-input { min-width: 130px; height: 30px; padding: 5px 7px; font-weight: 800; }
         .catalogue-cell { min-width: 120px; height: 34px; display: flex; align-items: center; padding: 0 10px; font-weight: 800; color: #334155; background: #f8fafc; border: 1px solid #e7ecf3; border-radius: 7px; font-variant-numeric: tabular-nums; letter-spacing: .01em; }
+        input.catalogue-cell { width: 100%; font-family: inherit; font-size: inherit; outline: none; background: #fff; border-color: #dbe3ef; cursor: text; }
+        input.catalogue-cell:focus { border-color: #6A5ACD; box-shadow: 0 0 0 3px rgba(106,90,205,.12); }
         .drag-col { width: 30px; }
         .drag-handle-cell { width: 34px; padding: 10px 4px; }
         .drag-handle { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 7px; color: #94a3b8; cursor: grab; touch-action: none; transition: background-color 120ms ease, color 120ms ease; }
@@ -1379,7 +1387,14 @@ export default function AddProductPage() {
                         {columns.map((column) => (
                           <td key={column.id}>
                             {column.kind === 'catalogue' ? (
-                              <div className="catalogue-cell">{row.values.catalogueNumber}</div>
+                              <input
+                                className="catalogue-cell"
+                                value={row.values.catalogueNumber || ''}
+                                onChange={(event) => editCatalogueNumber(row.id, event.target.value)}
+                                onBlur={(event) => { if (!event.target.value.trim()) editCatalogueNumber(row.id, '', false) }}
+                                aria-label="Catalogue number"
+                                disabled={loading}
+                              />
                             ) : column.kind === 'packPrice' ? (
                               <div className="catalogue-cell" title="Auto-calculated from the printed price, its basis and the pack size">
                                 {(() => {
