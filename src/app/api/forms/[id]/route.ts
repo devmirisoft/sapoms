@@ -20,7 +20,7 @@ type RouteContext = { params: Promise<{ id: string }> };
  * where-clause (rather than filtering after the read) keeps the ownership check
  * in the query, so a staff member never loads another user's row.
  */
-function accessWhere(actor: AuthActor, id: string): Prisma.FormSubmissionWhereInput | NextResponse {
+export function accessWhere(actor: AuthActor, id: string): Prisma.FormSubmissionWhereInput | NextResponse {
   const formId = formIdFromString(id);
   if (formId === null) {
     return NextResponse.json({ success: false, message: "Invalid submission id" }, { status: 400 });

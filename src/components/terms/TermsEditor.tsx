@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { TERMS_BLOCK_TYPES, TermsDocument, type TermsBlock, type TermsBlockType } from "@/components/terms/TermsDocument";
+import { DEALER_PLACEHOLDERS, DEFAULT_TERMS_BLOCKS, TERMS_BLOCK_TYPES, TermsDocument, type TermsBlock, type TermsBlockType } from "@/components/terms/TermsDocument";
 
 const TYPE_LABEL: Record<TermsBlockType, string> = {
   h1: "Heading 1", h2: "Heading 2", h3: "Heading 3", h4: "Heading 4", h5: "Heading 5", h6: "Heading 6", p: "Paragraph", sign: "Signatures",
@@ -96,8 +96,14 @@ export function TermsBlocksEditor({
 
   const add = (type: TermsBlockType) => onChange([...blocks, { type, text: type === "sign" ? DEFAULT_SIGNATURES : "" }]);
 
+  const loadAgreement = () => {
+    if (blocks.length === 0 || window.confirm("Replace the current content with the standard agreement? Nothing is saved until you save.")) {
+      onChange(DEFAULT_TERMS_BLOCKS);
+    }
+  };
+
   return (
-    <div className="grid gap-5 lg:grid-cols-2">
+    <div className="grid items-start gap-5 lg:grid-cols-2">
       <div className="space-y-3">
         {blocks.length === 0 && (
           <p className="rounded border border-dashed border-[#d6dbe4] px-4 py-6 text-center text-sm text-[#667085]">
@@ -140,14 +146,22 @@ export function TermsBlocksEditor({
               + {type.startsWith("h") ? type.toUpperCase() : TYPE_LABEL[type]}
             </button>
           ))}
+          <button type="button" onClick={loadAgreement} className={buttonClass}>Load standard agreement</button>
         </div>
+        <p className="text-xs text-[#667085]">
+          Wrap text in ==double equals== to highlight it, or **double stars** to make it bold. Put || between two parts to place them at
+          the left and right of the same line. Lines starting with 1. or 1) are indented as a numbered list.
+        </p>
+        <p className="text-xs text-[#667085]">
+          Filled in from each dealer&apos;s profile when they view it: {DEALER_PLACEHOLDERS.join(", ")}.
+        </p>
 
         {children}
       </div>
 
-      <div>
-        <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-[#667085]">Preview</p>
-        <div className="max-h-[70vh] space-y-3 overflow-y-auto rounded border border-[#dfe3ec] bg-white px-6 py-5 text-sm leading-relaxed text-slate-700">
+      {/* An A4 page laid out the way dealers read it; it stays in view beside the long block list. */}
+      <div className="rounded bg-[#eef1f6] p-3 lg:sticky lg:top-4 lg:max-h-[calc(100vh-2rem)] lg:overflow-y-auto">
+        <div className="mx-auto flex min-h-[297mm] w-[210mm] max-w-full flex-col bg-white px-6 py-8 text-sm leading-relaxed text-slate-700 shadow-md sm:px-[12mm] sm:py-[10mm]">
           <TermsDocument blocks={blocks} />
         </div>
       </div>

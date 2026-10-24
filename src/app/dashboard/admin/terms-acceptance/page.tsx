@@ -295,7 +295,7 @@ function DealerDocumentModal({ dealer, onClose }: { dealer: TermsRow; onClose: (
   useEffect(() => {
     if (editing) return;
     let cancelled = false;
-    fetch(url, { credentials: "include", cache: "no-store" })
+    fetch(`${url}?filled=1`, { credentials: "include", cache: "no-store" })
       .then(async (response) => {
         const payload = await response.json().catch(() => null);
         if (!response.ok) throw new Error(payload?.msg || payload?.message || "Failed to load document.");

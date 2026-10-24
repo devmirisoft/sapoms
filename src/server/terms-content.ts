@@ -1,5 +1,5 @@
 import { prisma } from "@/server/db/prisma";
-import { DEFAULT_TERMS_BLOCKS, TERMS_BLOCK_TYPES, type TermsBlock } from "@/components/terms/TermsDocument";
+import { DEFAULT_TERMS_BLOCKS, TERMS_BLOCK_TYPES, fillPlaceholders, type TermsBlock } from "@/components/terms/TermsDocument";
 
 const KEY = "terms";
 
@@ -15,6 +15,31 @@ export async function getDealerTerms(dealerId?: bigint): Promise<{ blocks: Terms
 
 export async function getTermsBlocks(dealerId?: bigint): Promise<TermsBlock[]> {
   return (await getDealerTerms(dealerId)).blocks;
+}
+
+// For display only: editors must get the raw placeholders, or saving would freeze today's values into the text.
+export async function fillDealerFields(blocks: TermsBlock[], dealerId: bigint): Promise<TermsBlock[]> {
+  const dealer = await prisma.dealerProfile.findUnique({
+    where: { id: dealerId },
+    select: {
+      businessName: true, address: true, city: true, state: true, pincode: true, phone: true, gstin: true,
+      discountPercent: true, annualTargetPaise: true, creditLimitPaise: true, creditDays: true,
+    },
+  });
+  if (!dealer) return blocks;
+  const rupees = (paise: bigint | null) => (paise === null ? null : `₹${(Number(paise) / 100).toLocaleString("en-IN")}`);
+  return fillPlaceholders(blocks, {
+    "[DEALER NAME]": dealer.businessName,
+    "[DEALER ADDRESS]": [dealer.address, dealer.city, dealer.state, dealer.pincode].filter((part) => part?.trim()).join(", "),
+    "[MOBILE NUMBER]": dealer.phone,
+    "[DEALER GST]": dealer.gstin,
+    // Characters 3-12 of a GSTIN are the holder's PAN.
+    "[DEALER PAN]": dealer.gstin?.trim().length === 15 ? dealer.gstin.trim().slice(2, 12) : null,
+    "[DISCOUNT]": dealer.discountPercent === null ? null : `${Number(dealer.discountPercent)}%`,
+    "[TARGET]": rupees(dealer.annualTargetPaise),
+    "[CREDIT LIMIT]": rupees(dealer.creditLimitPaise),
+    "[CREDIT DAYS]": dealer.creditDays === null ? null : `${dealer.creditDays} DAYS`,
+  });
 }
 
 // True when the document changed after the dealer accepted it; never-accepted dealers get the login modal instead.
