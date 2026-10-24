@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { requireRole, writeAuthAuditLog } from "@/server/auth/session";
 import { compatibilityFailure, compatibilitySuccess } from "@/server/http/compat-response";
-import { getDealerTerms, isTermsUpdatedSinceAccepted } from "@/server/terms-content";
+import { fillDealerFields, getDealerTerms, isTermsUpdatedSinceAccepted } from "@/server/terms-content";
 
 export async function GET() {
   try {
@@ -20,7 +20,7 @@ export async function GET() {
         active,
         accepted: Boolean(profile?.termsAcceptedAt),
         acceptedAt: profile?.termsAcceptedAt?.toISOString() ?? null,
-        blocks: active ? terms.blocks : [],
+        blocks: active ? await fillDealerFields(terms.blocks, actor.dealerId!) : [],
         updatedAt: terms.updatedAt?.toISOString() ?? null,
         updatedSinceAccepted: active && isTermsUpdatedSinceAccepted(terms.updatedAt, profile?.termsAcceptedAt),
       }),

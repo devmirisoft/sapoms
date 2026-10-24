@@ -41,6 +41,10 @@ export const AUDIT_ACTION = {
   DISCOUNT_APPLIED: "DISCOUNT_APPLIED",
   DISCOUNT_CHANGED: "DISCOUNT_CHANGED",
 
+  // EMAIL_SENT means the SMTP server accepted it, not that it reached the inbox.
+  EMAIL_SENT: "EMAIL_SENT",
+  EMAIL_FAILED: "EMAIL_FAILED",
+
   // Defined for completeness; SAPOMS has no stock model yet, so nothing writes
   // these. Remove them only when an inventory subsystem lands and supersedes it.
   STOCK_ADJUSTED: "STOCK_ADJUSTED",
@@ -65,6 +69,8 @@ export const AUDIT_ENTITY = {
   SETTLEMENT: "SETTLEMENT",
   COURIER: "COURIER",
   SETTINGS: "SETTINGS",
+  /** A FormSubmission, the CRM's contact record. */
+  LEAD: "LEAD",
 } as const;
 
 export type AuditEntity = (typeof AUDIT_ENTITY)[keyof typeof AUDIT_ENTITY];
@@ -89,12 +95,14 @@ const TONE_BY_ACTION: Record<string, Tone> = {
   PAYMENT_RECEIVED: "emerald",
   MARK_PAID: "emerald",
   LOGIN: "emerald",
+  EMAIL_SENT: "emerald",
 
   DELETE: "rose",
   DECLINE: "rose",
   REJECT: "rose",
   CANCEL: "rose",
   LOGIN_FAILED: "rose",
+  EMAIL_FAILED: "rose",
 
   UPDATE: "amber",
   STATUS_CHANGE: "amber",

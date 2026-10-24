@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import Form, { Submission } from "@/components/Form";
+import ExhibitionFollowUp from "@/components/exhibition-email-template/ExhibitionFollowUp";
 
 export default function StaffFormEditPage() {
   const params = useParams<{ id: string }>();
@@ -40,10 +41,11 @@ export default function StaffFormEditPage() {
 
   return (
     <div>
-      <div className="px-6 pt-6">
+      <div className="flex items-center justify-between gap-3 px-6 pt-6">
         <Link href="/dashboard/staff/forms" className="text-sm font-semibold text-[#12508C]">
           &larr; Back to Forms
         </Link>
+        <ExhibitionFollowUp formId={submission.id} />
       </div>
       <Form submission={submission} mode="edit" role="staff" />
     </div>
