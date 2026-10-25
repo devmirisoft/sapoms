@@ -132,7 +132,8 @@ model User {
   appliedWalletSettlements WalletSettlementApplication[] @relation("WalletSettlementAppliedBy")
   createdInvoices          Invoice[]               @relation("InvoiceCreatedBy")
   createdOrderExports      OrderExport[]           @relation("OrderExportCreatedBy")
-  regionalFundRequests     DealerFundRequest[]     @relation("FundRequestRsm")
+  termsSignatures          TermsSignature[]
+  regionalFundRequests    DealerFundRequest[]     @relation("FundRequestRsm")
   rsmReviewedFundRequests  DealerFundRequest[]     @relation("FundRequestRsmReviewer")
   staffReviewedFundRequests DealerFundRequest[]    @relation("FundRequestStaffReviewer")
   fundedFundRequests       DealerFundRequest[]     @relation("FundRequestAccountant")
@@ -440,11 +441,36 @@ model DealerProfile {
   fundRequests           DealerFundRequest[]
   agentRequests          AgentRequest[]
   agentDrafts            AgentDraft[]
+  termsSignatures        TermsSignature[]
 
   @@index([deletedAt])
   @@index([region])
   @@index([rsmUserId])
   @@map("dealer_profiles")
+}
+
+// A signature drawn on one signature slot of a dealer's T&C document. Insert-only: the newest
+// row per slot is the live one, and rows older than the document's last edit no longer count.
+model TermsSignature {
+  id           BigInt   @id @default(autoincrement())
+  dealerId     BigInt   @map("dealer_id")
+  // The slot's label as written in the document, e.g. "Dealer signature".
+  slot         String
+  signerUserId BigInt   @map("signer_user_id")
+  signerRole   UserRole @map("signer_role")
+  signerName   String   @map("signer_name")
+  // PNG data URL from signature_pad.
+  image        String   @db.Text
+  // The document blocks exactly as the signer saw them, dealer values filled in.
+  document     Json
+  ip           String?
+  signedAt     DateTime @default(now()) @map("signed_at") @db.Timestamptz(6)
+
+  dealer DealerProfile @relation(fields: [dealerId], references: [id], onDelete: Restrict)
+  signer User          @relation(fields: [signerUserId], references: [id], onDelete: Restrict)
+
+  @@index([dealerId, signedAt])
+  @@map("terms_signatures")
 }
 
 // One temporary-login table for both dealer and staff profiles: exactly one of

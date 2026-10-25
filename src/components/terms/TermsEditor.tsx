@@ -149,7 +149,7 @@ export function TermsBlocksEditor({
           <button type="button" onClick={loadAgreement} className={buttonClass}>Load standard agreement</button>
         </div>
         <p className="text-xs text-[#667085]">
-          Wrap text in ==double equals== to highlight it, or **double stars** to make it bold. Put || between two parts to place them at
+          Wrap text in **double stars** to make it bold. Put || between two parts to place them at
           the left and right of the same line. Lines starting with 1. or 1) are indented as a numbered list.
         </p>
         <p className="text-xs text-[#667085]">

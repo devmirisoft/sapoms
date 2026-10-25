@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { DEFAULT_TERMS_BLOCKS, TermsDocument, type TermsBlock } from "@/components/terms/TermsDocument";
+import { SignaturePadField } from "@/components/terms/SignaturePadField";
+import { DEFAULT_TERMS_BLOCKS, TermsDocument, type SignatureView, type TermsBlock } from "@/components/terms/TermsDocument";
 
 interface TermsModalProps {
   userId?: string;
@@ -28,14 +29,15 @@ async function refreshSession() {
   return refreshPromise;
 }
 
-// GET returns this dealer's terms document; POST records acceptance.
-export async function termsRequest(method: "GET" | "POST") {
+// GET returns this dealer's terms document; POST records acceptance, with { signature } when the document has a dealer slot.
+export async function termsRequest(method: "GET" | "POST", body?: { signature: string | null }) {
   const send = () =>
     fetch("/api/terms", {
       method,
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       cache: "no-store",
+      body: body ? JSON.stringify(body) : undefined,
     });
 
   let response = await send();
@@ -58,12 +60,20 @@ export default function TermsModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [blocks, setBlocks] = useState<TermsBlock[] | null>(null);
+  const [signatures, setSignatures] = useState<Record<string, SignatureView>>({});
+  // Dealer slots still to sign; accepting signs them all with one drawn signature.
+  const [signable, setSignable] = useState<string[]>([]);
+  const [signature, setSignature] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     termsRequest("GET")
       .then((response) => (response.ok ? response.json() : null))
-      .then((payload) => setBlocks(Array.isArray(payload?.data?.blocks) ? payload.data.blocks : DEFAULT_TERMS_BLOCKS))
+      .then((payload) => {
+        setBlocks(Array.isArray(payload?.data?.blocks) ? payload.data.blocks : DEFAULT_TERMS_BLOCKS);
+        setSignatures(payload?.data?.signatures ?? {});
+        setSignable(Array.isArray(payload?.data?.signable) ? payload.data.signable : []);
+      })
       .catch(() => setBlocks(DEFAULT_TERMS_BLOCKS));
   }, []);
 
@@ -81,7 +91,8 @@ export default function TermsModal({
     return () => el.removeEventListener("scroll", handleScroll);
   }, [blocks]);
 
-  const canAccept = hasScrolledToBottom && isChecked;
+  const needsSignature = signable.length > 0 && !signature;
+  const canAccept = hasScrolledToBottom && isChecked && !needsSignature;
 
   async function handleAccept() {
     if (!canAccept) return;
@@ -89,7 +100,7 @@ export default function TermsModal({
     setError(null);
 
     try {
-      const res = await termsRequest("POST");
+      const res = await termsRequest("POST", { signature });
       const payload = await res.json().catch(() => null);
 
       if (!res.ok) {
@@ -120,7 +131,15 @@ export default function TermsModal({
         </div>
 
         <div ref={scrollRef} className="flex-1 space-y-3 overflow-y-auto px-8 py-6 text-sm leading-relaxed text-slate-700">
-          {blocks ? <TermsDocument blocks={blocks} /> : <p className="text-slate-400">Loading terms...</p>}
+          {blocks ? (
+            <TermsDocument
+              blocks={blocks}
+              signatures={signatures}
+              renderSlot={(slot) => (signable.includes(slot) ? <SignaturePadField onChange={setSignature} /> : null)}
+            />
+          ) : (
+            <p className="text-slate-400">Loading terms...</p>
+          )}
 
           {!hasScrolledToBottom && (
             <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-600">
@@ -162,6 +181,10 @@ export default function TermsModal({
               I have read, understood, and agree to the Terms &amp; Conditions above.
             </span>
           </label>
+
+          {hasScrolledToBottom && needsSignature && (
+            <p className="text-xs text-amber-600">Draw your signature in the signature box at the end of the document to accept.</p>
+          )}
 
           {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-500">{error}</p>}
 
