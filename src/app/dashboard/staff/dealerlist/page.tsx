@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronDown, ChevronsUpDown, ChevronUp, Eye, EyeOff, Search } from "lucide-react";
 import { getCurrentSession } from "@/lib/currentUser";
+import { DealerAgreement } from "@/components/terms/DealerAgreement";
 import {
   applyDealerStatusOverrides,
   fetchDealerStatusOverrides,
@@ -161,6 +162,8 @@ export default function StaffDealerListPage() {
   const [visiblePasswords, setVisiblePasswords] = useState<Set<string>>(
     () => new Set()
   );
+  // The dealer whose T&C agreement is open, where the sales person signs their slot.
+  const [agreementDealer, setAgreementDealer] = useState<{ id: string; name: string } | null>(null);
   const [loading, setLoading] =
     useState(true);
 
@@ -570,14 +573,23 @@ export default function StaffDealerListPage() {
                           </td>
 
                           <td className="px-4 py-4 text-right">
-                            <Link
-                              href={
-                                staffDealerRoute
-                              }
-                              className="inline-flex rounded-md bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-500"
-                            >
-                              View
-                            </Link>
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setAgreementDealer({ id: dealerId, name: dealerName })}
+                                className="inline-flex rounded-md border border-gray-200 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
+                              >
+                                Agreement
+                              </button>
+                              <Link
+                                href={
+                                  staffDealerRoute
+                                }
+                                className="inline-flex rounded-md bg-brand-600 px-3 py-2 text-xs font-medium text-white hover:bg-brand-500"
+                              >
+                                View
+                              </Link>
+                            </div>
                           </td>
                         </tr>
                       );
@@ -632,6 +644,29 @@ export default function StaffDealerListPage() {
           )}
         </div>
       </div>
+
+      {agreementDealer && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/50 p-4" onClick={() => setAgreementDealer(null)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${agreementDealer.name} agreement`}
+            className="flex max-h-[90vh] w-full max-w-3xl flex-col overflow-hidden rounded bg-white shadow-xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <div>
+                <h2 className="text-base font-semibold text-gray-900">Terms &amp; Conditions</h2>
+                <p className="text-xs text-gray-500">{agreementDealer.name}</p>
+              </div>
+              <button type="button" onClick={() => setAgreementDealer(null)} aria-label="Close" className="rounded px-2 py-1 text-lg text-gray-500 hover:bg-gray-50">×</button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-5 py-4">
+              <DealerAgreement dealerId={agreementDealer.id} />
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

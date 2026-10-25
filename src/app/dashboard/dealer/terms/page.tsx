@@ -1,12 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { termsRequest } from "@/components/TermsModal";
-import { TermsDocument, type TermsBlock } from "@/components/terms/TermsDocument";
+import { SignaturePadField } from "@/components/terms/SignaturePadField";
+import { TermsDocument, type SignatureView, type TermsBlock } from "@/components/terms/TermsDocument";
 
 type DealerTerms = {
   active: boolean;
   blocks: TermsBlock[];
+  signatures: Record<string, SignatureView>;
+  // Dealer slots still to sign, e.g. accepted before signatures existed or the document changed since.
+  signable: string[];
   acceptedAt: string | null;
   updatedAt: string | null;
   updatedSinceAccepted: boolean;
@@ -20,25 +24,35 @@ export default function DealerTermsPage() {
   const [terms, setTerms] = useState<DealerTerms | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [accepting, setAccepting] = useState(false);
+  const [signature, setSignature] = useState<string | null>(null);
+
+  const load = useCallback(
+    () =>
+      termsRequest("GET")
+        .then(async (response) => {
+          const payload = await response.json().catch(() => null);
+          if (!response.ok || !payload?.data) throw new Error(payload?.msg || payload?.message || "Could not load your terms.");
+          setTerms(payload.data);
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "Could not load your terms.")),
+    [],
+  );
 
   useEffect(() => {
-    termsRequest("GET")
-      .then(async (response) => {
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload?.data) throw new Error(payload?.msg || payload?.message || "Could not load your terms.");
-        setTerms(payload.data);
-      })
-      .catch((err) => setError(err instanceof Error ? err.message : "Could not load your terms."));
-  }, []);
+    void load();
+  }, [load]);
+
+  const mustSign = Boolean(terms?.signable.length);
 
   async function acceptUpdated() {
     setAccepting(true);
     setError(null);
     try {
-      const response = await termsRequest("POST");
+      const response = await termsRequest("POST", { signature });
       const payload = await response.json().catch(() => null);
       if (!response.ok) throw new Error(payload?.msg || payload?.message || "Failed to save agreement.");
-      setTerms((current) => current && { ...current, acceptedAt: payload?.data?.acceptedAt ?? new Date().toISOString(), updatedSinceAccepted: false });
+      // Reload so the saved signature replaces the pad.
+      await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save agreement.");
     } finally {
@@ -58,16 +72,21 @@ export default function DealerTermsPage() {
           )}
         </div>
 
-        {terms?.updatedSinceAccepted && (
+        {(terms?.updatedSinceAccepted || mustSign) && (
           <div className="mb-5 flex flex-col gap-3 rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 sm:flex-row sm:items-center sm:justify-between">
-            <span>Your Terms &amp; Conditions were updated after you accepted them. Please review the document below.</span>
+            <span>
+              {terms?.updatedSinceAccepted
+                ? "Your Terms & Conditions were updated after you accepted them. Please review the document below."
+                : "Your agreement is waiting for your signature."}
+              {mustSign && " Draw your signature in the signature box at the end of the document."}
+            </span>
             <button
               type="button"
               onClick={acceptUpdated}
-              disabled={accepting}
+              disabled={accepting || (mustSign && !signature)}
               className="h-9 shrink-0 rounded bg-[#1f2937] px-4 text-sm font-medium text-white hover:bg-[#374151] disabled:opacity-50"
             >
-              {accepting ? "Saving..." : "I accept the updated terms"}
+              {accepting ? "Saving..." : mustSign ? "Sign and accept" : "I accept the updated terms"}
             </button>
           </div>
         )}
@@ -77,7 +96,15 @@ export default function DealerTermsPage() {
         <div className="space-y-3 rounded border border-[#dfe3ec] bg-white px-8 py-6 text-sm leading-relaxed text-slate-700 shadow-sm">
           {terms && !terms.active ? (
             <p className="text-[#667085]">No Terms &amp; Conditions document is active for your account.</p>
-          ) : terms ? <TermsDocument blocks={terms.blocks} /> : !error && <p className="text-[#667085]">Loading terms...</p>}
+          ) : terms ? (
+            <TermsDocument
+              blocks={terms.blocks}
+              signatures={terms.signatures}
+              renderSlot={(slot) => (terms.signable.includes(slot) ? <SignaturePadField onChange={setSignature} /> : null)}
+            />
+          ) : (
+            !error && <p className="text-[#667085]">Loading terms...</p>
+          )}
         </div>
       </div>
     </main>

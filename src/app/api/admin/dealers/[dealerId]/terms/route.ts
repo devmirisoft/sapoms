@@ -3,21 +3,18 @@ import { prisma } from "@/server/db/prisma";
 import { adminDetailResponse } from "@/server/admin/admin-response";
 import { AdminRouteError, adminErrorResponse } from "@/server/admin/admin-errors";
 import { auditAdminAction, parseBigIntRouteParam, requestIdFrom, requireAdmin, requireAdminOnly } from "@/server/admin/admin-route";
-import { fillDealerFields, getTermsBlocks, parseTermsBlocks, saveTermsBlocks } from "@/server/terms-content";
+import { getTermsBlocks, parseTermsBlocks, saveTermsBlocks } from "@/server/terms-content";
 
 export const runtime = "nodejs";
 
 type Params = { params: Promise<{ dealerId: string }> };
 
-// The dealer's own T&C document, or the global template when they have none.
-// ?filled=1 swaps in the dealer's profile values, for previews; the editor needs the raw placeholders.
-export async function GET(request: NextRequest, { params }: Params) {
+// The dealer's own T&C document, or the global template when they have none, with raw placeholders for editing.
+export async function GET(_request: NextRequest, { params }: Params) {
   try {
     await requireAdmin();
     const id = parseBigIntRouteParam((await params).dealerId, "dealerId");
-    const blocks = await getTermsBlocks(id);
-    const data = request.nextUrl.searchParams.has("filled") ? await fillDealerFields(blocks, id) : blocks;
-    return NextResponse.json(adminDetailResponse(data), { headers: { "Cache-Control": "no-store" } });
+    return NextResponse.json(adminDetailResponse(await getTermsBlocks(id)), { headers: { "Cache-Control": "no-store" } });
   } catch (error) {
     console.error("[GET /api/admin/dealers/[dealerId]/terms]", error);
     return adminErrorResponse(error, "Dealer terms are unavailable");

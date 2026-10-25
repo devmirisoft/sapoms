@@ -1,7 +1,11 @@
+import type { ReactNode } from "react";
+
 // "sign" is a row of signature lines, one label per line of its text.
 export const TERMS_BLOCK_TYPES = ["h1", "h2", "h3", "h4", "h5", "h6", "p", "sign"] as const;
 export type TermsBlockType = (typeof TERMS_BLOCK_TYPES)[number];
 export type TermsBlock = { type: TermsBlockType; text: string };
+// A drawn signature on one slot, keyed by the slot's label.
+export type SignatureView = { image: string; signerName: string; signedAt: string };
 
 const BLOCK_CLASS: Record<TermsBlockType, string> = {
   // h1, h4 and h5 follow the printed agreement: centred title, body-sized underlined section headings.
@@ -12,8 +16,8 @@ const BLOCK_CLASS: Record<TermsBlockType, string> = {
   h5: "pt-3 text-sm font-bold text-slate-900 underline underline-offset-2",
   h6: "text-xs font-semibold uppercase tracking-wide text-slate-900",
   p: "whitespace-pre-line text-justify",
-  // Top padding leaves room to sign above the line.
-  sign: "flex flex-wrap justify-between gap-x-10 gap-y-12 pt-14",
+  // Each slot keeps its own room to sign above the line (see the sign block below).
+  sign: "grid auto-cols-fr grid-flow-col gap-x-6 pt-6",
 };
 
 // Filled in from the dealer's profile wherever one dealer's document is shown (see fillDealerFields).
@@ -31,7 +35,7 @@ export function fillPlaceholders(blocks: TermsBlock[], values: Record<DealerPlac
   }));
 }
 
-// Inline markup in block text: ==highlight== (per-dealer values) and **bold**.
+// Inline markup in block text: **bold**. ==text== is the retired highlight, still in saved documents, shown as plain text.
 const INLINE_MARKUP = /(==[^=]+==|\*\*[^*]+\*\*)/;
 
 function renderInline(text: string) {
@@ -39,9 +43,7 @@ function renderInline(text: string) {
   return text.split(INLINE_MARKUP).map((part, i) => {
     if (i % 2 === 0) return part;
     const inner = part.slice(2, -2);
-    return part.startsWith("==")
-      ? <mark key={i} className="rounded-sm bg-amber-100 px-1 font-semibold text-slate-900 box-decoration-clone">{inner}</mark>
-      : <strong key={i} className="font-semibold text-slate-900">{inner}</strong>;
+    return part.startsWith("==") ? inner : <strong key={i} className="font-semibold text-slate-900">{inner}</strong>;
   });
 }
 
@@ -150,7 +152,16 @@ const LETTERHEAD_FOOTER = [
 ];
 
 // Rendered as React elements, never raw HTML, so admin text can't inject markup.
-export function TermsDocument({ blocks }: { blocks: TermsBlock[] }) {
+// renderSlot fills an unsigned signature slot, e.g. with a signature pad for the person who may sign it.
+export function TermsDocument({
+  blocks,
+  signatures,
+  renderSlot,
+}: {
+  blocks: TermsBlock[];
+  signatures?: Record<string, SignatureView>;
+  renderSlot?: (label: string) => ReactNode;
+}) {
   return (
     <>
       <header className="flex items-end gap-2.5 pb-4">
@@ -177,9 +188,27 @@ export function TermsDocument({ blocks }: { blocks: TermsBlock[] }) {
             const labels = block.text.split("\n").map((label) => label.trim()).filter(Boolean);
             return (
               <div key={index} className={BLOCK_CLASS.sign}>
-                {labels.map((label, i) => (
-                  <p key={i} className="w-max min-w-44 max-w-full border-t border-dashed border-slate-500 pt-1 font-semibold text-slate-900">{label}</p>
-                ))}
+                {labels.map((label, i) => {
+                  const signed = signatures?.[label];
+                  return (
+                    <div key={i} className="flex min-w-0 flex-col">
+                      {/* Room above the line: the saved signature, the caller's pad, or blank for pen and paper.
+                          It grows to the tallest slot in the row so the three lines stay level. */}
+                      <div className="flex min-h-14 flex-1 items-end">
+                        {signed ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={signed.image} alt={`${label}, signed by ${signed.signerName}`} className="h-14 w-auto max-w-full" />
+                        ) : (
+                          renderSlot?.(label)
+                        )}
+                      </div>
+                      <p className="border-t border-dashed border-slate-500 pt-1 font-semibold text-slate-900">{label}</p>
+                      <p className="min-h-4 text-[11px] text-slate-500">
+                        {signed && `${signed.signerName} · ${new Date(signed.signedAt).toLocaleDateString("en-IN")}`}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             );
           }
