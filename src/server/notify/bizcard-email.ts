@@ -106,7 +106,7 @@ async function deliver({ to, firstName, exhibitionName }: Extract<CardEmailDecis
   if (!redirect && process.env.NODE_ENV !== "production") return "skipped no_redirect_outside_production";
 
   const subject = defaultSubject(exhibitionName);
-  const { html, text } = renderExhibitionEmail({ firstName, exhibitionName, logoSrc: `cid:${LOGO_CID}` });
+  const { html, text } = renderExhibitionEmail({ firstName, exhibitionName, logoSrc: `cid:${LOGO_CID}`, withCatalogue: true });
   // ponytail: mirrors the sendMail in api/forms/[id]/exhibition-email/route.ts; extract a shared helper if a third sender appears.
   const info = await getTransporter().sendMail({
     from: process.env.SMTP_EXHIBITION_FROM?.trim() || { name: SENDER.name, address: process.env.SMTP_USER?.trim() ?? "" },
