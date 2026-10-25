@@ -176,6 +176,15 @@ test("in production without a redirect the visitor gets it", async () => {
   assert.equal(globalThis.__sent[0].subject, "A pleasure meeting you at ANALYTICA MUNICH - 2026 | Omsons Glassware");
 });
 
+test("the bizcard email links the catalogue and attaches only the logo", async () => {
+  useDb({ card });
+  globalThis.__sent = [];
+  await withEnv({ ...env, NODE_ENV: "production", FOLLOWUP_EMAILS_REDIRECT: undefined }, () => handleCard("c1", fresh));
+  const [mail] = globalThis.__sent;
+  assert.ok(mail.html.includes(">View catalogue</a>") && mail.text.includes("drive.google.com"));
+  assert.equal(mail.attachments.length, 1);
+});
+
 test("repeat scans are matched case-insensitively and literally", async () => {
   useDb({ card: cardAt(card.createdAt, { email: "a.b@example.com" }), earlier: 1 });
   globalThis.__sent = [];

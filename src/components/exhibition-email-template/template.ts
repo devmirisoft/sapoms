@@ -5,6 +5,8 @@ export const SENDER = { name: "Ravinder | Omsons Glassware", address: "ravi@omso
 export const LOGO_CID = "omsons-logo";
 /** Under public/: the preview loads it by URL, the send route attaches the file. */
 export const LOGO_PATH = "/email/omsons-germany-logo.png";
+/** The full-size catalogue on Drive. Replace it there with "Manage versions" so this link keeps working. */
+export const CATALOGUE_URL = "https://drive.google.com/file/d/1u2A_1fcgtnpMBGzH_ij3BRELdA6vZoyI/view";
 export const EXHIBITION_NAME_LIMIT = 120;
 export const SUBJECT_LIMIT = 200;
 export const FALLBACK_NAME = "Valued Customer";
@@ -17,6 +19,7 @@ const WHATSAPP_URL = "https://wa.me/919992525018";
 const MAILTO = `mailto:${SENDER.address}`;
 const SANS = "Arial, Helvetica, sans-serif";
 const SERIF = "Georgia, 'Times New Roman', Times, serif";
+const CATALOGUE_LINE = "You can view our product catalogue online.";
 
 export function escapeHtml(value: unknown) {
   return String(value ?? "").replace(/[&<>"']/g, (char) => `&#${char.charCodeAt(0)};`);
@@ -56,11 +59,30 @@ function paragraphs(exhibition: string) {
 const text = (size: number, line: number) => `font-family:${SANS};font-size:${size}px;line-height:${line}px;color:#222222;`;
 const link = (href: string, label: string) => `<a href="${href}" style="color:${TEXT_ORANGE};text-decoration:underline;">${label}</a>`;
 
-/** `logoSrc` is `cid:${LOGO_CID}` when sending and LOGO_PATH in the preview. */
-export function renderExhibitionEmail({ firstName, exhibitionName, logoSrc }: { firstName: string; exhibitionName: string; logoSrc: string }) {
+/**
+ * `logoSrc` is `cid:${LOGO_CID}` when sending and LOGO_PATH in the preview.
+ * `withCatalogue` adds the catalogue line and button; only the bizcard email sets it.
+ */
+export function renderExhibitionEmail({
+  firstName,
+  exhibitionName,
+  logoSrc,
+  withCatalogue = false,
+}: {
+  firstName: string;
+  exhibitionName: string;
+  logoSrc: string;
+  withCatalogue?: boolean;
+}) {
   const body = [`Dear ${escapeHtml(firstName)},`, ...paragraphs(escapeHtml(exhibitionName))]
     .map((line) => `<p style="margin:0 0 18px;${text(16, 26)}">${line}</p>`)
     .join("\n");
+  const catalogue = withCatalogue
+    ? `<p style="margin:0 0 18px;${text(16, 26)}">${CATALOGUE_LINE}</p>
+  <table role="presentation" cellpadding="0" cellspacing="0" border="0"><tr><td style="border-radius:4px;background-color:${TEXT_ORANGE};">
+    <a href="${CATALOGUE_URL}" style="display:inline-block;padding:12px 26px;border:1px solid ${TEXT_ORANGE};border-radius:4px;font-family:${SANS};font-size:15px;line-height:20px;font-weight:bold;color:#FFFFFF;text-decoration:none;">View catalogue</a>
+  </td></tr></table>`
+    : "";
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -93,6 +115,7 @@ export function renderExhibitionEmail({ firstName, exhibitionName, logoSrc }: { 
   <p style="margin:0;font-family:${SANS};font-size:12px;line-height:16px;font-weight:bold;letter-spacing:3px;color:${TEXT_ORANGE};">EXHIBITION FOLLOW-UP</p>
   <h1 class="h1" style="margin:12px 0 28px;font-family:${SERIF};font-size:36px;line-height:42px;font-weight:bold;color:#111111;">A pleasure meeting you.</h1>
   ${body}
+  ${catalogue}
   <p style="margin:30px 0 0;${text(16, 26)}">Warm regards,<br><strong>Ravinder</strong><br>Director<br>Omsons Glassware Private Limited</p>
 </td></tr>
 <tr><td class="px" style="padding:32px 44px 28px;">
@@ -113,6 +136,7 @@ export function renderExhibitionEmail({ firstName, exhibitionName, logoSrc }: { 
   const plain = [
     `Dear ${firstName},`,
     ...paragraphs(exhibitionName),
+    ...(withCatalogue ? [`${CATALOGUE_LINE}\n${CATALOGUE_URL}`] : []),
     "Warm regards,\nRavinder\nDirector\nOmsons Glassware Private Limited",
     `Call / WhatsApp: ${PHONE} (${WHATSAPP_URL})\nEmail: ${SENDER.address}`,
   ].join("\n\n");

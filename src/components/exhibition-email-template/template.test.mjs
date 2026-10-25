@@ -6,7 +6,7 @@ import ts from "typescript";
 
 const source = await fs.readFile(path.resolve("src/components/exhibition-email-template/template.ts"), "utf8");
 const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.ES2022, target: ts.ScriptTarget.ES2022 } }).outputText;
-const { defaultSubject, firstNameOf, isValidEmail, oneLine, renderExhibitionEmail } = await import(
+const { CATALOGUE_URL, defaultSubject, firstNameOf, isValidEmail, oneLine, renderExhibitionEmail } = await import(
   `data:text/javascript;base64,${Buffer.from(js).toString("base64")}`
 );
 
@@ -24,6 +24,14 @@ test("the body carries the links, the footer, and no Germany location", () => {
   for (const href of ["https://wa.me/919992525018", "mailto:ravi@omsonsnsi.com", "tel:+919992525018"]) assert.ok(html.includes(`href="${href}"`), href);
   assert.ok(html.includes("Omsons Glassware Private Limited</td>"));
   assert.ok(!/germany/i.test(html.replace(/<img[^>]*>/g, "")));
+});
+
+test("only an email asked for the catalogue carries its line and button", () => {
+  const crm = renderExhibitionEmail({ firstName: "Joan", exhibitionName: "Analytica", logoSrc: "x" });
+  const bizcard = renderExhibitionEmail({ firstName: "Joan", exhibitionName: "Analytica", logoSrc: "x", withCatalogue: true });
+  assert.ok(!crm.html.includes(CATALOGUE_URL) && !/catalogue/i.test(crm.text));
+  assert.ok(bizcard.html.includes(`href="${CATALOGUE_URL}"`) && bizcard.html.includes(">View catalogue</a>"));
+  assert.ok(bizcard.text.includes(`You can view our product catalogue online.\n${CATALOGUE_URL}`));
 });
 
 test("first name drops titles and falls back to Valued Customer", () => {
