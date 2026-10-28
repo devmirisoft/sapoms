@@ -57,16 +57,18 @@ function resolveMode(actor: DashboardActor | null, requestData: PublicDealerRequ
     return null;
   }
 
-  if (actor.role === "admin" && requestData.status === "pending") {
+  // Final approval is Admin's alone; the NSM only stands in at the RSM stage.
+  if (actor.role === "admin" && actor.roletype !== "NSM" && requestData.status === "pending") {
     return "admin-review";
   }
 
-  // The NSM (or Admin with no NSM) reviews for an unavailable RSM.
+  // The NSM reviews for an unavailable RSM; with no NSM either, Admin does and its approval is final.
   if (actor.role === "admin" && requestData.status === "rsm_pending" && requestData.rsmCover) {
-    return "rsm-review";
+    return actor.roletype === "NSM" ? "rsm-review" : "admin-review";
   }
 
-  if (actor.role === "staff" && actor.roletype === "RSM" && requestData.status === "rsm_pending") {
+  // An RSM reviews its team's requests, never its own.
+  if (actor.role === "staff" && actor.roletype === "RSM" && requestData.status === "rsm_pending" && requestData.submittedById !== actor.actorId) {
     return "rsm-review";
   }
 
@@ -301,7 +303,9 @@ function AddDealerPageContent() {
           rejectionReason: requestData.rejectionReason || requestData.lastRejectionReason,
           submittedByName: requestData.submittedByName,
           submittedAt: requestData.submittedAt,
-          onBehalfNotice: mode === "rsm-review" && requestData.rsmCover
+          onBehalfNotice: mode === "admin-review" && requestData.rsmCover
+            ? "RSM and NSM unavailable — your approval is final and creates the dealer."
+            : mode === "rsm-review" && requestData.rsmCover
             ? "RSM unavailable — you are approving on their behalf. Approving forwards it to admin."
             : undefined,
         } : undefined}

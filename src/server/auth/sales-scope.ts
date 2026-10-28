@@ -57,8 +57,9 @@ export async function buildOrderRegionWhere(actor: Pick<AuthActor, "userId" | "r
 }
 
 /**
- * Where a new dealer request lands. An RSM's goes straight to admin; an ASM's or
- * Sales Manager's goes to its parent RSM first. Plain Staff ("2") cannot raise one.
+ * Where a new dealer request lands. An ASM's or Sales Manager's goes to its parent
+ * RSM first; an RSM's has no RSM above it, so the NSM takes that first approval.
+ * Admin always gives the final one. Plain Staff ("2") cannot raise one.
  * A STAFF user with no subtype counts as a Sales Manager, as in legacy-auth.mapper.
  * With no RSM above the requester it still waits at the RSM stage, unrouted, and
  * the NSM (or Admin) covers it - see orphanRsmDealerRequestWhere.
@@ -67,7 +68,7 @@ export async function resolveDealerRequestRoute(
   actor: Pick<AuthActor, "role" | "staffId" | "staffRoleType">,
   prisma: Pick<Prisma.TransactionClient, "staffProfile">,
 ): Promise<{ status: "pending" | "rsm_pending"; rsmUserId: bigint | null }> {
-  if (actor.role === "RSM") return { status: "pending", rsmUserId: null };
+  if (actor.role === "RSM") return { status: "rsm_pending", rsmUserId: null };
   const isSalesManager = actor.role === "STAFF" && actor.staffRoleType !== "2";
   if (actor.role !== "ASM" && !isSalesManager) {
     throw Object.assign(new Error("Only Sales Managers, ASMs and RSMs can raise dealer requests"), { status: 403 });
@@ -158,6 +159,19 @@ export async function dealerRequestCoverIds(
   if (!isAdminLike(actor) || !(await coversRsmStage(actor, prisma))) return new Set();
   const rows = await prisma.dealerRequest.findMany({ where: await orphanRsmDealerRequestWhere(prisma), select: { id: true } });
   return new Set(rows.map((row) => row.id.toString()));
+}
+
+/**
+ * What this actor's approval does to a dealer request: "forward" gives the first
+ * (RSM-stage) approval and passes it to Admin, "final" creates the dealer, null
+ * means they cannot review it. Two approvals, unless there is no active RSM or NSM:
+ * then Admin covers the RSM stage (rsmCover) and its one approval is final.
+ */
+export function dealerRequestReview(input: { status: string; role: AuthActor["role"]; rsmCover: boolean; isSubmitter: boolean }): "forward" | "final" | null {
+  if (input.status === "pending") return input.role === "ADMIN" ? "final" : null;
+  if (input.status !== "rsm_pending") return null;
+  if (input.rsmCover) return input.role === "ADMIN" ? "final" : "forward";
+  return input.role === "RSM" && !input.isSubmitter ? "forward" : null;
 }
 
 export async function activeNsmExists(prisma: Pick<Prisma.TransactionClient, "user">) {

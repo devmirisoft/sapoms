@@ -75,11 +75,11 @@ export async function countsFor(actor: AuthActor) {
       add("fundRequests", async () => (await coversRsmStage(actor, prisma)) ? prisma.dealerFundRequest.count({ where: orphanRsmFundWhere }) : 0);
     }
 
-    // Dealer requests: admin's queue (plus RSM-stage ones with no available RSM),
-    // an RSM's team queue, others their own open ones.
+    // Dealer requests: Admin's final-approval queue, an RSM's team queue, others their
+    // own open ones; the NSM (or Admin with no NSM) adds RSM-stage ones it covers.
     if (isAdminLike(actor) || isStaffLike(actor)) {
-      add("dealerRequests", async () => (await prisma.dealerRequest.count({
-        where: isAdminLike(actor) ? { status: "pending" }
+      add("dealerRequests", async () => (actor.role === "NSM" ? 0 : await prisma.dealerRequest.count({
+        where: actor.role === "ADMIN" ? { status: "pending" }
           : actor.role === "RSM" ? { status: "rsm_pending", rsmUserId: actor.userId }
           : { status: { in: ["pending", "rsm_pending"] }, submittedById: actor.staffId?.toString() ?? "" },
       })) + (isAdminLike(actor) ? (await dealerRequestCoverIds(actor, prisma)).size : 0));
