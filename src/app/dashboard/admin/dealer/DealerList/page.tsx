@@ -1,5 +1,6 @@
 'use client'
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import { Search, Trash2, Eye, MoreVertical, Pencil, Wallet, Power, PowerOff, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, ChevronsUpDown, X, UserPlus, Inbox, LogIn } from 'lucide-react'
@@ -1204,7 +1205,8 @@ export default function DealerListPage() {
                             >
                               <MoreVertical className="w-4 h-4" />
                             </button>
-                            {isMenuOpen(openMenu, dealer.Dealer_Id) && (
+                            {/* Portaled to <body> so no ancestor can clip this `fixed` menu (same fix as the staff list). */}
+                            {isMenuOpen(openMenu, dealer.Dealer_Id) && createPortal(
                               <div
                                 ref={measureFloatingMenu(dealer.Dealer_Id, setOpenMenu)}
                                 onClick={(e) => e.stopPropagation()}
@@ -1257,7 +1259,8 @@ export default function DealerListPage() {
                                     </button>
                                   </>
                                 )}
-                              </div>
+                              </div>,
+                              document.body,
                             )}
                           </div>
                         </div>

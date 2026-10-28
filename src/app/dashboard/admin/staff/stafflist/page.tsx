@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import Link from 'next/link'
 import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query'
 import axios from 'axios'
@@ -1154,7 +1155,8 @@ export default function StaffListPage() {
                             >
                               <MoreVertical className="w-4 h-4" />
                             </button>
-                            {isMenuOpen(openMenu, nodeKey(staff)) && (
+                            {/* Portaled to <body>: an ancestor clipped this `fixed` menu and hid Deactivate/Delete. */}
+                            {isMenuOpen(openMenu, nodeKey(staff)) && createPortal(
                               <div
                                 ref={measureFloatingMenu(nodeKey(staff), setOpenMenu)}
                                 onClick={(e) => e.stopPropagation()}
@@ -1176,7 +1178,8 @@ export default function StaffListPage() {
                                   {normalizeStaffStatus(staff.status) === "ACTIVE" ? "Deactivate" : "Activate"}
                                 </button>
                                 <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(staff); setOpenMenu(null) }} className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50">Delete</button>
-                              </div>
+                              </div>,
+                              document.body,
                             )}
                           </div>
                         </div>
