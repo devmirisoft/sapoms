@@ -218,6 +218,11 @@ export function validateDealerFormSnapshot(snapshot: DealerFormSnapshot): string
     return "Enter a valid email address";
   }
 
+  // Same minimum as dealer creation (dealers.schemas createSchema), so a request can't be raised that can never be accepted.
+  if (cleanText(snapshot.password).length < 10) {
+    return "Password must be at least 10 characters";
+  }
+
   const hasSecondaryContact = Boolean(cleanText(snapshot.secondaryContactName) || cleanText(snapshot.secondaryContactPhone) || cleanText(snapshot.secondaryContactEmail));
   if (snapshot.priorityPerson === "secondary" || hasSecondaryContact) {
     if (!cleanText(snapshot.secondaryContactName)) return "Second contact name is required";

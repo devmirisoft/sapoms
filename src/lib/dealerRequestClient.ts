@@ -45,6 +45,7 @@ export function readDashboardActor(): DashboardActor | null {
     role: "admin",
     actorId: String(user.staff_id ?? user.id ?? user.admin_id ?? user.Admin_Id ?? user.email ?? "admin").trim(),
     actorName: String(user.staff_name ?? user.name ?? user.username ?? user.email ?? "Admin").trim(),
-    roletype: "0",
+    // NSM shares the admin dashboard but its dealer approval forwards to Admin instead of being final.
+    roletype: String(user.authRole ?? "").toLowerCase() === "nsm" ? "NSM" : "0",
   };
 }

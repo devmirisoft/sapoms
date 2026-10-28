@@ -45,11 +45,12 @@ function tabLabel(status: DealerRequestStatus) {
 }
 
 function requestActionHref(scope: "admin" | "staff", request: PublicDealerRequest, actor: DashboardActor | null) {
-  if (scope === "admin" && request.status === "pending") {
+  // Final approval is Admin's alone; the NSM only stands in at the RSM stage.
+  if (scope === "admin" && request.status === "pending" && actor?.roletype !== "NSM") {
     return `/dashboard/admin/dealer/AddDealerForm?requestId=${encodeURIComponent(request.id)}`;
   }
 
-  if (request.status === "rsm_pending" && (actor?.roletype === "RSM" || request.rsmCover)) {
+  if (request.status === "rsm_pending" && ((actor?.roletype === "RSM" && request.submittedById !== actor.actorId) || request.rsmCover)) {
     return `/dashboard/admin/dealer/AddDealerForm?requestId=${encodeURIComponent(request.id)}`;
   }
 
@@ -71,7 +72,7 @@ export default function DealerRequestManagement({ scope }: DealerRequestManageme
 
   const [actor] = useState<DashboardActor | null>(() => readDashboardActor());
   // An RSM's own queue is its team's requests waiting on it.
-  const [tab, setTab] = useState<DealerRequestStatus>(() => actor?.roletype === "RSM" ? "rsm_pending" : "pending");
+  const [tab, setTab] = useState<DealerRequestStatus>(() => actor?.roletype === "RSM" || actor?.roletype === "NSM" ? "rsm_pending" : "pending");
   const [page, setPage] = useState(1);
   const [searchInput, setSearchInput] = useState("");
   const [search, setSearch] = useState("");

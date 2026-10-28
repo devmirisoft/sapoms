@@ -1,10 +1,10 @@
 import { Prisma, type DealerRequest } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 import { requireAuth } from "@/server/auth/session";
-import { dealerRequestCoverIds, isAdminLike, isStaffLike, onBehalfName, resolveDealerRequestRoute } from "@/server/auth/sales-scope";
+import { dealerRequestCoverIds, dealerRequestReview, isAdminLike, isStaffLike, onBehalfName, resolveDealerRequestRoute } from "@/server/auth/sales-scope";
 import { errorStatus } from "@/server/http/auth-error";
 
-import { AdminRouteError } from "@/server/admin/admin-errors";
+import { AdminRouteError, adminErrorResponse } from "@/server/admin/admin-errors";
 import { prisma } from "@/server/db/prisma";
 import { parseCreateAdminDealerInput } from "@/server/modules/admin/dealers/dealers.schemas";
 import { generatePostgresDealerCode } from "@/server/modules/dealers/dealer-code.service";
@@ -223,15 +223,15 @@ export async function PATCH(
     // A Sales Manager/ASM request is the RSM's to accept or reject before admin
     // sees it; the access query already limits an RSM to requests routed to it.
     const atRsmStage = current.status === "rsm_pending";
-    // With the request's RSM unavailable, the NSM (or Admin with no NSM) reviews it instead.
+    // With the request's RSM unavailable (or an RSM raised it), the NSM reviews it instead.
     const rsmCover = atRsmStage && (await dealerRequestCoverIds(authActor, prisma)).has(oid.toString());
-    if (rsmCover) actor.actorName = onBehalfName(authActor, "RSM");
-    const canReview = atRsmStage ? actor.roletype === "RSM" || rsmCover : actor.role === "admin";
-    if ((action === "accept" || action === "reject") && !canReview) {
+    const review = dealerRequestReview({ status: current.status, role: authActor.role, rsmCover, isSubmitter: current.submittedById === actor.actorId });
+    if (rsmCover) actor.actorName = onBehalfName(authActor, review === "final" ? "RSM and NSM" : "RSM");
+    if ((action === "accept" || action === "reject") && !review) {
       return buildResponseError(atRsmStage ? "This request is waiting for RSM review" : "Only admin can review this dealer request", 403);
     }
 
-    if (action === "accept" && atRsmStage) {
+    if (action === "accept" && review === "forward") {
       let snapshot = normalizeDealerFormSnapshot(body.formSnapshot ?? existing.formSnapshot);
       // The code was reserved when the request was raised; keep it.
       snapshot = { ...snapshot, dealerCode: current.dealerCode };
@@ -295,7 +295,8 @@ export async function PATCH(
       try {
         const accepted = await prisma.$transaction(async (tx) => {
           const pending = await tx.dealerRequest.findFirst({
-            where: { id: BigInt(oid.toString()), status: "pending" },
+            // "rsm_pending" only when Admin is the sole approver (no active RSM or NSM).
+            where: { id: BigInt(oid.toString()), status: current.status },
           });
 
           if (!pending) {
@@ -485,6 +486,8 @@ export async function PATCH(
     }
   } catch (error) {
     console.error("[PATCH /api/dealer-requests/[id]]", error);
+    // Dealer creation's validation and staff/RSM lookups throw these; keep their 4xx status and message.
+    if (error instanceof AdminRouteError) return adminErrorResponse(error, "Failed to update dealer request");
     const authStatus = errorStatus(error, 0);
     if (authStatus === 401 || authStatus === 403) {
       return buildResponseError((error as Error).message, authStatus);

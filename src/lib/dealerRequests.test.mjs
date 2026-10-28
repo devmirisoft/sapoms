@@ -49,7 +49,7 @@ const snapshot = {
   pincode: "110001",
   dealerCode: "1234",
   username: "northlabs",
-  password: "secret123",
+  password: "secret1234",
   gstNo: "07ABCDE1234F1Z5",
   discount: "12",
   creditDays: "30",
@@ -100,7 +100,7 @@ test("dealer PHP payload preserves the existing backend field names", () => {
   assert.equal(entries.Dealer_Email, "dealer@example.com");
   assert.equal(entries.Dealer_Dealercode, "1234");
   assert.equal(entries.Dealer_Username, "northlabs");
-  assert.equal(entries.Dealer_Password, "secret123");
+  assert.equal(entries.Dealer_Password, "secret1234");
   assert.equal(entries.assignedstaff, "7,11");
   assert.equal(entries.staffname, "Aman,Neha");
 });
@@ -122,7 +122,7 @@ test("new dealer requests retain the full form snapshot and open-request identit
   assert.equal(doc.status, "rsm_pending");
   assert.equal(doc.rsmUserId, 9n);
   assert.equal(doc.dealerName, "North Labs");
-  assert.equal(doc.formSnapshot.password, "secret123");
+  assert.equal(doc.formSnapshot.password, "secret1234");
   assert.equal(doc.openRequestKey, dealerRequests.buildDealerRequestIdentityKey(snapshot, "17"));
   assert.equal(doc.auditTrail[0].action, "submitted");
 
@@ -176,7 +176,7 @@ test("request list rows hide the full form snapshot while detail rows retain it"
   const detailItem = dealerRequests.toDealerRequestDetail(record);
 
   assert.equal("formSnapshot" in listItem, false);
-  assert.equal(detailItem.formSnapshot.password, "secret123");
+  assert.equal(detailItem.formSnapshot.password, "secret1234");
   assert.equal(listItem.requestReference, "DLR-7A000123");
 });
 
