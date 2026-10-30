@@ -474,3 +474,30 @@ export function findCatalogueEntry<T extends CatalogueProduct>(
   const product = index.productsBySku[raw];
   return product ? { product } : null;
 }
+
+// Order-form search. Codes are "base/variant" (4/1, 243P/7, 70/2A) or hyphenated (OM557-02-01).
+// Ranked: exact code, same base ("4" -> 4/1..4/7), code prefix, code contains, then name/category text.
+// A query with a separator ("4/", "70/2") keeps only code-prefix hits and shows them all, so "4/"
+// never lists 524/4; if no code has that prefix (a name like "hot-plate") it falls back to the ranking.
+export function rankCatalogueMatches<T extends { searchSku: string; searchText: string }>(options: T[], query: string) {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return { matches: options, showAll: false };
+
+  const rank = (option: T) => {
+    const sku = option.searchSku;
+    if (sku === needle) return 0;
+    if (sku.split(/[/-]/)[0] === needle) return 1;
+    if (sku.startsWith(needle)) return 2;
+    if (sku.includes(needle)) return 3;
+    return option.searchText.includes(needle) ? 4 : -1;
+  };
+  const hits = options
+    .map((option) => ({ option, rank: rank(option) }))
+    .filter((hit) => hit.rank >= 0)
+    .sort((a, b) => a.rank - b.rank);
+  const prefixHits = /[/-]/.test(needle) ? hits.filter((hit) => hit.rank <= 2) : [];
+
+  return prefixHits.length
+    ? { matches: prefixHits.map((hit) => hit.option), showAll: true }
+    : { matches: hits.map((hit) => hit.option), showAll: false };
+}
