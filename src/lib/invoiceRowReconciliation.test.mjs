@@ -255,3 +255,50 @@ test("the final row absorbs the rounding remainder so row totals match exactly",
   assert.equal(result.totals.discountAmount, 60.01);
   assert.equal(result.totals.netAmount, 39.99);
 });
+
+// OM/26-27/DMS-2211: 15 lines at the dealer's 50%, gross 1,17,358.
+const dms2211Amounts = { gross: 117358, discountAmount: 58679, netPayable: 58679 };
+const dms2211Breakdown = {
+  ...dms2211Amounts,
+  grossAmount: 117358,
+  netPayableAmount: 58679,
+  baseDiscountAmount: 58679,
+  baseDiscountPercent: 50,
+  postBaseAmount: 58679,
+  additionalDiscountType: null,
+  slabDiscountPercent: 0,
+  slabDiscountAmount: 0,
+  customDiscountAmount: 0,
+  additionalDiscountAmount: 0,
+  hasSlabDiscount: false,
+  hasCustomDiscount: false,
+  hasKnownBaseDiscount: true,
+  hasKnownAdditionalDiscount: false,
+};
+
+test("lines whose gross does not add up to the order gross are refused, not printed", () => {
+  // The order page's old copy: gross rebuilt per pack (292/1 = 154, not 1,540),
+  // so the 50% discount was capped at the line and printed as 100%.
+  const perPackGross = [[154, 154], [618, 618], [499, 499], [1734, 867], [60, 60], [14360, 7180], [8922, 4461],
+    [11060, 5530], [3390, 1695], [32800, 16400], [60, 60], [3142, 3142], [158, 158], [1710, 1710], [3812, 1906]];
+  assert.throws(() => helper.reconcileInvoiceRowAmounts({
+    rows: perPackGross.map(([grossAmount, stagedDiscountAmount]) => buildRow({ grossAmount, stagedDiscountAmount, quantity: 1 })),
+    amounts: dms2211Amounts,
+    discountBreakdown: dms2211Breakdown,
+    useAuthoritativeTotals: false,
+  }), /gross total/);
+});
+
+test("lines carrying the stored gross print the order's own discount", () => {
+  const storedGross = [1540, 6180, 3992, 1734, 6000, 14360, 8922, 11060, 3390, 32800, 6000, 12568, 1580, 3420, 3812];
+  const result = helper.reconcileInvoiceRowAmounts({
+    rows: storedGross.map((grossAmount) => buildRow({ grossAmount, stagedDiscountAmount: grossAmount / 2, quantity: 1 })),
+    amounts: dms2211Amounts,
+    discountBreakdown: dms2211Breakdown,
+    useAuthoritativeTotals: false,
+  });
+
+  assert.ok(result.rows.every((row) => row.discountAmount === row.grossAmount / 2));
+  assert.equal(result.totals.grossAmount, 117358);
+  assert.equal(result.totals.netAmount, 58679);
+});

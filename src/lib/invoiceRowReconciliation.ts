@@ -86,6 +86,14 @@ export function reconcileInvoiceRowAmounts({
         netAmount: roundMoney(amounts.netPayable),
     };
 
+    // Every discount (base, slab, custom) comes off gross, so the lines' gross always
+    // adds up to the order's. A gap means a line was priced from the wrong fields, and
+    // its printed discount would be wrong too, so refuse rather than print it.
+    const grossGapPaise = Math.abs(toPaise(stageTotals.grossAmount) - toPaise(authoritativeTotals.grossAmount));
+    if (rows.length > 0 && authoritativeTotals.grossAmount > 0 && grossGapPaise > rows.length) {
+        throw new Error("Invoice lines don't add up to the order's gross total, so the invoice was not generated.");
+    }
+
     if (!useAuthoritativeTotals || rows.length === 0) {
         return {
             rows: rows.map((row) => ({

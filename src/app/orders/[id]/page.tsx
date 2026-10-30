@@ -1517,6 +1517,8 @@ export default function ViewOrderDealerPage() {
         totalPieces: pricing.pieces,
         packSize: pricing.packSize,
         unitPrice: pricing.unitPrice,
+        // The stored line gross; without it the invoice rebuilds gross per pack, not per piece.
+        grossAmount: pricing.gross,
         discountAmount: pricing.discount,
         finalPrice: pricing.final,
         totalDiscountPercent: pricing.pct,
