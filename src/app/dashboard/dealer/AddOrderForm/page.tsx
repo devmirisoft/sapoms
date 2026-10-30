@@ -22,6 +22,7 @@ import {
   getCatalogueProductLabel,
   getCatalogueSection,
   getVariantLabel,
+  rankCatalogueMatches,
   type CatalogueIndex,
   type CatalogueProduct,
   type CatalogueVariant,
@@ -1625,15 +1626,16 @@ function AddOrderPageInner() {
   // Only one catalogue menu is open at a time, so one search string serves every row.
   const [catalogueQuery, setCatalogueQuery] = useState("");
   const CATALOGUE_MENU_LIMIT = 10;
+  const catalogueMatches = useMemo(() => rankCatalogueMatches(optionList, catalogueQuery), [optionList, catalogueQuery]);
 
-  // First matches only: rendering all ~5000 variants makes the menu sluggish; typing narrows it.
+  // Best matches only: rendering all ~6000 variants makes the menu sluggish; typing narrows it.
+  // A code prefix ("4/") is uncapped, since one base has only a handful of variants.
   const catalogueOptionsFor = (selectedValue?: string) => {
-    const needle = catalogueQuery.trim().toLowerCase();
     const matches: CatalogueNumberOption[] = [];
-    for (const option of optionList) {
-      if (matches.length >= CATALOGUE_MENU_LIMIT) break;
+    for (const option of catalogueMatches.matches) {
+      if (!catalogueMatches.showAll && matches.length >= CATALOGUE_MENU_LIMIT) break;
       if (option.value !== selectedValue && usedCatalogueValues.has(option.value)) continue;
-      if (!needle || option.searchText.includes(needle)) matches.push(option);
+      matches.push(option);
     }
     return matches;
   };
