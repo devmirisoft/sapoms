@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
     loginIdentifier = normalizeLoginIdentifier(parsed.data.email);
     const actor = await findActivePostgresUserByLoginIdentifier(loginIdentifier);
-    // A code alone never mints a session for admins, NSMs or accountants; only dealers and staff use this route.
+    // A code alone never mints a session for admins or accountants; only dealers, staff and NSMs use this route.
     if (!requiresEmailOtp(actor.role)) throw new Error("Invalid credentials");
 
     await verifyEmailOtpForUser(actor.userId, parsed.data.otp);

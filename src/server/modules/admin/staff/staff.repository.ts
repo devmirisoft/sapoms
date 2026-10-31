@@ -483,6 +483,12 @@ export class PostgresAdminStaffRepository {
         if (input.reportingManagerId !== undefined) {
           const nsm = await resolveNsm(tx, parseId(input.reportingManagerId, "RSM_NSM_INVALID"));
           staffData.reportingManager = { connect: { id: nsm.id } };
+        } else if (!current.reportingManagerId) {
+          // The edit form has no NSM picker, so a promotion to RSM (or an RSM saved
+          // with no NSM) reports to the active NSM rather than to nobody.
+          // ponytail: assumes a single active NSM; add a picker to the edit form if there can be several.
+          const nsm = await tx.adminProfile.findFirst({ where: { user: { role: "NSM", status: "ACTIVE", deletedAt: null } }, select: { id: true } });
+          if (nsm) staffData.reportingManager = { connect: { id: nsm.id } };
         }
       } else if (nextRole === "ASM") {
         // A new region without an RSM named means "the region's RSM, or float there".

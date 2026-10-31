@@ -474,6 +474,8 @@ export function buildPendingProductLines(input: {
   dispatchRecordsByOrderId?: Record<string, Array<Partial<OrderDispatchRecord>>>;
   dealerDirectoryById?: Record<string, PendingDealerDirectoryRow>;
   catalogueProducts?: unknown[];
+  // Dispatch tracking also needs the lines that have nothing left to dispatch.
+  includeFulfilled?: boolean;
 }): PendingProductLine[] {
   const lookup = cachedCatalogueLookup(input.catalogueProducts ?? []);
   const lines: PendingProductLine[] = [];
@@ -516,7 +518,7 @@ export function buildPendingProductLines(input: {
       const orderedQuantity = safeInteger(item.orderedQuantity);
       const dispatchedQuantity = safeInteger(item.dispatchedQuantity);
       const pendingQuantity = Math.max(0, orderedQuantity - dispatchedQuantity);
-      if (pendingQuantity <= 0) continue;
+      if (pendingQuantity <= 0 && !(input.includeFulfilled && orderedQuantity > 0)) continue;
 
       const latestDispatchUpdateMs = Array.isArray(item.dispatchHistory)
         ? item.dispatchHistory.reduce<number | null>((latest, entry) => {

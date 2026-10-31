@@ -12,7 +12,7 @@ export type ReportPeriod = "all" | "day" | "month" | "quarter" | "half_year" | "
  * the last 30 days, not the current calendar month. Labels spell this out so the
  * distinction is visible at the point of choosing.
  */
-const PERIOD_OPTIONS: Array<{ value: ReportPeriod; label: string }> = [
+export const PERIOD_OPTIONS: Array<{ value: ReportPeriod; label: string }> = [
   { value: "all", label: "All time" },
   { value: "day", label: "Day — last 24 hours" },
   { value: "month", label: "Month — last 30 days" },
@@ -80,7 +80,7 @@ export type ReportScopeParams = {
   sort: string;
 };
 
-function isoDay(value: string) {
+export function isoDay(value: string) {
   if (!value) return "";
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
@@ -91,13 +91,13 @@ function safeFilePart(value: string) {
 }
 
 /** Widths are in characters; xlsx has no auto-fit, so long text needs help. */
-function withColumnWidths(sheet: XLSX.WorkSheet, widths: number[]) {
+export function withColumnWidths(sheet: XLSX.WorkSheet, widths: number[]) {
   sheet["!cols"] = widths.map((wch) => ({ wch }));
   return sheet;
 }
 
 /** Header-row filter dropdowns + frozen header, so the sheet opens ready to filter. */
-function withHeaderFilter(sheet: XLSX.WorkSheet) {
+export function withHeaderFilter(sheet: XLSX.WorkSheet) {
   if (sheet["!ref"]) sheet["!autofilter"] = { ref: sheet["!ref"] };
   sheet["!freeze"] = { xSplit: "0", ySplit: "1" };
   return sheet;

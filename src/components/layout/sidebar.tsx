@@ -98,6 +98,7 @@ const NAV: Record<AppRole, NavItem[]> = {
     { section: "Overview",  label: "Dashboard",      href: "/dashboard/accountant",                         icon: <LayoutDashboard size={15} /> },
     { section: "Orders",    label: "All Orders",     href: "/orders",
             icon: <Receipt size={15} />         },
+    {                       label: "Dispatch Tracking", href: "/dashboard/accountant/dispatch-tracking",    icon: <Truck size={15} />           },
     { section: "Finance",   label: "Order Book",     href: "/dashboard/accountant/order-book",              icon: <BookOpen size={15} />        },
     {                       label: "Wallet Settlements", href: "/dashboard/accountant/settle",              icon: <Wallet size={15} />, badgeKey: "settlements" },
     {                       label: "Advance Order Requests", href: "/dashboard/accountant/fund-requests",     icon: <Wallet size={15} />, badgeKey: "fundRequests" },

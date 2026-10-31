@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
     let actor;
     try {
       actor = await findActivePostgresUserByLoginIdentifier(loginIdentifier);
-      // Only dealers and staff use email codes; admins, NSMs and accountants sign in with a password.
+      // Only dealers, staff and NSMs use email codes; admins and accountants sign in with a password.
       if (!requiresEmailOtp(actor.role)) throw new Error("Invalid credentials");
     } catch {
       await writeAuthAuditLog({

@@ -35,8 +35,8 @@ function maskEmail(email: string) {
   return `${local.slice(0, 2)}${"*".repeat(Math.max(local.length - 2, 1))}@${domain}`;
 }
 
-// Dealers and staff get a second factor: a valid password alone never mints a session for them.
-// Admins, NSMs and accountants keep signing in with one step.
+// Dealers, staff and NSMs get a second factor: a valid password alone never mints a session for them.
+// Admins and accountants keep signing in with one step.
 async function requireEmailOtp(actor: AuthenticatedPostgresUser, request: NextRequest, loginIdentifier: string) {
   let record: Awaited<ReturnType<typeof createEmailOtpForUser>>["record"] | undefined;
   try {

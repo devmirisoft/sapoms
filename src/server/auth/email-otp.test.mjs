@@ -72,14 +72,14 @@ test("Login OTP email is sent over SMTP with the configured env vars", async () 
   assert.match(mailer, /secure: port === 465|secure = .*port === 465/);
 });
 
-test("dealer and staff password login is gated behind an emailed code, other roles sign in directly", async () => {
+test("dealer, staff and NSM password login is gated behind an emailed code, other roles sign in directly", async () => {
   const route = await read("src/app/api/auth/login/route.ts");
   const page = await read("src/app/auth/login/page.tsx");
   const helper = await read("src/server/auth/email-otp.ts");
 
-  // Exactly the dealer and staff-profile roles get the code; admins, NSMs and accountants never do.
+  // Exactly the dealer, staff-profile and NSM roles get the code; admins and accountants never do.
   const roles = helper.match(/EMAIL_OTP_ROLES = new Set<AuthRole>\(\[([^\]]*)\]\)/)?.[1] ?? "";
-  assert.deepEqual(roles.match(/[A-Z]+/g)?.sort(), ["ASM", "DEALER", "RSM", "STAFF"]);
+  assert.deepEqual(roles.match(/[A-Z]+/g)?.sort(), ["ASM", "DEALER", "NSM", "RSM", "STAFF"]);
 
   // The OTP branch returns before a session is ever minted, so the gate cannot be skipped.
   assert.match(route, /requiresEmailOtp\(actor\.role\) && isEmailOtpEnabled\(\) && !actor\.diagnosticPasswordId\)/);
@@ -93,7 +93,7 @@ test("dealer and staff password login is gated behind an emailed code, other rol
   assert.match(page, /showOtp \? "mt-4 grid-rows-\[1fr\]/);
 });
 
-test("The OTP routes are dealer- and staff-only, so a code never signs in admins", async () => {
+test("The OTP routes are dealer-, staff- and NSM-only, so a code never signs in admins", async () => {
   const requestRoute = await read("src/app/api/auth/email-otp/request/route.ts");
   const verifyRoute = await read("src/app/api/auth/email-otp/verify/route.ts");
   const page = await read("src/app/auth/login/page.tsx");

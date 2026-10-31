@@ -392,9 +392,13 @@ function SettlementBadge({ settlement }: { settlement?: { status?: string } | nu
   );
 }
 
-function OrderStatusBadge({ status }: { status: string | number }) {
-  const num = Number(status);
-  const s = statusConf[num] ?? { label: "Pending", dot: "bg-slate-400", text: "text-slate-700", bg: "bg-slate-50 border-slate-200" };
+const pendingStatus = { label: "Pending", dot: "bg-slate-400", text: "text-slate-700", bg: "bg-slate-50 border-slate-200" };
+const rejectedStatus = { label: "Rejected", dot: "bg-rose-400", text: "text-rose-800", bg: "bg-rose-50 border-rose-200" };
+// A rejected order (staff or RSM, accept_order "2") never enters the dispatch statuses.
+const orderStatusConf = (o: Order) => o.accept_order === "2" ? rejectedStatus : statusConf[Number(o.orderdata_status)] ?? pendingStatus;
+
+function OrderStatusBadge({ order }: { order: Order }) {
+  const s = orderStatusConf(order);
   return (
     <span className={`${pillCls} ${s.bg} ${s.text}`}>
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${s.dot}`} />
@@ -403,13 +407,18 @@ function OrderStatusBadge({ status }: { status: string | number }) {
   );
 }
 
-/** Dealer-side confirmation: has the order been accepted yet. */
+/** accept_order codes: "1" accepted, "2" rejected by staff or RSM, else awaiting. */
+const acceptLabel = (accepted?: string) => accepted === "1" ? "Accepted" : accepted === "2" ? "Rejected" : "Awaiting";
+
+/** Dealer-side confirmation: accepted, rejected, or still awaiting. */
 function AcceptBadge({ accepted }: { accepted?: string }) {
-  const ok = accepted === "1";
+  const [pill, dot] = accepted === "1" ? ["bg-blue-50 text-blue-800 border-blue-200", "bg-blue-600"]
+    : accepted === "2" ? ["bg-rose-50 text-rose-800 border-rose-200", "bg-rose-500"]
+    : ["bg-amber-50 text-amber-800 border-amber-200", "bg-amber-500"];
   return (
-    <span className={`${pillCls} ${ok ? "bg-blue-50 text-blue-800 border-blue-200" : "bg-amber-50 text-amber-800 border-amber-200"}`}>
-      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${ok ? "bg-blue-600" : "bg-amber-500"}`} />
-      {ok ? "Accepted" : "Awaiting"}
+    <span className={`${pillCls} ${pill}`}>
+      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
+      {acceptLabel(accepted)}
     </span>
   );
 }
@@ -1438,8 +1447,8 @@ export default function OrderHistoryPage() {
         "Left (pcs)":   getOrderLeftPieces(o),
         ...(showDispatchNote
           ? { "Dispatch Note": o.dispatch_note || "" }
-          : { "Confirmation": o.accept_order === "1" ? "Accepted" : "Awaiting" }),
-        "Status":       statusConf[Number(o.orderdata_status)]?.label ?? "Pending",
+          : { "Confirmation": acceptLabel(o.accept_order) }),
+        "Status":       orderStatusConf(o).label,
         "MT Status":    mtConf[mtStatusValue(o.mtstatus)].label,
       };
       if (showCustomDiscount) {
@@ -1470,7 +1479,7 @@ export default function OrderHistoryPage() {
     if (filters.dealer)     parts.push(`dealer-${filters.dealer.replace(/\s+/g, "-")}`);
     if (filters.orderId)    parts.push(`id-${filters.orderId}`);
     if (filters.dateFrom || filters.dateTo) parts.push(`${filters.dateFrom || "start"}-to-${filters.dateTo || "now"}`);
-    if (filters.accepted)   parts.push(filters.accepted === "1" ? "accepted" : "awaiting");
+    if (filters.accepted)   parts.push(acceptLabel(filters.accepted).toLowerCase());
     if (filters.orderStatus) parts.push((statusConf[Number(filters.orderStatus)]?.label ?? filters.orderStatus).toLowerCase().replace(/\s+/g, "-"));
     if (filters.mtStatus)   parts.push(mtConf[filters.mtStatus]?.label.toLowerCase().replace(/\s+/g, "-") ?? filters.mtStatus);
     if (filters.amountMin || filters.amountMax) parts.push(`amt-${filters.amountMin || "0"}-${filters.amountMax || "max"}`);
@@ -1731,6 +1740,10 @@ export default function OrderHistoryPage() {
                   <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
                   {orders.filter(o => o.accept_order === "0").length} awaiting
                 </span>
+                <span className="inline-flex items-center gap-1.5">
+                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500" />
+                  {orders.filter(o => o.accept_order === "2").length} rejected
+                </span>
                 <span className="text-gray-400">on this page</span>
               </div>
             )}
@@ -1776,7 +1789,7 @@ export default function OrderHistoryPage() {
                 />
               )}
               {filters.accepted && (
-                <FilterTag label={filters.accepted === "1" ? "Accepted" : "Awaiting"} onRemove={() => setFilter("accepted", "")} />
+                <FilterTag label={acceptLabel(filters.accepted)} onRemove={() => setFilter("accepted", "")} />
               )}
               {filters.mtStatus && (
                 <FilterTag label={mtConf[filters.mtStatus]?.label ?? filters.mtStatus} onRemove={() => setFilter("mtStatus", "")} />
@@ -2008,6 +2021,7 @@ export default function OrderHistoryPage() {
                           <option value="">Any</option>
                           <option value="1">Accepted</option>
                           <option value="0">Awaiting</option>
+                          <option value="2">Rejected</option>
                         </select>
                       </th>}
                       <th className={`${thCls} min-w-[140px]`}>
@@ -2124,7 +2138,7 @@ export default function OrderHistoryPage() {
                               </td>
                               <td className="px-2 py-2">
                                 <div className="flex flex-wrap items-center gap-1.5">
-                                  <OrderStatusBadge status={order.orderdata_status} />
+                                  <OrderStatusBadge order={order} />
                                   <SettlementBadge settlement={(order as any).settlement} />
                                 </div>
                               </td>

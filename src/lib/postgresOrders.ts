@@ -86,9 +86,10 @@ function percent(value: unknown) {
   return Number(value ?? 0);
 }
 
-function legacyAcceptance(status: string) {
-  if (status === "ACCEPTED") return "1";
-  if (status === "DECLINED") return "2";
+// An RSM decline never reaches staff, so acceptanceStatus stays AWAITING; it is still a rejection.
+function legacyAcceptance(order: { acceptanceStatus: string; rsmApprovalStatus: string }) {
+  if (order.acceptanceStatus === "DECLINED" || order.rsmApprovalStatus === "DECLINED") return "2";
+  if (order.acceptanceStatus === "ACCEPTED") return "1";
   return "0";
 }
 
@@ -176,7 +177,7 @@ function mapPostgresOrderSummaryToLegacy(order: PostgresOrderSummaryRecord) {
     finalPayableAmountPaise: order.finalPayableAmountPaise.toString(),
     status: order.status,
     order_status: legacyOrderStatus(order.status),
-    accept_order: legacyAcceptance(order.acceptanceStatus),
+    accept_order: legacyAcceptance(order),
     rsmApprovalStatus: order.rsmApprovalStatus,
     rsm_approval_status: order.rsmApprovalStatus,
     acceptanceStatus: order.acceptanceStatus,
@@ -288,7 +289,7 @@ export function mapPostgresOrderItemToLegacy(item: PostgresOrderLike["items"][nu
     isPriority: item.isPriority,
     status: order.status,
     order_status: legacyOrderStatus(order.status),
-    accept_order: legacyAcceptance(order.acceptanceStatus),
+    accept_order: legacyAcceptance(order),
     rsmApprovalStatus: order.rsmApprovalStatus,
     rsm_approval_status: order.rsmApprovalStatus,
     rsmReviewedBy: order.rsmReviewedByName || "",
@@ -371,7 +372,7 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     priority: (order.items ?? []).some((item) => item.isPriority) ? "1" : "0",
     status: order.status,
     order_status: legacyOrderStatus(order.status),
-    accept_order: legacyAcceptance(order.acceptanceStatus),
+    accept_order: legacyAcceptance(order),
     rsmApprovalStatus: order.rsmApprovalStatus,
     rsm_approval_status: order.rsmApprovalStatus,
     rsmReviewedBy: order.rsmReviewedByName || "",
@@ -482,9 +483,9 @@ const PENDING_ORDER_WHERE: Prisma.OrderWhereInput = { status: { notIn: [...APPRO
 const NO_ORDERS: Prisma.OrderWhereInput = { id: { in: [] } };
 // legacyAcceptance() codes.
 const ACCEPTED_FILTER: Record<string, Prisma.OrderWhereInput> = {
-  "0": { acceptanceStatus: "AWAITING" },
-  "1": { acceptanceStatus: "ACCEPTED" },
-  "2": { acceptanceStatus: "DECLINED" },
+  "0": { acceptanceStatus: "AWAITING", rsmApprovalStatus: { not: "DECLINED" } },
+  "1": { acceptanceStatus: "ACCEPTED", rsmApprovalStatus: { not: "DECLINED" } },
+  "2": { OR: [{ acceptanceStatus: "DECLINED" }, { rsmApprovalStatus: "DECLINED" }] },
 };
 
 const isIdText = (value: string) => /^\d{1,18}$/.test(value);
