@@ -140,7 +140,7 @@ export default function Login() {
       const responseMessage = typeof data?.message === "string" ? data.message : "Invalid credentials"
 
       if (res.ok && data?.status) {
-        // Dealers and staff need a second factor; admins and accountants already hold a session here.
+        // Dealers, staff and NSMs need a second factor; admins and accountants already hold a session here.
         if (data?.data?.otpRequired) {
           setOtpRequired(true)
           setOtpCode("")

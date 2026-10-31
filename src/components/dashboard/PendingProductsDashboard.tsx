@@ -176,11 +176,11 @@ async function fetchPendingProducts<T>(
   return json as ApiResponse<T>;
 }
 
-function formatNumber(value: number) {
+export function formatNumber(value: number) {
   return value.toLocaleString("en-IN");
 }
 
-function formatDate(value: string) {
+export function formatDate(value: string) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
@@ -200,7 +200,7 @@ function formatAge(value: string) {
   return dayDiff === 0 ? "Today" : `${dayDiff}d`;
 }
 
-function clampPercent(value: number) {
+export function clampPercent(value: number) {
   if (!Number.isFinite(value)) return 0;
   return Math.min(100, Math.max(0, value));
 }
@@ -211,7 +211,7 @@ function subtitleForRole(role: Role) {
   return "Products still pending from your orders.";
 }
 
-function ProductMetric({
+export function ProductMetric({
   label,
   value,
   accent,

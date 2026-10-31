@@ -28,7 +28,8 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en-IN" className={cn("font-sans", geist.variable)}>
-      <body className="antialiased">
+      {/* Extensions such as ColorZilla stamp attributes on <body> before hydration. */}
+      <body className="antialiased" suppressHydrationWarning>
         <ReactQueryProvider>
           <Toaster limit={5}>
             <DealerTermsGate />

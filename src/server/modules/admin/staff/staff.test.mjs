@@ -303,3 +303,7 @@ test("editing staff or the NSM saves their personal info", () => {
   assert.match(staffRepo, /adminProfile\.create\(\{ data: \{ userId: user\.id, displayName: input\.name, \.\.\.personalData\(input\) \}/);
   assert.doesNotMatch(staffRepo, /buildSyntheticRecord/);
 });
+
+test("editing someone into RSM without an NSM links the active NSM", () => {
+  assert.match(staffRepo, /if \(nextRole === "RSM"\) \{[\s\S]*?else if \(!current\.reportingManagerId\) \{[\s\S]*?adminProfile\.findFirst\(\{ where: \{ user: \{ role: "NSM", status: "ACTIVE", deletedAt: null \} \}[\s\S]*?staffData\.reportingManager = \{ connect: \{ id: nsm\.id \} \}[\s\S]*?\} else if \(nextRole === "ASM"\)/);
+});

@@ -1,6 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import catalogueJson from "../../../../public/data/omsonsdata.json";
-import { mergeCatalogueRecords, type CatalogueProduct } from "@/lib/catalogue";
 import { prisma } from "@/server/db/prisma";
 import type { Warehouse } from "@prisma/client";
 import { orderActorFromAuth } from "@/lib/orderScopeServer";
@@ -20,22 +18,21 @@ import {
   type PendingDealerDirectoryRow,
   type PendingProductClubBy,
   type PendingProductsItemRow,
-  type PendingProductsOrderRow,
   type PendingProductsRole,
 } from "@/lib/pendingProducts";
 import { mapPostgresOrderDispatchRecords } from "@/lib/postgresOrderDispatch";
 import type { OrderDispatchRecord } from "@/lib/orderDispatch";
+import { alignDispatchRecordsToOverlayItems } from "@/lib/pendingProductOverlays";
 import {
-  alignDispatchRecordsToOverlayItems,
-  resolvePendingOverlayStates,
-  type PendingOverlayState,
-} from "@/lib/pendingProductOverlays";
+  itemAliases,
+  loadOrderOverlayStates,
+  orderAlias,
+  pendingCatalogueProducts as catalogueProducts,
+} from "@/lib/postgresPendingProducts";
 
 export const runtime = "nodejs";
 
 const ORDER_SCAN_LIMIT = 5000;
-// The file has one record per catalogue page; reports work on whole products.
-const catalogueProducts = mergeCatalogueRecords(catalogueJson as unknown as CatalogueProduct[]).products;
 
 type PendingProductsActor = { role: PendingProductsRole; actorId: string; warehouse?: string };
 
@@ -85,67 +82,6 @@ async function loadOrders(actor: PendingProductsActor) {
     orderBy: { orderDate: "asc" },
     take: ORDER_SCAN_LIMIT,
   });
-}
-
-type LoadedOrder = Awaited<ReturnType<typeof loadOrders>>[number];
-
-async function loadOrderOverlayStates(orders: LoadedOrder[]) {
-  if (orders.length === 0) return new Map<string, PendingOverlayState>();
-
-  const rows = await prisma.orderOverlay.findMany({
-    where: { orderId: { in: orders.map((order) => order.id) } },
-    orderBy: { createdAt: "asc" },
-    select: { orderId: true, type: true, status: true, metadata: true },
-  });
-
-  return resolvePendingOverlayStates(
-    rows,
-    new Map(orders.map((order) => [order.id.toString(), order.legacyPhpId || order.id.toString()]))
-  );
-}
-
-function orderAlias(order: Awaited<ReturnType<typeof loadOrders>>[number]): PendingProductsOrderRow {
-  return {
-    order_id: order.legacyPhpId || order.id.toString(),
-    orderId: order.legacyPhpId || order.id.toString(),
-    order_number: order.orderNumber,
-    order_date: order.orderDate.toISOString(),
-    orderDate: order.orderDate.toISOString(),
-    order_dealer: order.dealerId.toString(),
-    orderdata_dealerid: order.dealerId.toString(),
-    Dealer_Id: order.dealerId.toString(),
-    Dealer_Name: order.dealer.businessName,
-    Dealer_Code: order.dealer.dealerCode ?? "",
-    accept_order: "1",
-    del_status: "0",
-    order_status: order.status,
-    mtstatus: order.fulfilmentStatus,
-    reason: order.cancellationReason ?? "",
-    assignedstaff: order.assignedStaffId?.toString() ?? "",
-    staffid: order.assignedStaffId?.toString() ?? "",
-    staffname: order.assignedStaff?.displayName ?? "",
-  };
-}
-
-function itemAliases(order: Awaited<ReturnType<typeof loadOrders>>[number]): PendingProductsItemRow[] {
-  const orderId = order.legacyPhpId || order.id.toString();
-  return order.items.map((item) => ({
-    orderdata_id: item.legacyPhpOrderItemId || item.id.toString(),
-    orderdata_orderid: orderId,
-    orderdata_cat_no: item.catalogueNumberSnapshot,
-    product_name: item.productNameSnapshot,
-    product_discription: item.skuSnapshot ?? "",
-    product_unit: "Units",
-    orderdata_item_quantity: item.quantityPacks,
-    readyquantity: item.dispatches.reduce((sum, dispatch) => sum + dispatch.quantity, 0),
-    orderdata_status: item.dispatches.length > 0 ? "1" : "0",
-    remark: item.remarks ?? "",
-    remarks: item.remarks ?? "",
-    packSize: item.packSize,
-    totalPieces: item.totalPieces,
-    quantityPacks: item.quantityPacks,
-    category: item.categorySnapshot ?? "",
-  }));
 }
 
 export async function GET(req: NextRequest) {

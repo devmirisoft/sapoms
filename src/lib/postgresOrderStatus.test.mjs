@@ -45,7 +45,10 @@ test("legacy accept_order and del_status remain response aliases only for Postgr
   assert.match(source, /legacyDelStatusAlias/);
   assert.match(source, /accept_order: legacyAcceptOrderAlias\(updated\.acceptanceStatus\)/);
   assert.match(source, /del_status: legacyDelStatusAlias\(updated\.status\)/);
-  assert.match(postgresOrders, /accept_order: legacyAcceptance\(order\.acceptanceStatus\)/);
+  assert.match(postgresOrders, /accept_order: legacyAcceptance\(order\)/);
+  // An RSM decline reads as rejected ("2"), not awaiting, in the row and the filter.
+  assert.match(postgresOrders, /order\.acceptanceStatus === "DECLINED" \|\| order\.rsmApprovalStatus === "DECLINED"\) return "2"/);
+  assert.match(postgresOrders, /"0": \{ acceptanceStatus: "AWAITING", rsmApprovalStatus: \{ not: "DECLINED" \} \}/);
   assert.match(postgresOrders, /del_status: legacyDeletion\(order\.status\)/);
 });
 
