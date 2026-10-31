@@ -1,7 +1,7 @@
 'use client'
 
 import DateInput from "@/components/ui/date-input";
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query'
 import axios from 'axios'
@@ -12,7 +12,7 @@ import AccountBookSummary, { AccountBookStats } from '@/components/ledger/Accoun
 import TransactionTable from '@/components/ledger/TransactionTable'
 import PayMoneyModal, { PaymentData } from '@/components/ledger/PayMoneyModal'
 import { InvoiceModal } from '@/components/InvoiceModel'
-import DealerBillsPanel, { BillableOrder, CreditSnapshot, LedgerBill } from '@/components/ledger/DealerBillsPanel'
+import DealerBillsPanel, { BillableOrder, CreditSnapshot, InvoicePrefill, LedgerBill } from '@/components/ledger/DealerBillsPanel'
 import { createIdempotencyKey } from '@/lib/idempotency'
 import { getCurrentRole } from '@/lib/currentUser'
 import { showToast } from "@/components/ui/toast";
@@ -111,6 +111,19 @@ export default function DealerLedgerPage() {
   // first render, so normalise instead of casting the possibility away.
   const rawDealerId = params.dealerId
   const dealerId = Array.isArray(rawDealerId) ? (rawDealerId[0] ?? '') : (rawDealerId ?? '')
+
+  // Dispatch Tracking's "Bill shipment" lands here with the invoice prefilled.
+  const invoicePrefill = useMemo<InvoicePrefill | null>(() => {
+    const orderId = searchParams.get('invoiceOrder')?.trim()
+    const shipmentId = searchParams.get('invoiceShipment')?.trim()
+    if (!orderId || !shipmentId) return null
+    return {
+      orderId,
+      amount: Number(searchParams.get('invoiceAmount')) || 0,
+      shipmentIds: [shipmentId],
+      shipmentLabel: searchParams.get('shipmentLabel') || 'Shipment',
+    }
+  }, [searchParams])
 
   const [redirectingStaff, setRedirectingStaff] = useState(() => isStaffLedgerSession())
   const [viewerRole, setViewerRole] = useState<string | null>(null)
@@ -460,6 +473,8 @@ export default function DealerLedgerPage() {
             refetchWallet(),
             queryClient.invalidateQueries({ queryKey: ['dealer-transactions', dealerId] }),
           ])}
+          prefill={invoicePrefill}
+          onInvoiceSaved={() => router.push('/dashboard/accountant/dispatch-tracking?tab=billed')}
         />
 
         {/* Summary Cards */}

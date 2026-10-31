@@ -76,6 +76,7 @@ type Bill = {
   id: string
   dealerId: string
   orderNumber: string
+  billNumber?: string
   billAmount: number
   gstPercent: number
   billDate: string
@@ -101,6 +102,7 @@ const DEFAULT_CREDIT_DAYS = 60
 const PAYMENT_MODES = ['Cash', 'Cheque', 'NEFT', 'UPI', 'IMPF']
 const EMPTY_BILL_FORM = {
   orderNumbers: [] as string[],
+  billNumber: '',
   billAmount: '',
   gstPercent: '18',
   billDate: new Date().toISOString().slice(0, 10),
@@ -443,6 +445,7 @@ export default function DealerLedgerShellPage() {
 
       const response = await axios.post(`/api/ledger/${encodeURIComponent(billDealer.Dealer_Id)}`, {
         orderNumbers: billForm.orderNumbers,
+        billNumber: billForm.billNumber.trim(),
         billAmount: amount,
         gstPercent: gst,
         billDate: billForm.billDate,
@@ -779,6 +782,12 @@ export default function DealerLedgerShellPage() {
                 required
               /> */} <h1 className="text-black justify-content justify-center my-auto mt-7 italic">*GST included</h1>
             </div>
+
+            <FormField
+              label="Invoice No. (optional)"
+              value={billForm.billNumber}
+              onChange={(value) => setBillForm((prev) => ({ ...prev, billNumber: value }))}
+            />
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <FormField

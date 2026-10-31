@@ -804,6 +804,8 @@ model LedgerBill {
   orderId  BigInt? @map("order_id")
 
   orderNumber String @map("order_number")
+  // The invoice's own number, when the accountant records one.
+  billNumber  String? @map("bill_number")
 
   billAmountPaise BigInt  @default(0) @map("bill_amount_paise")
   gstPercent      Decimal @default(0) @map("gst_percent") @db.Decimal(7, 4)
@@ -830,9 +832,12 @@ model LedgerBill {
   order  Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
 
   settlementApplications WalletSettlementApplication[]
+  // The shipments this bill invoiced; Dispatch Tracking reads billed from here.
+  shipments              OrderShipment[]
 
   // No unique on orderNumber: a partially dispatched order is invoiced once per
   // dispatch, each bill with its own credit-days clock.
+  @@unique([dealerId, billNumber])
   @@index([dealerId, billDate])
   @@index([orderId])
   @@map("ledger_bills")
@@ -939,13 +944,18 @@ model OrderShipment {
 
   createdByUserId BigInt? @map("created_by_user_id")
 
+  // The ledger bill that invoiced this shipment; null until it is billed.
+  ledgerBillId BigInt? @map("ledger_bill_id")
+
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   order      Order               @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  ledgerBill LedgerBill?         @relation(fields: [ledgerBillId], references: [id], onDelete: SetNull)
   dispatches OrderItemDispatch[]
 
   @@index([orderId, createdAt])
+  @@index([ledgerBillId])
   @@map("order_shipments")
 }
 

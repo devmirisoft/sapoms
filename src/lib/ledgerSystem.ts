@@ -36,6 +36,7 @@ type LedgerBillRecord = {
   dealerId: bigint
   orderId?: bigint | null
   orderNumber: string
+  billNumber?: string | null
   billAmountPaise: bigint | number | null
   gstPercent?: Prisma.Decimal | number | string | null
   billDate: Date | string
@@ -133,6 +134,7 @@ function normalizeLedgerBill(bill: LedgerBillRecord) {
     dealerId: bill.dealerId.toString(),
     orderId: bill.orderId?.toString() || "",
     orderNumber: bill.orderNumber,
+    billNumber: bill.billNumber || "",
     billAmount: money(bill.billAmountPaise),
     gstPercent: Number(bill.gstPercent ?? 0),
     billDate: normalizeDateOnly(bill.billDate) || "",
@@ -390,33 +392,64 @@ export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, bo
       : [String(body.pdfName || "").trim()].filter(Boolean);
   const pdfName = pdfNames.join(", ").slice(0, 255) || null;
   const pdfUrl = (uploadedPdfs[0]?.url || String(body.pdfUrl || "").trim()).slice(0, 4000) || null;
+  const billNumber = String(body.billNumber ?? "").trim().slice(0, 60) || null;
 
-  return prisma.$transaction(async (tx) => {
-    const dealer = await tx.dealerProfile.findFirst({ where: { id: dealerId, deletedAt: null, user: { status: "ACTIVE" } }, select: { id: true } });
-    if (!dealer) throw Object.assign(new Error("Dealer not found"), { status: 404 });
+  // Shipments this bill invoices (Dispatch Tracking's "Bill shipment").
+  const shipmentIds = Array.from(new Set(
+    (Array.isArray(body.shipmentIds) ? body.shipmentIds : []).map((value) => String(value ?? "").trim()).filter((value) => /^\d{1,18}$/.test(value))
+  )).map((value) => BigInt(value));
+  if (shipmentIds.length > 20) throw Object.assign(new Error("A bill can cover at most 20 shipments."), { status: 400 });
 
-    const orderLookups = await Promise.all(uniqueRequestedOrderNumbers.map((orderNumber) => findDealerOrder(tx, dealerId, orderNumber)));
-    const storedOrderNumbers = uniqueRequestedOrderNumbers.map((orderNumber, index) => orderLookups[index]?.legacyPhpId || orderNumber);
-    const linkedOrder = orderLookups.length === 1 ? orderLookups[0] : null;
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const dealer = await tx.dealerProfile.findFirst({ where: { id: dealerId, deletedAt: null, user: { status: "ACTIVE" } }, select: { id: true } });
+      if (!dealer) throw Object.assign(new Error("Dealer not found"), { status: 404 });
 
-    // Always a new bill: each dispatch of an order gets its own invoice and
-    // credit-days clock, so an earlier invoice is never overwritten.
-    const saved = await tx.ledgerBill.create({
-      data: {
-        dealerId,
-        orderId: linkedOrder?.id ?? null,
-        orderNumber: storedOrderNumbers.join(", "),
-        billAmountPaise,
-        gstPercent,
-        billDate,
-        pdfName,
-        pdfUrl,
-        ...(uploadedPdfs.length > 0 ? { pdfFiles: uploadedPdfs as Prisma.InputJsonValue } : {}),
-      },
+      const orderLookups = await Promise.all(uniqueRequestedOrderNumbers.map((orderNumber) => findDealerOrder(tx, dealerId, orderNumber)));
+      const storedOrderNumbers = uniqueRequestedOrderNumbers.map((orderNumber, index) => orderLookups[index]?.legacyPhpId || orderNumber);
+      const linkedOrder = orderLookups.length === 1 ? orderLookups[0] : null;
+
+      // Always a new bill: each dispatch of an order gets its own invoice and
+      // credit-days clock, so an earlier invoice is never overwritten.
+      const saved = await tx.ledgerBill.create({
+        data: {
+          dealerId,
+          orderId: linkedOrder?.id ?? null,
+          orderNumber: storedOrderNumbers.join(", "),
+          billNumber,
+          billAmountPaise,
+          gstPercent,
+          billDate,
+          pdfName,
+          pdfUrl,
+          ...(uploadedPdfs.length > 0 ? { pdfFiles: uploadedPdfs as Prisma.InputJsonValue } : {}),
+        },
+      });
+
+      if (shipmentIds.length > 0) {
+        // Only unbilled shipments of the orders on this bill; anything else rolls the bill back.
+        const linked = await tx.orderShipment.updateMany({
+          where: { id: { in: shipmentIds }, ledgerBillId: null, orderId: { in: orderLookups.flatMap((order) => (order ? [order.id] : [])) } },
+          data: { ledgerBillId: saved.id },
+        });
+        if (linked.count !== shipmentIds.length) {
+          throw Object.assign(new Error("A shipment is already billed or isn't on these orders."), { status: 409 });
+        }
+        await createAuditLog({
+          tx, actor, action: AUDIT_ACTION.UPDATE, entity: AUDIT_ENTITY.INVOICE, entityId: saved.id,
+          newValues: { ledgerBillId: saved.id.toString() },
+          metadata: { change: "shipment_billed", shipmentIds: shipmentIds.map(String), orderNumber: saved.orderNumber },
+        });
+      }
+
+      return { created: true, bill: normalizeLedgerBill(saved) };
     });
-
-    return { created: true, bill: normalizeLedgerBill(saved) };
-  });
+  } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      throw Object.assign(new Error("Bill number already used for this dealer."), { status: 409 });
+    }
+    throw error;
+  }
 }
 
 /**

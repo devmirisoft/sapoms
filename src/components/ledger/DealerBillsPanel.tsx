@@ -1,11 +1,18 @@
 'use client'
 
-import { FormEvent, ReactNode, useState } from 'react'
+import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
 import axios from 'axios'
 import { CreditCard, FileText, Loader2, Plus, X } from 'lucide-react'
 import DateInput from '@/components/ui/date-input'
 import { showToast } from '@/components/ui/toast'
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay'
+
+export type InvoicePrefill = {
+  orderId: string
+  amount: number
+  shipmentIds: string[]
+  shipmentLabel: string
+}
 
 export type BillableOrder = {
   order_id?: string
@@ -16,6 +23,7 @@ export type LedgerBill = {
   id: string
   dealerId: string
   orderNumber: string
+  billNumber?: string
   billAmount: number
   gstPercent: number
   billDate: string
@@ -139,6 +147,8 @@ export default function DealerBillsPanel({
   canManageBills,
   canExtendCredit,
   onChanged,
+  prefill = null,
+  onInvoiceSaved,
 }: {
   dealerId: string
   orders: BillableOrder[]
@@ -147,6 +157,10 @@ export default function DealerBillsPanel({
   canManageBills: boolean
   canExtendCredit: boolean
   onChanged: () => Promise<unknown> | void
+  /** Dispatch Tracking's "Bill shipment": opens the invoice form for that shipment. */
+  prefill?: InvoicePrefill | null
+  /** Fires after an invoice that covers a prefilled shipment is saved. */
+  onInvoiceSaved?: () => void
 }) {
   const [modal, setModal] = useState<null | 'invoice' | 'payment' | 'days' | 'limit'>(null)
   const [busy, setBusy] = useState(false)
@@ -154,6 +168,9 @@ export default function DealerBillsPanel({
   const [invoiceAmount, setInvoiceAmount] = useState('')
   const [invoiceDate, setInvoiceDate] = useState(today)
   const [invoiceFiles, setInvoiceFiles] = useState<File[]>([])
+  const [invoiceBillNumber, setInvoiceBillNumber] = useState('')
+  const [invoiceShipment, setInvoiceShipment] = useState<{ ids: string[]; label: string } | null>(null)
+  const prefillApplied = useRef(false)
   const [paymentBill, setPaymentBill] = useState<LedgerBill | null>(null)
   const [payment, setPayment] = useState({ amount: '', mode: 'NEFT', date: today(), reference: '' })
   const [extendValue, setExtendValue] = useState('')
@@ -176,8 +193,23 @@ export default function DealerBillsPanel({
     setInvoiceAmount('')
     setInvoiceDate(today())
     setInvoiceFiles([])
+    setInvoiceBillNumber('')
+    setInvoiceShipment(null)
     setModal('invoice')
   }
+
+  // Applied once: canManageBills only turns true after the viewer's role loads.
+  useEffect(() => {
+    if (!prefill || !canManageBills || prefillApplied.current) return
+    prefillApplied.current = true
+    setInvoiceOrders([prefill.orderId])
+    setInvoiceAmount(prefill.amount > 0 ? String(Math.round(prefill.amount * 100) / 100) : '')
+    setInvoiceDate(today())
+    setInvoiceFiles([])
+    setInvoiceBillNumber('')
+    setInvoiceShipment({ ids: prefill.shipmentIds, label: prefill.shipmentLabel })
+    setModal('invoice')
+  }, [prefill, canManageBills])
 
   const toggleOrder = (orderId: string, checked: boolean) => {
     const next = checked ? [...invoiceOrders, orderId] : invoiceOrders.filter((id) => id !== orderId)
@@ -219,10 +251,13 @@ export default function DealerBillsPanel({
         billAmount: amount,
         gstPercent: 18,
         billDate: invoiceDate,
+        billNumber: invoiceBillNumber.trim(),
+        shipmentIds: invoiceShipment?.ids ?? [],
         pdfNames: invoiceFiles.map((file) => file.name),
         pdfFiles,
       })
-      showToast('success', 'Invoice saved')
+      showToast('success', invoiceShipment ? 'Invoice saved and shipment billed' : 'Invoice saved')
+      if (invoiceShipment) onInvoiceSaved?.()
     }, 'Could not save invoice')
   }
 
@@ -357,6 +392,7 @@ export default function DealerBillsPanel({
                       <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600">{formatDisplayOrderNumber(bill.orderNumber)}</td>
                       <td className="px-4 py-3">
                         <div className="font-semibold text-gray-900">{formatAmount(bill.billAmount)}</div>
+                        {bill.billNumber && <div className="font-mono text-xs text-gray-700">#{bill.billNumber}</div>}
                         <div className="text-xs text-gray-500">Paid {formatAmount(bill.paidAmount)}</div>
                       </td>
                       <td className="px-4 py-3 text-gray-600">
@@ -409,6 +445,12 @@ export default function DealerBillsPanel({
       {modal === 'invoice' && (
         <Modal title="Add Invoice" onClose={close}>
           <form onSubmit={submitInvoice} className="space-y-4">
+            {invoiceShipment && (
+              <div className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
+                Covers shipment <span className="font-semibold">{invoiceShipment.label}</span> of order {invoiceOrders.map((id) => formatDisplayOrderNumber(id)).join(', ')}.
+                Saving moves it to Billed Shipments.
+              </div>
+            )}
             <div>
               <span className={labelClass}>Dispatched orders</span>
               <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-300">
@@ -429,10 +471,16 @@ export default function DealerBillsPanel({
               <span className={labelClass}>Invoice amount <span className="normal-case italic text-gray-400">(GST included)</span></span>
               <input type="number" min="0" step="0.01" value={invoiceAmount} onChange={(event) => setInvoiceAmount(event.target.value)} className={inputClass} required />
             </label>
-            <label className="block">
-              <span className={labelClass}>Invoice date</span>
-              <DateInput value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} className={inputClass} />
-            </label>
+            <div className="grid grid-cols-2 gap-4">
+              <label className="block">
+                <span className={labelClass}>Invoice no. <span className="normal-case italic text-gray-400">(optional)</span></span>
+                <input value={invoiceBillNumber} onChange={(event) => setInvoiceBillNumber(event.target.value)} maxLength={60} className={inputClass} />
+              </label>
+              <label className="block">
+                <span className={labelClass}>Invoice date</span>
+                <DateInput value={invoiceDate} onChange={(event) => setInvoiceDate(event.target.value)} className={inputClass} />
+              </label>
+            </div>
             <label className="block">
               <span className={labelClass}>Invoice PDF</span>
               <input

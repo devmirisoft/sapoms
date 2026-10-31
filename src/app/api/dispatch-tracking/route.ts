@@ -23,10 +23,14 @@ import {
   filterDispatchTrackingOrders,
   parseDispatchTrackingSort,
   parseDispatchTrackingStatus,
+  parseDispatchTrackingTab,
+  selectBillingTab,
   sortDispatchTrackingOrders,
+  summarizeBilledOrders,
   summarizeDispatchTrackingOrders,
   type DispatchEntry,
   type DispatchOrderMeta,
+  type DispatchTrackingTab,
   type TrackedLineInput,
 } from "@/lib/dispatchTracking";
 
@@ -46,22 +50,29 @@ function safeInteger(value: unknown, fallback: number) {
   return Math.max(1, Math.floor(parsed));
 }
 
-async function loadOrders(scope: Prisma.OrderWhereInput, periodStartMs: number | null, dealerId: string) {
+async function loadOrders(scope: Prisma.OrderWhereInput, tab: DispatchTrackingTab, periodStartMs: number | null, dealerId: string) {
+  const since = periodStartMs === null ? null : new Date(periodStartMs);
   return prisma.order.findMany({
     where: {
       AND: [
         scope,
         { status: { notIn: ["CANCELLED", "DECLINED"] } },
-        // Tracking starts at the first dispatch; a period keeps orders with a dispatch inside it.
-        { items: { some: { dispatches: { some: periodStartMs === null ? {} : { createdAt: { gte: new Date(periodStartMs) } } } } } },
+        tab === "billed"
+          // Billed: orders with a billed shipment; a period keeps bills dated inside it.
+          ? { shipments: { some: { ledgerBillId: { not: null }, ...(since ? { ledgerBill: { billDate: { gte: since } } } : {}) } } }
+          // Tracking starts at the first dispatch; a period keeps orders with a dispatch inside it.
+          : { items: { some: { dispatches: { some: since ? { createdAt: { gte: since } } : {} } } } },
         ...(/^\d{1,18}$/.test(dealerId) ? [{ dealerId: BigInt(dealerId) }] : []),
       ],
     },
     include: {
-      dealer: { select: { id: true, businessName: true, dealerCode: true } },
+      dealer: { select: { id: true, businessName: true, dealerCode: true, deletedAt: true, user: { select: { status: true } } } },
       assignedStaff: { select: { id: true, displayName: true } },
       items: { orderBy: { id: "asc" }, include: { dispatches: { orderBy: { createdAt: "asc" } } } },
-      shipments: { orderBy: { createdAt: "asc" } },
+      shipments: {
+        orderBy: { createdAt: "asc" },
+        include: { ledgerBill: { select: { id: true, billNumber: true, billDate: true, billAmountPaise: true, pdfFiles: true, pdfUrl: true } } },
+      },
     },
     orderBy: { orderDate: "desc" },
     take: ORDER_SCAN_LIMIT,
@@ -87,6 +98,7 @@ function dispatchEntries(order: LoadedOrder, item: LoadedOrder["items"][number])
       shipment: shipment ? shipmentLabel(mapPostgresShipment(shipment)) : "No shipment linked",
       trackingLink: shipment?.trackingLink ?? null,
       remark: dispatch.remark ?? "",
+      status: dispatch.status,
     };
   });
 }
@@ -99,6 +111,7 @@ export async function GET(req: NextRequest) {
     }
 
     const params = req.nextUrl.searchParams;
+    const tab = parseDispatchTrackingTab(params.get("tab"));
     const search = safeText(params.get("search"), 240);
     const category = safeText(params.get("category"), 120);
     const dealerId = safeText(params.get("dealerId"), 40);
@@ -108,7 +121,8 @@ export async function GET(req: NextRequest) {
     const page = safeInteger(params.get("page"), 1);
     const pageSize = Math.min(100, safeInteger(params.get("pageSize"), 12));
 
-    const scannedOrders = await loadOrders(await actorWhere(actor), pendingReportPeriodStartMs(period, Date.now()), dealerId);
+    const periodStartMs = pendingReportPeriodStartMs(period, Date.now());
+    const scannedOrders = await loadOrders(await actorWhere(actor), tab, periodStartMs, dealerId);
     const overlayStates = await loadOrderOverlayStates(scannedOrders);
 
     const warnings: string[] = [];
@@ -139,12 +153,26 @@ export async function GET(req: NextRequest) {
         : dispatchRecords;
       metaByOrderId.set(orderId, {
         finalPayablePaise: order.finalPayableAmountPaise,
+        dealerStatus: order.dealer.deletedAt ? "removed" : order.dealer.user?.status !== "ACTIVE" ? "inactive" : "active",
         shipments: order.shipments.map((shipment) => ({
           id: shipment.id.toString(),
           dispatchPartner: shipment.dispatchPartner || null,
           trackingNumber: shipment.trackingNumber,
           trackingLink: shipment.trackingLink,
           createdAt: shipment.createdAt.toISOString(),
+          bill: shipment.ledgerBill
+            ? {
+                id: shipment.ledgerBill.id.toString(),
+                billNumber: shipment.ledgerBill.billNumber ?? "",
+                billDate: shipment.ledgerBill.billDate.toISOString().slice(0, 10),
+                billAmount: Number(shipment.ledgerBill.billAmountPaise) / 100,
+                // The ledger's own streaming route; the stored URL is never handed out.
+                pdfHref:
+                  (Array.isArray(shipment.ledgerBill.pdfFiles) && shipment.ledgerBill.pdfFiles.length > 0) || shipment.ledgerBill.pdfUrl
+                    ? `/api/ledger/${order.dealerId}/bill-pdf/download?${new URLSearchParams({ billId: shipment.ledgerBill.id.toString(), index: "0", mode: "inline" })}`
+                    : null,
+              }
+            : null,
         })),
       });
       for (const item of order.items) {
@@ -176,9 +204,18 @@ export async function GET(req: NextRequest) {
 
     const { categories, dealers } = buildPendingProductFilterOptions(lines);
     const allOrders = buildDispatchTrackingOrders(trackedLines, metaByOrderId);
-    // The cards count every status, so "fully dispatched" still shows under "In progress".
-    const summary = summarizeDispatchTrackingOrders(filterDispatchTrackingOrders(allOrders, { search, category, status: "all" }));
-    const matching = sortDispatchTrackingOrders(filterDispatchTrackingOrders(allOrders, { search, category, status }), sort);
+    const everyStatus = filterDispatchTrackingOrders(allOrders, { search, category, status: "all" });
+    let summary;
+    let matching;
+    if (tab === "billed") {
+      // Billing does not depend on dispatch status, so Billed ignores that filter.
+      matching = sortDispatchTrackingOrders(selectBillingTab(everyStatus, "billed", periodStartMs), sort);
+      summary = summarizeBilledOrders(matching);
+    } else {
+      // The cards count every status, so "fully dispatched" still shows under "In progress".
+      summary = summarizeDispatchTrackingOrders(selectBillingTab(everyStatus, "to_bill"));
+      matching = sortDispatchTrackingOrders(selectBillingTab(filterDispatchTrackingOrders(allOrders, { search, category, status }), "to_bill"), sort);
+    }
 
     // Report mode returns every matching order unpaginated for the workbook.
     if (safeText(params.get("report"), 20)) {

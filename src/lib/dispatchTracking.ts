@@ -12,6 +12,17 @@ export type DispatchEntry = {
   shipment: string;
   trackingLink: string | null;
   remark: string;
+  // The stored dispatch status (DISPATCHED, IN_PROCESS, ...).
+  status: string;
+};
+
+/** The ledger bill a shipment was invoiced on. */
+export type ShipmentBill = {
+  id: string;
+  billNumber: string;
+  billDate: string;
+  billAmount: number;
+  pdfHref: string | null;
 };
 
 export type DispatchShipmentMeta = {
@@ -20,6 +31,7 @@ export type DispatchShipmentMeta = {
   trackingNumber: string | null;
   trackingLink: string | null;
   createdAt: string;
+  bill: ShipmentBill | null;
 };
 
 /** A pending-products line plus what the route knows about its price and dispatches. */
@@ -30,9 +42,13 @@ export type TrackedLineInput = PendingProductLine & {
   dispatches: DispatchEntry[];
 };
 
+/** Removed = the dealer was deleted; inactive = the dealer's login is not active. */
+export type DealerStatus = "active" | "inactive" | "removed";
+
 export type DispatchOrderMeta = {
   finalPayablePaise: bigint;
   shipments: DispatchShipmentMeta[];
+  dealerStatus?: DealerStatus;
 };
 
 export type DispatchTrackingLine = {
@@ -53,7 +69,11 @@ export type DispatchTrackingLine = {
 };
 
 export type DispatchTrackingShipment = DispatchShipmentMeta & {
-  items: Array<{ catalogueNumber: string; productName: string; quantity: number }>;
+  items: Array<{ catalogueNumber: string; productName: string; quantity: number; value: number; priced: boolean }>;
+  // The net value of what went out in it, the same split as the order's dispatched value.
+  value: number;
+  // Set on the "No shipment linked" group only: why it cannot be billed.
+  notBillableReason: string;
 };
 
 export type DispatchTrackingOrder = {
@@ -64,6 +84,7 @@ export type DispatchTrackingOrder = {
   dealerId: string;
   dealerName: string;
   dealerCode: string;
+  dealerStatus: DealerStatus;
   orderedQuantity: number;
   dispatchedQuantity: number;
   leftQuantity: number;
@@ -75,9 +96,16 @@ export type DispatchTrackingOrder = {
   lastDispatchMs: number | null;
   lines: DispatchTrackingLine[];
   shipments: DispatchTrackingShipment[];
+  // To Bill only: every shipment is billed but units are still left to dispatch.
+  allShipmentsBilled: boolean;
 };
 
+export type DispatchTrackingTab = "to_bill" | "billed";
 export type DispatchTrackingStatus = "in_progress" | "complete" | "all";
+
+export function parseDispatchTrackingTab(value: unknown): DispatchTrackingTab {
+  return value === "billed" ? "billed" : "to_bill";
+}
 export type DispatchTrackingSort = "latest_dispatch" | "most_left" | "newest_order" | "oldest_order";
 
 export function parseDispatchTrackingStatus(value: unknown): DispatchTrackingStatus {
@@ -125,38 +153,61 @@ function latestMs(entries: DispatchEntry[]) {
   }, null);
 }
 
-function buildShipments(lines: TrackedLineInput[], shipments: DispatchShipmentMeta[]): DispatchTrackingShipment[] {
-  const known = new Set(shipments.map((shipment) => shipment.id));
-  const groups = new Map<string, Map<string, { catalogueNumber: string; productName: string; quantity: number }>>();
-  const unlinkedAt: number[] = [];
+export const NOT_SHIPPED_REASON = "Marked in process / not in stock — hasn't left the warehouse.";
+export const UNTRACKED_REASON = "Dispatched before courier tracking was recorded — no shipment to bill against.";
+const LEFT_WAREHOUSE = new Set(["DISPATCHED", "COMPLETED"]);
 
-  for (const line of lines) {
-    const lineKey = line.orderItemId || line.productKey;
+function buildShipments(lines: TrackedLineInput[], lineNets: bigint[], shipments: DispatchShipmentMeta[]): DispatchTrackingShipment[] {
+  const known = new Set(shipments.map((shipment) => shipment.id));
+  // shipment id ("" = no shipment linked) -> line index -> quantity it carried
+  const groups = new Map<string, Map<number, number>>();
+  const unlinkedAt: number[] = [];
+  const unlinkedStatuses = new Set<string>();
+
+  lines.forEach((line, index) => {
     for (const entry of line.dispatches) {
       const groupId = entry.shipmentId && known.has(entry.shipmentId) ? entry.shipmentId : "";
-      if (!groupId) unlinkedAt.push(Date.parse(entry.at));
-      const items = groups.get(groupId) ?? new Map();
-      const item = items.get(lineKey) ?? { catalogueNumber: line.catalogueNumber, productName: line.productName, quantity: 0 };
-      item.quantity += entry.quantity;
-      items.set(lineKey, item);
-      groups.set(groupId, items);
+      if (!groupId) {
+        unlinkedAt.push(Date.parse(entry.at));
+        unlinkedStatuses.add(entry.status);
+      }
+      const quantities = groups.get(groupId) ?? new Map<number, number>();
+      quantities.set(index, (quantities.get(index) ?? 0) + entry.quantity);
+      groups.set(groupId, quantities);
     }
-  }
+  });
+
+  const withItems = (quantities: Map<number, number>) => {
+    let valuePaise = ZERO;
+    const items = Array.from(quantities, ([index, quantity]) => {
+      const line = lines[index];
+      const itemPaise = splitLineValue(lineNets[index], line.orderedQuantity, quantity).dispatchedPaise;
+      valuePaise += itemPaise;
+      return { catalogueNumber: line.catalogueNumber, productName: line.productName, quantity, value: rupees(itemPaise), priced: line.valuePaise !== null };
+    });
+    return { items, value: rupees(valuePaise) };
+  };
 
   const result: DispatchTrackingShipment[] = shipments
     .filter((shipment) => groups.has(shipment.id))
-    .map((shipment) => ({ ...shipment, items: Array.from(groups.get(shipment.id)!.values()) }));
+    .map((shipment) => ({ ...shipment, ...withItems(groups.get(shipment.id)!), notBillableReason: "" }));
 
   const unlinked = groups.get("");
   if (unlinked) {
     const firstMs = Math.min(...unlinkedAt.filter(Number.isFinite));
+    const statuses = Array.from(unlinkedStatuses);
     result.push({
       id: "",
       dispatchPartner: null,
       trackingNumber: null,
       trackingLink: null,
       createdAt: Number.isFinite(firstMs) ? new Date(firstMs).toISOString() : "",
-      items: Array.from(unlinked.values()),
+      bill: null,
+      ...withItems(unlinked),
+      notBillableReason: [
+        statuses.some((status) => !LEFT_WAREHOUSE.has(status)) ? NOT_SHIPPED_REASON : "",
+        statuses.some((status) => LEFT_WAREHOUSE.has(status)) ? UNTRACKED_REASON : "",
+      ].filter(Boolean).join(" "),
     });
   }
   return result;
@@ -219,6 +270,7 @@ export function buildDispatchTrackingOrders(
       dealerId: first.dealerId,
       dealerName: first.dealerName,
       dealerCode: first.dealerCode,
+      dealerStatus: meta.dealerStatus ?? "active",
       orderedQuantity,
       dispatchedQuantity,
       leftQuantity,
@@ -229,10 +281,48 @@ export function buildDispatchTrackingOrders(
       lastDispatchAt: lastDispatchMs === null ? "" : new Date(lastDispatchMs).toISOString(),
       lastDispatchMs,
       lines: trackedLines,
-      shipments: buildShipments(orderLines, meta.shipments),
+      shipments: buildShipments(orderLines, lineNets, meta.shipments),
+      allShipmentsBilled: false,
     });
   }
   return orders;
+}
+
+/**
+ * To Bill keeps each order's unbilled shipments ("No shipment linked" included) and
+ * keeps an order with none while units are still left, flagged allShipmentsBilled.
+ * Billed keeps only billed shipments, billed on or after billedSinceMs when given.
+ */
+export function selectBillingTab(
+  orders: DispatchTrackingOrder[],
+  tab: DispatchTrackingTab,
+  billedSinceMs: number | null = null
+): DispatchTrackingOrder[] {
+  return orders.flatMap((order) => {
+    if (tab === "billed") {
+      const shipments = order.shipments.filter(
+        (shipment) => shipment.bill && (billedSinceMs === null || Date.parse(shipment.bill.billDate) >= billedSinceMs)
+      );
+      return shipments.length > 0 ? [{ ...order, shipments }] : [];
+    }
+    const shipments = order.shipments.filter((shipment) => !shipment.bill);
+    if (shipments.length === 0 && order.leftQuantity === 0) return [];
+    return [{ ...order, shipments, allShipmentsBilled: shipments.length === 0 }];
+  });
+}
+
+export function summarizeBilledOrders(orders: DispatchTrackingOrder[]) {
+  const billAmounts = new Map<string, number>();
+  let billedShipments = 0;
+  for (const order of orders) {
+    for (const shipment of order.shipments) {
+      if (!shipment.bill) continue;
+      billedShipments += 1;
+      billAmounts.set(shipment.bill.id, shipment.bill.billAmount);
+    }
+  }
+  const billedAmount = Array.from(billAmounts.values()).reduce((sum, amount) => sum + amount, 0);
+  return { orders: orders.length, billedShipments, bills: billAmounts.size, billedAmount: Math.round(billedAmount * 100) / 100 };
 }
 
 export function filterDispatchTrackingOrders(
