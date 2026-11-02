@@ -2,6 +2,7 @@
 
 import DateInput from "@/components/ui/date-input";
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { formatPeriodLabel } from "@/lib/salesPeriods";
 import Link from "next/link";
 import { LayoutDashboard, UserRoundPlus, Users, SquareUser, Plus, ClipboardList, Search, Wallet, Calendar, CalendarCheck,CreditCard, IndianRupee, FileText, ArrowUp, ArrowDown } from 'lucide-react';
 
@@ -171,33 +172,6 @@ const GRANULARITY_OPTIONS: Array<{ value: SalesGranularity; label: string; sub: 
   { value: "half", label: "Half Year", sub: "Half-yearly net sales by regional sales manager zone" },
   { value: "year", label: "Year", sub: "Yearly net sales by regional sales manager zone" },
 ];
-
-function formatMonthLabel(month: string) {
-  const date = new Date(`${month}-01T00:00:00Z`);
-  if (Number.isNaN(date.getTime())) return month;
-  return date.toLocaleString("en-IN", { month: "short", year: "2-digit", timeZone: "UTC" });
-}
-
-/** Renders a period key produced by the dashboard API for the given granularity. */
-function formatPeriodLabel(period: string, granularity: SalesGranularity) {
-  switch (granularity) {
-    case "day": {
-      const date = new Date(`${period}T00:00:00Z`);
-      if (Number.isNaN(date.getTime())) return period;
-      return date.toLocaleString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
-    }
-    case "quarter":
-    case "half": {
-      const [year, part] = period.split("-");
-      return part ? `${part} ${year.slice(2)}` : period;
-    }
-    case "year":
-      return period;
-    case "month":
-    default:
-      return formatMonthLabel(period);
-  }
-}
 
 function mapRegionalPerformance(entries: RegionalPerformanceEntry[] | undefined): RegionalSalesPoint[] {
   return (entries ?? []).map((entry) => ({

@@ -7,6 +7,7 @@ import { useRouter, usePathname } from "next/navigation"
 import {
   QueryClient,
   QueryClientProvider,
+  keepPreviousData,
   useQuery,
   useQueries,
 } from "@tanstack/react-query"
@@ -15,11 +16,14 @@ import {
 } from "recharts"
 import {
   LayoutDashboard, UserRoundPlus, ClipboardList,
-  BookOpen, LogOut, ChevronUp, ChevronDown, Search, AlertCircle, Eye, Receipt,
+  BookOpen, LogOut, ChevronUp, ChevronDown, Search, AlertCircle, Eye, Receipt, Target,
 } from "lucide-react"
 import { formatRupee, resolveCurrentMonthTotal } from "@/lib/companySales"
 import { resolveOrderAmounts } from "@/lib/orderAmounts"
 import PendingProductsPreview from "@/components/dashboard/PendingProductsPreview"
+import { compactAxisLabel, NetSalesPanel, SaleChartPanel, STAFF_PANEL_CSS, TopByGroupPanel } from "@/components/dashboard/StaffSalesPanels"
+import type { StaffDashboardData } from "@/server/modules/staff-dashboard"
+import { breakdownForRole } from "@/server/modules/staff-dashboard-charts"
 import { getCurrentUser, logout } from "@/lib/currentUser"
 import { STAFF_ORDER_SCOPE_VERSION } from "@/lib/staffOrderScope.js"
 import {
@@ -93,13 +97,10 @@ type OrderItem   = {
   accept_order?: string
   fulfilment_status?: string
 }
-type MonthlyData = { month: string[]; total: string[] }
-type TopOrder    = { order_id: string; total: string }
-type TopDealer   = { Dealer_Name: string; total: string }
 type SortKey     = "Dealer_Name" | "Dealer_City" | "creditdays" | "currentlimit" | "discount"
 type RequestCounts = { discountRequests?: number; pendingOrders?: number; dealerRequests?: number }
 type SalesTarget = { target: number; achieved: number; pending: number; dealers: number; fyStart: string }
-type Stat = { label: string; value: React.ReactNode; sub: string; badge: string; badgeLabel: string; href: string; loading: boolean }
+type Stat = { label: string; value: React.ReactNode; sub: string; badge: string; badgeLabel: string; href?: string; loading: boolean }
 
 // ─────────────────────────────────────────────────────────────
 // HELPERS
@@ -188,6 +189,7 @@ function ExecutiveDashboard() {
   const [sortKey,  setSortKey]  = useState<SortKey>("Dealer_Name")
   const [sortAsc,  setSortAsc]  = useState(true)
   const [dealerPage, setDealerPage] = useState(1)
+  const [granularity, setGranularity] = useState<StaffDashboardData["granularity"]>("month")
   const DEALER_PAGE_SIZE = 10
 
   // ── React Query — parallel queries ───────────────────────────
@@ -197,10 +199,6 @@ function ExecutiveDashboard() {
   const [
     ordersQ,
     dealersQ,
-    monthlyOrdersQ,
-    monthlyValueQ,
-    topOrdersQ,
-    topDealersQ,
   ] = useQueries({
     queries: [
       {
@@ -219,33 +217,16 @@ function ExecutiveDashboard() {
         enabled,
         select:    (d: { data: StaffDealer[] }) => d.data ?? [],
       },
-      {
-        queryKey:  ["monthlyOrders"],
-        queryFn:   async () => ({ month: [], total: [] } as MonthlyData),
-        enabled,
-        staleTime: 5 * 60_000,
-      },
-      {
-        queryKey:  ["monthlyValue"],
-        queryFn:   async () => ({ month: [], total: [] } as MonthlyData),
-        enabled,
-        staleTime: 5 * 60_000,
-      },
-      {
-        queryKey:  ["topOrders"],
-        queryFn:   async () => ({ top: [] as TopOrder[] }),
-        enabled,
-        select:    (d: { top: TopOrder[] }) => d.top ?? [],
-        staleTime: 5 * 60_000,
-      },
-      {
-        queryKey:  ["topDealers"],
-        queryFn:   async () => ({ top: [] as TopDealer[] }),
-        enabled,
-        select:    (d: { top: TopDealer[] }) => d.top ?? [],
-        staleTime: 5 * 60_000,
-      },
     ],
+  })
+
+  // Charts and team figures, limited to this role on the server.
+  const dashboardQ = useQuery({
+    queryKey: ["staffDashboard", user?.staff_id, granularity],
+    queryFn:  () => fetchJson<{ data: StaffDashboardData }>(`/api/staff/dashboard?granularity=${granularity}`),
+    enabled,
+    select:   (d) => d.data,
+    placeholderData: keepPreviousData,
   })
 
   // Same role-scoped counts the sidebar badges show, so card and badge agree.
@@ -281,30 +262,13 @@ function ExecutiveDashboard() {
   )
   const counts = countsQ.data ?? {}
   const target = targetQ.data
-  const monthlyTotals = new Map<string, { orders: number; value: number }>()
+  const dashboard = dashboardQ.data
+  const monthlyOrderCounts = new Map<string, number>()
   for (const order of rawOrders) {
     const month = String(order.order_date ?? order.orderDate ?? "").slice(0, 7)
     if (!month) continue
-    const current = monthlyTotals.get(month) ?? { orders: 0, value: 0 }
-    current.orders += 1
-    current.value += Number(order.total ?? order.order_amount ?? 0)
-    monthlyTotals.set(month, current)
+    monthlyOrderCounts.set(month, (monthlyOrderCounts.get(month) ?? 0) + 1)
   }
-  const monthlyEntries = Array.from(monthlyTotals.entries()).sort(([left], [right]) => left.localeCompare(right))
-  const totalOrders: MonthlyData = { month: monthlyEntries.map(([month]) => month), total: monthlyEntries.map(([, totals]) => String(totals.orders)) }
-  const totalValue: MonthlyData = { month: monthlyEntries.map(([month]) => month), total: monthlyEntries.map(([, totals]) => String(totals.value)) }
-  const topOrders: TopOrder[] = rawOrders
-    .map((order) => ({ order_id: String(order.order_id ?? ""), total: String(order.total ?? order.order_amount ?? 0) }))
-    .sort((left, right) => Number(right.total) - Number(left.total))
-    .slice(0, 5)
-  const dealerTotals = new Map<string, number>()
-  for (const order of rawOrders) {
-    const name = String(order.Dealer_Name ?? "Dealer")
-    dealerTotals.set(name, (dealerTotals.get(name) ?? 0) + Number(order.total ?? order.order_amount ?? 0))
-  }
-  const topDealers: TopDealer[] = Array.from(dealerTotals, ([Dealer_Name, total]) => ({ Dealer_Name, total: String(total) }))
-    .sort((left, right) => Number(right.total) - Number(left.total))
-    .slice(0, 5)
   const currentMonth = new Date().toISOString().slice(0, 7)
   const currentMonthOrders = rawOrders.filter((order) => String(order.order_date ?? order.orderDate ?? "").slice(0, 7) === currentMonth)
   const companyWideOrders = currentMonthOrders.length
@@ -320,7 +284,7 @@ function ExecutiveDashboard() {
   const pendingValue = pendingOrders.reduce((s, o) => s + resolveOrderAmounts(o).netPayable, 0)
 
   // Any hard error
-  const anyError = [ordersQ, dealersQ, countsQ, targetQ, monthlyOrdersQ, monthlyValueQ, topOrdersQ, topDealersQ]
+  const anyError = [ordersQ, dealersQ, countsQ, targetQ, dashboardQ]
     .find(q => q.isError)
 
   const refetchAll = () => {
@@ -328,18 +292,17 @@ function ExecutiveDashboard() {
     dealersQ.refetch()
     countsQ.refetch()
     targetQ.refetch()
-    monthlyOrdersQ.refetch()
-    monthlyValueQ.refetch()
-    topOrdersQ.refetch()
-    topDealersQ.refetch()
+    dashboardQ.refetch()
     dealerStatusesQ.refetch()
   }
 
   // ── Chart data ────────────────────────────────────────────────
-  const ordersChartData     = (totalOrders?.month ?? []).map((m, i) => ({ name: m, value: Number(totalOrders?.total[i] || 0) }))
-  const revenueChartData    = (totalValue?.month  ?? []).map((m, i) => ({ name: m, value: Number(totalValue?.total[i]  || 0) }))
-  const topOrdersChartData  = topOrders.map(o => ({ name: `#${o.order_id}`, value: Number(o.total) }))
-  const topDealersChartData = topDealers.map(d => ({ name: d.Dealer_Name.substring(0, 12), value: Number(d.total) }))
+  const ordersChartData     = Array.from(monthlyOrderCounts, ([name, value]) => ({ name, value })).sort((left, right) => left.name.localeCompare(right.name))
+  const topOrders           = dashboard?.topOrders ?? []
+  const topDealers          = dashboard?.topDealers ?? []
+  // Just "DMS-300": the full number is too wide for ten bars and most labels get hidden.
+  const topOrdersChartData  = topOrders.map(o => ({ name: o.order_id.split("/").pop() ?? o.order_id, value: o.total }))
+  const topDealersChartData = topDealers.map(d => ({ name: d.dealerName.substring(0, 12), value: d.total }))
 
   // ── Dealer table ──────────────────────────────────────────────
   const filteredDealers = useMemo(() => {
@@ -374,47 +337,54 @@ function ExecutiveDashboard() {
 
   const initials   = user.staff_name.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase()
   const roleLabel  = getRoleLabel(user.staff_roletype, user.sales_region || user.salesRegion)
-  const rsmRegionLabel = user.staff_roletype === "RSM" ? formatSalesRegion(user.sales_region || user.salesRegion) : ""
 
   const scopeLabel = user.staff_roletype === "RSM" ? "Region" : user.staff_roletype === "ASM" ? "Team" : "My"
-  const achievedPct = target?.target ? Math.round((target.achieved / target.target) * 100) : 0
-  const fyLabel = target ? `Since ${new Date(target.fyStart).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""
+  const hasTeam = user.staff_roletype === "RSM" || user.staff_roletype === "ASM"
+  const breakdown = dashboard?.breakdown ?? breakdownForRole(user.staff_roletype)
   const attention = (n: number) => `badge-amber${n > 0 ? " pulse-amber" : ""}`
 
-  const TARGET_STATS: Stat[] = [
-    { label: `${scopeLabel} Sales Target`, value: formatRupee(target?.target ?? 0), sub: `Annual target across ${target?.dealers ?? 0} dealers`, badge: "badge-purple", badgeLabel: "This financial year", href: "/dashboard/staff/sales", loading: targetQ.isLoading },
-    { label: "Achieved", value: formatRupee(target?.achieved ?? 0), sub: fyLabel, badge: "badge-green", badgeLabel: `${achievedPct}% of target`, href: "/dashboard/staff/sales", loading: targetQ.isLoading },
-    { label: "Pending Target", value: formatRupee(target?.pending ?? 0), sub: "Still to achieve this financial year", badge: target && target.pending > 0 ? "badge-amber" : "badge-green", badgeLabel: `${Math.max(0, 100 - achievedPct)}% remaining`, href: "/dashboard/staff/sales", loading: targetQ.isLoading },
+  const DEALER_REQUESTS_STAT: Stat = { label: "Dealer Requests", value: counts.dealerRequests ?? 0, sub: "New dealer requests still open", badge: attention(counts.dealerRequests ?? 0), badgeLabel: `${counts.dealerRequests ?? 0} open`, href: "/dashboard/staff/dealer-requests", loading: countsQ.isLoading }
+
+  // The same four slots as the admin's tiles: approvals, dealers, people, discounts.
+  // Sales Managers and Staff have no team, so Dealer Requests takes the people slot.
+  const GLANCE_STATS: Stat[] = [
+    { label: "Order Approvals", value: counts.pendingOrders ?? 0, sub: "Orders waiting to be accepted", badge: attention(counts.pendingOrders ?? 0), badgeLabel: `${counts.pendingOrders ?? 0} awaiting`, href: "/Pages/Ordermanagement/outstandingorders", loading: countsQ.isLoading },
+    { label: hasTeam ? "Team Dealers" : "My Dealers", value: dashboard?.dealers.total ?? 0, sub: hasTeam ? "Dealers assigned to you and your team" : "Dealers mapped to your staff ID", badge: "badge-green", badgeLabel: `${dashboard?.dealers.active ?? 0} active, ${dashboard?.dealers.inactive ?? 0} inactive`, href: "/dashboard/staff/dealerlist", loading: dashboardQ.isLoading },
+    hasTeam
+      ? { label: "My Team", value: dashboard?.team?.count ?? 0, sub: user.staff_roletype === "RSM" ? "ASMs, sales managers and linked staff" : "Sales managers reporting to you", badge: "badge-purple", badgeLabel: `${dashboard?.team?.count ?? 0} active`, loading: dashboardQ.isLoading }
+      : DEALER_REQUESTS_STAT,
+    { label: "Discount Requests", value: counts.discountRequests ?? 0, sub: "Custom discounts awaiting a decision", badge: attention(counts.discountRequests ?? 0), badgeLabel: `${counts.discountRequests ?? 0} pending`, href: "/dashboard/staff/discount-requests", loading: countsQ.isLoading },
   ]
 
   const WORKLOAD_STATS: Stat[] = [
-    { label: "My Dealers", value: dealers.length, sub: "Dealers mapped to your staff ID", badge: "badge-green", badgeLabel: "Active", href: "/dashboard/staff/dealerlist", loading: dealersQ.isLoading },
     { label: "Assigned Sales", value: formatRupee(companyWideSales), sub: "Sales across assigned distributors", badge: "badge-purple", badgeLabel: "This month", href: "/dashboard/staff/sales", loading: ordersQ.isLoading },
     { label: "Assigned Orders", value: companyWideOrders.toLocaleString("en-IN"), sub: "Orders across assigned distributors", badge: "badge-blue", badgeLabel: "This month", href: "/dashboard/staff/sales", loading: ordersQ.isLoading },
     { label: "Pending Orders", value: pendingOrders.length.toLocaleString("en-IN"), sub: "Accepted, not yet dispatched", badge: attention(pendingOrders.length), badgeLabel: `${pendingOrders.length} pending`, href: "/orders", loading: ordersQ.isLoading },
     { label: "Pending Value", value: formatRupee(pendingValue), sub: "Net value of pending orders", badge: "badge-amber", badgeLabel: `₹${pendingValue.toLocaleString("en-IN")}`, href: "/orders", loading: ordersQ.isLoading },
+    ...(hasTeam ? [DEALER_REQUESTS_STAT] : []),
   ]
 
-  const REQUEST_STATS: Stat[] = [
-    { label: "Discount Requests", value: counts.discountRequests ?? 0, sub: "Custom discounts awaiting a decision", badge: attention(counts.discountRequests ?? 0), badgeLabel: `${counts.discountRequests ?? 0} pending`, href: "/dashboard/staff/discount-requests", loading: countsQ.isLoading },
-    { label: "Order Approvals", value: counts.pendingOrders ?? 0, sub: "Orders waiting to be accepted", badge: attention(counts.pendingOrders ?? 0), badgeLabel: `${counts.pendingOrders ?? 0} awaiting`, href: "/Pages/Ordermanagement/outstandingorders", loading: countsQ.isLoading },
-    { label: "Dealer Requests", value: counts.dealerRequests ?? 0, sub: "New dealer requests still open", badge: attention(counts.dealerRequests ?? 0), badgeLabel: `${counts.dealerRequests ?? 0} open`, href: "/dashboard/staff/dealer-requests", loading: countsQ.isLoading },
-  ]
+  const renderStat = (s: Stat) => {
+    const body = (
+      <>
+        <div className="stat-lbl">{s.label}</div>
+        <div className="stat-val">
+          {s.loading
+            ? <span className="shimmer" style={{ display: "inline-block", width: 72, height: 26 }} />
+            : s.value}
+        </div>
+        <div className="stat-sub">{s.sub}</div>
+        <div className={`stat-badge ${s.badge}`}>{s.badgeLabel}</div>
+      </>
+    )
+    return s.href
+      ? <Link key={s.label} href={s.href} className="stat-card stat-link-card">{body}</Link>
+      : <div key={s.label} className="stat-card">{body}</div>
+  }
 
   const renderStats = (items: Stat[]) => (
     <div className="stat-grid">
-      {items.map(s => (
-        <Link key={s.label} href={s.href} className="stat-card stat-link-card">
-          <div className="stat-lbl">{s.label}</div>
-          <div className="stat-val">
-            {s.loading
-              ? <span className="shimmer" style={{ display: "inline-block", width: 72, height: 26 }} />
-              : s.value}
-          </div>
-          <div className="stat-sub">{s.sub}</div>
-          <div className={`stat-badge ${s.badge}`}>{s.badgeLabel}</div>
-        </Link>
-      ))}
+      {items.map(renderStat)}
     </div>
   )
 
@@ -504,27 +474,8 @@ function ExecutiveDashboard() {
         .overlay.show { opacity: 1; pointer-events: all; }
 
         /* ── Shell ── */
-        .content { width: min(100%, 1840px); margin: 0 auto; padding: 38px 34px 48px; }
-
-        /* ── Profile strip ── */
-        .profile-strip {
-          display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-          padding: 18px 22px; margin-bottom: 30px;
-          background: rgba(255, 255, 255, 0.88);
-          border: 1px solid rgba(60, 60, 67, .075);
-          box-shadow: 0 1px 2px rgba(0,0,0,.02), 0 10px 34px rgba(0,0,0,.045);
-          backdrop-filter: saturate(180%) blur(20px);
-          border-radius: 24px;
-        }
-        .profile-avatar { width: 52px; height: 52px; flex-shrink: 0; border-radius: 50%; background: linear-gradient(145deg, #1d1d1f, #52525a); display: grid; place-items: center; font-size: 18px; font-weight: 700; letter-spacing: -.02em; color: #fff; }
-        .profile-name  { font-size: 16px; font-weight: 680; letter-spacing: -.022em; color: #1d1d1f; }
-        .profile-email { font-size: 11.5px; color: #6e6e73; margin-top: 3px; }
-        .profile-chips { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 9px; }
-        .pchip { padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 620; }
-        .pc-purple { background: rgba(175,82,222,.10); color: #af52de; }
-        .pc-blue   { background: rgba(0,122,255,.10); color: #006162; }
-        .pc-amber  { background: rgba(255,149,0,.12); color: #b25c00; }
-        .pc-green  { background: rgba(52,199,89,.12); color: #1a7f37; font-variant-numeric: tabular-nums; }
+        /* Same density as the admin dashboard: these styles are px, so shrink 25%. */
+        .content { width: min(100%, 1840px); margin: 0 auto; padding: 38px 34px 48px; zoom: .75; }
 
         /* ── Refetch indicator ── */
         .refetch-bar { height: 2px; background: linear-gradient(90deg, rgba(0,122,255,0), #006162, rgba(0,122,255,0)); animation: slide 1.2s infinite; border-radius: 2px; margin-bottom: 12px; }
@@ -532,10 +483,6 @@ function ExecutiveDashboard() {
 
         /* ── Page header ── */
         .dashboard-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
-        .eyebrow { display: inline-flex; align-items: center; gap: 7px; color: #006162; font-size: 12px; line-height: 1; font-weight: 650; margin-bottom: 10px; }
-        .eyebrow-dot { width: 7px; height: 7px; border-radius: 999px; background: #006162; box-shadow: 0 0 0 4px rgba(0, 122, 255, .09); }
-        .page-title { margin: 0; font-size: clamp(32px, 4vw, 44px); line-height: 1.02; letter-spacing: -.045em; font-weight: 720; color: #1d1d1f; }
-        .page-subtitle { max-width: 620px; margin: 10px 0 0; color: #6e6e73; font-size: 15px; line-height: 1.45; letter-spacing: -.01em; text-wrap: pretty; }
         .profile-chip {
           display: flex; align-items: center; gap: 11px; flex-shrink: 0;
           padding: 7px 9px 7px 7px;
@@ -662,14 +609,12 @@ function ExecutiveDashboard() {
         @media (max-width: 560px) {
           .content { padding: 24px 16px 32px; }
           .dashboard-header { margin-bottom: 24px; }
-          .page-title { font-size: 34px; }
-          .page-subtitle { font-size: 14px; }
           .profile-chip { display: none; }
           .stat-grid { grid-template-columns: 1fr; gap: 10px; }
           .stat-card { min-height: 140px; padding: 18px; border-radius: 20px; }
           .panel { padding: 18px; border-radius: 20px; }
-          .profile-strip { border-radius: 20px; }
         }
+        ${STAFF_PANEL_CSS}
       `}</style>
 
       <div className="root">
@@ -718,7 +663,7 @@ function ExecutiveDashboard() {
           <main className="content">
 
             {/* Background refetch indicator — shows only when re-fetching cached data */}
-            {[ordersQ, dealersQ, monthlyOrdersQ, monthlyValueQ].some(q => q.isFetching && !q.isLoading) && (
+            {[ordersQ, dealersQ, dashboardQ].some(q => q.isFetching && !q.isLoading) && (
               <div className="refetch-bar" />
             )}
 
@@ -733,12 +678,6 @@ function ExecutiveDashboard() {
 
             {/* ── Page header ── */}
             <header className="dashboard-header">
-              <div>
-                <div className="eyebrow"><span className="eyebrow-dot" /> Staff overview</div>
-                <h1 className="page-title">Dashboard</h1>
-                <p className="page-subtitle">Your assigned distributors, the orders and requests waiting on you, and how the territory is tracking.</p>
-              </div>
-
               <div className="profile-chip" aria-label="Current staff member">
                 <div className="profile-chip-avatar">{initials}</div>
                 <div className="profile-copy">
@@ -748,71 +687,56 @@ function ExecutiveDashboard() {
               </div>
             </header>
 
-            {/* ── Profile Strip ── */}
-            <div className="profile-strip">
-              <div className="profile-avatar">{initials}</div>
-              <div>
-                <div className="profile-name">{user.staff_name}</div>
-                <div className="profile-email">{user.staff_email || "—"}</div>
-                <div className="profile-chips">
-                  <span className="pchip pc-purple">{roleLabel}</span>
-                  {rsmRegionLabel && (
-                    <span className="pchip pc-blue">{rsmRegionLabel} Zone</span>
-                  )}
-                  {user.staff_designation?.trim() && (
-                    <span className="pchip pc-blue">{user.staff_designation.trim()}</span>
-                  )}
-                  {user.staff_location && (
-                    <span className="pchip pc-amber">📍 {user.staff_location}</span>
-                  )}
-                  <span className="pchip pc-green">ID: {user.staff_id}</span>
-                </div>
+            {/* ── Same arrangement as the admin dashboard ── */}
+            <div className="section-label">At a glance</div>
+
+            <section className="metrics-grid" aria-label="Dashboard summary">
+              <div className="metrics-left">
+                {GLANCE_STATS.map(renderStat)}
+                <TargetOverview scopeLabel={scopeLabel} target={target} loading={targetQ.isLoading} />
               </div>
-            </div>
 
-            <div className="section-label">Target — at a glance</div>
-            {renderStats(TARGET_STATS)}
+              <SaleChartPanel breakdown={breakdown} members={dashboard?.team?.members ?? []} enabled={enabled} />
 
-            <div className="section-label">Orders — my workload</div>
+              {/* RSM only: an ASM has just the one role under them, and the rest no team. */}
+              {!!dashboard?.team?.byRole.length && (
+                <article className="stat-card staff-roles">
+                  <div className="stat-lbl">Staff by role</div>
+                  <div className="role-pills">
+                    {dashboard.team.byRole.map((role) => (
+                      <span key={role.label} className="role-pill">
+                        <span>{role.label}</span>
+                        <span className="role-count">{role.count}</span>
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              )}
+            </section>
+
+            <div className="section-label">My workload</div>
             {renderStats(WORKLOAD_STATS)}
 
-            <div className="section-label">Requests</div>
-            {renderStats(REQUEST_STATS)}
-
-            {/* ── Charts Row 1 ── */}
-            <PendingProductsPreview role="staff" moreHref="/dashboard/staff/pending-products" />
-
-            <div className="charts-2">
-              <ChartPanel
-                title="Monthly Orders"
-                sub="Total order count per month"
-                legendColor="#006162"
-                legendLabel="Orders"
-                loading={monthlyOrdersQ.isLoading}
-                data={ordersChartData}
-                barFill="#006162"
-                Tooltip={CountTooltip}
+            <div className="section-label">{breakdown === "city" ? "City performance" : "Team performance"}</div>
+            <section className="analytics-grid">
+              <NetSalesPanel
+                breakdown={breakdown}
+                data={dashboard}
+                loading={dashboardQ.isLoading}
+                granularity={granularity}
+                onGranularityChange={setGranularity}
               />
-              <ChartPanel
-                title="Monthly Revenue"
-                sub="Total value per month"
-                legendColor="#ff9500"
-                legendLabel="Revenue"
-                loading={monthlyValueQ.isLoading}
-                data={revenueChartData}
-                barFill="#ff9500"
-                Tooltip={MoneyTooltip}
-              />
-            </div>
+              <TopByGroupPanel breakdown={breakdown} data={dashboard} loading={dashboardQ.isLoading} />
+            </section>
 
-            {/* ── Charts Row 2 ── */}
+            <div className="section-label">Sales leaders</div>
             <div className="charts-2">
               <ChartPanel
                 title="Top Orders"
                 sub="Order value distribution"
                 legendColor="#006162"
                 legendLabel="Order Value"
-                loading={topOrdersQ.isLoading}
+                loading={dashboardQ.isLoading}
                 data={topOrdersChartData}
                 barFill="#006162"
                 Tooltip={MoneyTooltip}
@@ -822,7 +746,7 @@ function ExecutiveDashboard() {
                 sub="Dealer performance ranking"
                 legendColor="#ffa581"
                 legendLabel="Total Value"
-                loading={topDealersQ.isLoading}
+                loading={dashboardQ.isLoading}
                 data={topDealersChartData}
                 barFill="#ffa581"
                 Tooltip={MoneyTooltip}
@@ -840,7 +764,7 @@ function ExecutiveDashboard() {
               <div className="reports-row">
                 <div>
                   <div className="rpt-head">Top Orders</div>
-                  {topOrdersQ.isLoading
+                  {dashboardQ.isLoading
                     ? <div className="report-empty shimmer" style={{ height: 18, width: "60%", borderRadius: 4 }} />
                     : topOrders.length > 0
                       ? topOrders.map(item => (
@@ -853,12 +777,12 @@ function ExecutiveDashboard() {
                 </div>
                 <div>
                   <div className="rpt-head">Top Dealers</div>
-                  {topDealersQ.isLoading
+                  {dashboardQ.isLoading
                     ? <div className="report-empty shimmer" style={{ height: 18, width: "60%", borderRadius: 4 }} />
                     : topDealers.length > 0
                       ? topDealers.map((d, i) => (
                         <div key={i} className="report-item">
-                          <span className="report-name">{d.Dealer_Name}</span>
+                          <span className="report-name">{d.dealerName}</span>
                           <span className="report-value">₹{Number(d.total).toLocaleString("en-IN")}</span>
                         </div>
                       ))
@@ -866,6 +790,23 @@ function ExecutiveDashboard() {
                 </div>
               </div>
             </div>
+
+            {/* ── Below the admin's sections: what only staff have ── */}
+            <div className="section-label">My orders and dealers</div>
+            <div className="staff-only-chart">
+              <ChartPanel
+                title="Monthly Orders"
+                sub="Total order count per month"
+                legendColor="#006162"
+                legendLabel="Orders"
+                loading={ordersQ.isLoading}
+                data={ordersChartData}
+                barFill="#006162"
+                Tooltip={CountTooltip}
+              />
+            </div>
+
+            <PendingProductsPreview role="staff" moreHref="/dashboard/staff/pending-products" />
 
             {/* ── Assigned Dealers Table ── */}
             <div className="panel">
@@ -1015,6 +956,39 @@ function ExecutiveDashboard() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// TARGET OVERVIEW — the wide card under the tiles, same spot as the admin's
+// ─────────────────────────────────────────────────────────────
+function TargetOverview({ scopeLabel, target, loading }: { scopeLabel: string; target?: SalesTarget; loading: boolean }) {
+  const achievedPct = target?.target ? Math.round((target.achieved / target.target) * 100) : 0
+  const show = (value?: number) => (loading ? "—" : formatRupee(value ?? 0))
+  const since = target ? `, since ${new Date(target.fyStart).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}` : ""
+
+  return (
+    <Link href="/dashboard/staff/sales" className="stat-card stat-link-card target-overview">
+      <div className="target-head">
+        <span className="target-icon"><Target size={22} aria-hidden /></span>
+        <div>
+          <div className="target-title">{scopeLabel} Sales Target</div>
+          <div className="target-sub">Annual target across {target?.dealers ?? 0} dealers{since}</div>
+        </div>
+      </div>
+      <div className="target-pairs">
+        <section className="target-pair blue">
+          <div className="target-pair-head">Achieved / Target</div>
+          <div className="target-pair-value">{show(target?.achieved)} <span>/</span> {show(target?.target)}</div>
+          <div className="stat-badge badge-green">{achievedPct}% of target</div>
+        </section>
+        <section className="target-pair green">
+          <div className="target-pair-head">Pending Target</div>
+          <div className="target-pair-value">{show(target?.pending)}</div>
+          <div className={`stat-badge ${target && target.pending > 0 ? "badge-amber" : "badge-green"}`}>{Math.max(0, 100 - achievedPct)}% remaining</div>
+        </section>
+      </div>
+    </Link>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
 // CHART PANEL — extracted to avoid repetition
 // ─────────────────────────────────────────────────────────────
 function ChartPanel({
@@ -1054,7 +1028,7 @@ function ChartPanel({
             <BarChart data={data} margin={{ top: 8, right: 4, left: -8, bottom: 0 }}>
               <CartesianGrid stroke="rgba(60,60,67,.08)" vertical={false} />
               <XAxis dataKey="name" tick={{ fontSize: 10.5, fill: "#8e8e93" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 10.5, fill: "#8e8e93" }} axisLine={false} tickLine={false} width={52} />
+              <YAxis tick={{ fontSize: 10.5, fill: "#8e8e93" }} axisLine={false} tickLine={false} width={52} tickFormatter={compactAxisLabel} />
               <Tooltip content={<TooltipComp />} />
               <Bar dataKey="value" fill={barFill} radius={[8, 8, 2, 2]} maxBarSize={38} />
             </BarChart>
