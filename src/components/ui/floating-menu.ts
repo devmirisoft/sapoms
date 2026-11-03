@@ -15,7 +15,7 @@ export function isMenuOpen(openMenu: FloatingMenuState, id: string) {
  * menu's ref with its measured height, so a menu with a variable number of
  * items lands correctly instead of running off the bottom of the screen.
  */
-function place(button: DOMRect, width: number, height: number) {
+export function place(button: DOMRect, width: number, height: number) {
   const fitsBelow = button.bottom + OFFSET + height <= window.innerHeight - GUTTER
   return {
     top: fitsBelow

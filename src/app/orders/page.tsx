@@ -3,7 +3,7 @@
 
 import DateInput from "@/components/ui/date-input";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ReactNode, type SyntheticEvent } from "react";
 import { useQuery, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import moment from "moment";
@@ -24,6 +24,7 @@ import { WAREHOUSE_OPTIONS } from "@/lib/warehouses";
 import { useAuthSession } from "@/hooks/useAuthSession";
 import type { AppRole } from "@/lib/roleAccess";
 import { showToast } from "@/components/ui/toast";
+import { place } from "@/components/ui/floating-menu";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Order = {
@@ -56,7 +57,10 @@ type Order = {
   rsm_cover?: boolean;
   staffname?: string;
   rsmName?: string;
+  rsmReviewedAt?: string | null;
+  acceptanceStatus?: string;
   acceptanceReviewedBy?: string;
+  acceptanceReviewedAt?: string | null;
 };
 type ApiResponse = { msg: string; count: number; status: boolean; data: Order[]; total?: number; last_page?: number };
 type OrderNoteOverlay = {
@@ -420,6 +424,102 @@ function AcceptBadge({ accepted }: { accepted?: string }) {
       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${dot}`} />
       {acceptLabel(accepted)}
     </span>
+  );
+}
+
+/** One review stage on the approval card: who acted and when, or who it waits on. */
+function ApprovalStage({ label, status, by, at, waitingOn }: {
+  label: string;
+  status?: string;
+  by?: string;
+  at?: string | null;
+  waitingOn?: string;
+}) {
+  const reviewed = status === "ACCEPTED" || status === "DECLINED";
+  const verb = status === "ACCEPTED" ? "Approved" : "Disapproved";
+  const tone = status === "ACCEPTED" ? "text-emerald-700" : status === "DECLINED" ? "text-rose-700" : "text-amber-700";
+  return (
+    <div className="flex gap-2">
+      <span className="w-10 flex-shrink-0 font-semibold text-gray-500">{label}</span>
+      <div className="min-w-0">
+        <p className={`font-semibold ${tone}`}>
+          {!reviewed ? `Awaiting${waitingOn ? ` ${waitingOn}` : ""}` : by ? `${verb} by ${by}` : `${verb}, reviewer not recorded`}
+        </p>
+        {reviewed && (
+          <p className="font-mono text-gray-500">{at ? moment(at).format("DD MMM YYYY, hh:mm A") : "Time not recorded"}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Hovering the approval cell lists who reviewed the order at each stage and when.
+ * The card is `fixed` for the same reason as the row menu: the table's horizontal
+ * overflow would clip it. Imported legacy orders have no reviewer or review time.
+ */
+function ApprovalHover({ order, children }: { order: Order; children: ReactNode }) {
+  const [pos, setPos] = useState<{ top?: number; bottom?: number; left: number } | null>(null);
+  const rsmStatus = rsmApprovalValue(order);
+  const staffReviewed = order.acceptanceStatus === "ACCEPTED" || order.acceptanceStatus === "DECLINED";
+
+  // A fixed card would drift away from its cell on scroll/resize, so close it.
+  useEffect(() => {
+    if (!pos) return;
+    const close = () => setPos(null);
+    window.addEventListener("scroll", close, true);
+    window.addEventListener("resize", close);
+    return () => {
+      window.removeEventListener("scroll", close, true);
+      window.removeEventListener("resize", close);
+    };
+  }, [pos]);
+
+  const show = (event: SyntheticEvent<HTMLDivElement>) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const { top, left, flip } = place(rect, 288, 140);
+    // Long names wrap, so a flipped card hangs off its bottom edge, not a guessed height.
+    setPos(flip ? { bottom: window.innerHeight - rect.top + 8, left } : { top, left });
+  };
+  const hide = () => setPos(null);
+
+  return (
+    <div
+      tabIndex={0}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      className="cursor-help rounded outline-none focus-visible:ring-2 focus-visible:ring-brand-100"
+    >
+      {children}
+      {pos && (
+        <div
+          role="tooltip"
+          style={pos}
+          className="fixed w-72 z-50 pointer-events-none whitespace-normal break-words bg-white rounded-xl shadow-xl border border-gray-200 p-3 space-y-2 text-[10.2px] leading-snug"
+        >
+          <p className="font-bold text-gray-900">Approvals</p>
+          <ApprovalStage
+            label="RSM"
+            status={rsmStatus}
+            by={order.rsmReviewedBy || order.rsm_reviewed_by}
+            at={order.rsmReviewedAt}
+            waitingOn={order.rsmName}
+          />
+          {/* An RSM decline ends the flow, so staff has nothing to show or wait on. */}
+          {(rsmStatus !== "DECLINED" || staffReviewed) && (
+            <ApprovalStage
+              label="Staff"
+              status={order.acceptanceStatus}
+              by={order.acceptanceReviewedBy}
+              at={order.acceptanceReviewedAt}
+              waitingOn={order.staffname}
+            />
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2148,6 +2248,7 @@ export default function OrderHistoryPage() {
                               </td>
                               ) : (
                               <td className="px-2 py-2">
+                                <ApprovalHover order={order}>
                                 <AcceptBadge accepted={order.accept_order} />
                                 {rsmStatus === "ACCEPTED" && (
                                   <>
@@ -2170,6 +2271,7 @@ export default function OrderHistoryPage() {
                                     {order.staffname && <p className="text-[8.5px] leading-tight text-gray-500">Staff: {order.staffname}</p>}
                                   </>
                                 )}
+                                </ApprovalHover>
                               </td>
                               )}
                               <td className="px-2 py-2">
