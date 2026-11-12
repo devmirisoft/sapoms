@@ -23,6 +23,7 @@ export type AdminProductVariantRecord = {
   packPricePaise: bigint;
   priceBasis: string;
   active: boolean;
+  disabledNote: string | null;
 };
 
 export type ProductVariantWriteInput = {

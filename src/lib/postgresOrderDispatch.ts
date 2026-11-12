@@ -244,6 +244,7 @@ export async function applyPostgresOrderDispatch(orderId: unknown, actor: AuthAc
   for (const line of lines as DispatchLineInput[]) {
     const item = resolveRequestedItem(order, line);
     if (!item) throw new PostgresOrderStatusError(404, "item_not_found", "Order product not found");
+    if (item.disabledNote) throw new PostgresOrderStatusError(409, "product_disabled", `${item.catalogueNumberSnapshot} was disabled and can't be dispatched: ${item.disabledNote}`);
     const quantity = safeDispatchInteger(line.dispatchQuantity);
     if (quantity <= 0) throw new PostgresOrderStatusError(400, "invalid_quantity", "Dispatch Quantity must be greater than zero");
     const alreadyDispatched = currentTotals.get(item.id.toString()) ?? 0;

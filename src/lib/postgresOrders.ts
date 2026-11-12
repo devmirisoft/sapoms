@@ -285,6 +285,8 @@ export function mapPostgresOrderItemToLegacy(item: PostgresOrderLike["items"][nu
     remarks: item.remarks || "",
     productNote: item.productNote || "",
     product_note: item.productNote || "",
+    // Set when the product was disabled before this line shipped: qty and value are zeroed.
+    productDisabledNote: item.disabledNote || "",
     priority: item.isPriority ? "1" : "0",
     isPriority: item.isPriority,
     status: order.status,

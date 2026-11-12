@@ -391,6 +391,8 @@ export function buildOrderEditRevision(input: {
     const lineId = text(item.orderdata_id);
     if (!lineId || seen.has(lineId)) throw new OrderOverlayError(422, "invalid_item_identity", "Edited items must have stable unique identities.");
     seen.add(lineId);
+    // A disabled product's line sits at qty 0 and is passed through untouched (applyOrderEdit freezes it).
+    if (text(originalsById.get(lineId)?.productDisabledNote)) continue;
     if (numberValue(item.orderdata_item_quantity) <= 0) throw new OrderOverlayError(422, "invalid_quantity", "Item quantity must be greater than zero.");
   }
 

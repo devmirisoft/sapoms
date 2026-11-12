@@ -11,6 +11,7 @@ function mapVariant(record: AdminProductVariantRecord) {
     packPricePaise: record.packPricePaise.toString(),
     priceBasis: record.priceBasis,
     active: record.active,
+    disabledNote: record.disabledNote || "",
   };
 }
 
