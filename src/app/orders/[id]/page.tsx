@@ -66,6 +66,8 @@ type OrderData = {
   remarks?: string;
   displayRemark?: string;
   fallbackProductNote?: string;
+  /** The product was disabled before this line shipped: no qty, no value, no actions. */
+  productDisabledNote?: string;
   order_note?: string;
   note?: string;
   priority?: string | boolean;
@@ -377,6 +379,15 @@ function resolveItemStatusCode(o: OrderData, pricing: RowPricing): string {
   return rawCode;
 }
 
+function DisabledPill() {
+  return (
+    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-red-50 text-red-700">
+      <span className="w-1.5 h-1.5 rounded-full bg-red-500" />
+      Disabled
+    </span>
+  );
+}
+
 function StatusPill({ code }: { code: string }) {
   const s = itemStatusMap[code] ?? { label: code || "—", dot: "bg-gray-300", text: "text-gray-600", bg: "bg-gray-50" };
   return (
@@ -506,6 +517,11 @@ function getRowPricing(o: OrderData, packLookup: Record<string, number>, orderMe
   const discount = storedDiscount > 0 ? storedDiscount : gross * (pct / 100);
   const final = storedNet > 0 ? storedNet : Math.max(0, gross - discount);
 
+  // A disabled product's line stays listed but counts for nothing: rows, cards and totals all read this.
+  if (o.productDisabledNote) {
+    return { orderedQuantity: 0, ready, left: 0, pieces: 0, packs: 0, packSize, unitPrice, gross: 0, discount: 0, final: 0, pct };
+  }
+
   return {
     orderedQuantity,
     ready,
@@ -628,13 +644,15 @@ function ItemCard({
 }) {
   const left    = pricing.left;
   const isDeleted = o.del_status === "1";
+  const isDisabled = Boolean(o.productDisabledNote);
+  const dash = (value: string) => (isDisabled ? "—" : value);
   const originalRemarksText = [o.remark, o.remarks].filter(Boolean).join(" | ");
   const progressPct = pricing.orderedQuantity > 0
     ? Math.round((pricing.ready / pricing.orderedQuantity) * 100) : 0;
   const isPriority = hasPriorityTag(o.priority, o.isPriority, o.is_priority, o.remark, o.remarks);
 
   return (
-    <div className={`bg-white border border-gray-200 rounded-2xl p-5 flex flex-col gap-4 hover:border-gray-300 hover:shadow-md transition-all ${isDeleted ? "opacity-50" : ""}`}>
+    <div className={`bg-white border border-gray-200 rounded-2xl p-5 flex flex-col gap-4 hover:border-gray-300 hover:shadow-md transition-all ${isDeleted || isDisabled ? "opacity-50" : ""}`}>
       <div className="flex items-start justify-between gap-3">
         {selectable && (
           <input
@@ -657,12 +675,13 @@ function ItemCard({
           </div>
           <h3 className="text-[14px] font-bold text-gray-900 truncate">{o.product_name || "—"}</h3>
           {o.product_discription && <p className="text-[12px] text-gray-500 truncate mt-0.5">{o.product_discription}</p>}
+          {isDisabled && <p className="mt-2 text-[11px] font-semibold leading-5 text-red-600">Disabled: {o.productDisabledNote}</p>}
           {o.fallbackProductNote && <p className="mt-2 text-[11px] leading-5 text-brand-600">Product Note: {o.fallbackProductNote}</p>}
           {originalRemarksText && <p className="mt-2 text-[11px] leading-5 text-gray-600">{originalRemarksText}</p>}
         </div>
-        <StatusPill code={resolveItemStatusCode(o, pricing)} />
+        {isDisabled ? <DisabledPill /> : <StatusPill code={resolveItemStatusCode(o, pricing)} />}
       </div>
-      <div>
+      {!isDisabled && <div>
         <div className="flex items-center justify-between mb-1.5">
           <span className="text-[11px] font-semibold text-gray-600">Dispatch progress</span>
           <span className="text-[11px] font-mono font-bold text-gray-900">{progressPct}%</span>
@@ -676,15 +695,15 @@ function ItemCard({
             {left > 0 ? `${left * pricing.packSize} pcs left` : "complete"}
           </span>
         </div>
-      </div>
+      </div>}
       <div className="grid grid-cols-3 gap-3 border-t border-gray-100 pt-4">
         {[
-          { label: "Ordered",    val: `${pricing.packs}`, sub: "packs", cls: "text-gray-900" },
+          { label: "Ordered",    val: dash(`${pricing.packs}`), sub: isDisabled ? undefined : "packs", cls: "text-gray-900" },
           { label: "Price",      val: `₹${pricing.unitPrice.toLocaleString("en-IN")}`, cls: "text-gray-900" },
-          { label: "Discount",   val: `${pricing.pct}%`, sub: additionalDiscountType ? `incl. ${additionalDiscountType}` : undefined, cls: "text-amber-700" },
-          { label: "Gross",      val: `₹${pricing.gross.toLocaleString("en-IN")}`, cls: "text-gray-500 line-through" },
-          { label: "Saved",      val: `−₹${pricing.discount.toLocaleString("en-IN")}`, sub: additionalDiscountType ? `incl. ${additionalDiscountType}` : undefined, cls: "text-amber-700" },
-          { label: "Final",      val: `₹${pricing.final.toLocaleString("en-IN")}`, cls: "text-emerald-700" },
+          { label: "Discount",   val: dash(`${pricing.pct}%`), sub: additionalDiscountType && !isDisabled ? `incl. ${additionalDiscountType}` : undefined, cls: "text-amber-700" },
+          { label: "Gross",      val: dash(`₹${pricing.gross.toLocaleString("en-IN")}`), cls: isDisabled ? "text-gray-500" : "text-gray-500 line-through" },
+          { label: "Saved",      val: dash(`−₹${pricing.discount.toLocaleString("en-IN")}`), sub: additionalDiscountType && !isDisabled ? `incl. ${additionalDiscountType}` : undefined, cls: "text-amber-700" },
+          { label: "Final",      val: dash(`₹${pricing.final.toLocaleString("en-IN")}`), cls: "text-emerald-700" },
         ].map(f => (
           <div key={f.label}>
             <p className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">{f.label}</p>
@@ -694,8 +713,8 @@ function ItemCard({
       </div>
       <div className="flex items-center justify-between border-t border-gray-100 pt-3">
         <span className="text-[11px] text-gray-400 font-mono">{o.orderdata_datetime || "—"}</span>
-        <button onClick={onDispatch} disabled={isDeleted}
-          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-all ${isDeleted ? "opacity-40 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-200" : "bg-white text-gray-700 border-gray-200 hover:border-brand-300 hover:text-brand-500 hover:bg-brand-50"}`}>
+        <button onClick={onDispatch} disabled={isDeleted || isDisabled}
+          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] font-semibold border transition-all ${isDeleted || isDisabled ? "opacity-40 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-200" : "bg-white text-gray-700 border-gray-200 hover:border-brand-300 hover:text-brand-500 hover:bg-brand-50"}`}>
           <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
             <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
           </svg>
@@ -780,7 +799,9 @@ function EditOrderDialog({
   const [reviewing, setReviewing] = useState(false);
   const [requestNote, setRequestNote] = useState("");
   const visibleItems = draftItems.filter((item) => !(item as Record<string, unknown>)._removed);
-  const invalidQuantity = visibleItems.some((item) => !(Number(item.orderdata_item_quantity) > 0));
+  // Disabled-product lines ride along unchanged (qty 0); only the live lines are editable.
+  const editableItems = visibleItems.filter((item) => !item.productDisabledNote);
+  const invalidQuantity = editableItems.some((item) => !(Number(item.orderdata_item_quantity) > 0));
   const changeSummaries = draftItems.flatMap((item) => {
     const original = items.find((entry) => entry.orderdata_id === item.originalLineId);
     if (!original) return [];
@@ -825,17 +846,21 @@ function EditOrderDialog({
               <tbody className="divide-y divide-gray-100">
                 {draftItems.map((item) => {
                   const removed = !!(item as Record<string, unknown>)._removed;
+                  const isDisabled = Boolean(item.productDisabledNote);
+                  const locked = removed || saving || isDisabled;
                   return (
-                    <tr key={item.originalLineId} className={removed ? "opacity-95" : ""}>
-                      <td className="p-3 text-gray-900"><input value={String(item.orderdata_cat_no ?? "")} disabled={removed || saving} onChange={(event) => updateItem(item.originalLineId, { orderdata_cat_no: event.target.value })} className="w-36 rounded-lg border border-gray-200 px-2 py-1.5 font-mono text-xs" /></td>
-                      <td className="p-3 text-gray-900"><input value={String(item.product_name ?? "")} disabled={removed || saving} onChange={(event) => updateItem(item.originalLineId, { product_name: event.target.value })} className="w-64 rounded-lg border border-gray-200 px-2 py-1.5 text-xs" /></td>
-                      <td className="p-3 text-gray-900"><input type="number" min="1" value={String(item.orderdata_item_quantity ?? "")} disabled={removed || saving} onChange={(event) => updateItem(item.originalLineId, { orderdata_item_quantity: event.target.value })} className="w-20 rounded-lg border border-gray-200 px-2 py-1.5 text-xs" /></td>
-                      <td className="p-3 text-gray-900"><input type="number" min="1" value={String(packLookup[String(item.orderdata_cat_no ?? "").trim()] ?? item.packSize ?? item.pack_size ?? 1)} disabled={removed || saving} onChange={(event) => updateItem(item.originalLineId, { packSize: event.target.value, pack_size: event.target.value })} className="w-20 rounded-lg border border-gray-200 px-2 py-1.5 text-xs" /></td>
-                      <td className="p-3 text-xs text-gray-900">{item.fallbackProductNote || item.remark || "—"}</td>
+                    <tr key={item.originalLineId} className={isDisabled ? "opacity-50" : removed ? "opacity-95" : ""}>
+                      <td className="p-3 text-gray-900"><input value={String(item.orderdata_cat_no ?? "")} disabled={locked} onChange={(event) => updateItem(item.originalLineId, { orderdata_cat_no: event.target.value })} className="w-36 rounded-lg border border-gray-200 px-2 py-1.5 font-mono text-xs" /></td>
+                      <td className="p-3 text-gray-900"><input value={String(item.product_name ?? "")} disabled={locked} onChange={(event) => updateItem(item.originalLineId, { product_name: event.target.value })} className="w-64 rounded-lg border border-gray-200 px-2 py-1.5 text-xs" /></td>
+                      <td className="p-3 text-gray-900">{isDisabled ? <span className="font-mono text-xs">—</span> : <input type="number" min="1" value={String(item.orderdata_item_quantity ?? "")} disabled={locked} onChange={(event) => updateItem(item.originalLineId, { orderdata_item_quantity: event.target.value })} className="w-20 rounded-lg border border-gray-200 px-2 py-1.5 text-xs" />}</td>
+                      <td className="p-3 text-gray-900"><input type="number" min="1" value={String(packLookup[String(item.orderdata_cat_no ?? "").trim()] ?? item.packSize ?? item.pack_size ?? 1)} disabled={locked} onChange={(event) => updateItem(item.originalLineId, { packSize: event.target.value, pack_size: event.target.value })} className="w-20 rounded-lg border border-gray-200 px-2 py-1.5 text-xs" /></td>
+                      <td className="p-3 text-xs text-gray-900">{isDisabled ? <span className="font-semibold text-red-600">Disabled: {item.productDisabledNote}</span> : item.fallbackProductNote || item.remark || "—"}</td>
                       <td className="p-3">
-                        <button type="button" disabled={saving} onClick={() => updateItem(item.originalLineId, { _removed: !removed } as Partial<OrderData>)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700">
-                          {removed ? "Restore" : "Remove"}
-                        </button>
+                        {isDisabled ? <span className="text-xs text-gray-400">—</span> : (
+                          <button type="button" disabled={saving} onClick={() => updateItem(item.originalLineId, { _removed: !removed } as Partial<OrderData>)} className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700">
+                            {removed ? "Restore" : "Remove"}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   );
@@ -859,15 +884,15 @@ function EditOrderDialog({
             <textarea value={requestNote} onChange={(event) => setRequestNote(event.target.value.slice(0, 1000))} disabled={saving} className="mt-2 h-24 w-full resize-none rounded-xl border border-gray-200 p-3 text-sm normal-case tracking-normal text-gray-900 outline-none focus:border-amber-300 focus:ring-2 focus:ring-amber-100" />
           </label>
         )}
-        {visibleItems.length === 0 && <p className="mt-3 text-sm font-medium text-red-600">An edited order cannot be saved with no items. Use Cancel Order instead.</p>}
-        {visibleItems.length > 0 && invalidQuantity && <p className="mt-3 text-sm font-medium text-red-600">Every remaining item needs a quantity greater than zero.</p>}
+        {editableItems.length === 0 && <p className="mt-3 text-sm font-medium text-red-600">An edited order cannot be saved with no items. Use Cancel Order instead.</p>}
+        {editableItems.length > 0 && invalidQuantity && <p className="mt-3 text-sm font-medium text-red-600">Every remaining item needs a quantity greater than zero.</p>}
         {error && <p className="mt-3 text-sm font-medium text-red-600">{error}</p>}
         <div className="mt-5 flex justify-end gap-2">
           {reviewing && <button type="button" onClick={() => setReviewing(false)} disabled={saving} className="rounded-xl border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-700">Back</button>}
           {!reviewing ? (
-            <button type="button" onClick={() => setReviewing(true)} disabled={saving || visibleItems.length === 0 || invalidQuantity} className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Review Changes</button>
+            <button type="button" onClick={() => setReviewing(true)} disabled={saving || editableItems.length === 0 || invalidQuantity} className="rounded-xl bg-gray-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">Review Changes</button>
           ) : (
-            <button type="button" disabled={saving || visibleItems.length === 0 || invalidQuantity || changeSummaries.length === 0 || (requestMode && !requestNote.trim())} onClick={() => onSave({ expectedRevision: latestRevision, items: visibleItems, note: requestNote })} className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            <button type="button" disabled={saving || editableItems.length === 0 || invalidQuantity || changeSummaries.length === 0 || (requestMode && !requestNote.trim())} onClick={() => onSave({ expectedRevision: latestRevision, items: visibleItems, note: requestNote })} className="rounded-xl bg-amber-600 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
               {saving ? (requestMode ? "Sending..." : "Saving...") : (requestMode ? "Request Edit" : "Save Edit")}
             </button>
           )}
@@ -2251,12 +2276,14 @@ export default function ViewOrderDealerPage() {
                       const pricing = rowPricings[idx] ?? getRowPricing(o, packLookup, displayOrderMeta);
                       const left = pricing.left;
                       const isDeleted = o.del_status === "1";
-                      const rowDiscountType = itemAdditionalDiscountType(pricing.pct);
+                      const isDisabled = Boolean(o.productDisabledNote);
+                      const dash = (value: string | number) => (isDisabled ? "—" : value);
+                      const rowDiscountType = isDisabled ? null : itemAdditionalDiscountType(pricing.pct);
                       const selectionKey = buildBulkDispatchLineKey(o);
                       const selectable = showDispatchAllControl && dispatchableByKey.has(selectionKey);
                       const isPriority = hasPriorityTag(o.priority, o.isPriority, o.is_priority, o.remark, o.remarks);
                       return (
-                        <tr key={o.orderdata_id} className={`group hover:bg-gray-50/80 transition-colors ${isDeleted ? "opacity-40" : ""}`}>
+                        <tr key={o.orderdata_id} className={`group hover:bg-gray-50/80 transition-colors ${isDeleted ? "opacity-40" : isDisabled ? "opacity-50" : ""}`}>
                           {showDispatchAllControl && (
                             <td className="px-4 py-3.5">
                               <input
@@ -2289,6 +2316,7 @@ export default function ViewOrderDealerPage() {
                           </td>
                           <td className="px-4 py-3.5 max-w-[160px]">
                             <span className="block truncate text-[13px] font-semibold text-gray-900">{o.product_name || "—"}</span>
+                            {isDisabled && <span className="mt-1 block text-[11px] font-semibold leading-4 text-red-600">Disabled: {o.productDisabledNote}</span>}
                           </td>
                           <td
                             className="px-4 py-3.5 max-w-[140px] cursor-help"
@@ -2304,39 +2332,39 @@ export default function ViewOrderDealerPage() {
                               <span className="mt-1 first:mt-0 block truncate text-[11px] leading-5 text-gray-500">{[o.remark, o.remarks].filter(Boolean).join(" | ")}</span>
                             )}
                           </td>
-                          <td className="px-4 py-3.5 font-mono font-bold text-gray-900">{pricing.packs}</td>
-                          <td className="px-4 py-3.5 font-mono font-bold text-amber-700">{pricing.packs} × {pricing.packSize}</td>
-                          <td className="px-4 py-3.5 font-mono font-bold text-gray-900">{pricing.pieces}</td>
-                          <td className="px-4 py-3.5 font-mono font-semibold text-emerald-600">{pricing.ready * pricing.packSize}</td>
-                          <td className="px-4 py-3.5 font-mono font-bold" style={{ color: left > 0 ? "#dc2626" : "#9ca3af" }}>{left * pricing.packSize}</td>
+                          <td className="px-4 py-3.5 font-mono font-bold text-gray-900">{dash(pricing.packs)}</td>
+                          <td className="px-4 py-3.5 font-mono font-bold text-amber-700">{dash(`${pricing.packs} × ${pricing.packSize}`)}</td>
+                          <td className="px-4 py-3.5 font-mono font-bold text-gray-900">{dash(pricing.pieces)}</td>
+                          <td className="px-4 py-3.5 font-mono font-semibold text-emerald-600">{dash(pricing.ready * pricing.packSize)}</td>
+                          <td className="px-4 py-3.5 font-mono font-bold" style={{ color: left > 0 ? "#dc2626" : "#9ca3af" }}>{dash(left * pricing.packSize)}</td>
                           <td className="px-4 py-3.5 text-[12px] text-gray-600">{o.product_unit || "—"}</td>
                           <td className="px-4 py-3.5 font-mono text-gray-900 font-semibold">₹{pricing.unitPrice.toLocaleString("en-IN")}</td>
                           <td className="px-4 py-3.5 font-mono text-gray-900">
-                            <div>{pricing.pct}%</div>
+                            <div>{dash(`${pricing.pct}%`)}</div>
                             {rowDiscountType && (
                               <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
                                 incl. {rowDiscountType}
                               </div>
                             )}
                           </td>
-                          <td className="px-4 py-3.5 font-mono text-gray-500 line-through text-[12px]">₹{pricing.gross.toLocaleString("en-IN")}</td>
+                          <td className={`px-4 py-3.5 font-mono text-gray-500 text-[12px] ${isDisabled ? "" : "line-through"}`}>{dash(`₹${pricing.gross.toLocaleString("en-IN")}`)}</td>
                           <td className="px-4 py-3.5 font-mono text-amber-700 font-semibold">
-                            <div>-&#8377;{pricing.discount.toLocaleString("en-IN")}</div>
+                            <div>{dash(`-₹${pricing.discount.toLocaleString("en-IN")}`)}</div>
                             {rowDiscountType && (
                               <div className="mt-1 text-[10px] font-semibold uppercase tracking-wide text-emerald-600">
                                 incl. {rowDiscountType}
                               </div>
                             )}
                           </td>
-                          <td className="px-4 py-3.5 font-mono font-bold text-emerald-700">&#8377;{pricing.final.toLocaleString("en-IN")}</td>
-                          <td className="px-4 py-3.5"><StatusPill code={resolveItemStatusCode(o, pricing)} /></td>
+                          <td className="px-4 py-3.5 font-mono font-bold text-emerald-700">{dash(`₹${pricing.final.toLocaleString("en-IN")}`)}</td>
+                          <td className="px-4 py-3.5">{isDisabled ? <DisabledPill /> : <StatusPill code={resolveItemStatusCode(o, pricing)} />}</td>
                           <td className="px-4 py-3.5 text-[11px] text-gray-500 font-mono whitespace-nowrap">{o.orderdata_datetime || "—"}</td>
                           <td className="px-4 py-3.5 w-px">
                             <div className="track-btn">
                               <button
-                                onClick={() => !isDeleted && setActiveDispatchItemId(o.orderdata_id)}
-                                disabled={isDeleted}
-                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all whitespace-nowrap ${isDeleted ? "opacity-30 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-100" : "bg-white text-gray-600 border-gray-200 hover:border-brand-200 hover:text-brand-500 hover:bg-brand-50"}`}>
+                                onClick={() => !isDeleted && !isDisabled && setActiveDispatchItemId(o.orderdata_id)}
+                                disabled={isDeleted || isDisabled}
+                                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold border transition-all whitespace-nowrap ${isDeleted || isDisabled ? "opacity-30 cursor-not-allowed bg-gray-50 text-gray-400 border-gray-100" : "bg-white text-gray-600 border-gray-200 hover:border-brand-200 hover:text-brand-500 hover:bg-brand-50"}`}>
                                 <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
                                   <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" />
                                 </svg>

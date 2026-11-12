@@ -11,6 +11,7 @@ import {
 } from '@/lib/catalogue'
 import productSearch from '@/lib/productSearch.js'
 import { showToast } from "@/components/ui/toast";
+import { SegmentedTabs } from "@/components/SegmentedTabs";
 
 const { getSearchQueryInfo, normalizeCatalogueNumber, searchProducts } = productSearch
 
@@ -31,12 +32,19 @@ type ProductData = {
   product_categories: string[]
   availability: 'In Stock' | 'Out of Stock' | 'On Request'
   admin_product_id?: string
+  admin_variant_id?: string
+  active: boolean
+  disabled_note: string
 }
+
+type ProductStatus = 'active' | 'discontinued' | 'all'
 
 type ProductResponse = {
   data: ProductData[]
   count: number
   last_page: number
+  /** Rows per tab after search and category, so every tab can show its badge. */
+  counts: Record<ProductStatus, number>
 }
 
 type AdminCatalogueVariant = CatalogueVariant & {
@@ -45,6 +53,8 @@ type AdminCatalogueVariant = CatalogueVariant & {
   unitName?: string
   availability?: 'In Stock' | 'Out of Stock' | 'On Request'
   specSummary?: string
+  active?: boolean
+  disabledNote?: string
 }
 
 type AdminCatalogueProduct = CatalogueProduct & {
@@ -182,6 +192,9 @@ function mapCatalogueProductToRows(
       product_categories: productCategories,
       availability,
       admin_product_id: product.adminProductId,
+      admin_variant_id: product.adminProductId ? variant?.id : undefined,
+      active: variant?.active !== false,
+      disabled_note: variant?.disabledNote || '',
     }
   })
 }
@@ -273,7 +286,11 @@ function ProductListContent() {
   const [search,        setSearch]        = useState("")
   const [searchInput,   setSearchInput]   = useState("")
   const [selectedCategory, setSelectedCategory] = useState(urlCategory)
+  const [status,        setStatus]        = useState<ProductStatus>('active')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [disableTarget, setDisableTarget] = useState<ProductData | null>(null)
+  const [disableNote,   setDisableNote]   = useState("")
+  const [togglingId,    setTogglingId]    = useState<string | null>(null)
   const [columnFilters, setColumnFilters] = useState({
     catalogueNo: "",
     name: "",
@@ -297,7 +314,7 @@ function ProductListContent() {
   }, [urlQuery, urlCategory])
 
   const { data: response, isLoading, isError, refetch } = useQuery<ProductResponse>({
-    queryKey: ['products', page, search, selectedCategory],
+    queryKey: ['products', page, search, selectedCategory, status],
     queryFn: async () => {
       const res = await fetch('/api/admin/products?page=1&limit=5000', { cache: 'no-store' })
       if (!res.ok) throw new Error('Products unavailable')
@@ -338,6 +355,7 @@ function ProductListContent() {
               availability: product.active && variant.active ? 'In Stock' : 'Out of Stock',
               inStock: Boolean(product.active && variant.active),
               active: variant.active,
+              disabledNote: variant.disabledNote || '',
               specSummary: formatVariantSpecs(
                 parsedDescription.specRows.get(catalogueNumber)
                 || parsedDescription.specRows.get(variant.sku)
@@ -347,7 +365,12 @@ function ProductListContent() {
           }),
         }
       })
-      const filteredProducts = filterCatalogueProducts(catalogueProducts, search, selectedCategory)
+      // Search + category first (the tab badges count these), then the status tab.
+      const searchedProducts = filterCatalogueProducts(catalogueProducts, search, selectedCategory)
+      const activeCount = searchedProducts.filter((row) => row.active).length
+      const filteredProducts = status === 'all'
+        ? searchedProducts
+        : searchedProducts.filter((row) => row.active === (status === 'active'))
       const start = (page - 1) * ITEMS_PER_PAGE
       const pagedProducts = filteredProducts.slice(start, start + ITEMS_PER_PAGE)
 
@@ -355,6 +378,7 @@ function ProductListContent() {
         data: pagedProducts,
         count: filteredProducts.length,
         last_page: Math.max(1, Math.ceil(filteredProducts.length / ITEMS_PER_PAGE)),
+        counts: { active: activeCount, discontinued: searchedProducts.length - activeCount, all: searchedProducts.length },
       }
     },
     staleTime: 5 * 60 * 1000,
@@ -401,18 +425,48 @@ function ProductListContent() {
     } catch {
       showToast("error", "Failed to delete product")
     } finally {
-      closeDeleteModal()
+      closeSheet()
     }
   }
 
   // Let the sheet play its exit motion before it leaves the tree, and make it
   // interruptible: a second call (e.g. re-opening) simply resets the flag.
-  const closeDeleteModal = () => {
+  const closeSheet = () => {
     setModalClosing(true)
     window.setTimeout(() => {
       setDeleteConfirm(null)
+      setDisableTarget(null)
       setModalClosing(false)
     }, 180)
+  }
+
+  // Disabling needs a note (it is shown on the open orders it zeroes); enabling doesn't.
+  const setVariantActive = async (product: ProductData, active: boolean, note = "") => {
+    if (!product.admin_variant_id) return
+    setTogglingId(product.admin_variant_id)
+    try {
+      const res = await fetch(`/api/admin/product-variants/${encodeURIComponent(product.admin_variant_id)}`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ active, note }),
+      })
+      const json = await res.json().catch(() => null)
+      if (!res.ok) throw new Error(json?.message || "Update failed")
+      const { affectedOrders = 0, failedOrders = 0 } = json?.data ?? {}
+      const orders = (count: number) => `${count} open order${count === 1 ? "" : "s"}`
+      showToast(failedOrders ? "error" : "success", [
+        `${product.catalogue_number} ${active ? "enabled" : "disabled"}`,
+        affectedOrders ? `${orders(affectedOrders)} updated` : "",
+        failedOrders ? `${orders(failedOrders)} could not be updated, try disabling again` : "",
+      ].filter(Boolean).join(" · "))
+      if (!active) closeSheet()
+      refetch()
+    } catch (error) {
+      showToast("error", error instanceof Error ? error.message : "Update failed")
+    } finally {
+      setTogglingId(null)
+    }
   }
 
   const handleDownloadExcel = () => {
@@ -507,7 +561,7 @@ function ProductListContent() {
         <div
           className="motion-scrim fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[6px]"
           style={{ animation: `${modalClosing ? 'scrimIn' : 'scrimIn'} 200ms ease ${modalClosing ? 'reverse' : ''} forwards` }}
-          onClick={closeDeleteModal}
+          onClick={closeSheet}
         >
           <div
             className="motion-sheet bg-white/95 backdrop-blur-xl rounded-[20px] p-7 w-[360px] border border-black/5"
@@ -526,7 +580,7 @@ function ProductListContent() {
             </div>
             <div className="flex gap-2.5 justify-end">
               <button
-                onClick={closeDeleteModal}
+                onClick={closeSheet}
                 className={`${PRESS} px-[18px] py-[9px] rounded-full border border-[#e5e5ea] bg-white text-[13px] font-medium text-[#1d1d1f] cursor-pointer hover:bg-[#f5f5f7]`}
               >
                 Cancel
@@ -539,6 +593,66 @@ function ProductListContent() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ── Disable sheet — same motion as the delete sheet; the note is required ── */}
+      {disableTarget && (
+        <div
+          className="motion-scrim fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-[6px] px-4"
+          style={{ animation: `scrimIn 200ms ease ${modalClosing ? 'reverse' : ''} forwards` }}
+          onClick={() => togglingId ? undefined : closeSheet()}
+        >
+          <form
+            className="motion-sheet bg-white/95 backdrop-blur-xl rounded-[20px] p-7 w-[420px] max-w-full border border-black/5"
+            style={{
+              animation: `${modalClosing ? 'sheetOut' : 'sheetIn'} 220ms cubic-bezier(0.22,1,0.36,1) forwards`,
+              boxShadow: '0 24px 60px rgba(0,0,0,0.18)',
+            }}
+            onClick={e => e.stopPropagation()}
+            onSubmit={e => { e.preventDefault(); if (disableNote.trim()) setVariantActive(disableTarget, false, disableNote.trim()) }}
+          >
+            <div className="w-11 h-11 rounded-full bg-[#fff8e6] flex items-center justify-center mb-4">
+              <AlertTriangle size={20} color="#ff9f0a" />
+            </div>
+            <div className="text-[17px] font-semibold text-[#1d1d1f] mb-1.5 tracking-[-0.01em]">
+              Disable {disableTarget.catalogue_number || 'this product'}?
+            </div>
+            <div className="text-[13px] text-[#6e6e73] leading-relaxed mb-4">
+              Dealers stop seeing it. On open orders, lines not yet dispatched stay on the order at ₹0, faded with this note, and can&apos;t be dispatched, edited or removed. Lines already dispatched are not touched.
+            </div>
+            <label htmlFor="disable-note" className="block text-[12px] font-semibold text-[#3a3a3c] mb-1.5">
+              Note <span className="font-normal text-[#86868b]">(shown on the affected orders)</span>
+            </label>
+            <textarea
+              id="disable-note"
+              autoFocus
+              required
+              rows={3}
+              maxLength={1000}
+              value={disableNote}
+              onChange={e => setDisableNote(e.target.value)}
+              placeholder="e.g. Discontinued by the manufacturer"
+              className="w-full resize-none rounded-[12px] border border-[#e5e5ea] bg-white px-3 py-2.5 text-[16px] sm:text-[13px] text-[#1d1d1f] outline-none focus:border-brand-600 focus:shadow-[0_0_0_3px_rgba(0,113,227,0.12)]"
+            />
+            <div className="flex gap-2.5 justify-end mt-5">
+              <button
+                type="button"
+                onClick={closeSheet}
+                disabled={!!togglingId}
+                className={`${PRESS} px-[18px] py-[9px] rounded-full border border-[#e5e5ea] bg-white text-[13px] font-medium text-[#1d1d1f] cursor-pointer hover:bg-[#f5f5f7] disabled:opacity-40`}
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={!disableNote.trim() || !!togglingId}
+                className={`${PRESS} px-[18px] py-[9px] rounded-full border-none bg-[#ff9f0a] text-[13px] font-semibold text-white cursor-pointer hover:bg-[#e68f00] disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100`}
+              >
+                {togglingId ? 'Disabling…' : 'Disable'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 
@@ -606,6 +720,41 @@ function ProductListContent() {
           </div>
         </div>
 
+        {/* ── Status tabs — same control as the Orders page's Active / Cancelled tabs ── */}
+        <div className="mb-4">
+          <SegmentedTabs
+            label="Product status"
+            value={status}
+            onChange={next => { setStatus(next as ProductStatus); setPage(1) }}
+            items={[
+              {
+                value: 'active',
+                label: 'Active',
+                tone: 'emerald',
+                title: 'Catalogue numbers dealers can order',
+                count: response?.counts.active ?? null,
+                icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9" /><path d="m8.5 12 2.5 2.5 4.5-5" /></svg>,
+              },
+              {
+                value: 'discontinued',
+                label: 'Discontinued',
+                tone: 'rose',
+                title: 'Switched off: hidden from dealers',
+                count: response?.counts.discontinued ?? null,
+                icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><circle cx="12" cy="12" r="9" /><path d="m5.6 5.6 12.8 12.8" /></svg>,
+              },
+              {
+                value: 'all',
+                label: 'All',
+                tone: 'neutral',
+                title: 'Every catalogue number',
+                count: response?.counts.all ?? null,
+                icon: <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round"><path d="M3 7h18M3 12h18M3 17h11" /></svg>,
+              },
+            ]}
+          />
+        </div>
+
         {/* ── Stats row ── */}
         {!isLoading && (
           <div className="flex gap-2.5 mb-6 flex-wrap">
@@ -638,6 +787,7 @@ function ProductListContent() {
               <thead className="bg-[#fafafc] border-b border-black/[0.05]">
                 <tr>
                   <th className="px-4 py-[13px] text-left text-[10.5px] font-semibold uppercase text-[#86868b] whitespace-nowrap pl-[22px]" style={{ letterSpacing: '0.06em' }}>#</th>
+                  <th className="px-4 py-[13px] text-left text-[10.5px] font-semibold uppercase text-[#86868b] whitespace-nowrap" style={{ letterSpacing: '0.06em' }}>Enabled</th>
                   <th className="px-4 py-[13px] text-left text-[10.5px] font-semibold uppercase text-[#86868b] whitespace-nowrap" style={{ letterSpacing: '0.06em' }}>Image</th>
                   {[
                     { key: 'catalogueNo', label: 'Catalogue No.' },
@@ -666,7 +816,7 @@ function ProductListContent() {
                 {/* Shimmer rows */}
                 {isLoading && Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
                   <tr key={i} className="border-b border-black/[0.04]">
-                    {[40, 44, 100, 160, 240, 100, 90, 70, 120].map((w, j) => (
+                    {[40, 38, 44, 100, 160, 240, 100, 90, 70, 120].map((w, j) => (
                       <td key={j} className="px-4 py-[14px] first:pl-[22px] last:pr-[22px]">
                         <div
                           className="h-[14px] rounded-full"
@@ -685,11 +835,11 @@ function ProductListContent() {
                 {/* Empty state */}
                 {!isLoading && visibleData.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="px-5 py-[60px] text-center">
+                    <td colSpan={10} className="px-5 py-[60px] text-center">
                       <Package size={36} className="mx-auto mb-3 text-[#c7c7cc]" />
                       <div className="text-[13.5px] text-[#98989d] font-medium">No products found</div>
                       <div className="text-[12px] text-[#c7c7cc] mt-1">
-                        {search ? `No results for "${search}"` : 'Your catalogue is empty'}
+                        {search ? `No results for "${search}"` : status === 'discontinued' ? 'No discontinued products' : 'Your catalogue is empty'}
                       </div>
                     </td>
                   </tr>
@@ -697,12 +847,35 @@ function ProductListContent() {
 
                 {/* Data rows — one row per catalogue variant */}
                 {!isLoading && visibleData.map((product, i) => (
-                  <tr key={product.product_id} className="border-b border-black/[0.04] last:border-b-0 transition-colors duration-150 hover:bg-[#fafafc] align-top">
+                  <tr
+                    key={product.product_id}
+                    // A disabled row fades everything but its switch and actions.
+                    className={`border-b border-black/[0.04] last:border-b-0 transition-colors duration-150 hover:bg-[#fafafc] align-top ${product.active ? '' : 'bg-[#fafafc] [&>td:not(:nth-child(2)):not(:last-child)]:opacity-50'}`}
+                  >
 
                     <td className="pl-[22px] pr-4 py-[14px]">
                       <span className="text-[11px] text-[#98989d]" style={{ fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace" }}>
                         {startIndex + i}
                       </span>
+                    </td>
+
+                    <td className="px-4 py-[13px]">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={product.active}
+                        aria-label={`${product.catalogue_number || product.product_name}: ${product.active ? 'enabled' : 'disabled'}`}
+                        title={product.active ? 'Enabled: dealers can order it' : `Disabled: ${product.disabled_note || 'no note'}`}
+                        disabled={!product.admin_variant_id || togglingId === product.admin_variant_id}
+                        onClick={() => {
+                          if (!product.active) { setVariantActive(product, true); return }
+                          setDisableNote("")
+                          setDisableTarget(product)
+                        }}
+                        className={`relative inline-flex h-[22px] w-[38px] flex-shrink-0 items-center rounded-full transition-colors duration-200 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-600 focus-visible:ring-offset-2 ${product.active ? 'bg-[#34c759]' : 'bg-[#d1d1d6]'}`}
+                      >
+                        <span className={`inline-block h-[18px] w-[18px] rounded-full bg-white shadow-[0_1px_3px_rgba(0,0,0,0.25)] transition-transform duration-200 motion-reduce:transition-none ${product.active ? 'translate-x-[18px]' : 'translate-x-[2px]'}`} />
+                      </button>
                     </td>
 
                     <td className="px-4 py-[12px]">
@@ -723,6 +896,9 @@ function ProductListContent() {
 
                     <td className="px-4 py-[12px] min-w-[200px]">
                       <div className="text-[13px] font-semibold text-[#1d1d1f] leading-snug">{product.product_name || '—'}</div>
+                      {!product.active && product.disabled_note && (
+                        <div className="mt-1 text-[11.5px] font-medium text-[#c02b3a] leading-snug">Disabled: {product.disabled_note}</div>
+                      )}
                     </td>
 
                     <td className="px-4 py-[12px] min-w-[260px]">

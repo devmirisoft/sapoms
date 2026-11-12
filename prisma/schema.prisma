@@ -193,6 +193,8 @@ model ProductVariant {
   priceBasis      String   @default("piece") @map("price_basis")
   packAssumed     Boolean  @default(false) @map("pack_assumed")
   active          Boolean  @default(true)
+  // Why an admin switched this catalogue number off; null while it is enabled.
+  disabledNote    String?  @map("disabled_note") @db.Text
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
@@ -881,6 +883,10 @@ model OrderItem {
 
   remarks     String? @db.Text
   productNote String? @map("product_note") @db.Text
+
+  // Set when the product was disabled while this line was still undispatched: the
+  // line was zeroed (qty and value) and stays on the order, faded, with this note.
+  disabledNote String? @map("disabled_note") @db.Text
 
   createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)

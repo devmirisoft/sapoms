@@ -32,15 +32,17 @@ export function share(amountPaise: bigint, percent: number) { return BigInt(Math
  * (priceDealerOrder) and an edited one (applyOrderEdit). Every percent comes from the
  * server - the base percent the caller decided, then approved custom requests from the
  * DB or the slab table. Sets each line's discount and final amount in place.
+ * slabPercent pins the slab instead of reading the table (a product disable keeps the
+ * slab the order earned, so taking a line out can only lower what the dealer pays).
  */
-export function orderTotals<T extends PricedLine>(items: T[], basePercent: number, customRequests: ApprovedCustomDiscount[]) {
+export function orderTotals<T extends PricedLine>(items: T[], basePercent: number, customRequests: ApprovedCustomDiscount[], slabPercent?: number) {
   const baseDiscountPercent = clampPercent(basePercent);
   const grossAmountPaise = items.reduce((sum, item) => sum + item.listPriceTotalPaise, BigInt(0));
   const baseDiscountAmountPaise = share(grossAmountPaise, baseDiscountPercent);
   const postBaseAmountPaise = grossAmountPaise - baseDiscountAmountPaise;
 
   const customDiscountAmountPaise = customRequests.reduce((sum, request) => sum + (request.requestedDiscountAmountPaise ?? BigInt(0)), BigInt(0));
-  const slabDiscountPercent = customRequests.length ? 0 : discountUtils.getSlabPercent(Number(postBaseAmountPaise) / 100);
+  const slabDiscountPercent = customRequests.length ? 0 : slabPercent ?? discountUtils.getSlabPercent(Number(postBaseAmountPaise) / 100);
   const slabDiscountAmountPaise = share(postBaseAmountPaise, slabDiscountPercent);
   const additionalDiscountType: OrderDiscountType = customRequests.length ? "CUSTOM" : slabDiscountPercent > 0 ? "SLAB" : "NONE";
   const additionalDiscountAmountPaise = customRequests.length ? customDiscountAmountPaise : slabDiscountAmountPaise;

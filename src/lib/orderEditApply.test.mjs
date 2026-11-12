@@ -33,24 +33,29 @@ async function loadApplyOrderEdit() {
   return import(dataUrl(transpile(source)));
 }
 
-const { applyOrderEdit } = await loadApplyOrderEdit();
+const { applyOrderEdit, disableOrderLines } = await loadApplyOrderEdit();
 
-function setup({ creditDays = 30, walletRemaining = 0n, creditBlock = null, approvedCustom = 0, items } = {}) {
+function setup({ creditDays = 30, walletRemaining = 0n, creditBlock = null, approvedCustom = 0, items, order: orderFields = {} } = {}) {
   globalThis.__edit = { credit: [], wallet: [], parsed: [], creditBlock, walletRemaining, catalogue: {
     "OM262-020": { catNo: "OM262-020", productName: "Nylon Syringe Filters 50", packSize: 50, priceBasis: "pack", unitPricePaise: 6800n, packPricePaise: 340000n },
   } };
   const order = {
     id: 500n, dealerId: 137n, orderNumber: "OM/26-27/DMS-1017", baseDiscountPercent: "50", finalPayableAmountPaise: 480000n,
+    slabDiscountPercent: "0", dispatchedAt: null, ...orderFields,
     dealer: { creditDays },
     items: items ?? [
       { id: 9001n, legacyPhpOrderItemId: null, catalogueNumberSnapshot: "OM260-020", productNameSnapshot: "Nylon Syringe Filters", quantityPacks: 2, packSize: 100, priceBasis: "pack", unitPricePaise: 4800n, packPricePaise: 480000n, listPriceTotalPaise: 960000n, saleDiscountPercent: "0" },
     ],
   };
-  const calls = { orderUpdate: [], itemUpdate: [], itemDeleteMany: [] };
+  const calls = { orderUpdate: [], itemUpdate: [], itemDeleteMany: [], itemUpdateMany: [] };
   const tx = {
     order: { findUniqueOrThrow: async () => order, update: async (args) => { calls.orderUpdate.push(args); } },
-    customDiscountRequest: { count: async () => approvedCustom },
-    orderItem: { update: async (args) => { calls.itemUpdate.push(args); }, deleteMany: async (args) => { calls.itemDeleteMany.push(args); } },
+    customDiscountRequest: { count: async () => approvedCustom, findMany: async () => [] },
+    orderItem: {
+      update: async (args) => { calls.itemUpdate.push(args); },
+      deleteMany: async (args) => { calls.itemDeleteMany.push(args); },
+      updateMany: async (args) => { calls.itemUpdateMany.push(args); },
+    },
   };
   return { tx, calls };
 }
@@ -126,4 +131,56 @@ test("a legacy line without a stored pack price keeps the price it was charged a
   await applyOrderEdit(tx, 500n, revisionWith([{ orderdata_id: "77", orderdata_cat_no: "92/1", quantityPacks: 3 }]));
   assert.equal(calls.itemUpdate[0].data.packPricePaise, 67600n);
   assert.equal(calls.itemUpdate[0].data.listPriceTotalPaise, 202800n);
+});
+
+// Two ₹6,00,000 lines at 50% base: ₹6,00,000 after base earns the 5% slab, final ₹5,70,000.
+const line = (id, extra = {}) => ({ id, legacyPhpOrderItemId: null, catalogueNumberSnapshot: `CAT-${id}`, productNameSnapshot: "Flask", quantityPacks: 2, packSize: 10, priceBasis: "pack", unitPricePaise: 3000000n, packPricePaise: 30000000n, listPriceTotalPaise: 60000000n, saleDiscountPercent: "0", disabledNote: null, dispatches: [], ...extra });
+const slabOrder = { baseDiscountPercent: "50", slabDiscountPercent: "5", finalPayableAmountPaise: 57000000n };
+
+test("disabling a product zeroes its undispatched line, keeps the earned slab and refunds the wallet", async () => {
+  const { tx, calls } = setup({ creditDays: null, walletRemaining: 57000000n, order: slabOrder, items: [line(9001n), line(9002n)] });
+  const zeroed = await disableOrderLines(tx, 500n, [9001n], "Discontinued by supplier");
+
+  assert.deepEqual(zeroed, [{ orderNumber: "OM/26-27/DMS-1017", catNo: "CAT-9001", fromPacks: 2, toPacks: 0 }]);
+  const disabled = calls.itemUpdate.find((call) => call.where.id === 9001n).data;
+  assert.equal(disabled.quantityPacks, 0);
+  assert.equal(disabled.listPriceTotalPaise, 0n);
+  assert.equal(disabled.finalAmountPaise, 0n);
+  assert.equal(calls.itemUpdate.find((call) => call.where.id === 9002n).data.listPriceTotalPaise, 60000000n);
+  // ₹3,00,000 after base would read the 2% slab from the table; the order keeps its 5%.
+  const order = calls.orderUpdate[0].data;
+  assert.equal(order.slabDiscountPercent.value, "5");
+  assert.equal(order.finalPayableAmountPaise, 28500000n);
+  assert.deepEqual(globalThis.__edit.wallet, [{ dealerId: 137n, type: "REFUND", amount: 285000, key: "order:500:disable-9001" }]);
+  assert.deepEqual(calls.itemUpdateMany[0], { where: { id: { in: [9001n] } }, data: { disabledNote: "Discontinued by supplier" } });
+});
+
+test("a line with any dispatch keeps its quantity, value and history when its product is disabled", async () => {
+  const { tx, calls } = setup({ order: slabOrder, items: [line(9001n, { dispatches: [{ quantity: 1 }] }), line(9002n)] });
+  assert.deepEqual(await disableOrderLines(tx, 500n, [9001n], "Discontinued"), []);
+  assert.equal(calls.orderUpdate.length + calls.itemUpdate.length + calls.itemUpdateMany.length, 0);
+});
+
+test("disabling the last undispatched line marks an order under way as dispatched", async () => {
+  const { tx, calls } = setup({ order: slabOrder, items: [line(9001n, { dispatches: [{ quantity: 2 }] }), line(9002n)] });
+  await disableOrderLines(tx, 500n, [9002n], "Discontinued");
+  const status = calls.orderUpdate.at(-1).data;
+  assert.equal(status.fulfilmentStatus, "DISPATCHED");
+  assert.equal(status.status, "DISPATCHED");
+});
+
+test("an edit can neither change nor remove a disabled line", async () => {
+  const items = [line(9001n, { quantityPacks: 0, listPriceTotalPaise: 0n, disabledNote: "Discontinued" }), line(9002n)];
+  const changed = setup({ items });
+  await applyOrderEdit(changed.tx, 500n, revisionWith([{ orderdata_id: "9001", quantityPacks: 5 }, { orderdata_id: "9002", quantityPacks: 1 }]));
+  const frozen = changed.calls.itemUpdate.find((call) => call.where.id === 9001n).data;
+  assert.equal(frozen.quantityPacks, 0);
+  assert.equal(frozen.listPriceTotalPaise, 0n);
+
+  const removed = setup({ items });
+  await assert.rejects(
+    applyOrderEdit(removed.tx, 500n, revisionWith([{ orderdata_id: "9002", quantityPacks: 1 }])),
+    (error) => error.code === "disabled_line" && error.status === 409,
+  );
+  assert.equal(removed.calls.orderUpdate.length, 0);
 });

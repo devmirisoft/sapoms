@@ -28,6 +28,11 @@ export function loadCatalogue() {
   return cache.value;
 }
 
+/** Drop the cached merge now, e.g. after an admin disables a catalogue number, so new orders can't use it. */
+export function invalidateCatalogue() {
+  cache = null;
+}
+
 export async function findCatalogueItem(sku: string) {
   return findCatalogueEntry((await loadCatalogue()).index, sku);
 }

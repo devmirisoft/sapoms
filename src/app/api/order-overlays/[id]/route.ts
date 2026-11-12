@@ -100,6 +100,13 @@ async function loadPostgresEffectiveContext(orderIdInput: string) {
   const overlay = overlayDoc(overlayRows, order);
   const dispatchRecords = mapPostgresOrderDispatchRecords(order as any);
   const effective = resolveEffectiveOrder({ orderId, originalOrder, originalItems, overlay, dispatchRecords });
+  // An edited order shows its last edit's snapshot; a product disabled since then
+  // zeroed lines in the DB, so those lines and the order totals come from the DB.
+  const disabled = new Map(originalItems.filter((item) => item.productDisabledNote).map((item) => [item.orderdata_id, item]));
+  if (disabled.size && effective.isEdited) {
+    effective.effectiveItems = effective.effectiveItems.map((item) => disabled.get(String(item.orderdata_id ?? "")) ?? item);
+    effective.effectiveTotals = { grossAmount: originalOrder.grossAmount, discountAmount: originalOrder.discountAmount, netPayableAmount: originalOrder.finalPayableAmount };
+  }
   return { effective, overlay, order };
 }
 
