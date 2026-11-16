@@ -139,6 +139,11 @@ async function assertCanAct(actor: AuthActor, order: StatusOrder, permission: "r
   if (permission === "acceptance" && actor.role !== "RSM" && actor.role !== "STAFF" && !rsmCover) {
     throw new PostgresOrderStatusError(403, "forbidden", "Only RSM and Staff can approve or accept orders.");
   }
+  // Sales Managers also log in as STAFF (staffRoleType "1") and are assigned to
+  // the dealer, but they sit above the RSM step; only plain Staff ("2") accept.
+  if (permission === "acceptance" && actor.role === "STAFF" && actor.staffRoleType !== "2") {
+    throw new PostgresOrderStatusError(403, "forbidden", "Only the dealer's assigned Staff can accept orders.");
+  }
   if (actor.role === "ADMIN") return;
   if (actor.role === "NSM") {
     if (permission === "read" || permission === "fulfilment" || rsmCover) return;

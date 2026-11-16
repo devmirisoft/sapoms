@@ -11,7 +11,7 @@ import { exportOrdersToCloud, downloadPDFDirectly } from "@/lib/Exporttopdf";
 import { InvoiceModal } from "@/components/InvoiceModel";
 import { downloadOrderInvoice, uploadOrderInvoice, generateOrderInvoicePDF, listInvoices } from "@/lib/invoicegenerator";
 import { formatAdditionalDiscountBadge, getCompactOrderDiscountRows, withDisplayOrderAmounts } from "@/lib/orderAmounts";
-import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { formatDisplayOrderNumber, highlight, highlightOrderNumber } from '@/lib/orderDisplay';
 import { STAFF_ORDER_SCOPE_VERSION } from "@/lib/staffOrderScope.js";
 import {
   buildCustomDiscountProgressMap,
@@ -205,18 +205,6 @@ const mtConf: Record<string, { label: string; dot: string; text: string; bg: str
   Partial:   { label: "Partial",   dot: "bg-blue-400",    text: "text-blue-800",    bg: "bg-blue-50 border-blue-200" },
   Pending:   { label: "Pending",   dot: "bg-amber-400",   text: "text-amber-800",   bg: "bg-amber-50 border-amber-200" },
 };
-
-/** Highlights the matched slice of a cell against the active filter text. */
-function highlight(text: string, query: string) {
-  if (!query || !text) return text;
-  const idx = text.toLowerCase().indexOf(query.toLowerCase());
-  if (idx === -1) return text;
-  return (
-    text.slice(0, idx) +
-    `<mark class="bg-yellow-200 text-inherit rounded-sm px-0.5">${text.slice(idx, idx + query.length)}</mark>` +
-    text.slice(idx + query.length)
-  );
-}
 
 /** "Custom ₹1,200" / "Slab 5% ₹800" shown beneath the base discount. */
 function resolveAdditionalDiscountDisplay(amounts: {
@@ -2189,7 +2177,7 @@ export default function OrderHistoryPage() {
                                 <div className="flex items-center gap-2">
                                   <span
                                     className="font-mono text-[11.05px] font-bold text-brand-600"
-                                    dangerouslySetInnerHTML={{ __html: formatDisplayOrderNumber(highlight(String(oid), filters.orderId)) }}
+                                    dangerouslySetInnerHTML={{ __html: highlightOrderNumber(oid, filters.orderId) }}
                                   />
                                   {isDeleted && (
                                     <span className="px-1.5 py-0.5 bg-red-50 border border-red-200 text-red-700 rounded text-[8.5px] font-bold">DELETED</span>
