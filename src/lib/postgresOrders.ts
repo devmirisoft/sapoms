@@ -5,6 +5,7 @@ import { prisma } from "@/server/db/prisma";
 import { rsmOrderScope } from "@/server/auth/sales-scope";
 import { normalizedMtStatus, normalizedOrderStatus, type OrderFilters, type OrdersActor } from "@/lib/orderPagination";
 import { summarizeOrderSettlement } from "@/lib/orderSettlement";
+import { orderNumberSearch } from "@/lib/orderDisplay";
 import { normalizeSku } from "@/lib/orderProductNotes.mjs";
 import { normalizeDispatchStatus, type DispatchStatus, type DispatchTrackingInfo, type OrderDispatchRecord } from "@/lib/orderDispatch";
 
@@ -538,9 +539,15 @@ async function orderFilterWhere(filters: OrderFilters): Promise<Prisma.OrderWher
   const and: Prisma.OrderWhereInput[] = [];
   const search = text(filters.search);
   if (search) and.push(orderSearchWhere(search));
-  const orderId = text(filters.orderId);
-  // ponytail: a numeric id (no legacy id) matches exactly, not by prefix.
-  if (orderId) and.push({ OR: [{ legacyPhpId: { startsWith: orderId, mode: "insensitive" } }, ...(isIdText(orderId) ? [{ legacyPhpId: null, id: BigInt(orderId) }] : [])] });
+  const orderNumber = orderNumberSearch(text(filters.orderId));
+  if (orderNumber) {
+    const legacy = await prisma.$queryRaw<Array<{ id: bigint }>>`
+      SELECT id FROM orders WHERE ltrim(legacy_php_id, '0') ILIKE ${orderNumber.pattern}`;
+    // ponytail: a short prefix returns many ids; add a stripped-id column + index if slow.
+    // A numeric id (no legacy id) matches exactly, not by prefix.
+    const { value } = orderNumber;
+    and.push({ OR: [{ id: { in: legacy.map((row) => row.id) } }, ...(isIdText(value) ? [{ legacyPhpId: null, id: BigInt(value) }] : [])] });
+  }
   const dealerId = text(filters.targetDealerId);
   if (dealerId) and.push(isIdText(dealerId) ? { dealerId: BigInt(dealerId) } : NO_ORDERS);
   const warehouse = text(filters.warehouse);
