@@ -27,6 +27,8 @@ test("PostgreSQL order status service validates legal transitions and timestamps
 test("dealer staff and admin permissions are enforced from JWT/profile identity", () => {
   assert.match(source, /actor\.role === "ADMIN"/);
   assert.match(source, /permission === "acceptance" && actor\.role !== "RSM" && actor\.role !== "STAFF"/);
+  // Sales Managers (STAFF, staffRoleType "1") must not take the Staff acceptance step.
+  assert.match(source, /permission === "acceptance" && actor\.role === "STAFF" && actor\.staffRoleType !== "2"/);
   assert.match(source, /actor\.role === "NSM"/);
   assert.match(source, /permission === "read" \|\| permission === "fulfilment"/);
   assert.match(source, /isStaffLike\(actor\)/);

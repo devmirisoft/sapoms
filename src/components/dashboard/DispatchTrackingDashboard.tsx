@@ -373,7 +373,7 @@ export default function DispatchTrackingDashboard() {
     search: "",
     category: "",
     dealerId: "",
-    status: "in_progress",
+    status: "all",
     sort: "latest_dispatch",
     period: "all",
   }));

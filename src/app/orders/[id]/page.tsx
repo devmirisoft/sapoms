@@ -958,6 +958,8 @@ export default function ViewOrderDealerPage() {
   const [editError, setEditError] = useState("");
   // RSM approval lives here (moved out of the order-management row menu).
   const [authRole, setAuthRole] = useState("");
+  // "1" Sales Manager, "2" Staff: both have role "staff", only Staff accepts.
+  const [staffRoleType, setStaffRoleType] = useState("");
   const isRsm = authRole === "rsm";
   const [rsmSaving, setRsmSaving] = useState(false);
   const [rsmDeclineOpen, setRsmDeclineOpen] = useState(false);
@@ -1684,7 +1686,9 @@ export default function ViewOrderDealerPage() {
     fetch("/api/auth/me", { credentials: "include", cache: "no-store" })
       .then((res) => (res.ok ? res.json() : null))
       .then((json) => {
-        if (!cancelled) setAuthRole(String(json?.data?.role ?? "").toLowerCase());
+        if (cancelled) return;
+        setAuthRole(String(json?.data?.role ?? "").toLowerCase());
+        setStaffRoleType(String(json?.data?.staff_roletype ?? ""));
       })
       .catch(() => {});
     return () => { cancelled = true; };
@@ -1701,6 +1705,7 @@ export default function ViewOrderDealerPage() {
   // Staff acceptance opens only after the RSM has approved, mirroring the
   // server gate in updatePostgresOrderAcceptance.
   const canStaffAccept = authRole === "staff"
+    && staffRoleType === "2"
     && !overlayState?.isCancelled
     && orderDeleted === "0"
     && acceptOrder === "0"
