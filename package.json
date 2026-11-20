@@ -16,6 +16,7 @@
     "test:invoice-layout": "node scripts/verify-invoice-layout.mjs",
     "test:order-pricing": "node -r dotenv/config scripts/verify-order-pricing.mjs",
     "test:product-disable": "node -r dotenv/config scripts/verify-product-disable.mjs",
+    "test:password-reset": "node -r dotenv/config scripts/verify-password-reset.mjs",
     "test:order-search": "node -r dotenv/config scripts/verify-order-number-search.mjs",
     "test:order-emails": "node -r dotenv/config scripts/verify-order-emails.mjs",
     "test:partial-discount": "node scripts/verify-partial-discount.mjs",
