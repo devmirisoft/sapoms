@@ -497,7 +497,8 @@ export default function DealerLedgerPage() {
         ])
       }
     } catch (error: any) {
-      showToast('error', error.response?.data?.message || 'Failed to record payment')
+      // PayMoneyModal shows this and keeps its key, so trying again can't pay twice.
+      throw new Error(error.response?.data?.message || 'Failed to record payment')
     } finally {
       setPayLoading(false)
     }
