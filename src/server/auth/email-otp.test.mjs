@@ -88,7 +88,9 @@ test("dealer, staff and NSM password login is gated behind an emailed code, othe
   // Bad credentials never reach the OTP branch; they fall through to the generic rejection.
   assert.match(route, /return failed\(\);/);
 
-  assert.match(page, /import \{ InputOTP, InputOTPGroup, InputOTPSlot \} from "@\/components\/ui\/input-otp"/);
+  const codeField = await read("src/app/auth/login/ForgotPasswordForm.tsx");
+  assert.match(codeField, /import \{ InputOTP, InputOTPGroup, InputOTPSlot \} from "@\/components\/ui\/input-otp"/);
+  assert.match(page, /<OtpCodeField/);
   assert.match(page, /data\?\.data\?\.otpRequired/);
   assert.match(page, /showOtp \? "mt-4 grid-rows-\[1fr\]/);
 });
@@ -107,4 +109,57 @@ test("The OTP routes are dealer-, staff- and NSM-only, so a code never signs in 
   // The password-free entry point is gone: the panel opens only on the server's otpRequired.
   assert.doesNotMatch(page, /Login with Email OTP/);
   assert.match(page, /const showOtp = otpRequired/);
+});
+
+test("Password reset request emails a code only to emailed-code roles and never reveals whether an account exists", async () => {
+  const route = await read("src/app/api/auth/password-reset/request/route.ts");
+  const mailer = await read("src/server/auth/email.ts");
+
+  assert.match(route, /!requiresEmailOtp\(actor\.role\)/);
+  assert.match(route, /createEmailOtpForUser\(actor\.userId\)/);
+  assert.match(route, /sendPasswordResetOtp\(actor\.email, otp\)/);
+  assert.match(mailer, /export async function sendPasswordResetOtp/);
+  // Every exit returns the one generic message, and the code never goes back to the browser.
+  const replies = route.match(/NextResponse\.json\([^;]*/g) ?? [];
+  assert.ok(replies.length >= 3);
+  for (const reply of replies) assert.match(reply, /compatibilitySuccess\(\{\}, genericMessage\)/);
+});
+
+test("Password reset confirm checks the code before writing, signs out every session, and never logs in", async () => {
+  const route = await read("src/app/api/auth/password-reset/confirm/route.ts");
+
+  assert.match(route, /newPassword: z\.string\(\)\.min\(10\)\.max\(200\)/);
+  assert.match(route, /!requiresEmailOtp\(actor\.role\)/);
+  assert.ok(route.indexOf("verifyEmailOtpForUser(") < route.indexOf("prisma.user.update("));
+  assert.ok(route.indexOf("!requiresEmailOtp(actor.role)") < route.indexOf("verifyEmailOtpForUser("));
+  assert.match(route, /tokenVersion: \{ increment: 1 \}/);
+  assert.match(route, /authSession\.updateMany\(\{\s*where: \{ userId: actor\.userId, revokedAt: null \}/);
+  assert.doesNotMatch(route, /createSessionForUser|setAuthCookies/);
+});
+
+test("A code's attempt is spent in one conditional update before the code is compared, and a code works once", async () => {
+  const helper = await read("src/server/auth/email-otp.ts");
+  const verify = helper.slice(helper.indexOf("export async function verifyEmailOtpForUser"));
+
+  // Reading attempts and writing back attempts + 1 lets guesses sent together share one attempt.
+  assert.doesNotMatch(verify, /attempts: nextAttempts/);
+  const spend = verify.search(/where: \{ id: record\.id, usedAt: null, attempts: \{ lt: OTP_MAX_ATTEMPTS \} \},\s*data: \{ attempts: \{ increment: 1 \} \}/);
+  assert.ok(spend > 0, "the attempt is spent with a conditional increment");
+  assert.ok(spend < verify.indexOf("hashesMatch("), "the attempt is spent before the code is compared");
+  // Of two correct submissions at once, only the one that marks the code used gets through.
+  assert.match(verify, /const used = await prisma\.emailOtp\.updateMany\(\{\s*where: \{ id: record\.id, usedAt: null \},\s*data: \{ usedAt: now \},\s*\}\);\s*if \(used\.count === 0\)/);
+});
+
+test("Every code entry box shows the spam-folder hint", async () => {
+  const form = await read("src/app/auth/login/ForgotPasswordForm.tsx");
+  const page = await read("src/app/auth/login/page.tsx");
+
+  assert.match(form, /SPAM_FOLDER_HINT = "Didn't receive the code\? Please check your spam folder\."/);
+  const field = form.match(/export function OtpCodeField[\s\S]*?\n\}\n/)?.[0] ?? "";
+  assert.match(field, /\{SPAM_FOLDER_HINT\}/);
+  // OtpCodeField is the only place InputOTP is rendered, in both the login and reset panels.
+  assert.equal(form.match(/<InputOTP\b/g)?.length, 1);
+  assert.doesNotMatch(page, /<InputOTP\b/);
+  assert.match(page, /<OtpCodeField/);
+  assert.match(form, /<OtpCodeField/);
 });

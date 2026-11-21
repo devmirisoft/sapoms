@@ -76,6 +76,35 @@ test("ledger payments are transactional and idempotent", () => {
   assert.match(paySource, /duplicate: Boolean\(result\.duplicate\)/);
 });
 
+test("every Pay Money caller sends one idempotency key per payment, reused on a retry", async () => {
+  const read = (file) => fs.readFile(path.resolve(file), "utf8");
+  const modal = await read("src/components/ledger/PayMoneyModal.tsx");
+  const panel = await read("src/components/ledger/DealerBillsPanel.tsx");
+  const adminLedger = await read("src/app/dashboard/admin/ledger/page.tsx");
+  const modalPages = [await read("src/app/dashboard/admin/dealer/[dealerId]/ledger/page.tsx"), await read("src/app/Pages/ledger/[dealerId]/page.tsx")];
+
+  // The server refuses a payment without one (400).
+  assert.match(ledgerSource, /if \(!idempotencyKey\) throw Object\.assign\(new Error\("Idempotency key is required\."\), \{ status: 400 \}\)/);
+  // Callers with their own form put it in the body.
+  for (const source of [panel, adminLedger]) assert.match(source, /\/pay`, \{\s*idempotencyKey/);
+  // The modal's pages send its PaymentData as is, and pass a failure back so the modal keeps the key.
+  assert.match(modal, /\n {2}idempotencyKey: string\n/);
+  for (const page of modalPages) {
+    const start = page.indexOf("const handlePayMoney");
+    const handler = page.slice(start, page.indexOf("finally", start));
+    assert.match(handler, /axios\.post\(`\/api\/ledger\/\$\{dealerId\}\/pay`, data\)/);
+    assert.match(handler, /catch \(error: any\) \{[^}]*throw new Error\(/);
+  }
+  // One key per payment: made once, sent on every try, renewed only once a payment went through.
+  assert.match(modal, /useRef\(createIdempotencyKey\('ledger-pay'\)\)/);
+  assert.match(modal, /idempotencyKey: keyRef\.current,/);
+  const submit = modal.slice(modal.indexOf("const handleSubmit"));
+  const renew = submit.indexOf("keyRef.current = createIdempotencyKey('ledger-pay')");
+  assert.ok(renew > submit.indexOf("await onSubmit("), "renewed after onSubmit resolves");
+  assert.ok(renew < submit.indexOf("} catch"), "never renewed when the payment failed");
+  assert.doesNotMatch(modal, /crypto\.randomUUID\(\)/);
+});
+
 
 
 function paise(amount) {

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { X, AlertCircle } from 'lucide-react'
+import { createIdempotencyKey } from '@/lib/idempotency'
 
 interface PayMoneyModalProps {
   isOpen: boolean
@@ -16,6 +17,7 @@ export interface PaymentData {
   paymentMode: string
   narration: string
   referenceId?: string
+  idempotencyKey: string
 }
 
 const PAYMENT_MODES = ['Cash', 'Wallet', 'Cheque', 'Bank Transfer', 'UPI']
@@ -33,6 +35,9 @@ export default function PayMoneyModal({
   const [referenceId, setReferenceId] = useState('')
   const [error, setError] = useState('')
   const [submitLoading, setSubmitLoading] = useState(false)
+  // One key per payment: a double click, or a retry after a lost reply, sends the same
+  // key, so the server records the payment once. Renewed only once a payment went through.
+  const keyRef = useRef(createIdempotencyKey('ledger-pay'))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -51,7 +56,9 @@ export default function PayMoneyModal({
         paymentMode,
         narration: narration || `Payment received - ${paymentMode}`,
         referenceId: referenceId || undefined,
+        idempotencyKey: keyRef.current,
       })
+      keyRef.current = createIdempotencyKey('ledger-pay')
       // Reset form
       setAmount('')
       setPaymentMode('Cash')

@@ -18,8 +18,8 @@ import {
 } from "lucide-react"
 import type { StoredUser } from "@/lib/roleAccess"
 import { setCurrentUser } from "@/lib/currentUser"
-import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
 import { cn } from "@/lib/utils"
+import ForgotPasswordForm, { OtpCodeField, cardClass, inputClass } from "./ForgotPasswordForm"
 
 
 const LOGO_SRC = "/Omsons_Logo.png"
@@ -38,9 +38,6 @@ const HIGHLIGHTS = [
   { icon: ShieldCheck, top: "Trusted for", bottom: "40+ Years" },
 ]
 
-const inputClass =
-  "h-12 w-full rounded-full bg-[#ebebeb] px-6 text-[15px] text-slate-900 outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-2 focus:ring-[#0a9bdb]"
-
 export default function Login() {
   const router = useRouter()
 
@@ -54,6 +51,8 @@ export default function Login() {
   const [otpLoading, setOtpLoading] = useState(false)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [mode, setMode] = useState<"login" | "forgot">("login")
+  const [success, setSuccess] = useState("")
 
   // Only the server opens the code panel, and only for a dealer or staff member whose password already checked out.
   const showOtp = otpRequired
@@ -112,6 +111,7 @@ export default function Login() {
   const handleLogin = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setError("")
+    setSuccess("")
 
     // Once the panel is open the same button verifies the code.
     if (showOtp) return handleVerifyOtp()
@@ -224,10 +224,20 @@ export default function Login() {
       <div className="relative flex h-full items-center justify-center gap-10 px-4 sm:px-10 xl:gap-14">
 
         {/* ── Form card ──────────────────────────────────────────────── */}
-        <form
-          className="mx-auto w-full max-w-[400px] shrink-0 rounded-[2rem] bg-white px-8 py-9 shadow-[0_10px_40px_rgba(15,23,42,0.14)] lg:mx-0"
-          onSubmit={handleLogin}
-        >
+        {mode === "forgot" ? (
+          <ForgotPasswordForm
+            initialEmail={email}
+            onBack={() => setMode("login")}
+            onDone={(resetEmail, message) => {
+              setEmail(resetEmail)
+              setPassword("")
+              setError("")
+              setSuccess(message)
+              setMode("login")
+            }}
+          />
+        ) : (
+        <form className={cardClass} onSubmit={handleLogin}>
           {/* Header */}
           {/* ponytail: hue-rotate recolors the transparent orange logo to brand blue; swap for a blue PNG if one is made */}
           <Image
@@ -289,28 +299,14 @@ export default function Login() {
             )}
           >
             <div className="overflow-hidden">
-              <span className="mb-2 block pl-2 text-[15px] text-[#0a9bdb]">Verification Code</span>
-              <InputOTP
-                maxLength={6}
+              <OtpCodeField
                 value={otpCode}
                 onChange={setOtpCode}
                 onComplete={handleVerifyOtp}
                 disabled={!showOtp || otpLoading}
-                containerClassName="w-full"
-                ref={otpInputRef}
-              >
-                <InputOTPGroup className="w-full justify-between gap-1.5">
-                  {[0, 1, 2, 3, 4, 5].map((slot) => (
-                    <InputOTPSlot
-                      key={slot}
-                      index={slot}
-                      className="h-11 w-10 rounded-xl border-0 bg-[#ebebeb] text-[15px] font-bold text-slate-900 first:rounded-xl last:rounded-xl data-[active=true]:bg-white data-[active=true]:ring-2 data-[active=true]:ring-[#0a9bdb]"
-                    />
-                  ))}
-                </InputOTPGroup>
-              </InputOTP>
-
-              {notice && <p className="mt-2 text-[12px] text-slate-500">{notice}</p>}
+                inputRef={otpInputRef}
+                notice={notice}
+              />
 
               <div className="mt-2 flex items-center justify-between">
                 <button
@@ -335,10 +331,24 @@ export default function Login() {
 
           {/* Forgot password */}
           <div className="mt-3 flex justify-end">
-            <button type="button" className="text-[13px] text-brand-600 hover:text-brand-500">
+            <button
+              type="button"
+              onClick={() => {
+                resetOtp()
+                setSuccess("")
+                setMode("forgot")
+              }}
+              className="text-[13px] text-brand-600 hover:text-brand-500"
+            >
               Forgot Password?
             </button>
           </div>
+
+          {success && (
+            <p className="mt-4 rounded-xl border border-green-100 bg-green-50 px-4 py-2.5 text-[12px] font-semibold text-green-700">
+              {success}
+            </p>
+          )}
 
           {/* Error message */}
           {error && (
@@ -358,6 +368,7 @@ export default function Login() {
             </button>
           </div>
         </form>
+        )}
 
         {/* ── Brand panel ────────────────────────────────────────────── */}
         <section className="relative hidden h-full min-w-0 items-center gap-10 lg:flex">

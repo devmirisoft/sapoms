@@ -28,3 +28,12 @@ export async function sendLoginOtp(email: string, otp: string) {
       <p>This code expires in 5 minutes.</p>
     `);
 }
+
+export async function sendPasswordResetOtp(email: string, otp: string) {
+  return sendEmail(email, "Your SAPOMS password reset code", `
+      <p>Your SAPOMS password reset code is:</p>
+      <h1>${otp}</h1>
+      <p>This code expires in 5 minutes.</p>
+      <p>If you didn't request a password reset, ignore this email. Your password stays the same.</p>
+    `);
+}

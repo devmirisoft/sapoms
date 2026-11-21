@@ -100,25 +100,31 @@ export async function verifyEmailOtpForUser(userId: bigint, otp: string) {
     orderBy: { createdAt: "desc" },
   });
 
-  if (!record || record.expiresAt <= now || record.attempts >= OTP_MAX_ATTEMPTS) {
+  if (!record || record.expiresAt <= now) {
     throw new Error("Invalid verification code");
   }
 
-  const codeHash = hashEmailOtp(userId, otp);
-  if (!hashesMatch(record.codeHash, codeHash)) {
-    const nextAttempts = record.attempts + 1;
-    await prisma.emailOtp.update({
-      where: { id: record.id },
-      data: {
-        attempts: nextAttempts,
-        ...(nextAttempts >= OTP_MAX_ATTEMPTS ? { usedAt: now } : {}),
-      },
+  // Spend the attempt before comparing, in one conditional update: Postgres re-checks
+  // the WHERE under the row lock, so guesses sent at the same moment can't share one.
+  const spent = await prisma.emailOtp.updateMany({
+    where: { id: record.id, usedAt: null, attempts: { lt: OTP_MAX_ATTEMPTS } },
+    data: { attempts: { increment: 1 } },
+  });
+  if (spent.count === 0) throw new Error("Invalid verification code");
+
+  if (!hashesMatch(record.codeHash, hashEmailOtp(userId, otp))) {
+    // The last attempt locks the code.
+    await prisma.emailOtp.updateMany({
+      where: { id: record.id, usedAt: null, attempts: { gte: OTP_MAX_ATTEMPTS } },
+      data: { usedAt: now },
     });
     throw new Error("Invalid verification code");
   }
 
-  await prisma.emailOtp.update({
-    where: { id: record.id },
+  // Of two correct submissions at once, only the one that marks the code used gets through.
+  const used = await prisma.emailOtp.updateMany({
+    where: { id: record.id, usedAt: null },
     data: { usedAt: now },
   });
+  if (used.count === 0) throw new Error("Invalid verification code");
 }
