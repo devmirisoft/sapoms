@@ -17,6 +17,7 @@ export type InvoicePrefill = {
 export type BillableOrder = {
   order_id?: string
   dispatched_amount?: string | number
+  walletTransactions?: { type?: string }[]
 }
 
 export type LedgerBill = {
@@ -179,7 +180,9 @@ export default function DealerBillsPanel({
   const creditDays = credit?.creditDays ?? 0
   const isCreditDealer = credit !== null
   const limitReached = credit?.remaining !== null && credit?.remaining !== undefined && credit.remaining <= 0
-  const selectable = billableOrders(orders, bills)
+  // A wallet-paid order is already paid; anything else still needs an invoice -
+  // including orders an advance dealer placed on credit before the switch.
+  const selectable = billableOrders(orders.filter((order) => !order.walletTransactions?.some((tx) => tx.type === 'ORDER_DEBIT')), bills)
 
   const close = () => {
     setModal(null)
@@ -353,8 +356,8 @@ export default function DealerBillsPanel({
         </div>
       )}
 
-      {/* Also shown to advance dealers who still have bills from a time on credit, so they can be paid off. */}
-      {(isCreditDealer || bills.length > 0) && (
+      {/* Also shown to advance dealers with orders or bills from a time on credit, so those get invoiced and paid off. */}
+      {(isCreditDealer || bills.length > 0 || selectable.length > 0) && (
         <div className="mb-6 rounded-xl border border-gray-200 bg-white">
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
             <div>
