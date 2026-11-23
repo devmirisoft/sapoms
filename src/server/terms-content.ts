@@ -1,4 +1,5 @@
 import { prisma } from "@/server/db/prisma";
+import { dealerTerms } from "@/lib/dealerCreditLimit";
 import { DEFAULT_TERMS_BLOCKS, TERMS_BLOCK_TYPES, fillPlaceholders, type TermsBlock } from "@/components/terms/TermsDocument";
 
 const KEY = "terms";
@@ -24,9 +25,12 @@ export async function fillDealerFields(blocks: TermsBlock[], dealerId: bigint): 
     select: {
       businessName: true, address: true, city: true, state: true, pincode: true, phone: true, gstin: true,
       discountPercent: true, annualTargetPaise: true, creditLimitPaise: true, creditDays: true,
+      wallet: { select: { status: true } },
     },
   });
   if (!dealer) return blocks;
+  // Advance dealers have no credit terms, even with credit days saved for a switch back.
+  const onCredit = dealerTerms(dealer, dealer.wallet) === "credit";
   const rupees = (paise: bigint | null) => (paise === null ? null : `₹${(Number(paise) / 100).toLocaleString("en-IN")}`);
   return fillPlaceholders(blocks, {
     "[DEALER NAME]": dealer.businessName,
@@ -37,8 +41,8 @@ export async function fillDealerFields(blocks: TermsBlock[], dealerId: bigint): 
     "[DEALER PAN]": dealer.gstin?.trim().length === 15 ? dealer.gstin.trim().slice(2, 12) : null,
     "[DISCOUNT]": dealer.discountPercent === null ? null : `${Number(dealer.discountPercent)}%`,
     "[TARGET]": rupees(dealer.annualTargetPaise),
-    "[CREDIT LIMIT]": rupees(dealer.creditLimitPaise),
-    "[CREDIT DAYS]": dealer.creditDays === null ? null : `${dealer.creditDays} DAYS`,
+    "[CREDIT LIMIT]": onCredit ? rupees(dealer.creditLimitPaise) : null,
+    "[CREDIT DAYS]": onCredit ? `${dealer.creditDays} DAYS` : null,
   });
 }
 

@@ -1,6 +1,7 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, WalletTransactionType } from "@prisma/client";
 import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
-import { reserveDealerCredit } from "@/lib/dealerCreditLimit";
+import { dealerTerms, reserveDealerCredit } from "@/lib/dealerCreditLimit";
+import { applyWalletChange, fromPaise, WalletError } from "@/lib/postgresWallet";
 
 /**
  * Auto-placement of an order when Admin approves a custom discount.
@@ -94,7 +95,7 @@ export async function placeOrderForApprovedDiscount(
 
   const dealer = await tx.dealerProfile.findUnique({
     where: { id: request.dealerId },
-    include: { user: true },
+    include: { user: true, wallet: true },
   });
   if (!dealer || dealer.deletedAt || dealer.user.status !== "ACTIVE") {
     throw new DiscountOrderError(409, "inactive_dealer", "This dealer account is inactive, so the approved order could not be placed.");
@@ -140,9 +141,21 @@ export async function placeOrderForApprovedDiscount(
     ? Number(totalDiscountAmountPaise) * 100 / Number(grossAmountPaise)
     : 0;
 
-  if (dealer.creditDays !== null) {
+  // Same rule as a normal order (dealerTerms). Throwing rolls the whole
+  // approval back, so the request stays where it was until this is fixed.
+  const terms = dealerTerms(dealer, dealer.wallet);
+  if (terms === "unset") {
+    throw new DiscountOrderError(409, "credit_terms_missing", `Credit days for ${dealer.businessName} are not set. Add them before approving.`);
+  }
+  if (terms === "credit") {
     const creditBlock = await reserveDealerCredit(tx, dealer.id, finalPayableAmountPaise);
     if (creditBlock) throw new DiscountOrderError(409, creditBlock.code, creditBlock.message);
+  }
+  const wallet = terms === "advance" ? dealer.wallet : null;
+  if (wallet && wallet.balancePaise - wallet.reservedPaise < finalPayableAmountPaise) {
+    const rupees = (paise: bigint) => `₹${fromPaise(paise).toLocaleString("en-IN")}`;
+    throw new DiscountOrderError(409, "insufficient_balance",
+      `Insufficient wallet balance. Available: ${rupees(wallet.balancePaise - wallet.reservedPaise)}. Required: ${rupees(finalPayableAmountPaise)}.`);
   }
 
   const orderNumber = await nextOrderNumber(tx);
@@ -185,6 +198,25 @@ export async function placeOrderForApprovedDiscount(
       items: { create: items },
     },
   });
+
+  // Advance dealers pay from the wallet like any order; tagging the debit with
+  // the order lets a later decline/cancel refund it the usual way.
+  if (wallet && finalPayableAmountPaise > BigInt(0)) {
+    try {
+      await applyWalletChange(tx, dealer.id, WalletTransactionType.ORDER_DEBIT, fromPaise(finalPayableAmountPaise), {
+        orderId: order.id,
+        idempotencyKey: `discount-approval:${request.id}:wallet`,
+        reference: orderNumber,
+        note: "Order wallet debit",
+        metadata: { orderNumber, discountRequestId: request.id.toString() },
+        actor: { userId: actor.userId, role: "ADMIN" },
+      });
+    } catch (error) {
+      // Another order can still drain the wallet between the check above and here.
+      if (error instanceof WalletError) throw new DiscountOrderError(error.status, error.code, error.message);
+      throw error;
+    }
+  }
 
   // Retire the draft: the dealer should not be able to submit these lines twice.
   if (request.orderDraftId) {

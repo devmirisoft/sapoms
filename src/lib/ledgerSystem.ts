@@ -8,6 +8,7 @@ import { applyWalletChange, fromPaise, roundMoney, toPaise } from "@/lib/postgre
 import { mapPostgresOrderToLegacy, orderInclude as sharedOrderInclude } from "@/lib/postgresOrders";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
 import { createAuditLog } from "@/server/audit/audit-log";
+import { dealerTerms } from "@/lib/dealerCreditLimit";
 
 export type LedgerOrderState = "Cancelled" | "Awaiting" | "SupposedToGo" | "SentAndSettled";
 
@@ -472,10 +473,10 @@ export async function extendDealerCredit(actor: AuthActor, rawDealerId: string, 
     await tx.$executeRaw`SELECT id FROM dealer_profiles WHERE id = ${dealerId} FOR UPDATE`;
     const dealer = await tx.dealerProfile.findFirst({
       where: { id: dealerId, deletedAt: null },
-      select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true },
+      select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true, wallet: { select: { status: true } } },
     });
     if (!dealer) throw Object.assign(new Error("Dealer not found"), { status: 404 });
-    if (dealer.creditDays === null) throw Object.assign(new Error("This dealer is not on credit terms."), { status: 400 });
+    if (dealer.creditDays === null || dealerTerms(dealer, dealer.wallet) !== "credit") throw Object.assign(new Error("This dealer is not on credit terms."), { status: 400 });
 
     if (type === "days") {
       const days = Number(body.days);
@@ -530,7 +531,7 @@ export async function recordLedgerPayment(actor: AuthActor, rawDealerId: string,
   if (creditNote && !String(body.narration || "").trim()) throw Object.assign(new Error("Credit note reason is required."), { status: 400 });
 
   return prisma.$transaction(async (tx) => {
-    const dealer = await tx.dealerProfile.findFirst({ where: { id: dealerId, deletedAt: null, user: { status: "ACTIVE" } }, select: { id: true, creditDays: true } });
+    const dealer = await tx.dealerProfile.findFirst({ where: { id: dealerId, deletedAt: null, user: { status: "ACTIVE" } }, select: { id: true, creditDays: true, wallet: { select: { status: true } } } });
     if (!dealer) throw Object.assign(new Error("Dealer not found"), { status: 404 });
 
     const bill = billId
@@ -552,9 +553,11 @@ export async function recordLedgerPayment(actor: AuthActor, rawDealerId: string,
       },
       actor: { userId: actor.userId, role: actor.role, displayName: actor.displayName },
       allowCreate: true,
-      // Credit-terms dealers pay down bills, not a wallet: bill.paidAmountPaise
-      // below is what frees their limit (see dealerCreditLimit.ts).
-      recordOnly: dealer.creditDays !== null,
+      // Only an advance dealer's unbilled payment tops up the wallet. Credit
+      // dealers pay down bills: bill.paidAmountPaise below is what frees their
+      // limit (see dealerCreditLimit.ts). And a payment against a bill only
+      // settles that bill, even for an advance dealer clearing an old credit bill.
+      recordOnly: dealerTerms(dealer, dealer.wallet) !== "advance" || bill !== null,
     });
 
     if (result.duplicate) {

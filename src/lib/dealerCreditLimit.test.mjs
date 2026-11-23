@@ -14,7 +14,18 @@ async function loadModule(relativePath) {
   return import(`data:text/javascript;base64,${Buffer.from(transpiled, "utf8").toString("base64")}`);
 }
 
-const { billAgeing, getDealerCreditStatus, tempCreditDraw } = await loadModule("src/lib/dealerCreditLimit.ts");
+const { billAgeing, dealerTerms, getDealerCreditStatus, tempCreditDraw } = await loadModule("src/lib/dealerCreditLimit.ts");
+
+test("an active wallet makes a dealer advance even with credit days saved", () => {
+  const on = { status: "ACTIVE" };
+  const off = { status: "INACTIVE" };
+  assert.equal(dealerTerms({ creditDays: 30 }, on), "advance");
+  assert.equal(dealerTerms({ creditDays: null }, on), "advance");
+  assert.equal(dealerTerms({ creditDays: 30 }, off), "credit");
+  assert.equal(dealerTerms({ creditDays: 0 }, null), "credit");
+  assert.equal(dealerTerms({ creditDays: null }, off), "unset");
+  assert.equal(dealerTerms({ creditDays: null }, null), "unset");
+});
 
 const DAY = 86_400_000;
 const client = (orderPaise, bills = []) => ({
@@ -25,6 +36,11 @@ const dealer = (over = {}) => ({ id: 1n, creditDays: 30, creditLimitPaise: 50_00
 
 test("advance dealers (no credit days) are not credit-checked", async () => {
   assert.equal(await getDealerCreditStatus(client([]), dealer({ creditDays: null })), null);
+});
+
+test("advance dealers with credit days saved are not credit-checked either", async () => {
+  assert.equal(await getDealerCreditStatus(client([]), dealer({ wallet: { status: "ACTIVE" } })), null);
+  assert.notEqual(await getDealerCreditStatus(client([]), dealer({ wallet: { status: "INACTIVE" } })), null);
 });
 
 test("limit is ordered minus paid: recording a payment frees that much again", async () => {

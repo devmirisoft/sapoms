@@ -353,7 +353,8 @@ export default function DealerBillsPanel({
         </div>
       )}
 
-      {isCreditDealer && (
+      {/* Also shown to advance dealers who still have bills from a time on credit, so they can be paid off. */}
+      {(isCreditDealer || bills.length > 0) && (
         <div className="mb-6 rounded-xl border border-gray-200 bg-white">
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
             <div>
@@ -396,12 +397,12 @@ export default function DealerBillsPanel({
                         <div className="text-xs text-gray-500">Paid {formatAmount(bill.paidAmount)}</div>
                       </td>
                       <td className="px-4 py-3 text-gray-600">
-                        {formatDate(due)}
+                        {isCreditDealer ? formatDate(due) : '-'}
                         {(bill.extraCreditDays || 0) > 0 && <div className="text-xs font-medium text-brand-600">+{bill.extraCreditDays} days extended</div>}
                       </td>
                       <td className="px-4 py-3">
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${balance === 0 ? 'bg-emerald-50 text-emerald-700' : left < 0 ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
-                          {balance === 0 ? 'Paid' : left < 0 ? `${Math.abs(left)} days overdue` : `${left} days left`}
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${balance === 0 ? 'bg-emerald-50 text-emerald-700' : left < 0 || !isCreditDealer ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                          {balance === 0 ? 'Paid' : !isCreditDealer ? 'Unpaid' : left < 0 ? `${Math.abs(left)} days overdue` : `${left} days left`}
                         </span>
                       </td>
                       <td className="px-4 py-3">
