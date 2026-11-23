@@ -78,12 +78,15 @@ async function repriceOrder(tx: Prisma.TransactionClient, order: RepriceOrder, l
   const delta = totals.finalPayableAmountPaise - order.finalPayableAmountPaise;
 
   // Money first, while the order row still holds the old total that used credit is counted from.
-  if (delta !== ZERO && order.dealer.creditDays !== null) {
-    if (delta > ZERO) {
-      const block = await reserveDealerCredit(tx, order.dealerId, delta);
-      if (block) throw new OrderOverlayError(409, block.code, block.message);
-    }
-  } else if (delta !== ZERO && await walletDebitRemaining(tx, order.id) > ZERO) {
+  // Follow how this order was paid: a wallet-paid order adjusts the wallet even if
+  // the dealer has credit days saved (an active wallet wins - see dealerTerms);
+  // otherwise an increase must fit the credit limit, which reserveDealerCredit
+  // skips for anyone not on credit terms.
+  const walletPaid = delta !== ZERO && await walletDebitRemaining(tx, order.id) > ZERO;
+  if (!walletPaid && delta > ZERO && order.dealer.creditDays !== null) {
+    const block = await reserveDealerCredit(tx, order.dealerId, delta);
+    if (block) throw new OrderOverlayError(409, block.code, block.message);
+  } else if (walletPaid) {
     try {
       await applyWalletChange(tx, order.dealerId, delta > ZERO ? WalletTransactionType.ORDER_DEBIT : WalletTransactionType.REFUND, rupees(delta > ZERO ? delta : -delta), {
         orderId: order.id,

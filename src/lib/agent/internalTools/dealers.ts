@@ -4,6 +4,7 @@ import { z } from "zod";
 import { prisma } from "@/server/db/prisma";
 import { SALES_REGIONS } from "@/server/auth/sales-scope";
 import { formatSalesRegionLabel } from "@/lib/salesRegions";
+import { dealerTerms } from "@/lib/dealerCreditLimit";
 import { ACCEPTED_ONLY } from "@/server/modules/admin-dashboard/sales-summary";
 import type { Tool } from "../types";
 import { financialYearStart, type InternalScope } from "../internalScope";
@@ -103,7 +104,7 @@ export const findDealers: Tool<InternalScope> = {
         city: d.city ?? undefined,
         state: d.state ?? undefined,
         region: d.region ? formatSalesRegionLabel(d.region) : undefined,
-        account: d.creditDays !== null ? `credit, ${d.creditDays} days` : d.wallet?.status === "ACTIVE" ? "advance (wallet)" : "none",
+        account: { advance: "advance (wallet)", credit: `credit, ${d.creditDays} days`, unset: "none (credit days missing)" }[dealerTerms(d, d.wallet)],
         discountPercent: Number(d.discountPercent ?? 0),
         assignedTo: d.staffAssignments.map((a) => a.staff.displayName).join(", ") || undefined,
         ...(d.user.status !== "ACTIVE" ? { loginStatus: d.user.status } : {}),

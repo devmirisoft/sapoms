@@ -1,6 +1,6 @@
 import { Prisma, WalletTransactionType } from "@prisma/client";
 import { applyWalletChange } from "@/lib/postgresWallet";
-import { reserveDealerCredit } from "@/lib/dealerCreditLimit";
+import { dealerTerms, reserveDealerCredit, UNSET_TERMS_MESSAGE } from "@/lib/dealerCreditLimit";
 import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
 import { buildEditLogEntry, diffOrderRows, orderItemsToDraftRows, ORDER_REJECTION_SOURCE } from "@/lib/orderRejectionDraft.mjs";
 import { findCatalogueEntry, type CatalogueIndex } from "@/lib/catalogue";
@@ -215,8 +215,11 @@ export async function createDealerOrder(
 
   const priced = await priceDealerOrder(tx, fields, dealer);
 
-  // Credit dealers order against their credit limit, never a wallet.
-  const wallet = dealer.creditDays === null ? await tx.dealerWallet.findUnique({ where: { dealerId: dealer.id } }) : null;
+  // dealerTerms decides: an active wallet pays (even with credit days saved),
+  // credit dealers order against their limit, and a dealer with neither can't order.
+  const wallet = await tx.dealerWallet.findUnique({ where: { dealerId: dealer.id } });
+  const terms = dealerTerms(dealer, wallet);
+  if (terms === "unset") throw new OrderError(UNSET_TERMS_MESSAGE, 409, "credit_terms_missing");
   if (wallet?.status === "ACTIVE" && !options.skipBalanceCheck) {
     const available = wallet.balancePaise - wallet.reservedPaise;
     if (available < priced.finalPayableAmountPaise) {
@@ -224,7 +227,7 @@ export async function createDealerOrder(
     }
   }
 
-  if (dealer.creditDays !== null) {
+  if (terms === "credit") {
     const creditBlock = await reserveDealerCredit(tx, dealer.id, priced.finalPayableAmountPaise);
     if (creditBlock) throw new OrderError(creditBlock.message, 409, creditBlock.code);
   }

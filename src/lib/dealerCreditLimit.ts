@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 
 /**
  * Credit-limit and credit-day enforcement for dealers who buy on credit terms
- * (dealer.creditDays is set) rather than through a prepaid wallet.
+ * (dealerTerms() === "credit") rather than through a prepaid wallet.
  *
  * Used credit is everything ordered (not cancelled) plus debit notes, minus what
  * the accountant has recorded as paid against bills - so paying a 2k bill frees
@@ -15,11 +15,44 @@ import type { Prisma } from "@prisma/client";
 
 type CreditClient = Pick<Prisma.TransactionClient, "order" | "ledgerBill">;
 
+export type DealerTerms = "advance" | "credit" | "unset";
+
+/**
+ * The one rule for how a dealer pays, used by every order and money path.
+ * An active wallet makes them advance whatever credit days are saved - those
+ * stay on the record so switching back to credit restores them. Otherwise
+ * credit days make them credit; with neither, nobody set their terms up and
+ * they can't order (admins see these dealers in their notification bell).
+ */
+export function dealerTerms(dealer: { creditDays: number | null }, wallet: { status: string } | null | undefined): DealerTerms {
+  if (wallet?.status === "ACTIVE") return "advance";
+  return dealer.creditDays === null ? "unset" : "credit";
+}
+
+export const UNSET_TERMS_MESSAGE = "Your credit terms haven't been set up yet. Your admin has been notified.";
+
+/** dealerTerms() === "unset" as a query: active dealers who can't order until an admin sets their terms. */
+export function findUnsetTermsDealers(client: Pick<Prisma.TransactionClient, "dealerProfile">, take = 50) {
+  return client.dealerProfile.findMany({
+    where: {
+      deletedAt: null,
+      user: { status: "ACTIVE", deletedAt: null },
+      creditDays: null,
+      OR: [{ wallet: { is: null } }, { wallet: { is: { status: "INACTIVE" } } }],
+    },
+    orderBy: { businessName: "asc" },
+    take,
+    select: { id: true, businessName: true, updatedAt: true },
+  });
+}
+
 export type CreditDealer = {
   id: bigint;
   creditDays: number | null;
   creditLimitPaise: bigint | null;
   tempCreditLimitPaise: bigint;
+  // Required so no caller can forget it: an active wallet overrides credit days.
+  wallet: { status: string } | null;
 };
 
 export type DealerCreditStatus = {
@@ -50,9 +83,10 @@ export function billAgeing(
   return { ageDays: Math.floor((now - bill.billDate.getTime()) / DAY_MS), duePaise: overdue ? outstanding : ZERO };
 }
 
-/** Returns null for dealers not on credit terms (dealer.creditDays is unset). */
+/** Returns null for dealers not on credit terms (see dealerTerms). */
 export async function getDealerCreditStatus(client: CreditClient, dealer: CreditDealer): Promise<DealerCreditStatus | null> {
-  if (dealer.creditDays === null) return null;
+  const creditDays = dealer.creditDays;
+  if (creditDays === null || dealerTerms(dealer, dealer.wallet) !== "credit") return null;
 
   const [orders, bills] = await Promise.all([
     client.order.findMany({
@@ -77,7 +111,6 @@ export async function getDealerCreditStatus(client: CreditClient, dealer: Credit
   }
 
   const now = Date.now();
-  const creditDays = dealer.creditDays;
   const overdueBill = bills.find((bill) =>
     bill.billAmountPaise > bill.paidAmountPaise && billDueDate(bill.billDate, creditDays, bill.extraCreditDays).getTime() < now);
 
@@ -112,7 +145,7 @@ export async function reserveDealerCredit(tx: Prisma.TransactionClient, dealerId
   await tx.$executeRaw`SELECT id FROM dealer_profiles WHERE id = ${dealerId} FOR UPDATE`;
   const dealer = await tx.dealerProfile.findUnique({
     where: { id: dealerId },
-    select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true },
+    select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true, wallet: { select: { status: true } } },
   });
   const credit = dealer ? await getDealerCreditStatus(tx, dealer) : null;
   if (!credit) return null;

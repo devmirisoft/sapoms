@@ -6,10 +6,26 @@ import { actorWhere } from "@/lib/postgresOrders";
 import { fetchStaffAssignedDealerIds, orderActorFromAuth } from "@/lib/orderScopeServer";
 import { buildMissedActivity, type MissedActivity } from "@/lib/missedActivity";
 import { dealerTermsUpdatedAt } from "@/server/terms-content";
+import { findUnsetTermsDealers } from "@/lib/dealerCreditLimit";
 
 export const runtime = "nodejs";
 
 const FLOW_ROLES = ["RSM", "STAFF", "ASM", "DEALER"];
+
+/* Not windowed, like the dealer's terms item: an active dealer with neither an
+   active wallet nor credit days (dealerTerms "unset") can't order, so they stay
+   in every admin's bell until someone adds credit days or turns the wallet on. */
+async function missingCreditTermsItems(): Promise<MissedActivity[]> {
+  const dealers = await findUnsetTermsDealers(prisma);
+  return dealers.map((dealer) => ({
+    at: dealer.updatedAt.toISOString(),
+    orderId: "",
+    href: `/dashboard/admin/dealer/${dealer.id}`,
+    type: "error",
+    title: `Credit days for ${dealer.businessName} are not available`,
+    description: "Please add them. This dealer can't place orders until you do.",
+  }));
+}
 
 /* Order-flow activity between the user's previous logout (or previous login,
    when they never signed out) and the login that opened this session. The
@@ -17,12 +33,14 @@ const FLOW_ROLES = ["RSM", "STAFF", "ASM", "DEALER"];
 export async function GET() {
   try {
     const actor = await requireAuth();
-    const orderActor = orderActorFromAuth(actor);
-    if (!FLOW_ROLES.includes(actor.role) || !orderActor) return NextResponse.json({ success: true, key: null, items: [] });
-
     const session = await prisma.authSession.findUnique({ where: { id: actor.sessionId }, select: { createdAt: true } });
     if (!session) return NextResponse.json({ success: true, key: null, items: [] });
     const until = session.createdAt;
+
+    if (actor.role === "ADMIN") return NextResponse.json({ success: true, key: until.toISOString(), items: await missingCreditTermsItems() });
+
+    const orderActor = orderActorFromAuth(actor);
+    if (!FLOW_ROLES.includes(actor.role) || !orderActor) return NextResponse.json({ success: true, key: null, items: [] });
 
     // Not windowed: stays in the bell (and toasts each login) until the dealer accepts the new version.
     const termsUpdatedAt = actor.role === "DEALER" && actor.dealerId ? await dealerTermsUpdatedAt(actor.dealerId) : null;

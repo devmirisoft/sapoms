@@ -37,6 +37,7 @@ type Dealer = {
   credit_period?: string | number
   Credit_Period?: string | number
   walletBalance?: string | number
+  walletStatus?: string
   pendingDues?: number
   accountBook?: AccountBook
 }
@@ -200,18 +201,11 @@ function creditDaysForDealer(dealer?: Dealer) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : DEFAULT_CREDIT_DAYS
 }
 
-// Dealers with configured credit days buy on credit; everyone else pays up front.
-// Unlike creditDaysForDealer, this reads the raw value so the 60-day display
-// default doesn't misclassify an advance dealer as a credit dealer.
+// An active wallet is what makes a dealer "advance" - the same rule the dealer
+// list uses. Credit days can be filled in for advance dealers too, so they
+// must not decide this.
 function dealerTerms(dealer: Dealer): DealerTerms {
-  const raw =
-    dealer.creditdays ??
-    dealer.creditDays ??
-    dealer.credit_period ??
-    dealer.Credit_Period
-  if (raw === null || raw === undefined || String(raw).trim() === '') return 'advance'
-  const parsed = Number(raw)
-  return Number.isFinite(parsed) && parsed > 0 ? 'credit' : 'advance'
+  return String(dealer.walletStatus ?? '').toLowerCase() === 'active' ? 'advance' : 'credit'
 }
 
 function orderNumber(order: RawOrder) {

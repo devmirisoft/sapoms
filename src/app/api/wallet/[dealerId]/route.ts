@@ -37,7 +37,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deal
       getWalletSnapshot(prisma, dealerId, { limit }),
       prisma.dealerProfile.findUnique({
         where: { id: dealerId },
-        select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true },
+        select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true, wallet: { select: { status: true } } },
       }),
     ]);
     const creditStatus = dealer ? await getDealerCreditStatus(prisma, dealer) : null;
@@ -49,9 +49,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ deal
       remaining: creditStatus.remainingPaise === null ? null : fromPaise(creditStatus.remainingPaise),
       isOverdue: creditStatus.isOverdue,
     };
-    // A dealer is either advance (wallet) or credit, never both: a credit
-    // dealer's wallet is never active, whatever its row says.
-    return NextResponse.json({ success: true, ...data, ...(credit ? { status: "inactive" } : {}), credit });
+    // A dealer is either advance (wallet) or credit, never both: credit status
+    // only exists while the wallet is off (dealerTerms), so data.status is right as is.
+    return NextResponse.json({ success: true, ...data, credit });
   } catch (error) {
     console.error("[GET /api/wallet/[dealerId]]", error);
     const status = error instanceof Error && error.message === "Invalid dealer id." ? 400 : errorStatus(error);

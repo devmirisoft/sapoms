@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/server/db/prisma";
 import { createDealerOrder, OrderError, priceDealerOrder, type CreateOrderActor, type OrderFormFields } from "@/lib/dealerOrderCreate";
-import { getDealerCreditStatus } from "@/lib/dealerCreditLimit";
+import { dealerTerms, getDealerCreditStatus, UNSET_TERMS_MESSAGE } from "@/lib/dealerCreditLimit";
 import { buildDraftApprovalState, buildOrderApprovalSnapshot, requiresNsmReview, stackDiscountOnNet } from "@/lib/customDiscountRequests";
 import { buildCustomDiscountCreate, dealerExists, draftSnapshot, jsonValue } from "@/lib/postgresDiscountDrafts";
 import cataloguePricing from "@/lib/cataloguePricing";
@@ -102,7 +102,9 @@ async function priceDraft(dealerId: bigint, rawItems: DraftItem[], ask: CustomDi
     }
   }
 
-  if (dealer.creditDays !== null) {
+  const terms = dealerTerms(dealer, dealer.wallet);
+  if (terms === "unset") return fail("CREDIT_TERMS_MISSING", UNSET_TERMS_MESSAGE);
+  if (terms === "credit") {
     const credit = await getDealerCreditStatus(prisma, dealer);
     if (credit?.isOverdue) return fail("CREDIT_OVERDUE", "A previous bill is overdue. New orders are blocked until it is paid.");
     if (credit?.remainingPaise != null && credit.remainingPaise < payablePaise) {
