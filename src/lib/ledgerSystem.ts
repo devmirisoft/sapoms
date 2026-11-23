@@ -76,7 +76,7 @@ function money(value: bigint | number | null | undefined) {
   return fromPaise(value ?? 0);
 }
 
-function normalizeDealer(dealer: DealerRecord | LedgerOrder["dealer"], wallet?: { balancePaise?: bigint | null } | null) {
+function normalizeDealer(dealer: DealerRecord | LedgerOrder["dealer"], wallet?: { balancePaise?: bigint | null; status?: string | null } | null) {
   return {
     Dealer_Id: dealer.id.toString(),
     Dealer_Name: dealer.businessName ?? "",
@@ -88,6 +88,8 @@ function normalizeDealer(dealer: DealerRecord | LedgerOrder["dealer"], wallet?: 
     Dealer_Dealercode: dealer.dealerCode ?? "",
     creditdays: dealer.creditDays ?? "",
     walletBalance: money(wallet?.balancePaise ?? 0),
+    // Same advance/credit signal the dealer list uses (dealers.mapper.ts).
+    walletStatus: wallet?.status === "ACTIVE" ? "active" : "inactive",
   };
 }
 
