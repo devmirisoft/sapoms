@@ -70,6 +70,7 @@ try {
   const { applyOrderEdit } = await import('@/lib/orderEditApply');
   const { buildOrderEditRevision } = await import('@/lib/orderOverlays');
   const { GET: overlayGET } = await import('@/app/api/order-overlays/[id]/route');
+  const { updateAdminDealer } = await import('@/server/modules/admin/dealers/dealers.service');
 
   // ── Seed ────────────────────────────────────────────────────────────────────
   console.log('Seeding …');
@@ -102,6 +103,7 @@ try {
   const walletTx = (orderId, type) => prisma.walletTransaction.findMany({ where: { orderId, ...(type ? { type } : {}) } });
   const orderCount = (dealer) => prisma.order.count({ where: { dealerId: dealer.id } });
   const rejectsWith = (code) => (error) => { assert.equal(error.code, code, error.message); return true; };
+  const loadTerms = (dealer) => prisma.dealerProfile.findUniqueOrThrow({ where: { id: dealer.id }, select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true, wallet: true } });
   let requestId = 990_000n;
   const approve = (dealer) => prisma.$transaction((tx) => placeOrderForApprovedDiscount(tx, {
     id: ++requestId, dealerId: dealer.id, orderId: null, orderDraftId: null,
@@ -147,9 +149,8 @@ try {
   // ── Credit status ───────────────────────────────────────────────────────────
   console.log('\nCredit status');
   await check('no credit status for the advance dealer; credit dealer still has one', async () => {
-    const load = (dealer) => prisma.dealerProfile.findUniqueOrThrow({ where: { id: dealer.id }, select: { id: true, creditDays: true, creditLimitPaise: true, tempCreditLimitPaise: true, wallet: { select: { status: true } } } });
-    assert.equal(await getDealerCreditStatus(prisma, await load(ADV)), null);
-    assert.notEqual(await getDealerCreditStatus(prisma, await load(CRED)), null);
+    assert.equal(await getDealerCreditStatus(prisma, await loadTerms(ADV)), null);
+    assert.notEqual(await getDealerCreditStatus(prisma, await loadTerms(CRED)), null);
   });
 
   // ── Discount approval ───────────────────────────────────────────────────────
@@ -231,6 +232,36 @@ try {
     const text = async (dealer) => (await fillDealerFields(DEFAULT_TERMS_BLOCKS, dealer.id)).map((block) => block.text).join('\n');
     assert.match(await text(CRED), /30 DAYS/);
     assert.doesNotMatch(await text(ADV), /30 DAYS/);
+  });
+
+  // ── Switching through the dealer edit (what an admin actually does) ─────────
+  console.log('\nSwitching credit ↔ advance through the dealer edit');
+  const SW = await seedDealer('IT Switcher', '9106', { creditDays: 45, creditLimitPaise: 1_000_000_000n });
+  await check('credit → advance: wallet on, credit days kept, orders now come out of the wallet', async () => {
+    await updateAdminDealer(SW.id, { walletActive: true }, adminActor);
+    const row = await loadTerms(SW);
+    assert.deepEqual([row.wallet.status, row.creditDays], ['ACTIVE', 45]);
+    await assert.rejects(place(SW), rejectsWith('insufficient_balance')); // ₹0 wallet: blocked, not put on credit
+    await recordLedgerPayment(accountantActor, String(SW.id), { amount: 50_000, paymentMode: 'NEFT' }, 'it-switch-topup');
+    const before = await balance(SW);
+    const { order } = await place(SW);
+    assert.equal(await balance(SW), before - order.finalPayableAmountPaise);
+    assert.equal(await getDealerCreditStatus(prisma, await loadTerms(SW)), null);
+  });
+  await check('advance → credit: leftover wallet money goes to a settlement, saved credit days apply again', async () => {
+    const leftover = await balance(SW);
+    await updateAdminDealer(SW.id, { walletActive: false }, adminActor); // credit days not re-entered
+    const row = await loadTerms(SW);
+    assert.deepEqual([row.wallet.status, row.wallet.balancePaise, row.creditDays], ['INACTIVE', 0n, 45]);
+    const settlement = await prisma.walletSettlement.findFirstOrThrow({ where: { dealerId: SW.id, status: 'OPEN' } });
+    assert.equal(settlement.remainingPaise, leftover);
+    const { order } = await place(SW);
+    assert.equal((await walletTx(order.id)).length, 0);
+    assert.notEqual(await getDealerCreditStatus(prisma, await loadTerms(SW)), null);
+  });
+  await check('switching back to advance waits until the accountant settles that money', async () => {
+    await assert.rejects(updateAdminDealer(SW.id, { walletActive: true }, adminActor), /must settle or void it before switching back to advance/);
+    assert.equal((await loadTerms(SW)).wallet.status, 'INACTIVE');
   });
 
   // ── Admin alert ─────────────────────────────────────────────────────────────
