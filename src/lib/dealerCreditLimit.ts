@@ -4,9 +4,11 @@ import type { Prisma } from "@prisma/client";
  * Credit-limit and credit-day enforcement for dealers who buy on credit terms
  * (dealerTerms() === "credit") rather than through a prepaid wallet.
  *
- * Used credit is everything ordered (not cancelled) plus debit notes, minus what
- * the accountant has recorded as paid against bills - so paying a 2k bill frees
- * 2k of limit. On top of dealer.creditLimitPaise sits a temporary pot
+ * Used credit (shown as "Outstanding") is what's owed since the opening balance:
+ * every order placed after it (not cancelled or declined) plus debit notes, plus
+ * the unpaid opening bills and later bills for earlier orders, minus what the
+ * accountant has recorded as paid against bills - so paying a 2k bill frees 2k
+ * of limit. On top of dealer.creditLimitPaise sits a temporary pot
  * (tempCreditLimitPaise) that orders draw down once the base headroom is gone;
  * at zero the dealer is back on the base limit. The overdue check blocks
  * ordering while any bill is past billDate + creditDays + bill.extraCreditDays
@@ -68,6 +70,40 @@ export type DealerCreditStatus = {
 const DAY_MS = 86_400_000;
 const ZERO = BigInt(0);
 
+// The accountant's balance sheet as of 31 Oct 2026 is the opening position: its
+// unpaid bills were imported as ledger bills with no order (orderNumber ""), see
+// scripts/import-opening-bills.mjs. Orders and app bills before this instant are
+// already inside those balances.
+export const OPENING_BALANCE_CUTOFF = new Date("2026-11-01T00:00:00+05:30");
+
+type UsedOrder = { id: bigint; legacyPhpId: string | null; orderNumber: string; orderDate: Date; status: string; finalPayableAmountPaise: bigint };
+type UsedBill = { orderId: bigint | null; orderNumber: string; billDate: Date; billAmountPaise: bigint; paidAmountPaise: bigint; debitNotePaise: bigint };
+
+/** What a credit dealer owes since the opening balance, before clamping at zero. */
+export function creditOwedPaise(orders: UsedOrder[], bills: UsedBill[]) {
+  const counted = (order: UsedOrder) =>
+    order.status !== "CANCELLED" && order.status !== "DECLINED" && order.orderDate >= OPENING_BALANCE_CUTOFF;
+  // A bill names its orders by id, legacy id or order number, as recordLedgerBill stores them.
+  const ordersOf = (bill: UsedBill) => bill.orderId !== null
+    ? orders.filter((order) => order.id === bill.orderId)
+    : bill.orderNumber.split(",").map((key) => key.trim()).filter(Boolean).flatMap((key) =>
+        orders.filter((order) => order.id.toString() === key || order.legacyPhpId === key || order.orderNumber === key).slice(0, 1));
+
+  let owed = orders.filter(counted).reduce((sum, order) => sum + order.finalPayableAmountPaise, ZERO);
+  for (const bill of bills) {
+    const opening = bill.orderNumber === "";
+    if (!opening && bill.billDate < OPENING_BALANCE_CUTOFF) continue; // inside the opening balance
+    // A counted order already carries the goods, so its bill adds only the debit
+    // note; an opening bill, or a later bill for an earlier order, counts in full.
+    // ponytail: a bill mixing earlier and later orders counts as covered, so the
+    // earlier orders' share is missed; split by shipment if such bills show up.
+    owed += !opening && ordersOf(bill).some(counted)
+      ? bill.debitNotePaise - bill.paidAmountPaise
+      : bill.billAmountPaise - bill.paidAmountPaise;
+  }
+  return owed;
+}
+
 export function billDueDate(billDate: Date, creditDays: number, extraCreditDays: number) {
   return new Date(billDate.getTime() + (creditDays + extraCreditDays) * DAY_MS);
 }
@@ -90,22 +126,16 @@ export async function getDealerCreditStatus(client: CreditClient, dealer: Credit
 
   const [orders, bills] = await Promise.all([
     client.order.findMany({
-      where: { dealerId: dealer.id, status: { not: "CANCELLED" } },
-      select: { finalPayableAmountPaise: true },
+      where: { dealerId: dealer.id },
+      select: { id: true, legacyPhpId: true, orderNumber: true, orderDate: true, status: true, finalPayableAmountPaise: true },
     }),
     client.ledgerBill.findMany({
       where: { dealerId: dealer.id },
-      select: { orderNumber: true, billAmountPaise: true, paidAmountPaise: true, debitNotePaise: true, billDate: true, extraCreditDays: true },
+      select: { orderId: true, orderNumber: true, billAmountPaise: true, paidAmountPaise: true, debitNotePaise: true, billDate: true, extraCreditDays: true },
     }),
   ]);
 
-  // A bill for an app order adds only its debit note (the order amount is already
-  // counted above). A bill with no order number (opening bills carried over from
-  // before the app) has no order behind it, so its whole amount is owed; any debit
-  // note is already inside billAmountPaise.
-  const owedPaise = orders.reduce((sum, order) => sum + order.finalPayableAmountPaise, ZERO)
-    + bills.reduce((sum, bill) => sum - bill.paidAmountPaise
-      + (bill.orderNumber.trim() ? bill.debitNotePaise : bill.billAmountPaise), ZERO);
+  const owedPaise = creditOwedPaise(orders, bills);
   const usedPaise = owedPaise > ZERO ? owedPaise : ZERO;
   const creditLimitPaise = dealer.creditLimitPaise;
   let baseHeadroomPaise: bigint | null = null;
