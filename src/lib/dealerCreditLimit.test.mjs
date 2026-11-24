@@ -30,7 +30,7 @@ test("an active wallet makes a dealer advance even with credit days saved", () =
 const DAY = 86_400_000;
 const client = (orderPaise, bills = []) => ({
   order: { findMany: async () => orderPaise.map((finalPayableAmountPaise) => ({ finalPayableAmountPaise })) },
-  ledgerBill: { findMany: async () => bills.map((bill) => ({ debitNotePaise: 0n, extraCreditDays: 0, billDate: new Date(), ...bill })) },
+  ledgerBill: { findMany: async () => bills.map((bill) => ({ orderNumber: "OM-1", debitNotePaise: 0n, extraCreditDays: 0, billDate: new Date(), ...bill })) },
 });
 const dealer = (over = {}) => ({ id: 1n, creditDays: 30, creditLimitPaise: 50_000n, tempCreditLimitPaise: 0n, ...over });
 
@@ -53,6 +53,19 @@ test("limit is ordered minus paid: recording a payment frees that much again", a
   assert.equal((await getDealerCreditStatus(client([10_000n], [{ ...paid, paidAmountPaise: 0n }]), limit)).remainingPaise, 0n);
   // An unpaid debit note counts as owed.
   assert.equal((await getDealerCreditStatus(client([8_000n], [{ billAmountPaise: 2_500n, paidAmountPaise: 0n, debitNotePaise: 500n }]), limit)).remainingPaise, 1_500n);
+});
+
+test("opening bills (no order number) count in full, and paying one frees only that bill", async () => {
+  // 4L limit, 3.55L of app orders, 6.11L of opening bills: nothing available.
+  const limit = dealer({ creditLimitPaise: 400_000n });
+  const opening = (paid) => [{ orderNumber: "", billAmountPaise: 611_107n, paidAmountPaise: paid }];
+  const unpaid = await getDealerCreditStatus(client([355_414n], opening(0n)), limit);
+  assert.equal(unpaid.usedPaise, 966_521n);
+  assert.equal(unpaid.remainingPaise, 0n);
+  // Clearing the opening bills leaves the app orders still owed.
+  assert.equal((await getDealerCreditStatus(client([355_414n], opening(611_107n)), limit)).usedPaise, 355_414n);
+  // A debit note is already inside an opening bill's amount, so it is not added twice.
+  assert.equal((await getDealerCreditStatus(client([], [{ orderNumber: " ", billAmountPaise: 2_500n, paidAmountPaise: 0n, debitNotePaise: 500n }]), limit)).usedPaise, 2_500n);
 });
 
 test("temporary limit, once used, leaves the dealer on the base limit even after payments", async () => {

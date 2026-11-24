@@ -95,12 +95,17 @@ export async function getDealerCreditStatus(client: CreditClient, dealer: Credit
     }),
     client.ledgerBill.findMany({
       where: { dealerId: dealer.id },
-      select: { billAmountPaise: true, paidAmountPaise: true, debitNotePaise: true, billDate: true, extraCreditDays: true },
+      select: { orderNumber: true, billAmountPaise: true, paidAmountPaise: true, debitNotePaise: true, billDate: true, extraCreditDays: true },
     }),
   ]);
 
+  // A bill for an app order adds only its debit note (the order amount is already
+  // counted above). A bill with no order number (opening bills carried over from
+  // before the app) has no order behind it, so its whole amount is owed; any debit
+  // note is already inside billAmountPaise.
   const owedPaise = orders.reduce((sum, order) => sum + order.finalPayableAmountPaise, ZERO)
-    + bills.reduce((sum, bill) => sum + bill.debitNotePaise - bill.paidAmountPaise, ZERO);
+    + bills.reduce((sum, bill) => sum - bill.paidAmountPaise
+      + (bill.orderNumber.trim() ? bill.debitNotePaise : bill.billAmountPaise), ZERO);
   const usedPaise = owedPaise > ZERO ? owedPaise : ZERO;
   const creditLimitPaise = dealer.creditLimitPaise;
   let baseHeadroomPaise: bigint | null = null;
