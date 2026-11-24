@@ -1,4 +1,4 @@
-import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { displayOrderNumber } from '@/lib/orderDisplay';
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/ban-ts-comment */
 import jsPDF from "jspdf";
 import moment from "moment";
@@ -313,8 +313,9 @@ function parsePackSizes(html: string): Record<string, number> {
     return result;
 }
 
-function invoiceNumber(orderId: string): string {
-    return formatDisplayOrderNumber(orderId);
+// The order's own number; order_id is a row id for orders placed in this app.
+function invoiceNumber(order: Parameters<typeof displayOrderNumber>[0]): string {
+    return displayOrderNumber(order);
 }
 
 function fmt(n: number): string {
@@ -507,7 +508,7 @@ export async function buildInvoiceTemplateData(
     const gross = amounts.gross;
     const discount = amounts.discountAmount;
     const net = amounts.netPayable;
-    const invNo = invoiceNumber(displayOrder.order_id);
+    const invNo = invoiceNumber(displayOrder);
     let discountBreakdown = resolveOrderDiscountBreakdown(displayOrder as OrderAmountSource);
     let invoiceRemark = "N/A";
 
@@ -857,7 +858,7 @@ export async function uploadOrderInvoice(
             : null;
         const summaryOverride = inlineSummaryOverride ?? ((order as any).__source === "postgres" ? null : await fetchOrderSummaryOverride(order));
         const displayOrder = summaryOverride ? { ...(order as any), ...summaryOverride } : order;
-        const invNo = invoiceNumber(order.order_id);
+        const invNo = invoiceNumber(order);
         const net = resolveOrderAmounts(displayOrder).netPayable;
 
         const dp = getDealerProfile();
@@ -898,7 +899,7 @@ export async function downloadOrderInvoice(order: OrderInvoiceData, options?: In
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${invoiceNumber(order.order_id).replace(/\//g, "-")}.pdf`;
+        link.download = `${invoiceNumber(order).replace(/\//g, "-")}.pdf`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);

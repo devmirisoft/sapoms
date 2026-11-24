@@ -130,6 +130,7 @@ export type PendingProductAggregate = {
 
 export type PendingProductOrderContribution = {
   orderId: string;
+  orderNumber: string;
   orderDate: string;
   orderDateMs: number | null;
   dealerId: string;
@@ -893,6 +894,7 @@ export function buildPendingProductDrilldown(
 
     grouped.set(line.orderId, {
       orderId: line.orderId,
+      orderNumber: line.orderNumber,
       orderDate: line.orderDate,
       orderDateMs: line.orderDateMs,
       dealerId: line.dealerId,
@@ -921,6 +923,7 @@ export function buildPendingProductDrilldown(
   const orders = Array.from(grouped.values())
     .map((order) => ({
       orderId: order.orderId,
+      orderNumber: order.orderNumber,
       orderDate: order.orderDate,
       orderDateMs: order.orderDateMs,
       dealerId: order.dealerId,

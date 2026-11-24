@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { displayOrderNumber } from '@/lib/orderDisplay';
 
 import Image from "next/image";
 import Link from "next/link";
@@ -70,6 +70,7 @@ type PendingFilters = {
 
 type PendingProductOrderRow = {
   orderId: string;
+  orderNumber?: string;
   orderDate: string;
   orderDateMs: number | null;
   dealerId: string;
@@ -290,7 +291,7 @@ function ClubOrderBreakdown({ scope, productKey }: { scope: ClubScope; productKe
               href={`/orders/${encodeURIComponent(order.orderId)}`}
               className="font-mono text-[13px] font-bold text-brand-600 hover:underline"
             >
-              {formatDisplayOrderNumber(order.orderId)}
+              {displayOrderNumber(order)}
             </Link>
             <p className="mt-1 text-[12px] text-slate-500">
               {formatDate(order.orderDate)}
@@ -1022,7 +1023,7 @@ function PendingProductsDashboardInner({ role }: { role: Role }) {
                       <div key={order.orderId} className="rounded-2xl border border-slate-200 p-4">
                         <div className="flex flex-wrap items-start justify-between gap-3">
                           <div>
-                            <p className="font-mono text-[13px] font-bold text-brand-600">{formatDisplayOrderNumber(order.orderId)}</p>
+                            <p className="font-mono text-[13px] font-bold text-brand-600">{displayOrderNumber(order)}</p>
                             {role !== "dealer" && (
                               <p className="mt-1 text-[13px] font-medium text-slate-800">{order.dealerName || order.dealerId}</p>
                             )}

@@ -1367,11 +1367,13 @@ function AddOrderPageInner() {
   const linkCustomDiscountRequestsToOrder = async (
     requests: Array<CustomDiscountRequest | NormalizedCustomDiscountRequest>,
     orderId: string,
+    placedOrderNumber: string,
   ) => {
     const normalizedOrderId = String(orderId || "").trim();
     if (!normalizedOrderId) return;
 
-    const orderNumber = formatDisplayOrderNumber(normalizedOrderId);
+    // The number the order was given, not one built from its row id.
+    const orderNumber = formatDisplayOrderNumber(placedOrderNumber || normalizedOrderId);
     const uniqueIds = Array.from(new Set(
       requests.map((request) => String(request.id || "").trim()).filter(Boolean)
     ));
@@ -1899,7 +1901,8 @@ function AddOrderPageInner() {
       try {
         const res = await fetch(`/api/orders-data?source=orderhispegination&role=dealer&page=1&limit=1000&search=&id=${encodeURIComponent(user.Dealer_Id)}`);
         const json = await res.json();
-        return String(json?.data?.[0]?.order_id ?? "").trim();
+        // The next number follows the latest order's number, not its row id.
+        return String(json?.data?.[0]?.order_number || json?.data?.[0]?.order_id || "").trim();
       } catch {
         return "";
       }
@@ -2217,6 +2220,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
         response: data,
       });
       const placedOrderId = extractOrderIdFromResponse(data) || await getLatestOrderIdForDealer();
+      const placedOrderNumber = String(data?.orderNumber ?? "").trim();
       const rowsUsedForOrder = arr1.filter((row) => row.productname);
       saveLocalOrderDetailsFallback(placedOrderId, {
         dealerId: user.Dealer_Id,
@@ -2270,10 +2274,10 @@ const verifySubmittedProductNotes = async (orderId: string) => {
       });
       await Promise.allSettled([
         saveOrderNoteForHistory(placedOrderId),
-        linkCustomDiscountRequestsToOrder(customDiscountSources, placedOrderId),
+        linkCustomDiscountRequestsToOrder(customDiscountSources, placedOrderId, placedOrderNumber),
         verifySubmittedProductNotes(placedOrderId),
       ]);
-      if (placedOrderId) setExpectedOrderNumber(buildExpectedOrderNumber(placedOrderId));
+      if (placedOrderId) setExpectedOrderNumber(buildExpectedOrderNumber(placedOrderNumber || placedOrderId));
       if (reorderRequest) {
         fetch(`/api/custom-discount-requests/${reorderRequest.id}/reorder-log`, {
           method: "POST",

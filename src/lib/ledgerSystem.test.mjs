@@ -76,6 +76,18 @@ test("ledger payments are transactional and idempotent", () => {
   assert.match(paySource, /duplicate: Boolean\(result\.duplicate\)/);
 });
 
+test("a saved bill is corrected through PATCH, which signs the caller in before updateLedgerBill", async () => {
+  const patch = detailSource.slice(detailSource.indexOf("export async function PATCH"));
+  assert.ok(detailSource.includes("export async function PATCH"));
+  assert.ok(patch.indexOf("requireAuth()") < patch.indexOf("updateLedgerBill(actor, dealerId, body)"));
+  // A server fault is logged, never shown: the caller gets a generic message.
+  assert.match(patch, /status >= 500 \? "Unable to update ledger bill\." : error\.message/);
+
+  const panel = await fs.readFile(path.resolve("src/components/ledger/DealerBillsPanel.tsx"), "utf8");
+  assert.match(panel, /axios\.patch\(`\/api\/ledger\/\$\{encodeURIComponent\(dealerId\)\}`, \{\s*billId: bill\.id,/);
+  assert.match(panel, /reason: form\.reason\.trim\(\),/);
+});
+
 test("every Pay Money caller sends one idempotency key per payment, reused on a retry", async () => {
   const read = (file) => fs.readFile(path.resolve(file), "utf8");
   const modal = await read("src/components/ledger/PayMoneyModal.tsx");

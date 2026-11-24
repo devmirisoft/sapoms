@@ -73,6 +73,8 @@ async function loadOrders(scope: Prisma.OrderWhereInput, tab: DispatchTrackingTa
         orderBy: { createdAt: "asc" },
         include: { ledgerBill: { select: { id: true, billNumber: true, billDate: true, billAmountPaise: true, pdfFiles: true, pdfUrl: true } } },
       },
+      // Any wallet debit marks the order paid from the wallet (as the ledger's Add Invoice rule).
+      walletTransactions: { where: { type: "ORDER_DEBIT" }, select: { id: true }, take: 1 },
     },
     orderBy: { orderDate: "desc" },
     take: ORDER_SCAN_LIMIT,
@@ -154,6 +156,7 @@ export async function GET(req: NextRequest) {
       metaByOrderId.set(orderId, {
         finalPayablePaise: order.finalPayableAmountPaise,
         dealerStatus: order.dealer.deletedAt ? "removed" : order.dealer.user?.status !== "ACTIVE" ? "inactive" : "active",
+        walletPaid: order.walletTransactions.length > 0,
         shipments: order.shipments.map((shipment) => ({
           id: shipment.id.toString(),
           dispatchPartner: shipment.dispatchPartner || null,

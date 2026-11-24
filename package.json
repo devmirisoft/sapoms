@@ -18,6 +18,8 @@
     "test:product-disable": "node -r dotenv/config scripts/verify-product-disable.mjs",
     "test:dealer-terms": "node -r dotenv/config scripts/verify-dealer-terms.mjs",
     "test:password-reset": "node -r dotenv/config scripts/verify-password-reset.mjs",
+    "test:bill-edit": "node -r dotenv/config scripts/verify-bill-edit.mjs",
+    "test:shipment-billing": "node -r dotenv/config scripts/verify-shipment-billing.mjs",
     "test:order-search": "node -r dotenv/config scripts/verify-order-number-search.mjs",
     "test:order-emails": "node -r dotenv/config scripts/verify-order-emails.mjs",
     "test:partial-discount": "node scripts/verify-partial-discount.mjs",

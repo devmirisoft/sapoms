@@ -1,11 +1,12 @@
 'use client'
 
-import { FormEvent, ReactNode, useEffect, useRef, useState } from 'react'
+import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from 'react'
 import axios from 'axios'
-import { CreditCard, FileText, Loader2, Plus, X } from 'lucide-react'
+import { CreditCard, FileText, Loader2, Pencil, Plus, X } from 'lucide-react'
 import DateInput from '@/components/ui/date-input'
 import { showToast } from '@/components/ui/toast'
-import { formatDisplayOrderNumber } from '@/lib/orderDisplay'
+import type { DispatchTrackingOrder } from '@/lib/dispatchTracking'
+import { displayOrderNumber, formatDisplayOrderNumber } from '@/lib/orderDisplay'
 
 export type InvoicePrefill = {
   orderId: string
@@ -14,16 +15,13 @@ export type InvoicePrefill = {
   shipmentLabel: string
 }
 
-export type BillableOrder = {
-  order_id?: string
-  dispatched_amount?: string | number
-  walletTransactions?: { type?: string }[]
-}
-
 export type LedgerBill = {
   id: string
   dealerId: string
+  /** The orders as stored on the bill (legacy or row ids): the matching key, never shown. */
   orderNumber: string
+  /** The same orders by their numbers, for display. */
+  orderLabel?: string
   billNumber?: string
   billAmount: number
   gstPercent: number
@@ -52,34 +50,70 @@ const PAYMENT_MODES = ['Cash', 'Cheque', 'NEFT', 'UPI', 'IMPF', 'Credit Note']
 const today = () => new Date().toISOString().slice(0, 10)
 const inputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500'
 const labelClass = 'mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500'
+const fileInputClass = 'w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-600'
 
-type BilledAgainst = Pick<LedgerBill, 'orderNumber' | 'billAmount' | 'debitNote'>
+export const INVOICE_GST_PERCENT = 18
+
+type TrackingOrder = Pick<DispatchTrackingOrder, 'orderId' | 'orderNumber' | 'orderDate' | 'shipments'>
 
 /**
- * Accountant only bills what's gone out and hasn't been invoiced yet: each
- * order's dispatched value (server-side, weighted per line) minus earlier bills
- * on it. A 200-piece/20000 order with 100 dispatched offers 10000; once that is
- * billed and 50 more go, it offers 5000.
+ * What Add Invoice offers: Dispatch Tracking's To Bill parcels with its own amounts
+ * (before GST), so both screens always list the same thing. A parcel with a bill is
+ * already invoiced; the id-less group is goods that left without a parcel, which can't
+ * be billed. Saving links the ticked parcels to the new bill, which takes them off both.
  */
-export function billableOrders<T extends BillableOrder>(orders: T[], bills: BilledAgainst[]) {
-  const dispatched = new Map(orders.map((order) => [String(order.order_id || '').trim(), Number(order.dispatched_amount || 0)]))
-  const billed = new Map<string, number>()
-  // ponytail: a bill covering several orders is split by their current dispatched
-  // value, which drifts if one of them dispatches more later; store per-order
-  // bill lines if that ever matters.
-  for (const bill of bills) {
-    const ids = bill.orderNumber.split(',').map((id) => id.trim()).filter(Boolean)
-    const goods = bill.billAmount - (bill.debitNote || 0)
-    const weights = ids.map((id) => dispatched.get(id) || 0)
-    const total = weights.reduce((sum, weight) => sum + weight, 0)
-    ids.forEach((id, index) => billed.set(id, (billed.get(id) || 0) + goods * (total > 0 ? weights[index] / total : 1 / ids.length)))
-  }
-  return orders
-    .map((order) => {
-      const id = String(order.order_id || '').trim()
-      return { ...order, unbilled: Math.round(((dispatched.get(id) || 0) - (billed.get(id) || 0)) * 100) / 100 }
-    })
-    .filter((order) => String(order.order_id || '').trim() && order.unbilled >= 1)
+export function billableShipments(orders: TrackingOrder[]) {
+  return orders.flatMap((order) => order.shipments
+    .filter((shipment) => shipment.id && !shipment.bill)
+    .map((shipment) => ({
+      id: shipment.id,
+      // Worded like Dispatch Tracking's own rows: "BlueDart · 53691021370".
+      label: [shipment.dispatchPartner, shipment.trackingNumber].filter(Boolean).join(' · ') || 'Shipment',
+      amount: shipment.value,
+      createdAt: shipment.createdAt,
+      orderId: order.orderId,
+      orderLabel: displayOrderNumber({ order_number: order.orderNumber, order_id: order.orderId, order_date: order.orderDate }),
+    })))
+}
+
+export type BillableShipment = ReturnType<typeof billableShipments>[number]
+
+/** A dealer's parcels still to bill, straight from Dispatch Tracking (Accountant only, like saving a bill). */
+export async function loadBillableShipments(dealerId: string) {
+  const params = new URLSearchParams({ tab: 'to_bill', status: 'all', dealerId, report: '1' })
+  const response = await axios.get(`/api/dispatch-tracking?${params.toString()}`)
+  return billableShipments(response.data?.data?.orders ?? [])
+}
+
+/** Shipment values are before GST; the invoice amount includes it. */
+export function invoiceAmountFor(shipments: Array<{ amount: number }>) {
+  const total = shipments.reduce((sum, shipment) => sum + shipment.amount, 0) * (1 + INVOICE_GST_PERCENT / 100)
+  return Math.round(total * 100) / 100
+}
+
+/** The rows of the "Shipments to bill" picker, shared by both invoice forms. */
+export function ShipmentPicker({ shipments, selected, onToggle }: {
+  shipments: BillableShipment[]
+  selected: string[]
+  onToggle: (shipmentId: string, checked: boolean) => void
+}) {
+  if (shipments.length === 0) return <div className="px-3 py-4 text-sm text-gray-400">No shipments to bill</div>
+  return (
+    <>
+      {shipments.map((shipment) => (
+        <label key={shipment.id} className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 text-sm last:border-b-0 hover:bg-gray-50">
+          <input type="checkbox" checked={selected.includes(shipment.id)} onChange={(event) => onToggle(shipment.id, event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-600" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-gray-900">{shipment.orderLabel}</span>
+            <span className="block truncate text-xs text-gray-500">
+              {shipment.label}{shipment.createdAt ? ` · ${formatDate(new Date(shipment.createdAt))}` : ''}
+            </span>
+          </span>
+          <span className="text-xs font-semibold text-gray-600">{formatAmount(shipment.amount)}</span>
+        </label>
+      ))}
+    </>
+  )
 }
 
 function formatAmount(value: number | string | undefined) {
@@ -101,6 +135,10 @@ function daysUntil(date: Date) {
 
 function formatDate(date: Date) {
   return `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`
+}
+
+function billOrders(bill: Pick<LedgerBill, 'orderNumber' | 'orderLabel'>) {
+  return bill.orderLabel || formatDisplayOrderNumber(bill.orderNumber)
 }
 
 function billPdfs(bill: LedgerBill) {
@@ -140,9 +178,125 @@ function Actions({ onCancel, busy, label, tone = 'indigo' }: { onCancel: () => v
   )
 }
 
+/**
+ * The accountant's correction of a saved bill (amount, number, date, GST, PDFs),
+ * used here and on the Dealer Ledger list. `creditDays` is null for advance
+ * dealers, who have no due date to warn about.
+ */
+export function EditBillModal({ dealerId, bill, creditDays, onClose, onSaved }: {
+  dealerId: string
+  bill: LedgerBill
+  creditDays: number | null
+  onClose: () => void
+  onSaved: (bill: LedgerBill) => void
+}) {
+  const [form, setForm] = useState({
+    amount: String(bill.billAmount),
+    billNumber: bill.billNumber || '',
+    date: bill.billDate,
+    gst: String(bill.gstPercent ?? 0),
+    reason: '',
+  })
+  const [keepUrls, setKeepUrls] = useState(() => billPdfs(bill).map((file) => file.url))
+  const [files, setFiles] = useState<File[]>([])
+  const [busy, setBusy] = useState(false)
+  const set = (key: keyof typeof form) => (event: { target: { value: string } }) => setForm((prev) => ({ ...prev, [key]: event.target.value }))
+
+  const due = creditDays === null || !form.date ? null : dueDate({ ...bill, billDate: form.date }, creditDays)
+  const willBeOverdue = due !== null && Number(form.amount) > bill.paidAmount && daysUntil(due) < 0
+
+  const submit = async (event: FormEvent) => {
+    event.preventDefault()
+    setBusy(true)
+    try {
+      let newPdfFiles: unknown[] = []
+      if (files.length > 0) {
+        const upload = new FormData()
+        files.forEach((file) => upload.append('files', file))
+        newPdfFiles = (await axios.post(`/api/ledger/${encodeURIComponent(dealerId)}/bill-pdf`, upload)).data?.files || []
+      }
+      const response = await axios.patch(`/api/ledger/${encodeURIComponent(dealerId)}`, {
+        billId: bill.id,
+        billAmount: Number(form.amount),
+        gstPercent: Number(form.gst),
+        billDate: form.date,
+        billNumber: form.billNumber.trim(),
+        keepPdfUrls: keepUrls,
+        newPdfFiles,
+        reason: form.reason.trim(),
+      })
+      showToast('success', response.data?.changed ? 'Invoice updated' : 'Nothing to change')
+      onSaved(response.data.bill)
+    } catch (error) {
+      showToast('error', axios.isAxiosError(error) ? error.response?.data?.message || 'Could not update invoice' : 'Could not update invoice')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal title="Edit Invoice" onClose={onClose}>
+      <form onSubmit={submit} className="space-y-4">
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+          Invoice for order {billOrders(bill)}
+          {bill.paidAmount > 0 && ` · ${formatAmount(bill.paidAmount)} already paid, so the amount can't go below that`}
+        </div>
+        <div className="grid grid-cols-2 gap-4">
+          <label className="block">
+            <span className={labelClass}>Invoice amount <span className="normal-case italic text-gray-400">(GST incl.)</span></span>
+            <input type="number" min={bill.paidAmount > 0 ? bill.paidAmount : 0.01} step="0.01" value={form.amount} onChange={set('amount')} className={inputClass} required />
+          </label>
+          <label className="block">
+            <span className={labelClass}>GST %</span>
+            <input type="number" min="0" step="0.01" value={form.gst} onChange={set('gst')} className={inputClass} required />
+          </label>
+          <label className="block">
+            <span className={labelClass}>Invoice no. <span className="normal-case italic text-gray-400">(optional)</span></span>
+            <input value={form.billNumber} onChange={set('billNumber')} maxLength={60} className={inputClass} />
+          </label>
+          <label className="block">
+            <span className={labelClass}>Invoice date</span>
+            <DateInput value={form.date} onChange={set('date')} className={inputClass} required />
+          </label>
+        </div>
+        {due && (
+          <p className={`rounded-lg border px-3 py-2 text-xs ${willBeOverdue ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-gray-200 bg-gray-50 text-gray-600'}`}>
+            Due {formatDate(due)}
+            {willBeOverdue && ' · This bill will be overdue, and the dealer won\'t be able to place orders until it\'s paid.'}
+          </p>
+        )}
+        <div>
+          <span className={labelClass}>Invoice PDF</span>
+          {billPdfs(bill).filter((file) => keepUrls.includes(file.url)).map((file) => (
+            <div key={file.url} className="mb-2 flex items-center justify-between gap-2 rounded-lg border border-gray-200 px-3 py-1.5 text-xs text-gray-700">
+              <span className="flex min-w-0 items-center gap-1.5">
+                <FileText className="h-3.5 w-3.5 shrink-0 text-red-500" />
+                <span className="truncate">{file.name}</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setKeepUrls((prev) => prev.filter((url) => url !== file.url))}
+                className="rounded p-1 text-gray-400 hover:bg-gray-100 hover:text-red-600"
+                aria-label={`Remove ${file.name}`}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          ))}
+          <input type="file" accept="application/pdf,.pdf" multiple onChange={(event) => setFiles(Array.from(event.target.files || []))} className={fileInputClass} />
+        </div>
+        <label className="block">
+          <span className={labelClass}>Reason for change</span>
+          <input value={form.reason} onChange={set('reason')} maxLength={500} className={inputClass} required />
+        </label>
+        <Actions onCancel={onClose} busy={busy} label="Save Changes" />
+      </form>
+    </Modal>
+  )
+}
+
 export default function DealerBillsPanel({
   dealerId,
-  orders,
   bills,
   credit,
   canManageBills,
@@ -152,7 +306,6 @@ export default function DealerBillsPanel({
   onInvoiceSaved,
 }: {
   dealerId: string
-  orders: BillableOrder[]
   bills: LedgerBill[]
   credit: CreditSnapshot
   canManageBills: boolean
@@ -165,14 +318,16 @@ export default function DealerBillsPanel({
 }) {
   const [modal, setModal] = useState<null | 'invoice' | 'payment' | 'days' | 'limit'>(null)
   const [busy, setBusy] = useState(false)
-  const [invoiceOrders, setInvoiceOrders] = useState<string[]>([])
+  const [invoiceShipmentIds, setInvoiceShipmentIds] = useState<string[]>([])
   const [invoiceAmount, setInvoiceAmount] = useState('')
   const [invoiceDate, setInvoiceDate] = useState(today)
   const [invoiceFiles, setInvoiceFiles] = useState<File[]>([])
   const [invoiceBillNumber, setInvoiceBillNumber] = useState('')
-  const [invoiceShipment, setInvoiceShipment] = useState<{ ids: string[]; label: string } | null>(null)
+  // Set when Dispatch Tracking's "Bill shipment" opened the form.
+  const [invoiceShipment, setInvoiceShipment] = useState<{ orderId: string; label: string } | null>(null)
   const prefillApplied = useRef(false)
   const [paymentBill, setPaymentBill] = useState<LedgerBill | null>(null)
+  const [editBill, setEditBill] = useState<LedgerBill | null>(null)
   const [payment, setPayment] = useState({ amount: '', mode: 'NEFT', date: today(), reference: '' })
   const [extendValue, setExtendValue] = useState('')
   const [extendNote, setExtendNote] = useState('')
@@ -180,9 +335,24 @@ export default function DealerBillsPanel({
   const creditDays = credit?.creditDays ?? 0
   const isCreditDealer = credit !== null
   const limitReached = credit?.remaining !== null && credit?.remaining !== undefined && credit.remaining <= 0
-  // A wallet-paid order is already paid; anything else still needs an invoice -
-  // including orders an advance dealer placed on credit before the switch.
-  const selectable = billableOrders(orders.filter((order) => !order.walletTransactions?.some((tx) => tx.type === 'ORDER_DEBIT')), bills)
+  const [selectable, setSelectable] = useState<BillableShipment[]>([])
+  const [shipmentsLoading, setShipmentsLoading] = useState(false)
+
+  const refreshShipments = useCallback(async () => {
+    if (!canManageBills) return
+    setShipmentsLoading(true)
+    try {
+      setSelectable(await loadBillableShipments(dealerId))
+    } catch {
+      showToast('error', 'Could not load shipments to bill')
+    } finally {
+      setShipmentsLoading(false)
+    }
+  }, [canManageBills, dealerId])
+
+  useEffect(() => {
+    void refreshShipments()
+  }, [refreshShipments])
 
   const close = () => {
     setModal(null)
@@ -192,33 +362,34 @@ export default function DealerBillsPanel({
   }
 
   const openInvoice = () => {
-    setInvoiceOrders([])
+    setInvoiceShipmentIds([])
     setInvoiceAmount('')
     setInvoiceDate(today())
     setInvoiceFiles([])
     setInvoiceBillNumber('')
     setInvoiceShipment(null)
     setModal('invoice')
+    void refreshShipments()
   }
 
   // Applied once: canManageBills only turns true after the viewer's role loads.
   useEffect(() => {
     if (!prefill || !canManageBills || prefillApplied.current) return
     prefillApplied.current = true
-    setInvoiceOrders([prefill.orderId])
-    setInvoiceAmount(prefill.amount > 0 ? String(Math.round(prefill.amount * 100) / 100) : '')
+    setInvoiceShipmentIds(prefill.shipmentIds)
+    setInvoiceAmount(prefill.amount > 0 ? String(invoiceAmountFor([prefill])) : '')
     setInvoiceDate(today())
     setInvoiceFiles([])
     setInvoiceBillNumber('')
-    setInvoiceShipment({ ids: prefill.shipmentIds, label: prefill.shipmentLabel })
+    setInvoiceShipment({ orderId: prefill.orderId, label: prefill.shipmentLabel })
     setModal('invoice')
   }, [prefill, canManageBills])
 
-  const toggleOrder = (orderId: string, checked: boolean) => {
-    const next = checked ? [...invoiceOrders, orderId] : invoiceOrders.filter((id) => id !== orderId)
-    setInvoiceOrders(next)
-    const total = selectable.filter((order) => next.includes(String(order.order_id))).reduce((sum, order) => sum + order.unbilled, 0)
-    setInvoiceAmount(next.length > 0 ? String(Math.round(total * 100) / 100) : '')
+  const toggleShipment = (shipmentId: string, checked: boolean) => {
+    const next = checked ? [...invoiceShipmentIds, shipmentId] : invoiceShipmentIds.filter((id) => id !== shipmentId)
+    setInvoiceShipmentIds(next)
+    const picked = selectable.filter((shipment) => next.includes(shipment.id))
+    setInvoiceAmount(picked.length > 0 ? String(invoiceAmountFor(picked)) : '')
   }
 
   const run = async (work: () => Promise<void>, fallback: string) => {
@@ -237,8 +408,14 @@ export default function DealerBillsPanel({
   const submitInvoice = (event: FormEvent) => {
     event.preventDefault()
     const amount = Number(invoiceAmount)
-    if (invoiceOrders.length === 0 || !(amount > 0) || !invoiceDate) {
-      showToast('error', 'Select orders, amount and date')
+    // The orders the ticked shipments belong to; the server refuses a shipment that isn't on them.
+    const orderNumbers = Array.from(new Set([
+      ...selectable.filter((shipment) => invoiceShipmentIds.includes(shipment.id)).map((shipment) => shipment.orderId),
+      // The prefilled order counts only while its shipment is still ticked.
+      ...(invoiceShipment && prefill?.shipmentIds.some((id) => invoiceShipmentIds.includes(id)) ? [invoiceShipment.orderId] : []),
+    ]))
+    if (invoiceShipmentIds.length === 0 || !(amount > 0) || !invoiceDate) {
+      showToast('error', 'Select shipments, amount and date')
       return
     }
     run(async () => {
@@ -250,16 +427,17 @@ export default function DealerBillsPanel({
         pdfFiles = upload.data?.files || []
       }
       await axios.post(`/api/ledger/${encodeURIComponent(dealerId)}`, {
-        orderNumbers: invoiceOrders,
+        orderNumbers,
         billAmount: amount,
-        gstPercent: 18,
+        gstPercent: INVOICE_GST_PERCENT,
         billDate: invoiceDate,
         billNumber: invoiceBillNumber.trim(),
-        shipmentIds: invoiceShipment?.ids ?? [],
+        shipmentIds: invoiceShipmentIds,
         pdfNames: invoiceFiles.map((file) => file.name),
         pdfFiles,
       })
-      showToast('success', invoiceShipment ? 'Invoice saved and shipment billed' : 'Invoice saved')
+      showToast('success', invoiceShipmentIds.length === 1 ? 'Invoice saved and shipment billed' : 'Invoice saved and shipments billed')
+      void refreshShipments()
       if (invoiceShipment) onInvoiceSaved?.()
     }, 'Could not save invoice')
   }
@@ -286,7 +464,7 @@ export default function DealerBillsPanel({
         paymentMode: payment.mode,
         paymentDate: payment.date,
         referenceId: (!creditNote && note) || paymentBill.orderNumber,
-        narration: creditNote ? `${note} (bill ${paymentBill.orderNumber})` : `Payment against bill ${paymentBill.orderNumber}`,
+        narration: creditNote ? `${note} (bill ${billOrders(paymentBill)})` : `Payment against bill ${billOrders(paymentBill)}`,
       })
       showToast('success', creditNote ? 'Credit note recorded' : 'Payment recorded')
     }, 'Could not record payment')
@@ -362,7 +540,7 @@ export default function DealerBillsPanel({
           <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
             <div>
               <h2 className="text-sm font-semibold text-gray-900">Invoices</h2>
-              <p className="text-xs text-gray-500">{selectable.length} dispatched order{selectable.length === 1 ? '' : 's'} with unbilled value</p>
+              {canManageBills && <p className="text-xs text-gray-500">{selectable.length} shipment{selectable.length === 1 ? '' : 's'} to bill</p>}
             </div>
             {canManageBills && (
               <button type="button" onClick={openInvoice} className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white hover:bg-brand-500">
@@ -376,6 +554,7 @@ export default function DealerBillsPanel({
                 <tr className="border-b border-gray-100 bg-gray-50 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">
                   <th className="px-4 py-3">Order</th>
                   <th className="px-4 py-3">Invoice</th>
+                  <th className="px-4 py-3">Billed date</th>
                   <th className="px-4 py-3">Due date</th>
                   <th className="px-4 py-3">Status</th>
                   <th className="px-4 py-3">PDF</th>
@@ -384,7 +563,7 @@ export default function DealerBillsPanel({
               </thead>
               <tbody className="divide-y divide-gray-100">
                 {bills.length === 0 && (
-                  <tr><td colSpan={6} className="px-4 py-8 text-center text-sm text-gray-400">No invoices yet.</td></tr>
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">No invoices yet.</td></tr>
                 )}
                 {bills.map((bill) => {
                   const due = dueDate(bill, creditDays)
@@ -393,12 +572,13 @@ export default function DealerBillsPanel({
                   const pdfs = billPdfs(bill)
                   return (
                     <tr key={bill.id} className="hover:bg-gray-50">
-                      <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600">{formatDisplayOrderNumber(bill.orderNumber)}</td>
+                      <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600">{billOrders(bill)}</td>
                       <td className="px-4 py-3">
                         <div className="font-semibold text-gray-900">{formatAmount(bill.billAmount)}</div>
                         {bill.billNumber && <div className="font-mono text-xs text-gray-700">#{bill.billNumber}</div>}
                         <div className="text-xs text-gray-500">Paid {formatAmount(bill.paidAmount)}</div>
                       </td>
+                      <td className="px-4 py-3 text-gray-600">{formatDate(new Date(`${bill.billDate}T00:00:00`))}</td>
                       <td className="px-4 py-3 text-gray-600">
                         {isCreditDealer ? formatDate(due) : '-'}
                         {(bill.extraCreditDays || 0) > 0 && <div className="text-xs font-medium text-brand-600">+{bill.extraCreditDays} days extended</div>}
@@ -423,18 +603,27 @@ export default function DealerBillsPanel({
                       </td>
                       <td className="px-4 py-3 text-right">
                         {canManageBills && (
-                          <button
-                            type="button"
-                            disabled={balance === 0}
-                            onClick={() => {
-                              setPaymentBill(bill)
-                              setPayment({ amount: String(balance), mode: 'NEFT', date: today(), reference: '' })
-                              setModal('payment')
-                            }}
-                            className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            <CreditCard className="h-3.5 w-3.5" /> Add Payment
-                          </button>
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setEditBill(bill)}
+                              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50"
+                            >
+                              <Pencil className="h-3.5 w-3.5" /> Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={balance === 0}
+                              onClick={() => {
+                                setPaymentBill(bill)
+                                setPayment({ amount: String(balance), mode: 'NEFT', date: today(), reference: '' })
+                                setModal('payment')
+                              }}
+                              className="inline-flex items-center gap-2 rounded-lg border border-emerald-200 bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <CreditCard className="h-3.5 w-3.5" /> Add Payment
+                            </button>
+                          </div>
                         )}
                       </td>
                     </tr>
@@ -451,25 +640,18 @@ export default function DealerBillsPanel({
           <form onSubmit={submitInvoice} className="space-y-4">
             {invoiceShipment && (
               <div className="rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-xs text-brand-800">
-                Covers shipment <span className="font-semibold">{invoiceShipment.label}</span> of order {invoiceOrders.map((id) => formatDisplayOrderNumber(id)).join(', ')}.
+                Covers shipment <span className="font-semibold">{invoiceShipment.label}</span> of order {selectable.find((shipment) => shipment.orderId === invoiceShipment.orderId)?.orderLabel ?? formatDisplayOrderNumber(invoiceShipment.orderId)}.
                 Saving moves it to Billed Shipments.
               </div>
             )}
             <div>
-              <span className={labelClass}>Dispatched orders</span>
+              <span className={labelClass}>Shipments to bill</span>
               <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-300">
-                {selectable.length === 0 && <div className="px-3 py-4 text-sm text-gray-400">No dispatched orders to bill</div>}
-                {selectable.map((order) => {
-                  const id = String(order.order_id)
-                  return (
-                    <label key={id} className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 text-sm last:border-b-0 hover:bg-gray-50">
-                      <input type="checkbox" checked={invoiceOrders.includes(id)} onChange={(event) => toggleOrder(id, event.target.checked)} className="h-4 w-4 rounded border-gray-300 text-brand-600" />
-                      <span className="flex-1 text-gray-900">{formatDisplayOrderNumber(id)}</span>
-                      <span className="text-xs font-semibold text-gray-600">{formatAmount(order.unbilled)}</span>
-                    </label>
-                  )
-                })}
+                {shipmentsLoading && selectable.length === 0
+                  ? <div className="px-3 py-4 text-sm text-gray-400">Loading shipments…</div>
+                  : <ShipmentPicker shipments={selectable} selected={invoiceShipmentIds} onToggle={toggleShipment} />}
               </div>
+              <p className="mt-1 text-xs text-gray-500">Shipment values are before GST; the amount below adds {INVOICE_GST_PERCENT}%.</p>
             </div>
             <label className="block">
               <span className={labelClass}>Invoice amount <span className="normal-case italic text-gray-400">(GST included)</span></span>
@@ -492,7 +674,7 @@ export default function DealerBillsPanel({
                 accept="application/pdf,.pdf"
                 multiple
                 onChange={(event) => setInvoiceFiles(Array.from(event.target.files || []))}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-brand-50 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-600"
+                className={fileInputClass}
               />
             </label>
             <Actions onCancel={close} busy={busy} label="Save Invoice" />
@@ -500,11 +682,24 @@ export default function DealerBillsPanel({
         </Modal>
       )}
 
+      {editBill && (
+        <EditBillModal
+          dealerId={dealerId}
+          bill={editBill}
+          creditDays={creditDays}
+          onClose={() => setEditBill(null)}
+          onSaved={() => {
+            setEditBill(null)
+            void onChanged()
+          }}
+        />
+      )}
+
       {modal === 'payment' && paymentBill && (
         <Modal title="add Payment" onClose={close}>
           <form onSubmit={submitPayment} className="space-y-4">
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-              Invoice for order {formatDisplayOrderNumber(paymentBill.orderNumber)} · Due {formatAmount(Math.max(0, paymentBill.billAmount - paymentBill.paidAmount))}
+              Invoice for order {billOrders(paymentBill)} · Due {formatAmount(Math.max(0, paymentBill.billAmount - paymentBill.paidAmount))}
             </div>
             <label className="block">
               <span className={labelClass}>Amount</span>

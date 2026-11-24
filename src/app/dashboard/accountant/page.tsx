@@ -32,7 +32,7 @@ import {
 import { isAuthenticated } from "@/lib/accountantauth";
 import { downloadOrderInvoice } from "@/lib/invoicegenerator";
 import { OrderAmountSource, withDisplayOrderAmounts } from "@/lib/orderAmounts";
-import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { displayOrderNumber } from '@/lib/orderDisplay';
 import { showToast } from "@/components/ui/toast";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -66,7 +66,7 @@ type PendingOrder = {
 };
 
 type Stats = { dealerCount: number; staffCount: number; orderCount: number; PorderCount: number };
-type ChartOrder  = { order_id: string; total: string };
+type ChartOrder  = { order_id: string; order_number?: string; total: string };
 type ChartDealer = { Dealer_Name: string; total: string };
 type LedgerSummary = { netBalance: number };
 type LedgerResponse = { data: LedgerSummary[] };
@@ -99,7 +99,7 @@ function downloadCSV(rows: Record<string, any>[], filename: string) {
 
 function ordersToRows(orders: Order[]) {
   return orders.map(o => ({
-    "Order No":        formatDisplayOrderNumber(o.order_id),
+    "Order No":        displayOrderNumber(o),
     "Date":            moment(o.order_date).format("DD MMM YYYY"),
     "Dealer":          o.Dealer_Name,
     "Gross (₹)":       Number(o.order_amount),
@@ -112,7 +112,7 @@ function ordersToRows(orders: Order[]) {
 
 function pendingToRows(orders: PendingOrder[]) {
   return orders.map(o => ({
-    "Order No":     formatDisplayOrderNumber(o.order_id),
+    "Order No":     displayOrderNumber(o),
     "Date":         (o.orderDate || o.order_date || "").slice(0, 10),
     "Dealer":       o.Dealer_Name,
     "Amount (₹)":   Number(o.order_amount),
@@ -625,7 +625,7 @@ function AccountantDashboardInner() {
                         <td className="faint num" style={{ textAlign: "left" }}>{String(idx+1).padStart(2,"0")}</td>
                         <td>
                           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <span className="strong-num">{formatDisplayOrderNumber(order.order_id)}</span>
+                            <span className="strong-num">{displayOrderNumber(order)}</span>
                             {deleted && <span className="pill" style={{ background: "rgba(255,59,48,.10)", color: "#ff3b30" }}>DEL</span>}
                           </div>
                         </td>
@@ -687,7 +687,7 @@ function AccountantDashboardInner() {
                       <tr key={order.order_id}>
                         <td className="faint">{String(idx+1).padStart(2,"0")}</td>
                         <td>
-                          <span className="strong-num">{formatDisplayOrderNumber(order.order_id)}</span>
+                          <span className="strong-num">{displayOrderNumber(order)}</span>
                         </td>
                         <td className="px-4 py-3">
                           <div>{order.Dealer_Name || "—"}</div>
@@ -778,7 +778,7 @@ function AccountantDashboardInner() {
           </div>
           <button
             onClick={() => downloadCSV([
-              ...chartOrders.map(o  => ({ Type:"Order",  Ref:formatDisplayOrderNumber(o.order_id), Value:Number(o.total) })),
+              ...chartOrders.map(o  => ({ Type:"Order",  Ref:displayOrderNumber(o), Value:Number(o.total) })),
               ...chartDealers.map(d => ({ Type:"Dealer", Ref:d.Dealer_Name,              Value:Number(d.total) })),
             ], `report_${moment().format("YYYY-MM-DD")}`)}
             className="ghost-btn"
@@ -788,7 +788,7 @@ function AccountantDashboardInner() {
         </div>
         <div className="reports-grid">
           {[
-            { heading: "Top Orders",  items: chartOrders.map(o  => ({ label:formatDisplayOrderNumber(o.order_id), value:o.total  })) },
+            { heading: "Top Orders",  items: chartOrders.map(o  => ({ label:displayOrderNumber(o), value:o.total  })) },
             { heading: "Top Dealers", items: chartDealers.map(d => ({ label:d.Dealer_Name,               value:d.total  })) },
           ].map(col => (
             <div key={col.heading}>

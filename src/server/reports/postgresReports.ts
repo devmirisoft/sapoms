@@ -378,6 +378,7 @@ export async function buildAccountantDashboard() {
     })),
     chartOrders: recentOrders.map((order: any) => ({
       order_id: order.id.toString(),
+      order_number: order.orderNumber,
       total: String(paiseToRupees(order.finalPayableAmountPaise)),
     })),
     recentOrders: recentOrders.map(mapOrder),

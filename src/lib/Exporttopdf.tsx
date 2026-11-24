@@ -1,4 +1,4 @@
-import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { displayOrderNumber } from '@/lib/orderDisplay';
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import moment from "moment";
@@ -85,7 +85,7 @@ export async function generateOrdersPDF(options: ExportOptions): Promise<Blob> {
 
     return [
       String(idx + 1).padStart(2, "0"),
-      `${formatDisplayOrderNumber(order.order_id)}${isDeleted ? " [DEL]" : ""}`,
+      `${displayOrderNumber(order)}${isDeleted ? " [DEL]" : ""}`,
       moment(order.order_date).format("DD MMM YY"),
       `₹${amounts.gross.toLocaleString("en-IN")}`,
       `₹${amounts.discountAmount.toLocaleString("en-IN")}`,
