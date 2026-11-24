@@ -633,7 +633,7 @@ export default function DispatchTrackingDashboard() {
                       </div>
                       {order.allShipmentsBilled ? (
                         <span className="rounded-full bg-sky-50 px-3 py-1 text-[11px] font-semibold text-sky-700">
-                          All shipments billed · {formatNumber(order.leftQuantity)} left
+                          {order.walletPaid ? 'Paid from wallet' : 'All shipments billed'} · {formatNumber(order.leftQuantity)} left
                         </span>
                       ) : (
                         <StatusPill status={order.status} />

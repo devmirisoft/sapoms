@@ -1,6 +1,6 @@
 'use client'
 
-import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { displayOrderNumber } from '@/lib/orderDisplay';
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
@@ -717,7 +717,7 @@ export default function DealerLedgerPage() {
                       </td>
                       <td className="px-3 py-3">
                         <span className="font-mono text-[11.5px] font-bold text-brand-600">
-                          {formatDisplayOrderNumber(order.order_id)}
+                          {displayOrderNumber(order)}
                         </span>
                       </td>
                       <td className="px-3 py-3 whitespace-nowrap">

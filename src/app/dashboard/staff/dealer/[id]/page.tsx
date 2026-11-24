@@ -8,7 +8,7 @@ import { ArrowLeft, Package, Search, Download } from 'lucide-react'
 import moment from 'moment'
 import { hasPriorityTag } from '@/lib/orderPriority'
 import { OrderAmountSource, withDisplayOrderAmounts } from '@/lib/orderAmounts'
-import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { displayOrderNumber } from '@/lib/orderDisplay';
 import { mergeFallbackProductNotes } from '@/lib/orderProductNotes.mjs'
 import { STAFF_ORDER_SCOPE_VERSION } from '@/lib/staffOrderScope.js'
 import { getCurrentUser } from '@/lib/currentUser'
@@ -511,7 +511,7 @@ export default function StaffDealerViewPage() {
                           {o.order_date ? moment(o.order_date).format("DD MMM YYYY") : "—"}
                         </td>
                         <td className="px-4 py-3.5 font-mono text-xs font-semibold text-brand-600 whitespace-nowrap">
-                          {formatDisplayOrderNumber(o.order_id)}
+                          {displayOrderNumber(o)}
                         </td>
                         <td className="px-4 py-3.5 text-xs text-gray-600">
                           {o.orderdata_item_quantity

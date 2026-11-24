@@ -49,6 +49,8 @@ export type DispatchOrderMeta = {
   finalPayablePaise: bigint;
   shipments: DispatchShipmentMeta[];
   dealerStatus?: DealerStatus;
+  // Paid from the dealer's wallet (it has an ORDER_DEBIT), so nothing to invoice.
+  walletPaid?: boolean;
 };
 
 export type DispatchTrackingLine = {
@@ -98,6 +100,8 @@ export type DispatchTrackingOrder = {
   shipments: DispatchTrackingShipment[];
   // To Bill only: every shipment is billed but units are still left to dispatch.
   allShipmentsBilled: boolean;
+  // Paid from the wallet: To Bill (and so Add Invoice) lists none of its shipments.
+  walletPaid: boolean;
 };
 
 export type DispatchTrackingTab = "to_bill" | "billed";
@@ -283,6 +287,7 @@ export function buildDispatchTrackingOrders(
       lines: trackedLines,
       shipments: buildShipments(orderLines, lineNets, meta.shipments),
       allShipmentsBilled: false,
+      walletPaid: meta.walletPaid ?? false,
     });
   }
   return orders;
@@ -291,6 +296,7 @@ export function buildDispatchTrackingOrders(
 /**
  * To Bill keeps each order's unbilled shipments ("No shipment linked" included) and
  * keeps an order with none while units are still left, flagged allShipmentsBilled.
+ * A wallet-paid order is already paid, so it has no shipments to bill.
  * Billed keeps only billed shipments, billed on or after billedSinceMs when given.
  */
 export function selectBillingTab(
@@ -305,7 +311,7 @@ export function selectBillingTab(
       );
       return shipments.length > 0 ? [{ ...order, shipments }] : [];
     }
-    const shipments = order.shipments.filter((shipment) => !shipment.bill);
+    const shipments = order.walletPaid ? [] : order.shipments.filter((shipment) => !shipment.bill);
     if (shipments.length === 0 && order.leftQuantity === 0) return [];
     return [{ ...order, shipments, allShipmentsBilled: shipments.length === 0 }];
   });

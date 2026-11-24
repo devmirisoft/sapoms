@@ -11,7 +11,7 @@ import {
 import { isAuthenticated } from "@/lib/accountantauth";
 import { downloadOrderInvoice, type OrderInvoiceData } from "@/lib/invoicegenerator";
 import { OrderAmountSource, withDisplayOrderAmounts } from "@/lib/orderAmounts";
-import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { displayOrderNumber } from '@/lib/orderDisplay';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 const YEAR = new Date().getFullYear();
@@ -339,7 +339,7 @@ export default function OrderBookPage() {
       const g     = isBos ? null : gst(net);
       return {
         "#":              i + 1,
-        "Order No":       formatDisplayOrderNumber(o.order_id),
+        "Order No":       displayOrderNumber(o),
         "Date":           moment(o.order_date).format("DD MMM YYYY"),
         "Dealer":         o.Dealer_Name,
         "Invoice Type":   filters.invoiceType === "All" ? "Tax Invoice" : filters.invoiceType,
@@ -528,7 +528,7 @@ export default function OrderBookPage() {
                     </td>
                     <td className="px-3 py-3">
                       <span className="font-mono text-[11.5px] font-bold text-brand-600">
-                        {formatDisplayOrderNumber(order.order_id)}
+                        {displayOrderNumber(order)}
                       </span>
                     </td>
                     <td className="px-3 py-3 whitespace-nowrap">

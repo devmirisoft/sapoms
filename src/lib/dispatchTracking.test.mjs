@@ -128,6 +128,25 @@ test("billing tabs split an order's shipments by their ledger bill", () => {
   assert.deepEqual(tracking.summarizeBilledOrders(billed), { orders: 3, billedShipments: 3, bills: 2, billedAmount: 70 });
 });
 
+test("a wallet-paid order has no shipments to bill", () => {
+  const meta = new Map([
+    ["1", { finalPayablePaise: 0n, walletPaid: true, shipments: [shipmentMeta("s1")] }],
+    ["2", { finalPayablePaise: 0n, walletPaid: true, shipments: [shipmentMeta("s2")] }],
+    ["3", { finalPayablePaise: 0n, shipments: [shipmentMeta("s3")] }],
+  ]);
+  const orders = tracking.buildDispatchTrackingOrders([
+    // Order 1: wallet-paid, units still left. Order 2: wallet-paid, fully dispatched. Order 3: on credit.
+    line({ orderId: "1", catalogueNumber: "P1", orderedQuantity: 3, dispatchedQuantity: 1, valuePaise: 300n, dispatches: [dispatch("2026-10-05T00:00:00.000Z", 1, "s1")] }),
+    line({ orderId: "2", catalogueNumber: "P2", orderedQuantity: 1, dispatchedQuantity: 1, valuePaise: 100n, dispatches: [dispatch("2026-10-05T00:00:00.000Z", 1, "s2")] }),
+    line({ orderId: "3", catalogueNumber: "P3", orderedQuantity: 1, dispatchedQuantity: 1, valuePaise: 100n, dispatches: [dispatch("2026-10-05T00:00:00.000Z", 1, "s3")] }),
+  ], meta);
+  const toBill = tracking.selectBillingTab(orders, "to_bill");
+  assert.deepEqual(toBill.map((order) => [order.orderId, order.shipments.map((shipment) => shipment.id), order.walletPaid]), [
+    ["1", [], true],
+    ["3", ["s3"], false],
+  ]);
+});
+
 test("an unlinked group with both kinds of rows gives both reasons", () => {
   const [order] = tracking.buildDispatchTrackingOrders([
     line({ catalogueNumber: "Q", orderedQuantity: 4, dispatchedQuantity: 3, valuePaise: 400n, dispatches: [

@@ -47,7 +47,7 @@ try {
   console.log(`Creating ${DB_NAME} …`);
   await server.$executeRawUnsafe(`CREATE DATABASE "${DB_NAME}"`);
   const migrate = spawnSync(process.execPath, [resolvePath(ROOT, 'node_modules/prisma/build/index.js'), 'migrate', 'deploy'], {
-    cwd: ROOT, env: { ...process.env, DATABASE_URL: TEST_URL }, encoding: 'utf8',
+    cwd: ROOT, env: { ...process.env, DATABASE_URL: TEST_URL, DIRECT_URL: TEST_URL }, encoding: 'utf8', // prisma.config.ts migrates DIRECT_URL first
   });
   assert.equal(migrate.status, 0, `${migrate.stdout}\n${migrate.stderr}`);
 
@@ -62,7 +62,7 @@ try {
   const [{ db }] = await prisma.$queryRaw`select current_database() as db`;
   assert.equal(db, DB_NAME, 'the app client must be connected to the throwaway database');
   const { listPostgresOrderPage } = await import('@/lib/postgresOrders');
-  const { formatDisplayOrderNumber, highlightOrderNumber } = await import('@/lib/orderDisplay');
+  const { displayOrderNumber, formatDisplayOrderNumber, highlightOrderNumber } = await import('@/lib/orderDisplay');
 
   // ── Seed: legacy orders, plus app orders (no legacy id) on fixed ids that miss every search input ──
   console.log('Seeding …');
@@ -73,8 +73,10 @@ try {
   });
   for (const legacyPhpId of ['7', '70', '10', '230', '02269']) await order(`L-${legacyPhpId}`, legacyPhpId);
   await order('L-CANCELLED', '022690', { status: 'CANCELLED' });
-  const A = await order('APP-A', null, { id: 900n });
-  const B = await order('APP-B', null, { id: 901n });
+  // Like production, an app order's row id and its number differ (row 2263 is OM/26-27/DMS-1096).
+  const appOrder = (number, id) => prisma.order.create({ data: { id, orderNumber: `OM/26-27/DMS-${number}`, legacyPhpId: null, dealerId: dealer.id, createdByUserId: dealerUser.id, status: 'ACCEPTED' } });
+  const A = await appOrder('1083', 900n);
+  const B = await appOrder('1096', 901n);
 
   const admin = { role: 'admin', actorId: '1' };
   const search = async (orderId) => {
@@ -101,20 +103,28 @@ try {
   await check('"0" does not filter (mid-typing): every non-cancelled order, never the cancelled one', async () => {
     assert.deepEqual(await search('0'), sorted('7', '70', '10', '230', '02269', A.id, B.id));
   });
-  await check('an app order (no legacy id) is found by its exact id', async () => {
-    const found = await search(String(A.id));
-    assert.ok(found.includes(String(A.id)), `expected ${A.id} in [${found}]`);
-    assert.ok(!found.includes(String(B.id)), `did not expect ${B.id} in [${found}]`);
+  await check('an app order (no legacy id) is found by its own number, not its row id', async () => {
+    assert.deepEqual(await search('1083'), sorted(A.id));
+    assert.deepEqual(await search('109'), sorted(B.id));
+    assert.deepEqual(await search(String(A.id)), [], 'the row id 900 must find nothing');
+  });
+  await check('a bare prefix finds legacy ids and app numbers alike', async () => {
+    assert.deepEqual(await search('10'), sorted('10', A.id, B.id));
   });
 
   console.log('\nWhat the list renders for the match');
   await check('the 2269 row displays as DMS-2269 with the search highlighted, not DMS-mark>', async () => {
     const { rows } = await listPostgresOrderPage({ actor: admin, page: 1, pageSize: 100, filters: { orderId: '2269' } });
     assert.equal(rows.length, 1);
-    assert.match(formatDisplayOrderNumber(rows[0].order_id), /\/DMS-2269$/);
-    const html = highlightOrderNumber(rows[0].order_id, '2269');
+    assert.match(displayOrderNumber(rows[0]), /\/DMS-2269$/);
+    const html = highlightOrderNumber(displayOrderNumber(rows[0]), '2269');
     assert.match(html, /DMS-<mark [^>]*>2269<\/mark>$/);
     assert.doesNotMatch(html.replace(/<[^>]+>/g, ''), /mark>/);
+  });
+  await check('an app order displays its own number, not one built from its row id', async () => {
+    const { rows } = await listPostgresOrderPage({ actor: admin, page: 1, pageSize: 100, filters: { orderId: '1083' } });
+    assert.equal(displayOrderNumber(rows[0]), 'OM/26-27/DMS-1083');
+    assert.equal(formatDisplayOrderNumber(rows[0].order_id), 'OM/26-27/DMS-900', 'the old id-based number, for contrast');
   });
 } catch (error) {
   exitCode = 1;

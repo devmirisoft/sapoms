@@ -14,11 +14,12 @@ import {
   Download,
   FileText,
   Loader2,
+  Pencil,
   Search,
   X,
 } from 'lucide-react'
 import { formatDisplayOrderNumber } from '@/lib/orderDisplay'
-import { billableOrders } from '@/components/ledger/DealerBillsPanel'
+import { EditBillModal, invoiceAmountFor, loadBillableShipments, ShipmentPicker, type BillableShipment } from '@/components/ledger/DealerBillsPanel'
 import { getCurrentRole } from '@/lib/currentUser'
 import { showToast } from "@/components/ui/toast";
 
@@ -77,6 +78,7 @@ type Bill = {
   id: string
   dealerId: string
   orderNumber: string
+  orderLabel?: string
   billNumber?: string
   billAmount: number
   gstPercent: number
@@ -102,7 +104,7 @@ const ITEMS_PER_PAGE = 10
 const DEFAULT_CREDIT_DAYS = 60
 const PAYMENT_MODES = ['Cash', 'Cheque', 'NEFT', 'UPI', 'IMPF']
 const EMPTY_BILL_FORM = {
-  orderNumbers: [] as string[],
+  shipmentIds: [] as string[],
   billNumber: '',
   billAmount: '',
   gstPercent: '18',
@@ -208,20 +210,8 @@ function dealerTerms(dealer: Dealer): DealerTerms {
   return String(dealer.walletStatus ?? '').toLowerCase() === 'active' ? 'advance' : 'credit'
 }
 
-function orderNumber(order: RawOrder) {
-  return String(order.order_id || '').trim()
-}
-
-function formatLedgerOrderId(value: string) {
-  return formatDisplayOrderNumber(value)
-}
-
-function orderLabel(order: RawOrder) {
-  return formatLedgerOrderId(orderNumber(order))
-}
-
-function roundForInput(value: number) {
-  return Math.round(value * 100) / 100
+function billOrders(bill: Pick<Bill, 'orderNumber' | 'orderLabel'>) {
+  return bill.orderLabel || formatDisplayOrderNumber(bill.orderNumber)
 }
 
 const getLedgerViewerRole = getCurrentRole
@@ -244,11 +234,15 @@ export default function DealerLedgerShellPage() {
   const [loadingDealerId, setLoadingDealerId] = useState<string | null>(null)
   const [billsByDealer, setBillsByDealer] = useState<Record<string, Bill[]>>({})
   const [billDealer, setBillDealer] = useState<Dealer | null>(null)
+  // null while Dispatch Tracking's parcels for billDealer load.
+  const [billDealerShipments, setBillDealerShipments] = useState<BillableShipment[] | null>(null)
+  const billShipmentsFor = useRef('')
   const [billForm, setBillForm] = useState(EMPTY_BILL_FORM)
   const [billFiles, setBillFiles] = useState<File[]>([])
   const [orderDropdownOpen, setOrderDropdownOpen] = useState(false)
   const [paymentTarget, setPaymentTarget] = useState<{ dealer: Dealer; bill: Bill } | null>(null)
   const [paymentForm, setPaymentForm] = useState(EMPTY_PAYMENT_FORM)
+  const [editTarget, setEditTarget] = useState<{ dealer: Dealer; bill: Bill } | null>(null)
   const [pdfTarget, setPdfTarget] = useState<{ dealer: Dealer; bill: Bill } | null>(null)
   const [isSavingBill, setIsSavingBill] = useState(false)
   const [isUploadingPdfs, setIsUploadingPdfs] = useState(false)
@@ -354,10 +348,21 @@ export default function DealerLedgerShellPage() {
     setBillForm(EMPTY_BILL_FORM)
     setBillFiles([])
     setOrderDropdownOpen(false)
+    setBillDealerShipments(null)
+    billShipmentsFor.current = dealer.Dealer_Id
+    // Dispatch Tracking's parcels for this dealer; a late answer for another dealer is dropped.
+    loadBillableShipments(dealer.Dealer_Id)
+      .then((shipments) => { if (billShipmentsFor.current === dealer.Dealer_Id) setBillDealerShipments(shipments) })
+      .catch(() => {
+        if (billShipmentsFor.current !== dealer.Dealer_Id) return
+        setBillDealerShipments([])
+        showToast('error', 'Could not load shipments to bill')
+      })
     await ensureDealerDetails(dealer)
   }
 
   const closeBillModal = () => {
+    billShipmentsFor.current = ''
     setBillDealer(null)
     setBillForm(EMPTY_BILL_FORM)
     setBillFiles([])
@@ -380,20 +385,13 @@ export default function DealerLedgerShellPage() {
     setBillFiles(selectedFiles)
   }
 
-  const toggleBillOrder = (nextOrderNumber: string, checked: boolean) => {
+  const toggleBillShipment = (shipmentId: string, checked: boolean) => {
     setBillForm((prev) => {
-      const nextOrderNumbers = checked
-        ? Array.from(new Set([...prev.orderNumbers, nextOrderNumber]))
-        : prev.orderNumbers.filter((orderNumber) => orderNumber !== nextOrderNumber)
-      const selectedOrders = (billDealer ? billableOrders(dealerDetails[billDealer.Dealer_Id]?.orders || [], billsByDealer[billDealer.Dealer_Id] || []) : [])
-        .filter((order) => nextOrderNumbers.includes(orderNumber(order)))
-      const nextAmount = selectedOrders.reduce((sum, order) => sum + order.unbilled, 0)
-
-      return {
-        ...prev,
-        orderNumbers: nextOrderNumbers,
-        billAmount: nextOrderNumbers.length > 0 ? String(roundForInput(nextAmount)) : '',
-      }
+      const shipmentIds = checked
+        ? Array.from(new Set([...prev.shipmentIds, shipmentId]))
+        : prev.shipmentIds.filter((id) => id !== shipmentId)
+      const picked = (billDealerShipments ?? []).filter((shipment) => shipmentIds.includes(shipment.id))
+      return { ...prev, shipmentIds, billAmount: picked.length > 0 ? String(invoiceAmountFor(picked)) : '' }
     })
   }
 
@@ -404,7 +402,8 @@ export default function DealerLedgerShellPage() {
     const amount = Number(billForm.billAmount)
     const gst = Number(billForm.gstPercent)
 
-    if (billForm.orderNumbers.length === 0 || amount <= 0 || gst < 0 || !billForm.billDate) {
+    const picked = (billDealerShipments ?? []).filter((shipment) => billForm.shipmentIds.includes(shipment.id))
+    if (picked.length === 0 || amount <= 0 || gst < 0 || !billForm.billDate) {
       showToast('error', 'Fill all bill fields before saving')
       return
     }
@@ -438,7 +437,8 @@ export default function DealerLedgerShellPage() {
       }
 
       const response = await axios.post(`/api/ledger/${encodeURIComponent(billDealer.Dealer_Id)}`, {
-        orderNumbers: billForm.orderNumbers,
+        orderNumbers: Array.from(new Set(picked.map((shipment) => shipment.orderId))),
+        shipmentIds: picked.map((shipment) => shipment.id),
         billNumber: billForm.billNumber.trim(),
         billAmount: amount,
         gstPercent: gst,
@@ -667,6 +667,7 @@ export default function DealerLedgerShellPage() {
                         onExpand={() => handleExpand(dealer)}
                         canManageLedgerEntries={canManageLedgerEntries}
                         onPayment={(bill) => openPaymentModal(dealer, bill)}
+                        onEdit={(bill) => setEditTarget({ dealer, bill })}
                         onViewPdfs={(bill) => setPdfTarget({ dealer, bill })}
                       />
                     )
@@ -711,7 +712,7 @@ export default function DealerLedgerShellPage() {
           <form onSubmit={submitBill} className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wide text-gray-500">
-                Orders
+                Shipments to bill
               </label>
               <div className="relative">
                 <button
@@ -720,40 +721,27 @@ export default function DealerLedgerShellPage() {
                   className="flex w-full items-center justify-between rounded-lg border border-gray-300 bg-white px-3 py-2 text-left text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-brand-500"
                 >
                   <span>
-                    {billForm.orderNumbers.length > 0
-                      ? `${billForm.orderNumbers.length} order${billForm.orderNumbers.length === 1 ? '' : 's'} selected`
-                      : 'Select orders'}
+                    {billForm.shipmentIds.length > 0
+                      ? `${billForm.shipmentIds.length} shipment${billForm.shipmentIds.length === 1 ? '' : 's'} selected`
+                      : 'Select shipments'}
                   </span>
                   <ChevronDown className={`h-4 w-4 text-gray-400 transition ${orderDropdownOpen ? 'rotate-180' : ''}`} />
                 </button>
 
                 {orderDropdownOpen && (
                   <div className="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-y-auto rounded-lg border border-gray-300 bg-white shadow-lg">
-                    {billableOrders(dealerDetails[billDealer.Dealer_Id]?.orders || [], billsByDealer[billDealer.Dealer_Id] || [])
-                      .map((order) => {
-                        const currentOrderNumber = orderNumber(order)
-                        return (
-                          <label key={currentOrderNumber} className="flex cursor-pointer items-center gap-3 border-b border-gray-100 px-3 py-2 text-sm last:border-b-0 hover:bg-gray-50">
-                            <input
-                              type="checkbox"
-                              checked={billForm.orderNumbers.includes(currentOrderNumber)}
-                              onChange={(event) => toggleBillOrder(currentOrderNumber, event.target.checked)}
-                              className="h-4 w-4 rounded border-gray-300 text-brand-600 focus:ring-brand-500"
-                            />
-                            <span className="flex-1 text-gray-900">{orderLabel(order)}</span>
-                            <span className="text-xs font-semibold text-gray-600">{formatAmount(order.unbilled)}</span>
-                          </label>
-                        )
-                      })}
-                    {billableOrders(dealerDetails[billDealer.Dealer_Id]?.orders || [], billsByDealer[billDealer.Dealer_Id] || []).length === 0 && (
-                      <div className="px-3 py-4 text-sm text-gray-400">No dispatched orders to bill</div>
-                    )}
+                    {billDealerShipments === null
+                      ? <div className="px-3 py-4 text-sm text-gray-400">Loading shipments…</div>
+                      : <ShipmentPicker shipments={billDealerShipments} selected={billForm.shipmentIds} onToggle={toggleBillShipment} />}
                   </div>
                 )}
               </div>
-              {billForm.orderNumbers.length > 0 && (
-                <p className="mt-1.5 text-xs text-gray-500">{billForm.orderNumbers.map(formatLedgerOrderId).join(', ')}</p>
+              {billForm.shipmentIds.length > 0 && (
+                <p className="mt-1.5 text-xs text-gray-500">
+                  {(billDealerShipments ?? []).filter((shipment) => billForm.shipmentIds.includes(shipment.id)).map((shipment) => `${shipment.orderLabel} (${shipment.label})`).join(', ')}
+                </p>
               )}
+              <p className="mt-1 text-xs text-gray-500">Shipment values are before GST; the amount below adds it.</p>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -837,7 +825,7 @@ export default function DealerLedgerShellPage() {
         >
           <div className="space-y-3">
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-              Order {formatLedgerOrderId(pdfTarget.bill.orderNumber)} - {formatAmount(pdfTarget.bill.billAmount)} - {formatDate(pdfTarget.bill.billDate)}
+              Order {billOrders(pdfTarget.bill)} -{formatAmount(pdfTarget.bill.billAmount)} - {formatDate(pdfTarget.bill.billDate)}
             </div>
 
             {billPdfs(pdfTarget.bill).length === 0 ? (
@@ -873,6 +861,26 @@ export default function DealerLedgerShellPage() {
             )}
           </div>
         </ModalShell>
+      )}
+
+      {editTarget && (
+        <EditBillModal
+          dealerId={editTarget.dealer.Dealer_Id}
+          bill={editTarget.bill}
+          creditDays={dealerTerms(editTarget.dealer) === 'credit'
+            ? creditDaysForDealer(dealerDetails[editTarget.dealer.Dealer_Id]?.dealer || editTarget.dealer)
+            : null}
+          onClose={() => setEditTarget(null)}
+          onSaved={(saved) => {
+            const dealerId = editTarget.dealer.Dealer_Id
+            setBillsByDealer((prev) => ({
+              ...prev,
+              [dealerId]: (prev[dealerId] || []).map((bill) => (bill.id === saved.id ? saved : bill)),
+            }))
+            queryClient.invalidateQueries({ queryKey: ['dealer-ledger-shell'] })
+            setEditTarget(null)
+          }}
+        />
       )}
 
       {paymentTarget && (
@@ -975,6 +983,7 @@ function FragmentRow({
   onExpand,
   canManageLedgerEntries,
   onPayment,
+  onEdit,
   onViewPdfs,
 }: {
   dealer: Dealer
@@ -988,6 +997,7 @@ function FragmentRow({
   onExpand: () => void
   canManageLedgerEntries: boolean
   onPayment: (bill: Bill) => void
+  onEdit: (bill: Bill) => void
   onViewPdfs: (bill: Bill) => void
 }) {
   return (
@@ -1127,7 +1137,7 @@ function FragmentRow({
                       return (
                         <tr key={bill.id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 font-mono text-xs font-semibold text-brand-600">
-                            {formatLedgerOrderId(bill.orderNumber)}
+                            {billOrders(bill)}
                           </td>
                           <td className="px-4 py-3">
                             <div className="font-semibold text-gray-900">{formatAmount(bill.billAmount)}</div>
@@ -1172,15 +1182,25 @@ function FragmentRow({
                           </td>
                           <td className="px-4 py-3 text-right">
                             {canManageLedgerEntries ? (
-                              <button
-                                type="button"
-                                onClick={() => onPayment(bill)}
-                                disabled={balance === 0}
-                                className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <CreditCard className="h-3.5 w-3.5" />
-                                Add Payment
-                              </button>
+                              <div className="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => onEdit(bill)}
+                                  className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 transition hover:bg-gray-50"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => onPayment(bill)}
+                                  disabled={balance === 0}
+                                  className="inline-flex items-center gap-2 rounded-lg bg-brand-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  <CreditCard className="h-3.5 w-3.5" />
+                                  Add Payment
+                                </button>
+                              </div>
                             ) : (
                               <span className="text-xs font-medium text-gray-400">Recorded payment only</span>
                             )}

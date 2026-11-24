@@ -2,7 +2,7 @@ import type { Prisma } from "@prisma/client";
 import { prisma } from "@/server/db/prisma";
 import { billAgeing } from "@/lib/dealerCreditLimit";
 import { fromPaise } from "@/lib/postgresWallet";
-import { formatDisplayOrderNumber } from "@/lib/orderDisplay";
+import { displayOrderNumber, formatDisplayOrderNumber } from "@/lib/orderDisplay";
 
 /**
  * Every bill with a balance still unpaid, aged as of `now`. Shared by the bill-ageing
@@ -22,6 +22,18 @@ export async function listUnpaidBills(dealer: Prisma.DealerProfileWhereInput = {
     orderBy: [{ dealer: { businessName: "asc" } }, { billDate: "asc" }, { id: "asc" }],
   });
 
+  // A bill stores its orders by legacy id or row id; the report shows their numbers.
+  const keys = Array.from(new Set(bills.flatMap((bill) => bill.orderNumber.split(",").map((key) => key.trim()).filter(Boolean))));
+  const ids = keys.filter((key) => /^\d{1,18}$/.test(key)).map((key) => BigInt(key));
+  const orders = keys.length === 0 ? [] : await prisma.order.findMany({
+    where: { OR: [{ legacyPhpId: { in: keys } }, { id: { in: ids }, legacyPhpId: null }] },
+    select: { id: true, legacyPhpId: true, orderNumber: true, orderDate: true },
+  });
+  const numbers = new Map(orders.map((order) => [
+    order.legacyPhpId || order.id.toString(),
+    displayOrderNumber({ order_number: order.orderNumber, order_date: order.orderDate }),
+  ]));
+
   return bills.map((bill) => {
     // Dealers not on credit terms (creditDays unset) owe from the bill date.
     const creditDays = bill.dealer.creditDays ?? 0;
@@ -30,7 +42,7 @@ export async function listUnpaidBills(dealer: Prisma.DealerProfileWhereInput = {
       dealerId: bill.dealer.id.toString(),
       name: bill.dealer.businessName,
       creditDays: creditDays + bill.extraCreditDays,
-      billNo: bill.orderNumber.split(",").map((id) => formatDisplayOrderNumber(id)).join(", "),
+      billNo: bill.orderNumber.split(",").map((key) => key.trim()).filter(Boolean).map((key) => numbers.get(key) ?? formatDisplayOrderNumber(key)).join(", "),
       billDate: bill.billDate.toISOString().slice(0, 10),
       billAmount: fromPaise(bill.billAmountPaise),
       unpaidAmount: fromPaise(bill.billAmountPaise - bill.paidAmountPaise),

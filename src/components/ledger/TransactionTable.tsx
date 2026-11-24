@@ -227,9 +227,6 @@ export default function TransactionTable({
                 : transactions.map((tx, index) => {
                   const tone = txTone(tx)
                   const rowNumber = (safePage - 1) * safePageSize + index + 1
-                  const orderYear = tx.date && moment(tx.date).isValid()
-                    ? moment(tx.date).year()
-                    : new Date().getFullYear()
 
                   return (
                     <tr key={`${tx.type || 'tx'}-${tx.id}`} className="transition-colors hover:bg-blue-50/30">
@@ -240,7 +237,7 @@ export default function TransactionTable({
                       <td className="px-4 py-3.5">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-[13px] font-bold text-brand-600">
-                            {tx.invoice ? formatDisplayOrderNumber(tx.invoice, orderYear) : tx.id}
+                            {tx.invoice ? tx.invoice.split(',').map((part) => formatDisplayOrderNumber(part.trim(), tx.date)).join(', ') : tx.id}
                           </span>
                           <span className={`inline-flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-[10.5px] font-bold ${tone.wrap}`}>
                             <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />

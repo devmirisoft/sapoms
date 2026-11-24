@@ -10,7 +10,7 @@ import Footer from "@/components/Footer";
 import Link from "next/link";
 import axios from "axios";
 import { OrderAmountSource, withDisplayOrderAmounts } from "@/lib/orderAmounts";
-import { formatDisplayOrderNumber } from '@/lib/orderDisplay';
+import { displayOrderNumber } from '@/lib/orderDisplay';
 import { useAuthSession } from "@/hooks/useAuthSession";
 import type { SaleItem } from "@/lib/todaysSale";
 import { mergeCatalogueRecords, type CatalogueProduct } from "@/lib/catalogue";
@@ -543,11 +543,11 @@ export default function Page() {
                     <rect x="9" y="3" width="6" height="4" rx="1"/>
                     <path d="M9 12h6M9 16h4"/>
                   </svg>
-                  <span className="font-mono text-[11px] text-slate-400">{formatDisplayOrderNumber(order.order_id)}</span>
+                  <span className="font-mono text-[11px] text-slate-400">{displayOrderNumber(order)}</span>
                 </div>
                 <div className="p-3 flex flex-col gap-1">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <p className="font-mono text-[13px] font-bold text-brand-600">{formatDisplayOrderNumber(order.order_id)}</p>
+                    <p className="font-mono text-[13px] font-bold text-brand-600">{displayOrderNumber(order)}</p>
                     {isDeleted && (
                       <span className="px-1.5 py-0.5 bg-red-50 border border-red-200 text-red-700 rounded text-[10px] font-bold">DELETED</span>
                     )}

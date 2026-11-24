@@ -11,7 +11,7 @@ import { exportOrdersToCloud, downloadPDFDirectly } from "@/lib/Exporttopdf";
 import { InvoiceModal } from "@/components/InvoiceModel";
 import { downloadOrderInvoice, uploadOrderInvoice, generateOrderInvoicePDF, listInvoices } from "@/lib/invoicegenerator";
 import { formatAdditionalDiscountBadge, getCompactOrderDiscountRows, withDisplayOrderAmounts } from "@/lib/orderAmounts";
-import { formatDisplayOrderNumber, highlight, highlightOrderNumber } from '@/lib/orderDisplay';
+import { displayOrderNumber, formatDisplayOrderNumber, highlight, highlightOrderNumber } from '@/lib/orderDisplay';
 import { STAFF_ORDER_SCOPE_VERSION } from "@/lib/staffOrderScope.js";
 import {
   buildCustomDiscountProgressMap,
@@ -923,7 +923,7 @@ function DispatchDetailsDrawer({
         <div className="dispatch-header">
           <div>
             <p className="dispatch-kicker">Dispatch Details</p>
-            <h2 className="dispatch-title">Order No: {formatDisplayOrderNumber(order.order_id)}</h2>
+            <h2 className="dispatch-title">Order No: {displayOrderNumber(order)}</h2>
             <p className="dispatch-subtitle">Dealer: {order.Dealer_Name || '—'}</p>
           </div>
           <button type="button" className="dispatch-close" onClick={onClose} aria-label="Close dispatch details">
@@ -1240,9 +1240,9 @@ export default function OrderHistoryPage() {
     try {
       const existing = await listInvoices(selectedDealerIds[0] || dealerId || "", 500);
       const existingNumbers = new Set(Array.isArray(existing.data) ? existing.data.map((invoice: any) => String(invoice.invoiceNumber ?? "")) : []);
-      const duplicates = selectedOrdersForBilling.filter((order) => existingNumbers.has(formatDisplayOrderNumber(order.order_id)));
+      const duplicates = selectedOrdersForBilling.filter((order) => (existingNumbers.has(displayOrderNumber(order)) || existingNumbers.has(formatDisplayOrderNumber(order.order_id))));
       if (duplicates.length > 0) {
-        showToast("error", `Already billed: ${duplicates.map((order) => order.order_id).join(", ")}`);
+        showToast("error", `Already billed: ${duplicates.map((order) => displayOrderNumber(order)).join(", ")}`);
         return;
       }
       for (const order of selectedOrdersForBilling) {
@@ -1327,7 +1327,7 @@ export default function OrderHistoryPage() {
       body: JSON.stringify({
         action: "cancel",
         reason,
-        formattedOrderNumber: formatDisplayOrderNumber(deleteOrderId),
+        formattedOrderNumber: displayOrderNumber(orders.find((row) => row.order_id === deleteOrderId) ?? { order_id: deleteOrderId }),
       }),
     });
     const json = await response.json().catch(() => null);
@@ -1525,7 +1525,7 @@ export default function OrderHistoryPage() {
       const customDiscountSummary = customDiscountProgressMap[getCustomDiscountProgressKeyForOrder(o.order_id)];
       const base: Record<string, string | number> = {
         "S.No.":        (page - 1) * pageSize + i + 1,
-        "Order No":     formatDisplayOrderNumber(o.order_id),
+        "Order No":     displayOrderNumber(o),
         "Date":         (o.orderDate || o.order_date || "").slice(0, 10),
         "Due Date":     o.outstandingDate || "",
         "Amount (₹)":   amounts.grossAmount,
@@ -2177,7 +2177,7 @@ export default function OrderHistoryPage() {
                                 <div className="flex items-center gap-2">
                                   <span
                                     className="font-mono text-[11.05px] font-bold text-brand-600"
-                                    dangerouslySetInnerHTML={{ __html: highlightOrderNumber(oid, filters.orderId) }}
+                                    dangerouslySetInnerHTML={{ __html: highlightOrderNumber(displayOrderNumber(order), filters.orderId) }}
                                   />
                                   {isDeleted && (
                                     <span className="px-1.5 py-0.5 bg-red-50 border border-red-200 text-red-700 rounded text-[8.5px] font-bold">DELETED</span>

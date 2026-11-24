@@ -2,6 +2,7 @@ import { Prisma, WalletTransactionType } from "@prisma/client";
 import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
 import { dealerTerms, reserveDealerCredit } from "@/lib/dealerCreditLimit";
 import { applyWalletChange, fromPaise, WalletError } from "@/lib/postgresWallet";
+import { nextOrderIdentity } from "@/lib/orderIdentity";
 
 /**
  * Auto-placement of an order when Admin approves a custom discount.
@@ -43,16 +44,6 @@ function count(value: unknown, fallback = 1) {
   return Number.isFinite(numeric) && numeric > 0 ? numeric : fallback;
 }
 
-async function nextOrderNumber(tx: Prisma.TransactionClient) {
-  const year = new Date().getFullYear();
-  const sequence = await tx.orderSequence.upsert({
-    where: { year },
-    create: { year, lastValue: BigInt(1) },
-    update: { lastValue: { increment: BigInt(1) } },
-  });
-  const yearRange = `${String(year).slice(-2)}-${String(year + 1).slice(-2)}`;
-  return `OM/${yearRange}/DMS-${sequence.lastValue.toString().padStart(3, "0")}`;
-}
 
 type ApprovedRequest = {
   id: bigint;
@@ -158,10 +149,12 @@ export async function placeOrderForApprovedDiscount(
       `Insufficient wallet balance. Available: ${rupees(wallet.balancePaise - wallet.reservedPaise)}. Required: ${rupees(finalPayableAmountPaise)}.`);
   }
 
-  const orderNumber = await nextOrderNumber(tx);
+  const identity = await nextOrderIdentity(tx);
+  const orderNumber = identity.orderNumber;
   const stamp = await resolveOrderStaffStamp(tx, dealer.id);
   const order = await tx.order.create({
     data: {
+      id: identity.id,
       orderNumber,
       dealerId: dealer.id,
       ...stamp,

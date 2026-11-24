@@ -2,6 +2,7 @@ import { Prisma, WalletTransactionType } from "@prisma/client";
 import { applyWalletChange } from "@/lib/postgresWallet";
 import { dealerTerms, reserveDealerCredit, UNSET_TERMS_MESSAGE } from "@/lib/dealerCreditLimit";
 import { resolveOrderStaffStamp } from "@/lib/orderStaffStamp";
+import { nextOrderIdentity } from "@/lib/orderIdentity";
 import { buildEditLogEntry, diffOrderRows, orderItemsToDraftRows, ORDER_REJECTION_SOURCE } from "@/lib/orderRejectionDraft.mjs";
 import { findCatalogueEntry, type CatalogueIndex } from "@/lib/catalogue";
 import { couponPercent } from "@/lib/coupons";
@@ -72,16 +73,6 @@ function parseProductOrder(fields: OrderFormFields): Array<Record<string, unknow
   return parsed.filter((row): row is Record<string, unknown> => Boolean(row) && typeof row === "object");
 }
 
-async function nextOrderNumber(tx: Prisma.TransactionClient) {
-  const year = new Date().getFullYear();
-  const sequence = await tx.orderSequence.upsert({
-    where: { year },
-    create: { year, lastValue: BigInt(1) },
-    update: { lastValue: { increment: BigInt(1) } },
-  });
-  const yearRange = `${String(year).slice(-2)}-${String(year + 1).slice(-2)}`;
-  return `OM/${yearRange}/DMS-${sequence.lastValue.toString().padStart(3, "0")}`;
-}
 
 /**
  * Only the catalogue number and the pack count are the dealer's to choose. Unit
@@ -232,7 +223,8 @@ export async function createDealerOrder(
     if (creditBlock) throw new OrderError(creditBlock.message, 409, creditBlock.code);
   }
 
-  const orderNumber = await nextOrderNumber(tx);
+  const identity = await nextOrderIdentity(tx);
+  const orderNumber = identity.orderNumber;
   const stamp = await resolveOrderStaffStamp(tx, dealer.id);
   // A custom discount already cleared by both the RSM and Admin has had its RSM
   // review, so the order skips the RSM stage and goes straight to Staff.
@@ -241,6 +233,7 @@ export async function createDealerOrder(
     : null;
   const order = await tx.order.create({
     data: {
+      id: identity.id,
       orderNumber,
       dealerId: dealer.id,
       ...stamp,

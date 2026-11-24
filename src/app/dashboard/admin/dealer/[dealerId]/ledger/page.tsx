@@ -12,7 +12,7 @@ import AccountBookSummary, { AccountBookStats } from '@/components/ledger/Accoun
 import TransactionTable from '@/components/ledger/TransactionTable'
 import PayMoneyModal, { PaymentData } from '@/components/ledger/PayMoneyModal'
 import { InvoiceModal } from '@/components/InvoiceModel'
-import DealerBillsPanel, { BillableOrder, CreditSnapshot, InvoicePrefill, LedgerBill } from '@/components/ledger/DealerBillsPanel'
+import DealerBillsPanel, { CreditSnapshot, InvoicePrefill, LedgerBill } from '@/components/ledger/DealerBillsPanel'
 import { createIdempotencyKey } from '@/lib/idempotency'
 import { getCurrentRole } from '@/lib/currentUser'
 import { showToast } from "@/components/ui/toast";
@@ -76,7 +76,6 @@ interface DealerLedgerResponse {
   dealer: Dealer
   summary: LedgerSummaryData
   summaryStats: AccountBookStats
-  orders?: BillableOrder[]
   bills?: LedgerBill[]
   transactionCount: number
   isLive: boolean
@@ -464,7 +463,6 @@ export default function DealerLedgerPage() {
 
         <DealerBillsPanel
           dealerId={dealerId}
-          orders={ledgerData?.orders || []}
           bills={ledgerData?.bills || []}
           credit={walletData?.credit ?? null}
           canManageBills={canManageLedgerEntries}

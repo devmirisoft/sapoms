@@ -7,6 +7,7 @@ import { isAdminLike, isStaffLike } from "@/server/auth/sales-scope";
 import { applyWalletChange, fromPaise, roundMoney, toPaise } from "@/lib/postgresWallet";
 import { mapPostgresOrderToLegacy, orderInclude as sharedOrderInclude } from "@/lib/postgresOrders";
 import { AUDIT_ACTION, AUDIT_ENTITY } from "@/lib/auditActions";
+import { displayOrderNumber, formatDisplayOrderNumber } from "@/lib/orderDisplay";
 import { createAuditLog } from "@/server/audit/audit-log";
 import { dealerTerms } from "@/lib/dealerCreditLimit";
 
@@ -131,12 +132,34 @@ function ledgerBillPdfs(bill: LedgerBillRecord): LedgerBillPdf[] {
   return [{ name: bill.pdfName || "Bill PDF", url, downloadUrl: attachmentUrl(url) }];
 }
 
-function normalizeLedgerBill(bill: LedgerBillRecord) {
+// A bill stores each of its orders as the order's legacy id or row id (recordLedgerBill),
+// which is how bills are matched; staff know an order by its number, so that is shown.
+// Maps that stored key to the number as displayed.
+type OrderNumbers = Map<string, string>;
+
+function orderNumbersOf(orders: Array<{ id: bigint; legacyPhpId: string | null; orderNumber: string; orderDate: Date }>): OrderNumbers {
+  return new Map(orders.map((order) => [
+    order.legacyPhpId || order.id.toString(),
+    displayOrderNumber({ order_number: order.orderNumber, order_date: order.orderDate }),
+  ]));
+}
+
+async function dealerOrderNumbers(client: Pick<Prisma.TransactionClient, "order">, dealerId: bigint) {
+  return orderNumbersOf(await client.order.findMany({ where: { dealerId }, select: { id: true, legacyPhpId: true, orderNumber: true, orderDate: true } }));
+}
+
+function orderLabel(storedOrders: string, numbers: OrderNumbers) {
+  return storedOrders.split(",").map((key) => key.trim()).filter(Boolean)
+    .map((key) => numbers.get(key) ?? formatDisplayOrderNumber(key)).join(", ");
+}
+
+function normalizeLedgerBill(bill: LedgerBillRecord, numbers: OrderNumbers) {
   return {
     id: bill.id.toString(),
     dealerId: bill.dealerId.toString(),
     orderId: bill.orderId?.toString() || "",
     orderNumber: bill.orderNumber,
+    orderLabel: orderLabel(bill.orderNumber, numbers),
     billNumber: bill.billNumber || "",
     billAmount: money(bill.billAmountPaise),
     gstPercent: Number(bill.gstPercent ?? 0),
@@ -181,9 +204,12 @@ export function ledgerTransactionDirection(type: WalletTransactionType, metadata
   return "debit";
 }
 
-function walletLedgerTransaction(tx: Prisma.WalletTransactionGetPayload<{ include: { order: true } }>, forDealer = false) {
+function walletLedgerTransaction(tx: Prisma.WalletTransactionGetPayload<{ include: { order: true } }>, numbers: OrderNumbers, forDealer = false) {
   const direction = ledgerTransactionDirection(tx.type, tx.metadata, tx.orderId);
   const amount = money(tx.amountPaise);
+  // A payment against a bill falls back to the bill's stored orders as its reference.
+  const meta = (tx.metadata ?? {}) as Record<string, unknown>;
+  const billReference = Boolean(meta.ledgerPayment) && tx.reference !== null && tx.reference === meta.orderNumber;
   // A settlement note is one entry seen from both sides: the accountant issues
   // a credit note, the dealer books it as a debit note.
   const settlementNote = Boolean((tx.metadata as Record<string, unknown> | null)?.creditNote) ? (forDealer ? "Debit note" : "Credit note") : "";
@@ -194,7 +220,7 @@ function walletLedgerTransaction(tx: Prisma.WalletTransactionGetPayload<{ includ
     credit: direction === "credit" ? amount : 0,
     narration: settlementNote ? `${settlementNote} - ${narration}` : narration,
     date: tx.createdAt.toISOString(),
-    invoice: tx.reference || tx.order?.orderNumber || tx.orderId?.toString() || "",
+    invoice: (billReference ? orderLabel(tx.reference ?? "", numbers) : tx.reference) || tx.order?.orderNumber || tx.orderId?.toString() || "",
     mode: settlementNote.toLowerCase() || String(tx.type).toLowerCase().replace(/_/g, " "),
     type: String(tx.type).toLowerCase(),
   };
@@ -287,7 +313,7 @@ async function findDealerOrder(client: Pick<LedgerClient, "order">, dealerId: bi
         { orderNumber: normalized },
       ],
     },
-    select: { id: true, orderNumber: true, legacyPhpId: true },
+    select: { id: true, orderNumber: true, legacyPhpId: true, orderDate: true },
   });
 }
 
@@ -332,12 +358,13 @@ export async function getDealerLedger(actor: AuthActor, rawDealerId: string) {
     prisma.ledgerBill.findMany({ where: { dealerId }, orderBy: [{ billDate: "desc" }, { id: "desc" }] }),
   ]);
   const summary = summaryFrom(orders, transactions);
+  const numbers = orderNumbersOf(orders);
   return {
     dealer: normalizeDealer(dealer, dealer.wallet),
     summary: { totalDebit: summary.totalDebit, totalCredit: summary.totalCredit, netBalance: summary.netBalance },
     summaryStats: summary.accountBook,
     orders: orders.filter((order) => classifyPostgresOrder(order) !== "Cancelled").map(mapPostgresOrderToLegacy),
-    bills: bills.map(normalizeLedgerBill),
+    bills: bills.map((bill) => normalizeLedgerBill(bill, numbers)),
     transactionCount: transactions.length,
   };
 }
@@ -347,8 +374,11 @@ export async function getDealerLedgerTransactions(actor: AuthActor, rawDealerId:
   if (!(await canAccessDealer(prisma, actor, dealerId))) throw Object.assign(new Error("Ledger access denied."), { status: 403 });
   const pageSize = Math.min(100, Math.max(5, Number(options.limit || 20)));
   const requestedPage = Math.max(1, Number(options.page || 1));
-  const walletTransactions = await prisma.walletTransaction.findMany({ where: { dealerId }, include: { order: true }, orderBy: { createdAt: "desc" } });
-  const allTransactions = walletTransactions.map((tx) => walletLedgerTransaction(tx, actor.role === "DEALER"));
+  const [walletTransactions, numbers] = await Promise.all([
+    prisma.walletTransaction.findMany({ where: { dealerId }, include: { order: true }, orderBy: { createdAt: "desc" } }),
+    dealerOrderNumbers(prisma, dealerId),
+  ]);
+  const allTransactions = walletTransactions.map((tx) => walletLedgerTransaction(tx, numbers, actor.role === "DEALER"));
   const count = allTransactions.length;
   const totalPages = Math.max(1, Math.ceil(count / pageSize));
   const page = Math.min(requestedPage, totalPages);
@@ -369,6 +399,37 @@ export async function getLedgerBillPdf(actor: AuthActor, rawDealerId: string, ra
   return file;
 }
 
+// Shared by create and edit so a bill is held to the same rules both ways.
+function parseBillFields(body: Record<string, unknown>) {
+  const billAmount = Number(body.billAmount);
+  if (!Number.isFinite(billAmount) || billAmount <= 0) throw Object.assign(new Error("Valid bill amount is required."), { status: 400 });
+
+  const gstPercent = Number(body.gstPercent ?? 0);
+  if (!Number.isFinite(gstPercent) || gstPercent < 0) throw Object.assign(new Error("Valid GST percent is required."), { status: 400 });
+
+  return {
+    billAmountPaise: toPaise(billAmount),
+    gstPercent,
+    billDate: parseDateOnly(body.billDate, "bill date"),
+    billNumber: String(body.billNumber ?? "").trim().slice(0, 60) || null,
+  };
+}
+
+// The download route fetches a stored PDF URL server-side, so only raw files in
+// this app's own Cloudinary account (what the bill-pdf route returns) are kept.
+function assertOwnBillUploads(files: LedgerBillPdf[]) {
+  const prefix = `/${process.env.CLOUDINARY_CLOUD_NAME}/raw/upload/`;
+  const own = (file: LedgerBillPdf) => {
+    try {
+      const url = new URL(file.url);
+      return Boolean(process.env.CLOUDINARY_CLOUD_NAME) && url.protocol === "https:" && url.hostname === "res.cloudinary.com" && url.pathname.startsWith(prefix);
+    } catch {
+      return false;
+    }
+  };
+  if (!files.every(own)) throw Object.assign(new Error("Bill PDFs must be uploaded through the bill form."), { status: 400 });
+}
+
 export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, body: Record<string, unknown>) {
   const dealerId = parseBigIntId(rawDealerId, "dealer id");
   if (actor.role !== "ACCOUNTANT") throw Object.assign(new Error("Only Accountant can save ledger bills."), { status: 403 });
@@ -379,23 +440,16 @@ export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, bo
   const uniqueRequestedOrderNumbers = Array.from(new Set(requestedOrderNumbers));
   if (uniqueRequestedOrderNumbers.length === 0) throw Object.assign(new Error("At least one order number is required."), { status: 400 });
 
-  const billAmount = Number(body.billAmount);
-  if (!Number.isFinite(billAmount) || billAmount <= 0) throw Object.assign(new Error("Valid bill amount is required."), { status: 400 });
-
-  const gstPercent = Number(body.gstPercent ?? 0);
-  if (!Number.isFinite(gstPercent) || gstPercent < 0) throw Object.assign(new Error("Valid GST percent is required."), { status: 400 });
-
-  const billDate = parseDateOnly(body.billDate, "bill date");
-  const billAmountPaise = toPaise(billAmount);
+  const { billAmountPaise, gstPercent, billDate, billNumber } = parseBillFields(body);
   const uploadedPdfs = parseLedgerBillPdfs(body.pdfFiles);
+  assertOwnBillUploads(uploadedPdfs);
   const pdfNames = uploadedPdfs.length > 0
     ? uploadedPdfs.map((file) => file.name)
     : Array.isArray(body.pdfNames)
       ? body.pdfNames.map((value) => String(value || "").trim()).filter(Boolean)
       : [String(body.pdfName || "").trim()].filter(Boolean);
   const pdfName = pdfNames.join(", ").slice(0, 255) || null;
-  const pdfUrl = (uploadedPdfs[0]?.url || String(body.pdfUrl || "").trim()).slice(0, 4000) || null;
-  const billNumber = String(body.billNumber ?? "").trim().slice(0, 60) || null;
+  const pdfUrl = uploadedPdfs[0]?.url.slice(0, 4000) || null;
 
   // Shipments this bill invoices (Dispatch Tracking's "Bill shipment").
   const shipmentIds = Array.from(new Set(
@@ -445,13 +499,97 @@ export async function recordLedgerBill(actor: AuthActor, rawDealerId: string, bo
         });
       }
 
-      return { created: true, bill: normalizeLedgerBill(saved) };
+      return { created: true, bill: normalizeLedgerBill(saved, orderNumbersOf(orderLookups.flatMap((order) => (order ? [order] : [])))) };
     });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
-      throw Object.assign(new Error("Bill number already used for this dealer."), { status: 409 });
-    }
-    throw error;
+    throw duplicateBillNumber(error);
+  }
+}
+
+function duplicateBillNumber(error: unknown) {
+  return error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002"
+    ? Object.assign(new Error("Bill number already used for this dealer."), { status: 409 })
+    : error;
+}
+
+/**
+ * The accountant's correction of a saved bill: amount, date, number, GST, PDFs.
+ * A bill is a record, not money, so no wallet entry is written; the audit row
+ * keeps the old and new values with the reason. The orders on the bill and what
+ * has been paid against it are not editable here.
+ */
+export async function updateLedgerBill(actor: AuthActor, rawDealerId: string, body: Record<string, unknown>) {
+  const dealerId = parseBigIntId(rawDealerId, "dealer id");
+  if (actor.role !== "ACCOUNTANT") throw Object.assign(new Error("Only Accountant can edit ledger bills."), { status: 403 });
+  const billId = parseBigIntId(body.billId, "bill id");
+  const reason = String(body.reason ?? "").trim().slice(0, 500);
+  if (!reason) throw Object.assign(new Error("Enter the reason for the change."), { status: 400 });
+
+  const next = parseBillFields(body);
+  const newPdfs = parseLedgerBillPdfs(body.newPdfFiles);
+  assertOwnBillUploads(newPdfs);
+  const keepUrls = new Set((Array.isArray(body.keepPdfUrls) ? body.keepPdfUrls : []).map(String));
+
+  try {
+    return await prisma.$transaction(async (tx) => {
+      const bill = await tx.ledgerBill.findFirst({ where: { id: billId, dealerId } });
+      if (!bill) throw Object.assign(new Error("Ledger bill not found."), { status: 404 });
+
+      // Kept files come from the stored record, never the request.
+      const oldPdfs = ledgerBillPdfs(bill);
+      const pdfs = [...oldPdfs.filter((file) => keepUrls.has(file.url)), ...newPdfs];
+      const pdfsChanged = newPdfs.length > 0 || pdfs.length !== oldPdfs.length;
+
+      const before = {
+        billAmount: money(bill.billAmountPaise),
+        gstPercent: Number(bill.gstPercent),
+        billDate: normalizeDateOnly(bill.billDate),
+        billNumber: bill.billNumber,
+        pdfs: oldPdfs.map((file) => file.name),
+      };
+      const after = {
+        billAmount: money(next.billAmountPaise),
+        gstPercent: next.gstPercent,
+        billDate: normalizeDateOnly(next.billDate),
+        billNumber: next.billNumber,
+        pdfs: pdfs.map((file) => file.name),
+      };
+      const changed = (Object.keys(before) as Array<keyof typeof before>).filter((key) => (key === "pdfs" ? pdfsChanged : before[key] !== after[key]));
+      const numbers = await dealerOrderNumbers(tx, dealerId);
+      if (changed.length === 0) return { changed: false, bill: normalizeLedgerBill(bill, numbers) };
+
+      // ponytail: recordLedgerPayment caps paid at the amount it read before saving, so a payment
+      // landing during a downward edit could leave paid > amount; lock the bill row FOR UPDATE in both if it matters.
+      const updated = await tx.ledgerBill.updateMany({
+        where: { id: bill.id, paidAmountPaise: { lte: next.billAmountPaise } },
+        data: {
+          billAmountPaise: next.billAmountPaise,
+          gstPercent: next.gstPercent,
+          billDate: next.billDate,
+          billNumber: next.billNumber,
+          ...(pdfsChanged ? {
+            pdfFiles: pdfs.length > 0 ? (pdfs as Prisma.InputJsonValue) : Prisma.DbNull,
+            pdfName: pdfs.map((file) => file.name).join(", ").slice(0, 255) || null,
+            pdfUrl: pdfs[0]?.url.slice(0, 4000) || null,
+          } : {}),
+        },
+      });
+      if (updated.count === 0) {
+        throw Object.assign(new Error(`Rs ${money(bill.paidAmountPaise)} is already paid against this bill; the amount can't be lower.`), { status: 422 });
+      }
+
+      const pick = (values: Record<string, unknown>) => Object.fromEntries(changed.map((key) => [key, values[key]]));
+      await createAuditLog({
+        tx, actor, action: AUDIT_ACTION.UPDATE, entity: AUDIT_ENTITY.INVOICE, entityId: bill.id,
+        oldValues: pick(before),
+        newValues: pick(after),
+        metadata: { change: "bill_edited", orderNumber: bill.orderNumber, reason },
+      });
+
+      return { changed: true, bill: normalizeLedgerBill(await tx.ledgerBill.findUniqueOrThrow({ where: { id: bill.id } }), numbers) };
+    });
+  } catch (error) {
+    throw duplicateBillNumber(error);
   }
 }
 
@@ -560,8 +698,9 @@ export async function recordLedgerPayment(actor: AuthActor, rawDealerId: string,
       recordOnly: dealerTerms(dealer, dealer.wallet) !== "advance" || bill !== null,
     });
 
+    const numbers = bill ? await dealerOrderNumbers(tx, dealerId) : new Map<string, string>();
     if (result.duplicate) {
-      return { ...result, bill: bill ? normalizeLedgerBill(bill) : null };
+      return { ...result, bill: bill ? normalizeLedgerBill(bill, numbers) : null };
     }
 
     const updatedBill = bill
@@ -574,6 +713,6 @@ export async function recordLedgerPayment(actor: AuthActor, rawDealerId: string,
         })
       : null;
 
-    return { ...result, bill: updatedBill ? normalizeLedgerBill(updatedBill) : null };
+    return { ...result, bill: updatedBill ? normalizeLedgerBill(updatedBill, numbers) : null };
   });
 }

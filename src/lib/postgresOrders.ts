@@ -120,26 +120,6 @@ function orderDispatchPieces(order: DispatchTotalsSource) {
   }, { ordered: 0, dispatched: 0 });
 }
 
-// Order payable scaled to the value dispatched so far. Each line is weighted by
-// its own amount, so dispatching the costly line bills more than a cheap one.
-function dispatchedPayablePaise(order: {
-  finalPayableAmountPaise: bigint;
-  items?: Array<{ quantityPacks: number; packSize?: number; finalAmountPaise: bigint; dispatches?: Array<{ quantity: number }> }>;
-}) {
-  let orderedValue = BigInt(0);
-  let dispatchedValue = BigInt(0);
-  for (const item of order.items ?? []) {
-    if (item.quantityPacks <= 0) continue;
-    const packs = Math.min(item.quantityPacks, (item.dispatches ?? []).reduce((sum, dispatch) => sum + dispatch.quantity, 0));
-    orderedValue += item.finalAmountPaise;
-    dispatchedValue += item.finalAmountPaise * BigInt(packs) / BigInt(item.quantityPacks);
-  }
-  if (orderedValue > BigInt(0)) return order.finalPayableAmountPaise * dispatchedValue / orderedValue;
-  // Lines without stored amounts (old imports): fall back to the piece share.
-  const { ordered, dispatched } = orderDispatchPieces(order);
-  return ordered > 0 ? order.finalPayableAmountPaise * BigInt(Math.min(dispatched, ordered)) / BigInt(ordered) : BigInt(0);
-}
-
 function legacyFulfilment(order: DispatchTotalsSource) {
   const { ordered, dispatched } = orderDispatchPieces(order);
   if (dispatched <= 0) return "Pending";
@@ -400,7 +380,6 @@ export function mapPostgresOrderToLegacy(order: PostgresOrderLike) {
     dispatch_note: (order.dispatches ?? []).reduce<{ remark: string | null; createdAt: Date } | null>((latest, dispatch) => (!latest || dispatch.createdAt >= latest.createdAt ? dispatch : latest), null)?.remark || "",
     orderdata_item_quantity: String(orderDispatchPieces(order).ordered),
     readyquantity: String(orderDispatchPieces(order).dispatched),
-    dispatched_amount: rupees(dispatchedPayablePaise(order)),
     mtstatus: legacyFulfilment(order),
     del_status: legacyDeletion(order.status),
     productorder: (order.items ?? []).map((item) => mapPostgresOrderItemToLegacy(item, order)),
@@ -541,12 +520,12 @@ async function orderFilterWhere(filters: OrderFilters): Promise<Prisma.OrderWher
   if (search) and.push(orderSearchWhere(search));
   const orderNumber = orderNumberSearch(text(filters.orderId));
   if (orderNumber) {
-    const legacy = await prisma.$queryRaw<Array<{ id: bigint }>>`
-      SELECT id FROM orders WHERE ltrim(legacy_php_id, '0') ILIKE ${orderNumber.pattern}`;
-    // ponytail: a short prefix returns many ids; add a stripped-id column + index if slow.
-    // A numeric id (no legacy id) matches exactly, not by prefix.
-    const { value } = orderNumber;
-    and.push({ OR: [{ id: { in: legacy.map((row) => row.id) } }, ...(isIdText(value) ? [{ legacyPhpId: null, id: BigInt(value) }] : [])] });
+    // What the list shows: a legacy order's PHP id, else the digits ending its own number
+    // (DMS-1083), never the row id.
+    const matches = await prisma.$queryRaw<Array<{ id: bigint }>>`
+      SELECT id FROM orders WHERE ltrim(COALESCE(legacy_php_id, substring(order_number from '([0-9]+)$')), '0') ILIKE ${orderNumber.pattern}`;
+    // ponytail: a short prefix returns many ids; add a stripped-number column + index if slow.
+    and.push({ id: { in: matches.map((row) => row.id) } });
   }
   const dealerId = text(filters.targetDealerId);
   if (dealerId) and.push(isIdText(dealerId) ? { dealerId: BigInt(dealerId) } : NO_ORDERS);
