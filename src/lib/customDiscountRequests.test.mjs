@@ -159,6 +159,10 @@ test("custom discount asked on the net after base stacks onto base", () => {
   assert.equal(helpers.discountOnNet(50, 55), 10);
   assert.equal(helpers.stackDiscountOnNet(50, 0), 50);
   assert.equal(helpers.discountOnNet(100, 100), 0);
+  // Re-opening a request must show the on-net % it was asked as, not the stored total
+  // (dealer 125: 62.5% total = Rs 600/pack on Rs 1,600 list = 25% on net after 50%).
+  assert.equal(helpers.discountOnNet(50, 62.5), 25);
+  assert.equal(helpers.stackDiscountOnNet(50, helpers.discountOnNet(50, 62.5)), 62.5);
 });
 
 test("NSM review only for custom asks above 5% on the net after base", () => {

@@ -286,7 +286,7 @@ function RequestCard({
         {[
           { label: "Products", val: String(request.orderSnapshot.products.length), cls: "text-gray-900" },
           { label: "Pieces", val: String(totalPieces(request)), cls: "text-gray-900" },
-          { label: "Requested", val: `${discountOnNet(request.currentDiscountPercent, request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)}%`, cls: "text-brand-600" },
+          { label: "Requested", val: `${discountOnNet(request.currentDiscountPercent, request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)}% on net`, cls: "text-brand-600" },
           { label: "Gross", val: money(request.orderSnapshot.grossAmount), cls: "text-gray-500" },
           { label: "Discount", val: `-${money(request.orderSnapshot.totalDiscountAmount)}`, cls: "text-amber-700" },
           { label: "Net Payable", val: money(request.orderSnapshot.requestedNetPayableAmount), cls: "text-emerald-700" },
@@ -716,7 +716,7 @@ export default function CustomDiscountApprovalsPage() {
                     <div className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-brand-500">Requested</p>
                       <p className="mt-1 font-mono text-[14px] font-bold text-brand-600">
-                        {discountOnNet(request.currentDiscountPercent, request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)}%
+                        {discountOnNet(request.currentDiscountPercent, request.requestedOrderDiscountPercent ?? request.requestedDiscountPercent)}% on net
                       </p>
                     </div>
                     <div className="rounded-xl border border-gray-900 bg-gray-900 px-3 py-2 text-white">

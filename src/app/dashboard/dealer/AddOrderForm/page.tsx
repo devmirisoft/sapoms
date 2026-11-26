@@ -510,6 +510,8 @@ function AddOrderPageInner() {
   const [customDiscountInput, setCustomDiscountInput] = useState("0");
   // Raw text of the savings box while it is being typed in; null = show the amount derived from %.
   const [savingsDraft, setSavingsDraft] = useState<string | null>(null);
+  // Same idea for the special price per pack box (product discounts).
+  const [packPriceDraft, setPackPriceDraft] = useState<string | null>(null);
   const [customDiscountScope, setCustomDiscountScope] = useState<CustomDiscountScope>("order");
   const [customDiscountProductKey, setCustomDiscountProductKey] = useState("");
   const [customDiscountSubmitting, setCustomDiscountSubmitting] = useState(false);
@@ -834,7 +836,8 @@ function AddOrderPageInner() {
           updatedAt: req.reviewedAt || req.createdAt,
         }));
         setCustomDiscountScope(req.discountScope);
-        setCustomDiscountInput(String(req.requestedOrderDiscountPercent ?? "0"));
+        // The box takes % on net; the request stores the total % of gross.
+        setCustomDiscountInput(String(req.requestedOrderDiscountPercent ? discountOnNet(safePositiveNumber(user.discount), req.requestedOrderDiscountPercent) : 0));
         setPerProductDiscountInputs(req.requestedProductDiscounts);
         setArr(rows.length > 0 ? rows : [emptyRow()]);
         if (req.shipto) setShipto(req.shipto);
@@ -880,7 +883,9 @@ function AddOrderPageInner() {
       setAppliedCoupon({ code: cachedDraft.coupon_code, pct: cachedDraft.coupon_pct });
     }
     setPerProductDiscountInputs(cachedDraft.approval_state?.requestedProductDiscounts ?? {});
-    setCustomDiscountInput(cachedDraft.approval_state?.requestedOrderDiscountPercent ? String(cachedDraft.approval_state.requestedOrderDiscountPercent) : "0");
+    // The box takes % on net; the draft stores the total % of gross. Base = dealer % + this draft's coupon.
+    const draftBasePercent = safePositiveNumber(user.discount) + (cachedDraft.coupon_code ? safePositiveNumber(cachedDraft.coupon_pct) : 0);
+    setCustomDiscountInput(cachedDraft.approval_state?.requestedOrderDiscountPercent ? String(discountOnNet(draftBasePercent, cachedDraft.approval_state.requestedOrderDiscountPercent)) : "0");
     setCustomDiscountScope(cachedDraft.approval_state?.requestedOrderDiscountPercent ? "order" : "product");
     setArr(cachedDraft.rows.length > 0 ? cachedDraft.rows : [emptyRow()]);
     setDraftBanner(`Loaded: "${cachedDraft.name}"`);
@@ -1313,6 +1318,10 @@ function AddOrderPageInner() {
   const customDiscountNetSubtotal = customDiscountBaseSubtotal * (1 - baseDiscountPayload.baseDiscountPercent / 100);
   const requestedCustomDiscountAmount = customDiscountNetSubtotal * (customDiscountOnNetPercent / 100);
   const requestedCustomFinalPayable = Math.max(0, customDiscountNetSubtotal - requestedCustomDiscountAmount);
+  // Special price per pack <-> % on net, for the selected product: price = net pack price * (1 - %/100).
+  const customDiscountPacks = customDiscountScope === "product" ? safePositiveNumber(selectedCustomDiscountProduct?.producQuanity) : 0;
+  const customNetPackPrice = customDiscountPacks > 0 ? customDiscountNetSubtotal / customDiscountPacks : 0;
+  const requestedPackPrice = customNetPackPrice * (1 - customDiscountOnNetPercent / 100);
 
   // ── Unsent custom discount selection → "Request Discount" instead of "Place Order" ──
   const currentDiscountBaseline = approvedCustomDiscountPercent ?? baseDiscountPayload.baseDiscountPercent;
@@ -2820,7 +2829,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                 <button
                   type="button"
                   onClick={() => {
-                    setCustomDiscountInput(String(visibleCustomRequest?.requestedDiscountPercent ?? 0));
+                    setCustomDiscountInput(String(discountOnNet(baseDiscountPayload.baseDiscountPercent, visibleCustomRequest?.requestedDiscountPercent ?? 0)));
                     setShowCustomDiscountEditor(true);
                   }}
                   disabled={orderLockedByPendingApproval}
@@ -2937,7 +2946,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
               <button
                 type="button"
                 onClick={() => {
-                  setCustomDiscountInput(String(visibleCustomRequest?.requestedDiscountPercent ?? 0));
+                  setCustomDiscountInput(String(discountOnNet(baseDiscountPayload.baseDiscountPercent, visibleCustomRequest?.requestedDiscountPercent ?? 0)));
                   setShowCustomDiscountEditor((v) => !v);
                 }}
                 disabled={orderLockedByPendingApproval}
@@ -3116,7 +3125,7 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                   </div>
                 )}
                 <div>
-                  <label className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wider">Custom Discount % (on net after base)</label>
+                  <label className="text-[10.5px] font-bold text-gray-400 uppercase tracking-wider">Custom Discount % (on net after base){customNetPackPrice > 0 ? " · or special ₹ / pack" : ""}</label>
                   <div className="mt-1 flex gap-2">
                     <input
                       type="number"
@@ -3128,7 +3137,25 @@ const verifySubmittedProductNotes = async (orderId: string) => {
                       className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13.5px] font-mono font-semibold text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                       placeholder="e.g. 10"
                     />
-
+                    {customNetPackPrice > 0 && (
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        aria-label="Special price per pack in rupees"
+                        title={`Special price per pack (now ₹${customNetPackPrice.toFixed(2)} after base discount)`}
+                        value={packPriceDraft ?? (customDiscountOnNetPercent > 0 ? Number(requestedPackPrice.toFixed(2)) : "")}
+                        onChange={(e) => {
+                          setPackPriceDraft(e.target.value);
+                          const price = Number(e.target.value);
+                          const onNet = e.target.value === "" ? 0 : Math.min(100, Math.max(0, (1 - price / customNetPackPrice) * 100));
+                          setCustomDiscountInput(String(Number(onNet.toFixed(2))));
+                        }}
+                        onBlur={() => setPackPriceDraft(null)}
+                        className="w-full rounded-xl border border-gray-200 px-3 py-2.5 text-[13.5px] font-mono font-semibold text-gray-900 outline-none focus:border-brand-500 focus:ring-2 focus:ring-brand-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        placeholder="₹ / pack"
+                      />
+                    )}
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
