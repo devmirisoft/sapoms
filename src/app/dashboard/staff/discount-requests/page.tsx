@@ -446,10 +446,11 @@ export default function StaffDiscountRequestsPage() {
                   <div className="grid grid-cols-3 gap-3 border-t border-gray-100 pt-4">
                     {[
                       { label: "Current", val: `${request.currentDiscountPercent}%`, cls: "text-gray-900" },
-                      { label: "Requested", val: `${discountOnNet(request.currentDiscountPercent, request.requestedDiscountPercent)}%`, cls: "text-brand-600" },
+                      { label: "Requested", val: `${discountOnNet(request.currentDiscountPercent, request.requestedDiscountPercent)}% on net`, cls: "text-brand-600" },
                       { label: "Products", val: String(products.length), cls: "text-gray-900" },
                       { label: "Subtotal", val: money(request.subtotal), cls: "text-gray-500" },
-                      { label: "Discount", val: `-${money(request.requestedDiscountAmount)}`, cls: "text-amber-700" },
+                      // Total (base + extra), so Subtotal - Discount = Net Payable on screen.
+                      { label: "Discount", val: `-${money(Math.max(0, request.subtotal - request.requestedFinalPayable))}`, cls: "text-amber-700" },
                       { label: "Net Payable", val: money(request.requestedFinalPayable), cls: "text-emerald-700" },
                     ].map((f) => (
                       <div key={f.label}>
@@ -569,7 +570,7 @@ export default function StaffDiscountRequestsPage() {
                     </div>
                     <div className="rounded-xl border border-brand-200 bg-brand-50 px-3 py-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-brand-500">Requested</p>
-                      <p className="mt-1 font-mono text-[14px] font-bold text-brand-600">{discountOnNet(request.currentDiscountPercent, request.requestedDiscountPercent)}%</p>
+                      <p className="mt-1 font-mono text-[14px] font-bold text-brand-600">{discountOnNet(request.currentDiscountPercent, request.requestedDiscountPercent)}% on net</p>
                     </div>
                     <div className="rounded-xl border border-gray-200 px-3 py-2">
                       <p className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Current Amt</p>
